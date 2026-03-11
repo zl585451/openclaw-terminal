@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdnjs.cloudflare.com; script-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'">
+  <title>代码</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #0a0a0f;
+      border: 2px solid #00ff88;
+      font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #0d0d12;
+      border-bottom: 1px solid #00ff8833;
+      flex-shrink: 0;
+    }
+    .lang-label {
+      color: #00ff88;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .header-btns {
+      display: flex;
+      gap: 8px;
+    }
+    .header-btns button {
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px solid #00ff8844;
+      color: #00ff88;
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .header-btns button:hover {
+      background: rgba(0, 255, 136, 0.1);
+    }
+    .code-wrap {
+      flex: 1;
+      overflow: auto;
+      padding: 12px;
+      min-height: 0;
+    }
+    pre {
+      margin: 0 !important;
+      background: transparent !important;
+    }
+    code {
+      font-size: 12px !important;
+      line-height: 1.5 !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="lang-label" id="langLabel">code</span>
+    <div class="header-btns">
+      <button id="copyBtn">⎘ 复制全部</button>
+      <button id="closeBtn">✕ 关闭</button>
+    </div>
+  </div>
+  <div class="code-wrap">
+    <pre><code id="codeEl"></code></pre>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+  <script>
+    const { ipcRenderer } = require('electron');
+    const codeEl = document.getElementById('codeEl');
+    const langLabel = document.getElementById('langLabel');
+    const copyBtn = document.getElementById('copyBtn');
+    const closeBtn = document.getElementById('closeBtn');
+
+    let code = '';
+    let lang = 'text';
+
+    ipcRenderer.on('code-window-data', (_, data) => {
+      code = data.code || '';
+      lang = data.language || 'text';
+      langLabel.textContent = (lang && lang !== 'text') ? lang : 'code';
+      codeEl.textContent = code;
+      codeEl.className = 'language-' + (Prism.languages[lang] ? lang : 'text');
+      Prism.highlightElement(codeEl);
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+        copyBtn.textContent = '✓ 已复制';
+        setTimeout(() => copyBtn.textContent = '⎘ 复制全部', 1500);
+      } catch (e) {}
+    });
+
+    closeBtn.addEventListener('click', () => ipcRenderer.send('code-window-close'));
+
+    ipcRenderer.send('code-window-ready');
+  </script>
+</body>
+</html>

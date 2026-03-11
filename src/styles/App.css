@@ -1,0 +1,127 @@
+/* 赛博坦主题变量 */
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #0f0f1a;
+  --bg-tertiary: #151525;
+  --green: #00ff88;
+  --cyan: #00d4ff;
+  --red: #ff0055;
+  --yellow: #ffaa00;
+  --text-primary: #e0e0e0;
+  --text-dim: #666680;
+  --border-color: rgba(0, 255, 136, 0.2);
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+/* 全局样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.app-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 保证标题栏、标签栏、内容区在扫描线之上 */
+.title-bar,
+.tab-bar,
+.content-area {
+  position: relative;
+  z-index: 10;
+}
+
+/* 扫描线动画：暂时禁用，避免黑屏 */
+.scanlines {
+  display: none;
+}
+
+/* 流光效果 - 从上到下扫描 */
+@keyframes scan-glow {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+/* 流光效果暂时禁用，避免黑屏 */
+.app-container::before {
+  display: none;
+}
+
+/* 边角装饰 */
+.corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--green);
+  z-index: 10;
+}
+
+.corner-tl {
+  top: 10px;
+  left: 10px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.corner-tr {
+  top: 10px;
+  right: 10px;
+  border-left: none;
+  border-bottom: none;
+}
+
+.corner-bl {
+  bottom: 10px;
+  left: 10px;
+  border-right: none;
+  border-top: none;
+}
+
+.corner-br {
+  bottom: 10px;
+  right: 10px;
+  border-left: none;
+  border-top: none;
+}
+
+/* 光标闪烁动画 */
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+  color: var(--green);
+}

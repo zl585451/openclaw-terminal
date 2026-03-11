@@ -1,0 +1,103 @@
+
+> openclaw-terminal@1.0.0 electron:dev
+> npm run build:electron && concurrently "npm run dev" "wait-on http://localhost:5174 && cross-env NODE_ENV=development electron ."
+
+
+> openclaw-terminal@1.0.0 build:electron
+> tsc -p tsconfig.electron.json
+
+[0] 
+[0] > openclaw-terminal@1.0.0 dev
+[0] > vite
+[0] 
+[0] [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+[0] 
+[0]   VITE v5.4.21  ready in 305 ms
+[0] 
+[0]   鉃? Local:   http://localhost:5174/
+[0]   鉃? Network: use --host to expose
+[1] 
+[1] [OpenClaw] Loaded existing keys, deviceId: 7183ffcf147314ac8adb2006d0066f624368d36b2b66df469dfcad140acf8d63
+[1] [OpenClaw] Device ID: 7183ffcf147314ac8adb2006d0066f624368d36b2b66df469dfcad140acf8d63
+[1] [Gateway] Port already in use, external Gateway detected
+[1] [OpenClaw] Connecting to ws://127.0.0.1:18789 retry: 0
+[1] [OpenClaw] Token loaded: c59f115d...
+[1] [OpenClaw] Device ID: 7183ffcf147314ac8adb2006d0066f624368d36b2b66df469dfcad140acf8d63
+[1] [OpenClaw] WebSocket opened, waiting for challenge...
+[1] [OpenClaw] Received message: {"type":"event","event":"connect.challenge","payload":{"nonce":"2a877b95-9a97-4198-8643-0398d6a5a493","ts":1773115904274}}
+[1] [OpenClaw] Challenge received, nonce: 2a877b95-9a97-4198-8643-0398d6a5a493
+[1] [OpenClaw] Sending connect request...
+[1] [OpenClaw] Auth payload: v3|7183ffcf147314ac8adb2006d0066f624368d36b2b66df469dfcad140acf8d63|gateway-client|backend|operator|operator.read,operator.write|1773115904278|c59f115daa475d61dd6d2381b0aaabfc2854e54ad320ac1c|2a877b95-9a97-4198-8643-0398d6a5a493|win32|
+[1] [OpenClaw] Sending connect (client.id=gateway-client, client.mode=backend, platform=win32)
+[1] [OpenClaw] Received message: {"type":"res","id":"req-1773115904279-1","ok":true,"payload":{"type":"hello-ok","protocol":3,"server":{"version":"2026.3.8","connId":"62e667df-8de0-465f-bb6e-8fdc7b90c9da"},"features":{"methods":["health","doctor.memory.status","logs.tail","channels.status","channels.logout","status","usage.status","usage.cost","tts.status","tts.providers","tts.enable","tts.disable","tts.convert","tts.setProvider","config.get","config.set","config.apply","config.patch","config.schema","config.schema.lookup","exe
+[1] [OpenClaw] Response: ok= true payload= {"type":"hello-ok","protocol":3,"server":{"version":"2026.3.8","connId":"62e667df-8de0-465f-bb6e-8fdc7b90c9da"},"features":{"methods":["health","doctor.memory.status","logs.tail","channels.status","ch
+[1] [OpenClaw] Connection successful!
+[1] [OpenClaw] Sending status to frontend: { connected: true, model: undefined }
+[1] [OpenClaw] Status sent successfully
+[1] [OpenClaw] Received message: {"type":"event","event":"health","payload":{"ok":true,"ts":1773115904421,"durationMs":133,"channels":{"openclaw-feishu":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"probe":{"ok":true,"appId":"cli_a90d6a3f7938dbde","botOpenId":"ou_190cf78acc1736133a93feb56e3cbd6f"},"lastProbeAt":1773115904420,"accountId":"default","accounts":{"default":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"prob
+[1] [24336:0310/121144.771:INFO:CONSOLE(495)] "[vite] connecting...", source: http://localhost:5174/@vite/client (495)
+[1] [24336:0310/121144.987:INFO:CONSOLE(21551)] "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold", source: http://localhost:5174/node_modules/.vite/deps/chunk-NUMECXU6.js?v=12038b5f (21551)
+[1] [OpenClaw] Sending status to frontend: { connected: true }
+[1] [OpenClaw] Status sent successfully
+[1] [24336:0310/121145.251:INFO:CONSOLE(618)] "[vite] connected.", source: http://localhost:5174/@vite/client (618)
+[1] [LOG] Starting log watch for: C:\Users\zilong_wu\.openclaw\logs\gateway.log
+[1] [LOG] Starting log watch for: C:\Users\zilong_wu\.openclaw\logs\gateway.log
+[1] [24336:0310/121145.764:INFO:CONSOLE(2)] "%cElectron Security Warning (Disabled webSecurity) font-weight: bold; This renderer process has "webSecurity" disabled. This
+[1]   exposes users of this app to severe security risks.
+[1] 
+[1] For more information and help, consult
+[1] https://electronjs.org/docs/tutorial/security.
+[1] This warning will not show up
+[1] once the app is packaged.", source: node:electron/js2c/renderer_init (2)
+[1] [24336:0310/121145.764:INFO:CONSOLE(2)] "%cElectron Security Warning (allowRunningInsecureContent) font-weight: bold; This renderer process has "allowRunningInsecureContent"
+[1]   enabled. This exposes users of this app to severe security risks.
+[1] 
+[1]   
+[1] For more information and help, consult
+[1] https://electronjs.org/docs/tutorial/security.
+[1] This warning will not show up
+[1] once the app is packaged.", source: node:electron/js2c/renderer_init (2)
+[1] [24336:0310/121145.764:INFO:CONSOLE(2)] "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+[1]   Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+[1]   this app to unnecessary security risks.
+[1] 
+[1] For more information and help, consult
+[1] https://electronjs.org/docs/tutorial/security.
+[1] This warning will not show up
+[1] once the app is packaged.", source: node:electron/js2c/renderer_init (2)
+[1] [24336:0310/121145.764:INFO:CONSOLE(892)] "[CTX DEBUG] openclaw-status event: {"connected":true}", source: http://localhost:5174/src/components/ChatTab.tsx (892)
+[1] [24336:0310/121145.764:INFO:CONSOLE(885)] "[ChatTab] Initial status: connected", source: http://localhost:5174/src/components/ChatTab.tsx (885)
+[1] [24336:0310/121145.764:INFO:CONSOLE(1776)] "Uncaught TypeError: Cannot read properties of undefined (reading 'dimensions')", source: http://localhost:5174/node_modules/.vite/deps/xterm.js?v=12038b5f (1776)
+[1] [24336:0310/121146.043:INFO:CONSOLE(885)] "[ChatTab] Initial status: connected", source: http://localhost:5174/src/components/ChatTab.tsx (885)
+[1] [OpenClaw] Received message: {"type":"event","event":"health","payload":{"ok":true,"ts":1773115915327,"durationMs":297,"channels":{"openclaw-feishu":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"probe":{"ok":true,"appId":"cli_a90d6a3f7938dbde","botOpenId":"ou_190cf78acc1736133a93feb56e3cbd6f"},"lastProbeAt":1773115915327,"accountId":"default","accounts":{"default":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"prob
+[1] [OpenClaw] Received message: {"type":"event","event":"tick","payload":{"ts":1773115918688},"seq":3380}
+[1] [OpenClaw] Received message: {"type":"event","event":"tick","payload":{"ts":1773115948701},"seq":3381}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still","delta":"Process is still"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":55,"ts":1773115949079},"seq":3382}
+[1] [OpenClaw] Received message: {"type":"event","event":"chat","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":55,"state":"delta","message":{"role":"assistant","content":[{"type":"text","text":"Process is still"}],"timestamp":1773115949079}},"seq":3383}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running. Let me","delta":" running. Let me"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":58,"ts":1773115949084},"seq":3384}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running. Let me wait a","delta":" wait a"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":60,"ts":1773115949087},"seq":3385}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running. Let me wait a bit more and check","delta":" bit more and check"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":63,"ts":1773115949144},"seq":3386}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running. Let me wait a bit more and check again","delta":" again"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":65,"ts":1773115949168},"seq":3387}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running. Let me wait a bit more and check again.","delta":"."},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":67,"ts":1773115949172},"seq":3388}
+[1] [OpenClaw] Received message: {"type":"event","event":"chat","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":70,"state":"delta","message":{"role":"assistant","content":[{"type":"text","text":"Process is still running. Let me wait a bit more and check again."}],"timestamp":1773115949614}},"seq":3389}
+[1] [OpenClaw] Received message: {"type":"event","event":"health","payload":{"ok":true,"ts":1773115975294,"durationMs":259,"channels":{"openclaw-feishu":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"probe":{"ok":true,"appId":"cli_a90d6a3f7938dbde","botOpenId":"ou_190cf78acc1736133a93feb56e3cbd6f"},"lastProbeAt":1773115975294,"accountId":"default","accounts":{"default":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"prob
+[1] [OpenClaw] Received message: {"type":"event","event":"tick","payload":{"ts":1773115978712},"seq":3391}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still","delta":"Process is still"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":75,"ts":1773115984952},"seq":3392}
+[1] [OpenClaw] Received message: {"type":"event","event":"chat","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":75,"state":"delta","message":{"role":"assistant","content":[{"type":"text","text":"Process is still running. Let me wait a bit more and check again.Process is still"}],"timestamp":1773115984953}},"seq":3393}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running after","delta":" running after"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":79,"ts":1773115984982},"seq":3394}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running after ~30 seconds","delta":" ~30 seconds"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":81,"ts":1773115984985},"seq":3395}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running after ~30 seconds.","delta":"."},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":83,"ts":1773115984988},"seq":3396}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running after ~30 seconds. Let me check the","delta":" Let me check the"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":86,"ts":1773115985094},"seq":3397}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running after ~30 seconds. Let me check the log file and","delta":" log file and"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":88,"ts":1773115985112},"seq":3398}
+[1] [OpenClaw] Received message: {"type":"event","event":"chat","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":88,"state":"delta","message":{"role":"assistant","content":[{"type":"text","text":"Process is still running. Let me wait a bit more and check again.Process is still running after ~30 seconds. Let me check the log file and"}],"timestamp":1773115985112}},"seq":3399}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running after ~30 seconds. Let me check the log file and verify if the process","delta":" verify if the process"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":92,"ts":1773115985172},"seq":3400}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running after ~30 seconds. Let me check the log file and verify if the process is stable","delta":" is stable"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":94,"ts":1773115985201},"seq":3401}
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"assistant","data":{"text":"Process is still running after ~30 seconds. Let me check the log file and verify if the process is stable.","delta":"."},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":96,"ts":1773115985236},"seq":3402}
+[1] [OpenClaw] Received message: {"type":"event","event":"chat","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":99,"state":"delta","message":{"role":"assistant","content":[{"type":"text","text":"Process is still running. Let me wait a bit more and check again.Process is still running after ~30 seconds. Let me check the log file and verify if the process is stable."}],"timestamp":1773115985771}},"seq":3403}
+[1] [OpenClaw] Received message: {"type":"event","event":"presence","payload":{"presence":[{"host":"gateway-client","version":"2026.3.8","platform":"win32","mode":"backend","deviceId":"5b8521d0d929c8c7bd909df9510cb8590343071f97841ae4dfa08a6d791167a6","roles":["operator"],"scopes":["operator.admin","operator.write","operator.read"],"instanceId":"5b8521d0d929c8c7bd909df9510cb8590343071f97841ae4dfa08a6d791167a6","reason":"disconnect","ts":1773115986188,"text":"Node: openclaw-tui 路 mode ui"},{"host":"DESKTOP-M0E3RLK","ip":"192.168.
+[1] [OpenClaw] Received message: {"type":"event","event":"presence","payload":{"presence":[{"host":"gateway-client","version":"2026.3.8","platform":"win32","mode":"backend","deviceId":"5b8521d0d929c8c7bd909df9510cb8590343071f97841ae4dfa08a6d791167a6","roles":["operator"],"scopes":["operator.admin","operator.write","operator.read"],"instanceId":"5b8521d0d929c8c7bd909df9510cb8590343071f97841ae4dfa08a6d791167a6","reason":"disconnect","ts":1773115986212,"text":"Node: openclaw-tui 路 mode ui"},{"host":"DESKTOP-M0E3RLK","ip":"192.168.
+[1] [OpenClaw] Received message: {"type":"event","event":"health","payload":{"ok":true,"ts":1773115986502,"durationMs":308,"channels":{"openclaw-feishu":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"probe":{"ok":true,"appId":"cli_a90d6a3f7938dbde","botOpenId":"ou_190cf78acc1736133a93feb56e3cbd6f"},"lastProbeAt":1773115986502,"accountId":"default","accounts":{"default":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"prob
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"announce:v1:agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae:0deffd67-a9e5-409b-b514-01eebce56bac","stream":"lifecycle","data":{"phase":"start","startedAt":1773115986979},"sessionKey":"agent:main:openclaw-feishu:direct:ou_b727b3e12706f9f0e89f397495a54f18","seq":1,"ts":1773115986979},"seq":3407}
+[1] [OpenClaw] Received message: {"type":"event","event":"health","payload":{"ok":true,"ts":1773115987101,"durationMs":270,"channels":{"openclaw-feishu":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"probe":{"ok":true,"appId":"cli_a90d6a3f7938dbde","botOpenId":"ou_190cf78acc1736133a93feb56e3cbd6f"},"lastProbeAt":1773115987101,"accountId":"default","accounts":{"default":{"configured":true,"running":false,"lastStartAt":null,"lastStopAt":null,"lastError":null,"port":null,"prob
+[1] [OpenClaw] Received message: {"type":"event","event":"agent","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","stream":"lifecycle","data":{"phase":"end","startedAt":1773115896273,"endedAt":1773115988388,"aborted":true,"stopReason":"toolUse"},"sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":106,"ts":1773115988389},"seq":3409}
+[1] [OpenClaw] Received message: {"type":"event","event":"chat","payload":{"runId":"0deffd67-a9e5-409b-b514-01eebce56bac","sessionKey":"agent:main:subagent:d7065f1d-f898-445a-bac9-57429b2cc7ae","seq":106,"state":"final","stopReason":"toolUse","message":{"role":"assistant","content":[{"type":"text","text":"Process is still running. Let me wait a bit more and check again.Process is still running after ~30 seconds. Let me check the log file and verify if the process is stable."}],"timestamp":1773115988390}},"seq":3410}

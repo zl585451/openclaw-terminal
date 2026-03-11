@@ -1,0 +1,153 @@
+.option-box {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.option-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.option-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: transparent;
+  color: #a8ffcf;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s;
+  border-radius: 4px;
+  position: relative;
+}
+
+.option-checkbox-row:hover {
+  background: rgba(0, 255, 159, 0.06);
+}
+
+.option-checkbox-row.checked {
+  background: #00ff9f11;
+}
+
+.option-checkbox-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.option-checkbox-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #00ff9f;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 用 CSS 绘制的 checkbox，替代文字 */
+.option-checkbox-icon::before {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #00ff9f;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.option-checkbox-row.checked .option-checkbox-icon::before {
+  background: rgba(0, 255, 159, 0.2);
+  border-color: #00ff9f;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2300ff9f' stroke-width='2'%3E%3Cpath d='M2 6l3 3 5-6'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+
+.option-checkbox-label {
+  flex: 1;
+}
+
+.option-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.option-page-btn {
+  padding: 4px 8px;
+  min-width: 28px;
+  background: transparent;
+  border: 1px solid rgba(0, 255, 159, 0.4);
+  color: #a8ffcf;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.option-page-btn:hover:not(:disabled) {
+  background: rgba(0, 255, 159, 0.1);
+  border-color: #00ff9f;
+}
+
+.option-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.option-page-info {
+  color: #00ff9f;
+  font-size: 12px;
+  min-width: 2.5em;
+  text-align: center;
+}
+
+.option-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 0;
+  border-top: 1px solid rgba(0, 255, 159, 0.2);
+}
+
+.option-selected-count {
+  color: #00ff9f99;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.option-confirm-btn {
+  padding: 6px 14px;
+  background: rgba(0, 255, 159, 0.12);
+  border: 1px solid #00ff9f;
+  color: #00ff9f;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.option-confirm-btn:hover:not(:disabled) {
+  background: rgba(0, 255, 159, 0.2);
+}
+
+.option-confirm-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

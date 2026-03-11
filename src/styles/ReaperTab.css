@@ -1,0 +1,55 @@
+/* ReaperTab.css */
+
+.reaper-tab {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reaper-placeholder {
+  text-align: center;
+  padding: 40px;
+}
+
+.placeholder-icon {
+  font-size: 48px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+  text-shadow: 0 0 20px rgba(0, 255, 159, 0.3);
+}
+
+.placeholder-title {
+  font-size: 24px;
+  color: var(--cyan);
+  letter-spacing: 4px;
+  margin-bottom: 10px;
+  text-shadow: var(--glow);
+}
+
+.placeholder-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 30px;
+}
+
+.placeholder-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  margin-bottom: 40px;
+}
+
+.placeholder-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.status-line {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border-left: 2px solid var(--text-dim);
+}

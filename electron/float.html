@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 80px;
+      height: 80px;
+      background: transparent;
+      -webkit-app-region: drag;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-family: sans-serif;
+    }
+    .ball {
+      -webkit-app-region: no-drag;
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: #001a0d;
+      border: 2px solid #00ff88;
+      box-shadow: 0 0 12px #00ff88, 0 0 24px rgba(0,255,136,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      color: #00ff88;
+    }
+    .ball.flash {
+      animation: flash 0.5s ease-in-out 3;
+    }
+    @keyframes flash {
+      0%, 100% { box-shadow: 0 0 12px #00ff88; }
+      50% { box-shadow: 0 0 24px #00ff88, 0 0 40px rgba(0,255,136,0.8); }
+    }
+  </style>
+</head>
+<body>
+  <div class="ball" id="ball">◈</div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    document.getElementById('ball').addEventListener('click', () => {
+      ipcRenderer.send('float-restore');
+    });
+    ipcRenderer.on('float-flash', () => {
+      const ball = document.getElementById('ball');
+      ball.classList.add('flash');
+      setTimeout(() => ball.classList.remove('flash'), 1500);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OCT | OpenClaw Terminal</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body, #root {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        background: #111;
+        color: #00ff9f;
+        overflow: hidden;
+      }
+      /* 调试：强制 root 显示 */
+      #root > :first-child {
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="loading-fallback" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#00ff9f;font-size:18px;font-family:Consolas,monospace;z-index:9999">Loading OCT...</div>
+    </div>
+    <script>
+      window.__CLAW_LOAD_ERROR = null;
+      function showErr(msg) {
+        var el = document.getElementById('loading-fallback');
+        if (el) { el.innerHTML = '<div style="color:#ff4444;padding:20px;max-width:90%">' + msg + '</div>'; el.style.color='#ff4444'; }
+      }
+      window.onerror = function(msg, url, line, col, err) {
+        window.__CLAW_LOAD_ERROR = msg + ' at ' + url + ':' + line;
+        showErr('ERROR: ' + msg + (err && err.stack ? '<pre>' + err.stack + '</pre>' : ''));
+      };
+      window.onunhandledrejection = function(e) {
+        showErr('Promise Error: ' + (e.reason && (e.reason.message || String(e.reason))));
+      };
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

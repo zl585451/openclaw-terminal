@@ -1,0 +1,337 @@
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.settings-panel {
+  width: 320px;
+  background: #030e07;
+  border: 1px solid var(--border-color);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  color: #00ff9f;
+  font-size: 12px;
+}
+
+.settings-close {
+  background: none;
+  border: none;
+  color: #00ff9f;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.settings-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.settings-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.settings-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-body::-webkit-scrollbar-thumb {
+  background: #00ff9f66;
+  border-radius: 2px;
+}
+
+.settings-section-title {
+  font-size: 10px;
+  color: #00ff9f;
+  letter-spacing: 1px;
+  padding: 8px 0 4px;
+  border-bottom: 1px solid rgba(0, 255, 159, 0.2);
+  text-transform: uppercase;
+}
+
+.settings-section-title.settings-danger-zone {
+  color: #ff3c6e;
+  border-bottom-color: rgba(255, 60, 110, 0.3);
+  margin-top: 8px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #00ff9f;
+  padding: 6px 0;
+}
+
+.settings-row label:first-child {
+  color: #00ff9f99;
+}
+
+.settings-danger-row {
+  background: rgba(255, 60, 110, 0.05);
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 60, 110, 0.2);
+}
+
+.settings-danger-row label {
+  color: #ff3c6e99;
+}
+
+.settings-row select,
+.settings-select {
+  background: #0a1a10;
+  border: 1px solid var(--border-color);
+  color: #00ff9f;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.settings-row select:hover,
+.settings-select:hover {
+  border-color: #00ff9f;
+  background: #0d2215;
+}
+
+.toggle-wrap {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 18px;
+}
+
+.toggle-wrap input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #0a1a10;
+  border: 1px solid var(--border-color);
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 2px;
+  background: #00ff9f;
+  transition: transform 0.2s;
+}
+
+.toggle-wrap input:checked + .toggle-slider::before {
+  transform: translateX(18px);
+}
+
+.settings-shortcut-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-shortcut-select {
+  background: #0a1a10;
+  border: 1px solid var(--border-color);
+  color: #00ff9f;
+  padding: 4px 24px 4px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  min-width: 120px;
+}
+
+.settings-shortcut-input {
+  background: #0a1a10;
+  border: 1px solid var(--border-color);
+  color: #00ff9f;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  width: 120px;
+}
+
+.theme-options {
+  display: flex;
+  gap: 6px;
+}
+
+.theme-btn {
+  padding: 4px 10px;
+  background: #0a1a10;
+  border: 1px solid var(--border-color);
+  color: #00ff9f;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.theme-btn.active {
+  background: rgba(0, 255, 159, 0.2);
+  border-color: #00ff9f;
+}
+
+.theme-btn[data-theme="cyan"] { --accent: #00ffff; }
+.theme-btn[data-theme="yellow"] { --accent: #ffff00; }
+
+.settings-footer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-cancel {
+  padding: 6px 16px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #888;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.settings-cancel:hover {
+  border-color: #fff;
+  color: #fff;
+}
+
+.settings-apply {
+  padding: 6px 16px;
+  background: transparent;
+  border: 1px solid #00ff9f;
+  color: #00ff9f;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.settings-apply:hover {
+  background: rgba(0, 255, 159, 0.15);
+  box-shadow: 0 0 10px rgba(0, 255, 159, 0.3);
+}
+
+.settings-danger-btn {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid #ff3c6e;
+  color: #ff3c6e;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.settings-danger-btn:hover {
+  background: rgba(255, 60, 110, 0.15);
+  box-shadow: 0 0 10px rgba(255, 60, 110, 0.3);
+}
+
+/* API Key 输入框样式 */
+.settings-input-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+  max-width: 180px;
+}
+
+.settings-input {
+  flex: 1;
+  background: #0a1a10;
+  border: 1px solid var(--border-color);
+  color: #00ff9f;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+  min-width: 0;
+  transition: all 0.2s;
+}
+
+.settings-input:hover {
+  border-color: #00ff9f66;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: #00ff9f;
+  background: #0d2215;
+}
+
+.settings-input::placeholder {
+  color: #00ff9f44;
+}
+
+.settings-toggle-visibility {
+  background: #0a1a10;
+  border: 1px solid var(--border-color);
+  color: #00ff9f;
+  width: 28px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.settings-toggle-visibility:hover {
+  border-color: #00ff9f;
+  background: #0d2215;
+}
+
+.settings-hint {
+  font-size: 10px;
+  color: #00ff9f66;
+  margin-top: 4px;
+  width: 100%;
+  text-align: right;
+}
+
+.settings-hint a {
+  color: #00ff9f99;
+  text-decoration: none;
+}
+
+.settings-hint a:hover {
+  text-decoration: underline;
+  color: #00ff9f;
+}
