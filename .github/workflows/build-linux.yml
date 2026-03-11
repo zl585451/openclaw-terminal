@@ -18,21 +18,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       
-      - name: Build Linux (deb + rpm + AppImage)
-        run: |
-          npm run electron:build:linux
+      - name: Build Linux
+        run: npm run electron:build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Upload to Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/OCT-*-Linux-x64.deb
-            release/OCT-*-Linux-x64.rpm
-            release/OCT-*-Linux-x64.AppImage
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: release/OCT-*-Linux-*
+          tag_name: ${{ github.ref_name }}
