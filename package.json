@@ -52,11 +52,9 @@
           ]
         }
       ],
-      "icon": "assets/icon.icns",
+      "icon": "assets/icon.png",
       "artifactName": "OCT-${version}-Mac-${arch}.dmg",
-      "category": "public.app-category.developer-tools",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "category": "public.app-category.developer-tools"
     },
     "linux": {
       "target": [
