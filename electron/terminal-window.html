@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>终端</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #0a0a0f;
+      font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .term-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 10px;
+      background: #0d0d12;
+      border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+      flex-shrink: 0;
+      height: 34px;
+    }
+    .term-title {
+      color: #00ff88;
+      font-size: 12px;
+      letter-spacing: 1px;
+      font-family: 'Consolas', monospace;
+    }
+    .term-btns {
+      display: flex;
+      gap: 6px;
+    }
+    .term-btns button {
+      padding: 3px 10px;
+      background: transparent;
+      border: 1px solid rgba(0, 255, 136, 0.4);
+      color: #00ff88;
+      font-family: 'Consolas', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      line-height: 1.4;
+    }
+    .term-btns button:hover {
+      background: rgba(0, 255, 136, 0.1);
+    }
+    .term-btns button.pinned {
+      border-color: #00ff88;
+      background: rgba(0, 255, 136, 0.15);
+    }
+    #term-container {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    /* xterm overrides */
+    .xterm {
+      height: 100%;
+    }
+    .xterm-viewport {
+      overflow-y: auto !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="term-header">
+    <span class="term-title">◈ PowerShell</span>
+    <div class="term-btns">
+      <button id="pinBtn">🔒 置顶</button>
+      <button id="closeBtn">✕ 关闭</button>
+    </div>
+  </div>
+  <div id="term-container"></div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    const path = require('path');
+
+    // 从本地 node_modules 加载 xterm
+    const xtermPath = path.join(__dirname, '..', 'node_modules', 'xterm', 'lib', 'xterm.js');
+    const xtermCssPath = path.join(__dirname, '..', 'node_modules', 'xterm', 'css', 'xterm.css');
+
+    // 注入 CSS
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'file://' + xtermCssPath.replace(/\\/g, '/');
+    document.head.appendChild(link);
+
+    // 动态加载 xterm.js
+    const script = document.createElement('script');
+    script.src = 'file://' + xtermPath.replace(/\\/g, '/');
+    script.onload = () => initTerminal();
+    script.onerror = (e) => {
+      document.body.innerHTML += '<div style="color:red;padding:20px">xterm.js 加载失败: ' + e + '</div>';
+    };
+    document.head.appendChild(script);
+
+    function initTerminal() {
+      const term = new Terminal({
+        theme: {
+          background: '#0a0a0f',
+          foreground: '#00ff88',
+          cursor: '#00ff88',
+          cursorAccent: '#0a0a0f',
+          selectionBackground: 'rgba(0, 255, 136, 0.2)',
+        },
+        fontFamily: "'Consolas', 'Courier New', monospace",
+        fontSize: 13,
+        lineHeight: 1.2,
+        cursorBlink: true,
+        scrollback: 1000,
+        convertEol: true,
+      });
+
+      const container = document.getElementById('term-container');
+      term.open(container);
+
+      function fitTerminal() {
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        // 用实际字符元素测量（xterm 会在 open 后渲染一个测量 span）
+        let cellW = 8, cellH = 17;
+        const screen = container.querySelector('.xterm-screen');
+        if (screen) {
+          const rows0 = term.rows || 1;
+          const cols0 = term.cols || 80;
+          cellW = screen.offsetWidth / cols0;
+          cellH = screen.offsetHeight / rows0;
+        }
+        const cols = Math.max(10, Math.floor(rect.width / (cellW || 8)));
+        const rows = Math.max(3, Math.floor(rect.height / (cellH || 17)));
+        if (cols !== term.cols || rows !== term.rows) {
+          term.resize(cols, rows);
+          ipcRenderer.send('terminal-resize', cols, rows);
+        }
+      }
+
+      // 稍作延迟等待渲染完成再 fit
+      setTimeout(() => {
+        fitTerminal();
+        // 通知 main 可以启动 pty
+        ipcRenderer.send('terminal-ready');
+      }, 100);
+
+      const ro = new ResizeObserver(() => {
+        setTimeout(fitTerminal, 50);
+      });
+      ro.observe(container);
+
+      ipcRenderer.on('terminal-data', (_, data) => {
+        term.write(data);
+      });
+
+      term.onData((data) => {
+        ipcRenderer.send('terminal-input', data);
+      });
+
+      let pinned = false;
+      document.getElementById('pinBtn').addEventListener('click', () => {
+        pinned = !pinned;
+        ipcRenderer.send('terminal-set-pin', pinned);
+        const btn = document.getElementById('pinBtn');
+        btn.textContent = pinned ? '🔒 已置顶' : '🔒 置顶';
+        btn.classList.toggle('pinned', pinned);
+      });
+
+      document.getElementById('closeBtn').addEventListener('click', () => {
+        ipcRenderer.send('terminal-close');
+      });
+    }
+  </script>
+</body>
+</html>

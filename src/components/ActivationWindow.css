@@ -1,0 +1,152 @@
+/* 激活窗口 - 黑色赛博风格，与主界面一致 */
+.activation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg-primary, #0a0a0f);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color, rgba(0, 255, 136, 0.2));
+}
+
+.activation-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.1) 2px,
+    rgba(0, 0, 0, 0.1) 4px
+  );
+  opacity: 0.3;
+}
+
+.activation-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px 60px;
+  background: rgba(15, 15, 26, 0.9);
+  border: 1px solid var(--green, #00ff88);
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.15);
+}
+
+.activation-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--green, #00ff88);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+
+.activation-subtitle {
+  font-size: 13px;
+  color: var(--text-dim, #666680);
+  margin-bottom: 8px;
+}
+
+.activation-input {
+  width: 320px;
+  padding: 14px 18px;
+  font-size: 16px;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  letter-spacing: 2px;
+  background: rgba(10, 10, 15, 0.9);
+  border: 1px solid var(--border-color, rgba(0, 255, 136, 0.3));
+  color: var(--text-primary, #e0e0e0);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.activation-input::placeholder {
+  color: var(--text-dim, #666680);
+  letter-spacing: 1px;
+}
+
+.activation-input:focus {
+  border-color: var(--green, #00ff88);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+}
+
+.activation-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.activation-error {
+  font-size: 13px;
+  color: var(--red, #ff0055);
+  text-align: center;
+  min-height: 18px;
+}
+
+.activation-btn {
+  padding: 12px 48px;
+  font-size: 15px;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  background: transparent;
+  border: 1px solid var(--green, #00ff88);
+  color: var(--green, #00ff88);
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 4px;
+}
+
+.activation-btn:hover:not(:disabled) {
+  background: rgba(0, 255, 136, 0.15);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.activation-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.activation-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 边角装饰 */
+.activation-corner {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--green, #00ff88);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.activation-corner-tl {
+  top: 12px;
+  left: 12px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.activation-corner-tr {
+  top: 12px;
+  right: 12px;
+  border-left: none;
+  border-bottom: none;
+}
+
+.activation-corner-bl {
+  bottom: 12px;
+  left: 12px;
+  border-right: none;
+  border-top: none;
+}
+
+.activation-corner-br {
+  bottom: 12px;
+  right: 12px;
+  border-left: none;
+  border-top: none;
+}

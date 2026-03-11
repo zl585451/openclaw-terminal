@@ -1,0 +1,198 @@
+/* 全局样式 - 极客终端风格 */
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-primary: #020c06;
+  --bg-secondary: #030f08;
+  --bg-tertiary: #041210;
+  --text-primary: #00ff9f;
+  --text-secondary: #00cc7f;
+  --text-dim: #006644;
+  --cyan: #00ffff;
+  --yellow: #ffff00;
+  --red: #ff4444;
+  --green: #00ff00;
+  --border-color: #00ff9f33;
+  --glow: 0 0 10px #00ff9f44;
+  --font-mono: 'Share Tech Mono', 'Courier New', monospace;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-mono);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  user-select: none;
+}
+
+/* 滚动条样式 - 黑客帝国风 */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #00ff41;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00cc33;
+  box-shadow: 0 0 6px #00ff41;
+}
+
+/* App 容器 */
+.app-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 扫描线效果：暂时禁用，避免黑屏 */
+.scanlines {
+  display: none;
+}
+
+/* 边角装饰 */
+.corner {
+  position: fixed;
+  width: 30px;
+  height: 30px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.corner::before,
+.corner::after {
+  content: '';
+  position: absolute;
+  background: var(--text-primary);
+}
+
+.corner-tl {
+  top: 5px;
+  left: 5px;
+}
+.corner-tl::before {
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 2px;
+}
+.corner-tl::after {
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 20px;
+}
+
+.corner-tr {
+  top: 5px;
+  right: 5px;
+}
+.corner-tr::before {
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 2px;
+}
+.corner-tr::after {
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 20px;
+}
+
+.corner-bl {
+  bottom: 5px;
+  left: 5px;
+}
+.corner-bl::before {
+  bottom: 0;
+  left: 0;
+  width: 20px;
+  height: 2px;
+}
+.corner-bl::after {
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  height: 20px;
+}
+
+.corner-br {
+  bottom: 5px;
+  right: 5px;
+}
+.corner-br::before {
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 2px;
+}
+.corner-br::after {
+  bottom: 0;
+  right: 0;
+  width: 2px;
+  height: 20px;
+}
+
+/* 内容区域 - 确保可见 */
+.content-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px;
+  padding-top: 5px;
+  background: var(--bg-primary);
+}
+
+/* 光标闪烁动画 */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s infinite;
+  color: var(--text-primary);
+}
+
+/* 文本选中样式 */
+::selection {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+/* 按钮基础样式 */
+button {
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

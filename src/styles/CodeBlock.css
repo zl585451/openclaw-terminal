@@ -1,0 +1,60 @@
+.code-block-wrap {
+  margin: 10px 0;
+  border: 1px solid #00ff9f33;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.code-block-wrap.code-block-expanded .react-syntax-highlighter-line-number {
+  display: block;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #161b22;
+  border-bottom: 1px solid #00ff9f22;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+}
+
+.code-block-lang {
+  color: #00ff9f99;
+  text-transform: uppercase;
+}
+
+.code-block-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.code-block-expand {
+  background: transparent;
+  border: 1px solid #00ff9f44;
+  color: #00ff9f;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+  font-family: inherit;
+}
+
+.code-block-expand:hover {
+  background: rgba(0, 255, 159, 0.1);
+}
+
+.code-block-copy {
+  background: transparent;
+  border: none;
+  color: #00ff9f;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  opacity: 0.8;
+}
+
+.code-block-copy:hover {
+  opacity: 1;
+}

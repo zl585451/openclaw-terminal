@@ -1,0 +1,55 @@
+/* TabBar.css */
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  gap: 5px;
+}
+
+.tab-btn {
+  height: 28px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.tab-bracket {
+  color: var(--text-dim);
+  transition: color 0.15s ease;
+}
+
+.tab-label {
+  letter-spacing: 1px;
+}
+
+.tab-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.tab-btn:hover .tab-bracket {
+  color: var(--text-secondary);
+}
+
+.tab-btn.active {
+  background: var(--bg-tertiary);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  box-shadow: 0 0 10px rgba(0, 255, 159, 0.2);
+}
+
+.tab-btn.active .tab-bracket {
+  color: var(--cyan);
+}
