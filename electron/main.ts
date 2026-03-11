@@ -26,20 +26,76 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
 const SESSION_STATE_FILE = path.join(app.getPath('userData'), 'session-state.json');
 const LICENSE_FILE = path.join(app.getPath('userData'), 'license.json');
+const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
+
+const DEFAULT_CONFIG = {
+  OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
+  OPENCLAW_TOKEN: '',
+};
 
 // 授权码 SHA-256 哈希白名单（格式 OCT-XXXX-XXXX-XXXX，大写字母+数字）
 // 将你生成的授权码用 SHA-256 哈希后填入下方，替换 placeholder
 const VALID_LICENSE_HASHES: string[] = [
-  '147c827b2ea8fc973e5a46ecf2986b94bdce1a7530be79007c27e1c8fc3c69a9', // OCT-TEST-0000-0000 测试用
-  '8e959187071267dfebc21310a5f8eabaa95720d232b1265eef0d5466108664b9', // OCT-0001-0001-0001 示例
-  'PLACEHOLDER_HASH_3', // 替换为实际哈希
-  'PLACEHOLDER_HASH_4',
-  'PLACEHOLDER_HASH_5',
-  'PLACEHOLDER_HASH_6',
-  'PLACEHOLDER_HASH_7',
-  'PLACEHOLDER_HASH_8',
-  'PLACEHOLDER_HASH_9',
-  'PLACEHOLDER_HASH_10',
+  '3090ebf60c47d6c5da42753d878f7dad3f4263f1da8062dc68ea924284d50415',
+  'ea437a97ea135148aec3d0e8f3c981bedb08615ceb291d69015264735cb05d38',
+  '0791c7c88ead61370e29820c36d1a7d34fb86e2ec6db9d0e1241acc3606703ce',
+  '32a0db72fee12ea22119b1a0c24f51431d694532c4f70b81b39adc851360e4fc',
+  '6e692cd04eb75544282da940870d868d571faabe714b1d02e272610e3b11e398',
+  '6437e10608c2570fa912d07a321fedd52976ca026a745aab9fc52695e465cadb',
+  '62bd92e53d85441c1610c9b19fd67fbeed54db2cd4068d009b152268817283b3',
+  'fa9cbf9fba502bb48adc3f0dc9c90cf285d2d11260d4e2437cb5ba68da29ce1e',
+  'b9a6ec7b54f8a6905344e2fefb6afda6762be1047ba0b7de3e9d90e387023c52',
+  '00d7854512334f1fbd3bc8ca882b4a8a0212c28f6584b71a0a2c1cb566a45f4d',
+  '99d0ab7aacd3af1904c9ed3cb1853d64076fffc2bf34bc8b05866a19f81256bb',
+  'cd22ae3226267457a8149500191cf4f05e394ce3e8a367dcfd19e059dee17e7f',
+  '8d86c867fdc0e268efd61e6fbb4c28de941ced4bf9e465359442aff55e31f6dc',
+  '5f5ad1aac4037da2728d8915ba1b5d60f0d0f6a13e30bce554b983d687102264',
+  'd780b30d5dec04ff26134a33607eda188d124176fccda43797d76d2d12e4ae6e',
+  '7e672314e9ef0158b5595615d2e51630a7f7b6a8df5a74822fa9ad64321db26d',
+  'bc27b9413a0bb5c923449c91fd98df66fbf28cb5c4de429f84a495e03a0c58c5',
+  'd0275f7f395cf2a3b4b9cdcfe322d4ad36ee533a5825c97b35df23ff6a45bd22',
+  'ff2592417d1e8cf1464c678342af66a162003d75aa99b12338bb5820b74bb2e0',
+  'fcd51d8e254f67c66702c17da092f4137247d2a3ece69e6d3ed4648f9b05ab49',
+  'e44e880ad40de70d048bb4639c7980566fa17ce2a50df7f574c02e2b54f7a944',
+  '18c98371c76d5e91c1ed0dd79ea875237414778b4e2a667cc3200168762a2fc7',
+  '8540ce3baa55c78c83250a72fd13e073108dda8db17f667ef68577ebc9be466b',
+  '793373149742461a7d8219be81a682b96c2bacc3dca641bdd18de23fa2cc1abb',
+  '0b529782d7c85e8d8abbe98681cf7b31609384d8a918d7c4cb74f7c44cc4e37a',
+  '82b538c9dcf851b9524b1d108595704c495791f9b1b3e7f6d0976eca8c27482f',
+  '040c47926c734e2055e8ffeae2d6d84c808c585b02322ac6a51d40789be53009',
+  'f073555a0b3b62421c2654c34d0e953c1d7692d00617a363842a357fc57733c9',
+  '1691cbac68748a2778ca2fa1eef386a59516d5ce40086b9665a2dc543cf0f9a2',
+  'ebedb40cd41acfd0809f8cf0a21e6903248f080dc947ec65e525f45fa5b9c224',
+  '88f775007b6e0dd82470584597c15e476858e0e6126e153f7507085fb50b9cb7',
+  '838c73a9f9889ac26f859a0f10af1aa52c87cd641f1d0dc49f43e102d122ba1f',
+  '4d3f0e6a00e6f794e43aad89e950e323ad159d6ef3bb6c96a4b89d33aa974d9e',
+  '792a657e8785330d0c9843b4a6a4dbc2948c3f7c897b8b2b2bc2673ace9c71ba',
+  '316b6abd00ac6fa0e32c4067d81bc6584b26a3e1d79cacdc9bdd53f96b2be02f',
+  '18fd9f60a498d38aadf0cc948b0efb822135a33f4f0ea2e479483c67b74bd64b',
+  'add6c06340ddbc79180e532af7a65dd062b2be802096c68d433a9bca4214d1ea',
+  '89bc7613ec0e6aefdf458b0a59705b5155bfe396926f694e602f38a711aaad8b',
+  '0365c9e40409bfba4acd029beafda9fefe37de7d2fd8dec2ef51a5a953063b27',
+  'cf62180614519a832ebf3c8cfcc694df04885d5b2ab081c5906d4ed6efedd913',
+  '53054cc04d2b37216288e83b726c649f1ca6992dbd396dbd46999e0cf5aa244a',
+  'a271f9a0058fa8c2100ca051a3029a7934061cc9caab1b15327bf239464f2f1c',
+  '798e62bff55836ad859f51a81ea61637381b4bbc6ce4621c00028d721a565e2f',
+  '967ac1038e0ece7eae7651dbeba34851f9981b0a0d8bdd530571fb875152bc9b',
+  'd0d1baf04ec790232f41c3ce06bca7f0a81386661521f97c0bb2ac49b627f4db',
+  '62a87982376c756bb2ab03e6111882849538888c190f6fe02fbb4904310d054a',
+  'f5d9ffa6cd55e30636ad0d845060ee078b99279b1b8158f60fac71e2b093cde0',
+  '15e72e65203f113c8c1218ecfb6f8be0c18af7a36f323f10800d15c5e7720fee',
+  'bccba448c9a8546dc25dacc4a5d2ba6fa5b75a03e3a9771d173fb63580bd5754',
+  '5e34cf5c9a18cc287475d418e7666781c29b53c661098d8c243775eb3429ab66',
+  '0faf74cd3a69b427d9b281fabd2985c2cc581f4f6c12583850e0bf14de5a9a02',
+  '5ba8a4a1ef607cbf19b2ca5b6b37b19674158baeb39466bb0df258a1bd8361dc',
+  '5b973bafafb33c6963f389963081b5f631810d9d1fa4feca90eb1626869d645a',
+  '63c18b7d022dc730f2cf9e50140b7ea476ce7fb27f3c4123d5836d08c1878128',
+  '98d065f387496b580a080baa7f12fb3a65d9d4692f7f34ddd843daded9f89862',
+  'dd110d87a0c4ab23457ff197dcd5be3479dc0888303daaf43145c5ed39cad45d',
+  '2af88e16915fc909eb6d57119693f74cc70eec81b3900ea71cd3e49cc99b8a4a',
+  '1d925341b01fb8b14767a98de9ca51d20fb93284bbcab25a289117868a330944',
+  '5d1a9081eb2f3ee9727e45db78f0fe7966bf6c17e0f5e77bffa2544960f15a35',
+  '8559cfaf66e5a59c9649bc776014600076ff7c6f819385f2bb96f42dba101403'
 ];
 
 // Gateway 进程管理
@@ -61,9 +117,39 @@ function isPortInUse(port: number): Promise<boolean> {
 let gatewayProcess: ReturnType<typeof spawn> | null = null;
 let gatewayManagedByUs = false; // 是否由本程序启动
 
-// OpenClaw WebSocket config（Token 留空可跳过认证测试连接）
-const OPENCLAW_WS_URL = process.env.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789';
-const OPENCLAW_TOKEN = (process.env.OPENCLAW_TOKEN || '').trim() || null;
+// OpenClaw WebSocket config：优先从 userData/config.json 读取，打包后 .env 不存在时使用
+let OPENCLAW_WS_URL = 'ws://127.0.0.1:18789';
+let OPENCLAW_TOKEN = '';
+
+function ensureConfigFile(): void {
+  if (fs.existsSync(CONFIG_FILE)) return;
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf-8');
+    console.log('[Config] Created default config.json at', CONFIG_FILE);
+  } catch (e) {
+    console.warn('[Config] Failed to create config.json:', e);
+  }
+}
+
+function loadOpenClawConfig(): void {
+  const envPath = path.join(__dirname, '..', '.env');
+  if (fs.existsSync(CONFIG_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      OPENCLAW_WS_URL = (data.OPENCLAW_WS_URL || '').trim() || DEFAULT_CONFIG.OPENCLAW_WS_URL;
+      OPENCLAW_TOKEN = typeof data.OPENCLAW_TOKEN === 'string' ? (data.OPENCLAW_TOKEN || '').trim() : '';
+    } catch (e) {
+      console.warn('[Config] Failed to load config.json:', e);
+    }
+  } else if (fs.existsSync(envPath)) {
+    OPENCLAW_WS_URL = (process.env.OPENCLAW_WS_URL || '').trim() || DEFAULT_CONFIG.OPENCLAW_WS_URL;
+    OPENCLAW_TOKEN = (process.env.OPENCLAW_TOKEN || '').trim();
+  } else {
+    ensureConfigFile();
+    OPENCLAW_WS_URL = DEFAULT_CONFIG.OPENCLAW_WS_URL;
+    OPENCLAW_TOKEN = DEFAULT_CONFIG.OPENCLAW_TOKEN;
+  }
+}
 
 // Device identity
 let deviceKeys: { publicKeyPem: string; privateKeyPem: string; deviceId: string } | null = null;
@@ -583,7 +669,7 @@ function sendConnectRequest(nonce: string) {
     role: 'operator',
     scopes,
     signedAtMs: now,
-    token: OPENCLAW_TOKEN || null,
+    token: typeof OPENCLAW_TOKEN === 'string' ? OPENCLAW_TOKEN : '',
     nonce,
     platform,
     deviceFamily
@@ -613,7 +699,7 @@ function sendConnectRequest(nonce: string) {
       commands: [],
       permissions: {},
       auth: { 
-        token: OPENCLAW_TOKEN 
+        token: typeof OPENCLAW_TOKEN === 'string' ? OPENCLAW_TOKEN : ''
       },
       locale: 'zh-CN',
       userAgent: 'claw-terminal/1.0.0',
@@ -1342,36 +1428,26 @@ ipcMain.handle('license-verify', (_, code: string) => {
   return result;
 });
 
-// API Key 配置管理
+// API Key 配置管理：优先从 userData/config.json 读取 OPENCLAW_*（打包后 .env 不存在）
 ipcMain.handle('get-api-keys', async () => {
   try {
     const envFilePath = path.join(__dirname, '..', '.env');
-    if (!fs.existsSync(envFilePath)) {
-      return { 
-        success: true, 
-        data: { 
-          DASHSCOPE_API_KEY: '', 
-          DEEPSEEK_API_KEY: '', 
-          OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
-          OPENCLAW_TOKEN: ''
-        } 
-      };
-    }
-    
-    const envContent = fs.readFileSync(envFilePath, 'utf-8');
-    const lines = envContent.split('\n');
     const keys: Record<string, string> = {};
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        const [key, ...valueParts] = trimmed.split('=');
-        if (key && valueParts.length > 0) {
-          keys[key.trim()] = valueParts.join('=').trim();
+    if (fs.existsSync(envFilePath)) {
+      const envContent = fs.readFileSync(envFilePath, 'utf-8');
+      for (const line of envContent.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const [key, ...valueParts] = trimmed.split('=');
+          if (key) keys[key.trim()] = valueParts.join('=').trim();
         }
       }
     }
-    
+    if (fs.existsSync(CONFIG_FILE)) {
+      const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      keys.OPENCLAW_WS_URL = cfg.OPENCLAW_WS_URL ?? keys.OPENCLAW_WS_URL ?? 'ws://127.0.0.1:18789';
+      keys.OPENCLAW_TOKEN = cfg.OPENCLAW_TOKEN ?? keys.OPENCLAW_TOKEN ?? '';
+    }
     return { 
       success: true, 
       data: { 
@@ -1390,14 +1466,8 @@ ipcMain.handle('get-api-keys', async () => {
 ipcMain.handle('save-api-keys', async (_, keys: { DASHSCOPE_API_KEY?: string; DEEPSEEK_API_KEY?: string; OPENCLAW_WS_URL?: string; OPENCLAW_TOKEN?: string }) => {
   try {
     const envFilePath = path.join(__dirname, '..', '.env');
-    let envContent = '';
-    
-    // 读取现有内容
-    if (fs.existsSync(envFilePath)) {
-      envContent = fs.readFileSync(envFilePath, 'utf-8');
-    } else {
-      // 创建新文件模板
-      envContent = `# OCT | OpenClaw Terminal 环境配置
+    if (!app.isPackaged) {
+      let envContent = fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf-8') : `# OCT | OpenClaw Terminal 环境配置
 
 # ===== 阿里云百炼 API（主要使用）=====
 DASHSCOPE_API_KEY=your_dashscope_api_key_here
@@ -1420,37 +1490,49 @@ VITE_DEV_PORT=5174
 # OpenClaw 日志路径
 OPENCLAW_LOG_PATH=
 `;
-    }
-    
-    // 更新或添加键值
-    const lines = envContent.split('\n');
-    const updatedKeys = new Set<string>();
-    
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i].trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        const [key] = trimmed.split('=');
-        if (key && keys.hasOwnProperty(key.trim())) {
-          const value = keys[key.trim() as keyof typeof keys] || '';
-          lines[i] = `${key.trim()}=${value}`;
-          updatedKeys.add(key.trim());
+      const lines = envContent.split('\n');
+      const updatedKeys = new Set<string>();
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const [key] = trimmed.split('=');
+          if (key && keys.hasOwnProperty(key.trim())) {
+            const value = keys[key.trim() as keyof typeof keys] || '';
+            lines[i] = `${key.trim()}=${value}`;
+            updatedKeys.add(key.trim());
+          }
         }
       }
-    }
-    
-    // 添加缺失的键
-    for (const [key, value] of Object.entries(keys)) {
-      if (!updatedKeys.has(key)) {
-        lines.push(`${key}=${value || ''}`);
+      for (const [key, value] of Object.entries(keys)) {
+        if (!updatedKeys.has(key)) lines.push(`${key}=${value || ''}`);
       }
+      fs.writeFileSync(envFilePath, lines.join('\n'), 'utf-8');
+      dotenv.config({ path: envFilePath, override: true });
     }
     
-    envContent = lines.join('\n');
-    fs.writeFileSync(envFilePath, envContent, 'utf-8');
-    console.log('[API Keys] Saved to:', envFilePath);
+    // 同时写入 userData/config.json（打包后 .env 不存在，以此为准）
+    ensureConfigFile();
+    let cfg: Record<string, string> = {};
+    if (fs.existsSync(CONFIG_FILE)) {
+      try {
+        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      } catch {}
+    }
+    if (keys.OPENCLAW_WS_URL !== undefined) cfg.OPENCLAW_WS_URL = keys.OPENCLAW_WS_URL || '';
+    if (keys.OPENCLAW_TOKEN !== undefined) cfg.OPENCLAW_TOKEN = keys.OPENCLAW_TOKEN || '';
+    Object.assign(cfg, {
+      OPENCLAW_WS_URL: cfg.OPENCLAW_WS_URL ?? DEFAULT_CONFIG.OPENCLAW_WS_URL,
+      OPENCLAW_TOKEN: cfg.OPENCLAW_TOKEN ?? '',
+    });
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    console.log('[API Keys] Saved to .env and config.json');
     
-    // 重新加载环境变量
-    dotenv.config({ path: envFilePath, override: true });
+    loadOpenClawConfig();
+    if (openclawWs) {
+      openclawWs.close();
+      openclawWs = null;
+    }
+    connectOpenClaw();
     
     return { success: true };
   } catch (e: any) {
@@ -1578,6 +1660,7 @@ ipcMain.handle('tts-speak', async (_, { text }: { text: string }) => {
 });
 
 app.whenReady().then(async () => {
+  loadOpenClawConfig();
   createWindow();
 
   // 先尝试启动 Gateway（如果端口未被占用）

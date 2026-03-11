@@ -56,7 +56,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const toSave = messages
       .filter((m) => !m.isStreaming)
-      .map((m) => ({ role: m.role, content: m.content, timestamp: m.timestamp, isSystemReply: m.isSystemReply }));
+      .map((m) => ({ role: m.role, content: m.content, timestamp: String(m.timestamp ?? ''), isSystemReply: m.isSystemReply }));
     if (toSave.length === 0) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {

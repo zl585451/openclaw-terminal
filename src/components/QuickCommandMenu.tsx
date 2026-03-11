@@ -12,6 +12,7 @@ export interface QuickCommandItem {
   label: string;
   sendText?: string;
   children?: QuickCommandChild[];
+  isAction?: boolean;
 }
 
 interface QuickCommandMenuProps {
@@ -19,6 +20,7 @@ interface QuickCommandMenuProps {
   visible: boolean;
   onClose: () => void;
   onSelect: (sendText: string) => void;
+  onClearHistory?: () => void;
 }
 
 const MENU_STRUCTURE: { group: string; items: QuickCommandItem[] }[] = [
@@ -52,11 +54,14 @@ const MENU_STRUCTURE: { group: string; items: QuickCommandItem[] }[] = [
   },
   {
     group: '━━ SYSTEM ━━━━━━━━━━━━',
-    items: [{ id: 'restart', label: '重启Gateway', sendText: '/restart' }],
+    items: [
+      { id: 'restart', label: '重启Gateway', sendText: '/restart' },
+      { id: 'clear-history', label: '清理历史对话', isAction: true },
+    ],
   },
 ];
 
-export default function QuickCommandMenu({ anchorRef, visible, onClose, onSelect }: QuickCommandMenuProps) {
+export default function QuickCommandMenu({ anchorRef, visible, onClose, onSelect, onClearHistory }: QuickCommandMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const submenuHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,7 +91,13 @@ export default function QuickCommandMenu({ anchorRef, visible, onClose, onSelect
 
   const handleItemClick = (item: QuickCommandItem) => {
     if (item.children) {
-      return; // Submenu expands on hover, don't do anything on click for parent
+      return;
+    }
+    if (item.isAction && item.id === 'clear-history' && onClearHistory) {
+      onClearHistory();
+      setExpandedId(null);
+      onClose();
+      return;
     }
     if (item.sendText) {
       handleSend(item.sendText);

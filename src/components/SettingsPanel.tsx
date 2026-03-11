@@ -52,6 +52,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   });
   const [apiKeysLoaded, setApiKeysLoaded] = useState(false);
   const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
+  const [gatewaySaveStatus, setGatewaySaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
+  const [tokenHelpExpanded, setTokenHelpExpanded] = useState(false);
 
   useEffect(() => {
     const api = (window as any).electronAPI;
@@ -136,6 +138,23 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     }
   };
 
+  const saveGatewayAndReconnect = () => {
+    const api = (window as any).electronAPI;
+    if (!api?.saveApiKeys) return;
+    setGatewaySaveStatus('saving');
+    api.saveApiKeys({
+      OPENCLAW_WS_URL: apiKeys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
+      OPENCLAW_TOKEN: apiKeys.OPENCLAW_TOKEN || '',
+    }).then((result: any) => {
+      if (result.success) {
+        setGatewaySaveStatus('success');
+        setTimeout(() => setGatewaySaveStatus('idle'), 2000);
+      } else {
+        setGatewaySaveStatus('idle');
+      }
+    }).catch(() => setGatewaySaveStatus('idle'));
+  };
+
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -187,12 +206,90 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             </div>
           </div>
 
-          <div className="settings-section-title">API 配置</div>
+          <div className="settings-section-title">Gateway 连接配置</div>
           {!apiKeysLoaded ? (
             <div className="settings-row">
               <label style={{ color: '#888' }}>加载中...</label>
             </div>
           ) : (
+            <>
+              <div className="settings-row settings-row-col">
+                <label>Gateway 地址</label>
+                <input
+                  type="text"
+                  value={apiKeys.OPENCLAW_WS_URL}
+                  onChange={(e) => setApiKeys((k) => ({ ...k, OPENCLAW_WS_URL: e.target.value }))}
+                  placeholder="ws://127.0.0.1:18789"
+                  className="settings-input"
+                />
+              </div>
+              <div className="settings-row settings-row-col">
+                <label>Token</label>
+                <div className="settings-input-group">
+                  <input
+                    type={showApiKey.OPENCLAW_TOKEN ? 'text' : 'password'}
+                    value={apiKeys.OPENCLAW_TOKEN}
+                    onChange={(e) => setApiKeys((k) => ({ ...k, OPENCLAW_TOKEN: e.target.value }))}
+                    placeholder="没有 Token 请留空"
+                    className="settings-input"
+                  />
+                  <button
+                    type="button"
+                    className="settings-toggle-visibility"
+                    onClick={() => setShowApiKey((s) => ({ ...s, OPENCLAW_TOKEN: !s.OPENCLAW_TOKEN }))}
+                    title={showApiKey.OPENCLAW_TOKEN ? '隐藏' : '显示'}
+                  >
+                    {showApiKey.OPENCLAW_TOKEN ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+              <div className="settings-gateway-help">
+                <button
+                  type="button"
+                  className="settings-gateway-help-title"
+                  onClick={() => setTokenHelpExpanded((e) => !e)}
+                >
+                  {tokenHelpExpanded ? '▼' : '▶'} 如何获取你的 Token？
+                </button>
+                {tokenHelpExpanded && (
+                  <div className="settings-gateway-help-content">
+                    如何获取你的 Token：<br /><br />
+                    第一步：打开电脑终端（Win键+R，输入cmd，回车）<br /><br />
+                    第二步：输入以下命令并回车：<br />
+                    <span className="settings-token-cmd-row">
+                      <code>openclaw dashboard --no-open</code>
+                      <button
+                        type="button"
+                        className="settings-copy-btn"
+                        title="复制命令"
+                        onClick={() => navigator.clipboard.writeText('openclaw dashboard --no-open')}
+                      >
+                        📋 复制
+                      </button>
+                    </span><br />
+                    第三步：终端会输出一串网址，格式如下：<br />
+                    <code>http://127.0.0.1:18789/#token=你的Token</code><br /><br />
+                    第四步：复制 #token= 后面的那一串字符<br />
+                    粘贴到上方 Token 输入框，点击「保存并重新连接」<br /><br />
+                    <span className="settings-token-hint">注意：如果提示 openclaw 不是可识别的命令，请确认 OpenClaw 已正确安装并添加到系统环境变量</span>
+                  </div>
+                )}
+              </div>
+              <div className="settings-gateway-save-row">
+                <button
+                  type="button"
+                  className="settings-gateway-save-btn"
+                  onClick={saveGatewayAndReconnect}
+                  disabled={gatewaySaveStatus === 'saving'}
+                >
+                  {gatewaySaveStatus === 'saving' ? '保存中...' : gatewaySaveStatus === 'success' ? '已保存，正在重新连接...' : '保存并重新连接'}
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="settings-section-title">API 配置</div>
+          {!apiKeysLoaded ? null : (
             <>
               <div className="settings-row">
                 <label>阿里云百炼 API Key</label>
@@ -239,38 +336,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </div>
                 <div className="settings-hint">
                   从 <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer">DeepSeek 平台</a> 获取
-                </div>
-              </div>
-              
-              <div className="settings-row">
-                <label>OpenClaw WebSocket 地址</label>
-                <input
-                  type="text"
-                  value={apiKeys.OPENCLAW_WS_URL}
-                  onChange={(e) => setApiKeys((k) => ({ ...k, OPENCLAW_WS_URL: e.target.value }))}
-                  placeholder="ws://127.0.0.1:18789"
-                  className="settings-input"
-                />
-              </div>
-              
-              <div className="settings-row">
-                <label>OpenClaw Token</label>
-                <div className="settings-input-group">
-                  <input
-                    type={showApiKey.OPENCLAW_TOKEN ? 'text' : 'password'}
-                    value={apiKeys.OPENCLAW_TOKEN}
-                    onChange={(e) => setApiKeys((k) => ({ ...k, OPENCLAW_TOKEN: e.target.value }))}
-                    placeholder="用于连接本地 OpenClaw Gateway"
-                    className="settings-input"
-                  />
-                  <button
-                    type="button"
-                    className="settings-toggle-visibility"
-                    onClick={() => setShowApiKey((s) => ({ ...s, OPENCLAW_TOKEN: !s.OPENCLAW_TOKEN }))}
-                    title={showApiKey.OPENCLAW_TOKEN ? '隐藏' : '显示'}
-                  >
-                    {showApiKey.OPENCLAW_TOKEN ? '🙈' : '👁'}
-                  </button>
                 </div>
               </div>
             </>
