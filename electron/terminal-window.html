@@ -23,6 +23,7 @@
       border-bottom: 1px solid rgba(0, 255, 136, 0.3);
       flex-shrink: 0;
       height: 34px;
+      -webkit-app-region: drag;
     }
     .term-title {
       color: #00ff88;
@@ -33,6 +34,7 @@
     .term-btns {
       display: flex;
       gap: 6px;
+      -webkit-app-region: no-drag;
     }
     .term-btns button {
       padding: 3px 10px;
@@ -75,7 +77,7 @@
   </div>
   <div id="term-container"></div>
   <script>
-    const { ipcRenderer } = require('electron');
+    const { ipcRenderer, clipboard } = require('electron');
     const path = require('path');
 
     // 从本地 node_modules 加载 xterm
@@ -156,6 +158,44 @@
 
       term.onData((data) => {
         ipcRenderer.send('terminal-input', data);
+      });
+
+      // 粘贴仅通过 paste 事件处理，避免 Ctrl+V 与 paste 重复写入
+      term.attachCustomKeyEventHandler((e) => {
+        if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
+          const sel = term.getSelection();
+          if (sel) {
+            e.preventDefault();
+            clipboard.writeText(sel);
+            return false;
+          }
+          return true;
+        }
+        return true;
+      });
+
+      container.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const div = document.createElement('div');
+        div.id = 'term-ctx-menu';
+        div.style.cssText = 'position:fixed;background:#1a1a22;border:1px solid rgba(0,255,136,0.4);color:#00ff88;font-size:12px;padding:4px 0;z-index:9999;min-width:100px;font-family:Consolas,monospace';
+        div.innerHTML = '<div class="ctx-item" data-action="copy" style="padding:8px 14px;cursor:pointer">复制</div><div class="ctx-item" data-action="paste" style="padding:8px 14px;cursor:pointer">粘贴</div>';
+        div.style.left = e.clientX + 'px';
+        div.style.top = e.clientY + 'px';
+        document.querySelector('#term-ctx-menu')?.remove();
+        document.body.appendChild(div);
+        const rm = () => { div.remove(); document.removeEventListener('click', rm); };
+        setTimeout(() => document.addEventListener('click', rm), 10);
+        div.querySelector('[data-action="copy"]').addEventListener('click', () => {
+          const s = term.getSelection();
+          if (s) clipboard.writeText(s);
+          rm();
+        });
+        div.querySelector('[data-action="paste"]').addEventListener('click', () => {
+          const t = clipboard.readText();
+          if (t) ipcRenderer.send('terminal-input', t);
+          rm();
+        });
       });
 
       let pinned = false;

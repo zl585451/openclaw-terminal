@@ -613,9 +613,17 @@
   animation: rec-blink 1s ease-in-out infinite;
 }
 
-.mic-btn-icon:disabled {
+.mic-btn-icon:disabled,
+.mic-btn-icon.mic-btn-disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  border-color: #555 !important;
+  color: #666 !important;
+}
+
+.mic-btn-icon.mic-btn-disabled:hover {
+  border-color: #555 !important;
+  background: transparent !important;
 }
 
 .chat-section.drag-over {

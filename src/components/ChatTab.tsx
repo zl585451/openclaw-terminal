@@ -521,6 +521,7 @@ interface ChatInputAreaProps {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   injectInputText?: string | null;
   onInjectConsumed?: () => void;
+  onClearHistory?: () => void;
 }
 
 const ChatInputArea = memo(function ChatInputArea({
@@ -534,6 +535,7 @@ const ChatInputArea = memo(function ChatInputArea({
   inputRef,
   injectInputText,
   onInjectConsumed,
+  onClearHistory,
 }: ChatInputAreaProps) {
   const [inputValue, setInputValue] = useState('');
   const [inputHistory, setInputHistory] = useState<string[]>([]);
@@ -542,13 +544,11 @@ const ChatInputArea = memo(function ChatInputArea({
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
   const quickMenuAnchorRef = useRef<HTMLButtonElement>(null);
   const [inputFlash, setInputFlash] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [speechApiAvailable, setSpeechApiAvailable] = useState(false);
+  const [isRecording] = useState(false);
   const speechRecognitionRef = useRef<any>(null);
 
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    setSpeechApiAvailable(!!SR);
     if (!SR) return;
     const rec = new SR();
     rec.lang = 'zh-CN';
@@ -562,8 +562,8 @@ const ChatInputArea = memo(function ChatInputArea({
       }
       if (final) setInputValue((v) => (v ? v + final : final));
     };
-    rec.onend = () => setIsRecording(false);
-    rec.onerror = () => setIsRecording(false);
+    rec.onend = () => {};
+    rec.onerror = () => {};
     speechRecognitionRef.current = rec;
     return () => {
       try { rec.abort(); } catch (_) {}
@@ -585,18 +585,6 @@ const ChatInputArea = memo(function ChatInputArea({
     setImagePreview(null);
     setUploadedFiles([]);
   }, [inputValue, imagePreview, uploadedFiles, wsConnected, onSend, setImagePreview, setUploadedFiles]);
-
-  const toggleRecording = () => {
-    const rec = speechRecognitionRef.current;
-    if (!rec) return;
-    if (isRecording) {
-      rec.stop();
-      setIsRecording(false);
-    } else {
-      rec.start();
-      setIsRecording(true);
-    }
-  };
 
   const handlePickFiles = async () => {
     const r = await ipcRenderer.invoke('open-file-dialog', { allowMultiple: true });
@@ -712,10 +700,9 @@ const ChatInputArea = memo(function ChatInputArea({
       <div className="chat-input-area">
         <button
           type="button"
-          className={`mic-btn-icon ${isRecording ? 'recording' : ''}`}
-          onClick={toggleRecording}
-          title={isRecording ? '停止录音' : '语音输入'}
-          disabled={!speechApiAvailable}
+          className={`mic-btn-icon mic-btn-disabled ${isRecording ? 'recording' : ''}`}
+          disabled
+          title="录音功能即将推出"
         >
           {isRecording ? '●' : '🎤'}
         </button>
@@ -733,6 +720,7 @@ const ChatInputArea = memo(function ChatInputArea({
           visible={quickMenuOpen}
           onClose={() => setQuickMenuOpen(false)}
           onSelect={handleQuickCommand}
+          onClearHistory={onClearHistory}
         />
         <textarea
           ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -888,7 +876,7 @@ const ChatMessageList = memo(function ChatMessageList({
 });
 
 const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, isAlwaysOnTop = false, onToggleAlwaysOnTop, onStatusChange }) => {
-  const { settings, streamSpeedMs } = useSettings();
+  const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
 
   // ===== 所有 useState 集中声明 =====
@@ -902,6 +890,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [modelName, setModelName] = useState('--');
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
   const [localTime, setLocalTime] = useState('');
+  const [localDate, setLocalDate] = useState('');
   const [tokenIn, setTokenIn] = useState<number | null>(null);
   const [tokenOut, setTokenOut] = useState<number | null>(null);
   const [ctxUsed, setCtxUsed] = useState<number | null>(null);
@@ -919,7 +908,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [gatewayManaged, setGatewayManaged] = useState(false);
   const [gatewayPortInUse, setGatewayPortInUse] = useState(false);
   const [windowFocused, setWindowFocused] = useState(true);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -1010,18 +998,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [handleScreenshot]);
 
   useEffect(() => {
-    ipcRenderer.invoke('get-env', 'VOICE_ENABLED').then((v: string) => {
-      setVoiceEnabled(v !== 'false' && v !== '0');
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!voiceEnabled && audioRef.current) {
+    if (!settings.typingSound && audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
       setSpeakingMessageId(null);
     }
-  }, [voiceEnabled]);
+  }, [settings.typingSound]);
 
   useEffect(() => {
     ipcRenderer.invoke('get-env', 'OPENCLAW_LOG_PATH').then((p: string) => {
@@ -1032,7 +1014,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, []);
 
   useEffect(() => {
-    const tick = () => setLocalTime(new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }));
+    const tick = () => {
+      const d = new Date();
+      setLocalTime(d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }));
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const wd = d.toLocaleDateString('zh-CN', { weekday: 'long' });
+      setLocalDate(`${y}.${m}.${day} ${wd}`);
+    };
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
@@ -1289,7 +1279,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [messages]);
 
   const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
-    if (!voiceEnabled || !msg.content) return;
+    if (!settings.typingSound || !msg.content) return;
     const plain = stripMarkdown(msg.content);
     const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗口' : plain;
     if (!truncated.trim()) return;
@@ -1310,7 +1300,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       audioRef.current = null;
     };
     audio.play().catch(() => setSpeakingMessageId(null));
-  }, [voiceEnabled]);
+  }, [settings.typingSound]);
 
   useEffect(() => {
     if (prevStreamingRef.current && !isStreaming) {
@@ -1433,6 +1423,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 30);
     ipcRenderer.invoke('openclaw-send', content.trim());
   }, [wsConnected, getNextMessageId, permissions]);
+
+  const handleClearHistory = useCallback(() => {
+    if (!window.confirm('确认清空所有聊天记录？')) return;
+    setMessages([]);
+    (window as any).electronAPI?.chatHistorySave?.([]);
+  }, []);
 
   const lastAmyContent = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -1624,11 +1620,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             <span className="section-title">◈ OpenClaw Chat</span>
             <button
               type="button"
-              className={`voice-toggle ${voiceEnabled ? 'on' : 'off'}`}
-              onClick={() => setVoiceEnabled((v) => !v)}
-              title={voiceEnabled ? '点击关闭语音播报' : '点击开启语音播报'}
+              className={`voice-toggle ${settings.typingSound ? 'on' : 'off'}`}
+              onClick={() => setSettings((s) => ({ ...s, typingSound: !s.typingSound }))}
+              title={settings.typingSound ? '点击关闭打字音效' : '点击开启打字音效'}
             >
-              {voiceEnabled ? '♪ VOICE ON' : '♪ VOICE OFF'}
+              {settings.typingSound ? '♪ VOICE ON' : '♪ VOICE OFF'}
             </button>
             <button
               type="button"
@@ -1701,6 +1697,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           inputRef={inputRef}
           injectInputText={injectInputText}
           onInjectConsumed={() => setInjectInputText(null)}
+          onClearHistory={handleClearHistory}
         />
       </div>
 
@@ -1731,6 +1728,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 display: 'block',
                 lineHeight: 1
               }}>{localTime || '--:--'}</span>
+              <div style={{
+                fontSize: '11px',
+                color: '#00ff88',
+                letterSpacing: '1px',
+                marginTop: '4px',
+                fontFamily: 'Share Tech Mono, monospace',
+                textAlign: 'center',
+              }}>{localDate || ''}</div>
               <div style={{
                 fontSize: '9px',
                 color: '#004d1a',
@@ -1905,9 +1910,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 type="button"
                 className="right-panel-quick-btn"
                 onClick={() => ipcRenderer.invoke('open-terminal-window')}
-                title="展开终端窗口"
+                title="打开终端窗口"
               >
-                [ ⊞ ]
+                [ ⊞ 终端 ]
               </button>
               <button
                 type="button"
@@ -1929,7 +1934,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 }}
                 title="进入悬浮模式"
               >
-                [ ⭘ 悬浮 ]
+                [ ⭘ ]
               </button>
             </div>
           </div>
