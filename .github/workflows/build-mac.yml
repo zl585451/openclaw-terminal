@@ -18,20 +18,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       
-      - name: Build Mac (Intel + M1/M2)
-        run: |
-          npm run electron:build:mac
+      - name: Build Mac
+        run: npm run electron:build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Upload to Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/OCT-*-Mac-x64.dmg
-            release/OCT-*-Mac-arm64.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: release/OCT-*-Mac-*.dmg
+          tag_name: ${{ github.ref_name }}
