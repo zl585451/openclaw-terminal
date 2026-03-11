@@ -1,0 +1,122 @@
+---
+name: 🐛 Bug 报告
+description: 报告一个问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请详细描述问题。
+  
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么？
+      description: 描述问题现象
+    validations:
+      required: true
+  
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 如何重现这个问题
+      placeholder: |
+        1. 打开 OCT
+        2. 点击...
+        3. 出现错误
+    validations:
+      required: false
+  
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS (Intel)
+        - macOS (M1/M2)
+        - Linux (Ubuntu/Debian)
+        - Linux (其他)
+    validations:
+      required: true
+  
+  - type: input
+    id: version
+    attributes:
+      label: OCT 版本
+      placeholder: v0.1.3
+    validations:
+      required: false
+
+---
+
+name: 💡 功能建议
+description: 建议一个新功能
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 相关问题
+      description: 这个功能解决了什么问题？
+    validations:
+      required: true
+  
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望的解决方案
+      description: 你希望实现什么功能？
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: importance
+    attributes:
+      label: 重要程度
+      options:
+        - 🔴 非常重要
+        - 🟡 重要
+        - 🟢 可选
+    validations:
+      required: true
+
+---
+
+name: 👍 使用感受
+description: 分享你的使用体验
+title: "[Feedback] "
+labels: ["feedback"]
+body:
+  - type: dropdown
+    id: satisfaction
+    attributes:
+      label: 满意度
+      options:
+        - 😍 非常喜欢
+        - 😊 喜欢
+        - 😐 一般
+        - 😕 不喜欢
+        - 😠 很失望
+    validations:
+      required: true
+  
+  - type: textarea
+    id: comments
+    attributes:
+      label: 具体评价
+      description: 详细说说你的感受
+    validations:
+      required: false
+  
+  - type: input
+    id: usage-time
+    attributes:
+      label: 使用时长
+      placeholder: 例如：1 天、1 周、1 个月
+    validations:
+      required: false
