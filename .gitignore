@@ -9,3 +9,9 @@ scripts/license_keys.txt
 .proxyrc
 *.log
 oct_*.log
+
+# 本地开发文件（不提交）
+启动.bat
+.env.example
+.cursorignore
+scripts/clear-cursor-cache.bat
