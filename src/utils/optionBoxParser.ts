@@ -33,7 +33,8 @@ function parseNumberedOptions(text: string): OptionItem[] {
 function parseCheckboxOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
   const options: OptionItem[] = [];
-  const rx = /^[\s]*\[\s*(?:[✓xX]|\s)\s*\]\s*(.+)$/;
+  // 支持两种格式：[ ] xxx  和  - [ ] xxx（Markdown task list）
+  const rx = /^[\s]*(?:[-*+]\s*)?\[\s*(?:[✓xX]|\s)\s*\]\s*(.+)$/;
   for (const line of lines) {
     if (/[*]/.test(line)) continue;
     const m = line.trim().match(rx);
