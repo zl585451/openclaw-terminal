@@ -1261,13 +1261,47 @@ ipcMain.handle('start-log-watch', async (_, logPath: string) => {
     } else {
       mainWindow?.webContents.send('openclaw-log-lines', ['[LOG] 等待Gateway日志...']);
     }
-    // 用 PowerShell 轮询 tail 日志
-    const psPath = pathToUse.replace(/'/g, "''");
-    const psCmd = `$p='${psPath}'; while($true){if(Test-Path -LiteralPath $p){Get-Content -LiteralPath $p -Tail 10 -Encoding UTF8}; Start-Sleep -Milliseconds 500}`;
-    logTailProcess = spawn('powershell.exe', ['-NoProfile', '-Command', psCmd], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
+    // 根据平台使用不同的日志监控方式
+    if (process.platform === 'win32') {
+      // Windows: 使用 PowerShell
+      const psPath = pathToUse.replace(/'/g, "''");
+      const psCmd = `$p='${psPath}'; while($true){if(Test-Path -LiteralPath $p){Get-Content -LiteralPath $p -Tail 10 -Encoding UTF8}; Start-Sleep -Milliseconds 500}`;
+      
+      try {
+        const { execSync } = require('child_process');
+        execSync('where powershell.exe', { stdio: 'ignore', windowsHide: true });
+        logTailProcess = spawn('powershell.exe', ['-NoProfile', '-Command', psCmd], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+        });
+      } catch (e) {
+        console.warn('[Main] PowerShell not found, using fallback log watcher');
+        mainWindow?.webContents.send('openclaw-log-lines', ['[WARN] PowerShell 未找到，使用备用日志监控']);
+        // 备用方案：fs.watch
+        try {
+          const fsWatcher = fs.watch(pathToUse, { persistent: false }, (eventType) => {
+            if (eventType === 'change' && fs.existsSync(pathToUse)) {
+              try {
+                const content = fs.readFileSync(pathToUse, 'utf-8');
+                const lines = content.split('\n').slice(-10);
+                lines.forEach(line => {
+                  if (line.trim()) mainWindow?.webContents.send('openclaw-log-lines', [line]);
+                });
+              } catch (e) {}
+            }
+          });
+          (global as any).logFsWatcher = fsWatcher;
+        } catch (e2) {
+          console.error('[Main] Fallback log watcher failed:', e2);
+        }
+      }
+    } else {
+      // Mac/Linux: 使用 tail -f
+      logTailProcess = spawn('tail', ['-f', pathToUse], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+    }
     let buf = '';
     logTailProcess.stdout?.on('data', (chunk: Buffer) => {
       buf += chunk.toString('utf8');
