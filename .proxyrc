@@ -1,3 +1,0 @@
-[ProxyExclusion]
-ExcludeList=*.zhihu.com,*.baidu.com,*.github.com,*.openclaw.ai,localhost,127.0.0.1
-ExcludeMode=whitelist
