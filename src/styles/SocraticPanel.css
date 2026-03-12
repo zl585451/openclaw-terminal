@@ -1,0 +1,375 @@
+.socratic-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: socratic-fade-in 0.15s ease;
+}
+
+@keyframes socratic-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.socratic-panel {
+  background: #050f05;
+  border: 1px solid #1a4d2a;
+  border-radius: 6px;
+  width: 420px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 255, 65, 0.06);
+  animation: socratic-slide-in 0.18s ease;
+  overflow: hidden;
+}
+
+@keyframes socratic-slide-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ── 顶部 header ── */
+.socratic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid #0d2d0d;
+  flex-shrink: 0;
+}
+
+.socratic-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.socratic-title {
+  font-family: 'Share Tech Mono', 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #00ff88;
+  text-transform: uppercase;
+}
+
+.socratic-subtitle {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  color: #006620;
+  letter-spacing: 1px;
+}
+
+.socratic-close-btn {
+  background: transparent;
+  border: 1px solid #1a4d2a;
+  color: #006620;
+  font-size: 14px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.socratic-close-btn:hover {
+  border-color: #ff4444;
+  color: #ff4444;
+  background: rgba(255, 68, 68, 0.08);
+}
+
+/* ── 进度条 ── */
+.socratic-progress {
+  padding: 8px 16px 0;
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.socratic-progress-dot {
+  height: 2px;
+  flex: 1;
+  background: #0d2d0d;
+  border-radius: 1px;
+  transition: background 0.3s;
+}
+
+.socratic-progress-dot.active {
+  background: #00ff88;
+}
+
+.socratic-progress-dot.done {
+  background: #00aa55;
+}
+
+/* ── 内容区 ── */
+.socratic-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.socratic-body::-webkit-scrollbar {
+  width: 4px;
+}
+.socratic-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.socratic-body::-webkit-scrollbar-thumb {
+  background: #1a4d2a;
+  border-radius: 2px;
+}
+
+/* ── 问题文字 ── */
+.socratic-question {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  color: #a8ffcf;
+  line-height: 1.6;
+  padding-bottom: 4px;
+}
+
+/* ── 选项列表（复用 OptionBox 风格） ── */
+.socratic-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.socratic-option-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: transparent;
+  color: #a8ffcf;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.socratic-option-row:hover {
+  background: rgba(0, 255, 159, 0.06);
+}
+
+.socratic-option-row.selected {
+  background: rgba(0, 255, 159, 0.1);
+}
+
+.socratic-option-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.socratic-option-icon::before {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #00ff9f;
+  border-radius: 2px;
+  background: transparent;
+  transition: all 0.15s;
+}
+
+.socratic-option-row.selected .socratic-option-icon::before {
+  background: rgba(0, 255, 159, 0.2);
+  border-color: #00ff9f;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2300ff9f' stroke-width='2'%3E%3Cpath d='M2 6l3 3 5-6'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* single-select 用圆形 radio */
+.socratic-option-row.radio .socratic-option-icon::before {
+  border-radius: 50%;
+}
+
+.socratic-option-row.radio.selected .socratic-option-icon::before {
+  background: rgba(0, 255, 159, 0.2);
+  border-color: #00ff9f;
+  background-image: none;
+  box-shadow: inset 0 0 0 3px rgba(0,255,159,0.6);
+}
+
+.socratic-option-label {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.socratic-option-other {
+  color: #006620;
+  font-style: italic;
+}
+
+.socratic-option-row.selected .socratic-option-other {
+  color: #a8ffcf;
+  font-style: normal;
+}
+
+/* 「其他」被选中后展开的文本输入框 */
+.socratic-other-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(0, 255, 159, 0.5);
+  color: #a8ffcf;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  padding: 2px 4px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.socratic-other-input:focus {
+  border-bottom-color: #00ff9f;
+}
+
+.socratic-other-input::placeholder {
+  color: rgba(0, 255, 159, 0.3);
+}
+
+/* ── 模板选择器 ── */
+.socratic-template-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.socratic-template-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid #0d2d0d;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.socratic-template-card:hover {
+  border-color: #1a4d2a;
+  background: rgba(0, 255, 65, 0.04);
+}
+
+.socratic-template-icon {
+  font-size: 16px;
+  color: #00ff88;
+  font-family: 'Share Tech Mono', monospace;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.socratic-template-name {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  color: #a8ffcf;
+}
+
+/* ── 底部操作栏 ── */
+.socratic-footer {
+  padding: 10px 16px 14px;
+  border-top: 1px solid #0d2d0d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.socratic-count {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  color: #00ff9f66;
+}
+
+.socratic-next-btn {
+  padding: 7px 18px;
+  background: rgba(0, 255, 159, 0.1);
+  border: 1px solid #00ff9f;
+  color: #00ff9f;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.socratic-next-btn:hover:not(:disabled) {
+  background: rgba(0, 255, 159, 0.2);
+  box-shadow: 0 0 8px rgba(0, 255, 159, 0.2);
+}
+
+.socratic-next-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── 返回按钮（面板内） ── */
+.socratic-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid #0d2d0d;
+  border-radius: 3px;
+  color: #004d1a;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.socratic-back-btn:hover {
+  border-color: #1a4d2a;
+  color: #006620;
+}
+
+/* ── 触发按钮（消息末尾） ── */
+.socratic-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid #1a6633;
+  border-radius: 3px;
+  color: #00aa44;
+  font-family: 'Share Tech Mono', 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.socratic-trigger-btn:hover {
+  border-color: #00ff88;
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.06);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.12);
+}
