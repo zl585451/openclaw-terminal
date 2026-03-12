@@ -53,6 +53,22 @@ const MENU_STRUCTURE: { group: string; items: QuickCommandItem[] }[] = [
     ],
   },
   {
+    group: '━━ GUIDE ━━━━━━━━━━━━━',
+    items: [
+      {
+        id: 'guide-mode',
+        label: '启用引导模式',
+        sendText:
+          '【系统指令】从现在起，当你判断用户需要整理思路或做决策时，请在回复正文末尾单独加一行标记：[THINK_MODE:xxx]，其中 xxx 从以下选项中选一个最合适的：decision（做决定/选择）、priority（优先级排序）、stuck（不知从哪开始）、confusion（思路混乱）、goal（分解大目标）。不要在正文中生成 checkbox 选项框，只加这一行标记即可，其余照常回复。',
+      },
+      {
+        id: 'guide-off',
+        label: '关闭引导模式',
+        sendText: '【系统指令】停止在回复末尾添加 [THINK_MODE:xxx] 标记，恢复正常回复模式。',
+      },
+    ],
+  },
+  {
     group: '━━ SYSTEM ━━━━━━━━━━━━',
     items: [
       { id: 'restart', label: '重启Gateway', sendText: '/restart' },

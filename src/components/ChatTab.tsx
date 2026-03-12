@@ -6,6 +6,13 @@ import '../styles/ChatTab.css';
 import { parseOptionBox, type OptionItem } from '../utils/optionBoxParser';
 import OptionBox from './OptionBox';
 import SettingsPanel from './SettingsPanel';
+import SocraticPanel from './SocraticPanel';
+import {
+  detectThinkModeMarker,
+  stripThinkModeMarker,
+  parseSocraticSections,
+  type SocraticRound,
+} from '../utils/socraticTemplates';
 import CodeBlock from './CodeBlock';
 import QuickCommandMenu from './QuickCommandMenu';
 import HeartbeatWave from './HeartbeatWave';
@@ -24,7 +31,7 @@ const ipcRenderer =
         off: () => {},
         removeListener: () => {},
       };
-const DEFAULT_LOG_PATH = 'C:\\Users\\zilong_wu\\.openclaw\\logs\\gateway.log';
+// 日志路径由 main 进程根据平台提供，前端仅在 env 未设置时传空串
 
 // 已改用 DOM 渲染，此函数保留供参考
 // function getLogAnsiColor(line: string): string {
@@ -383,6 +390,7 @@ interface ChatMessageItemProps {
   wsConnected: boolean;
   quickSend: (text: string) => void;
   onContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
+  onOpenSocratic: () => void;
 }
 
 const ChatMessageItem = memo(function ChatMessageItem({
@@ -398,6 +406,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
   wsConnected,
   quickSend,
   onContextMenu,
+  onOpenSocratic,
 }: ChatMessageItemProps) {
   const [hoverTime, setHoverTime] = React.useState(false);
   return (
@@ -441,6 +450,16 @@ const ChatMessageItem = memo(function ChatMessageItem({
                   if (value && wsConnected) quickSend(value);
                 }}
               />
+            )}
+            {!isStreamingMsg && !msg.isSystemReply && (
+              <button
+                type="button"
+                className="socratic-trigger-btn"
+                onClick={onOpenSocratic}
+                title="苏格拉底模式：帮你逐步理清思路"
+              >
+                ◌ 理清思路 →
+              </button>
             )}
           </div>
           )
@@ -799,6 +818,7 @@ interface ChatMessageListProps {
   bottomRef: React.RefObject<HTMLDivElement | null>;
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
   onMessageContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
+  onOpenSocratic: () => void;
 }
 
 const ChatMessageList = memo(function ChatMessageList({
@@ -813,6 +833,7 @@ const ChatMessageList = memo(function ChatMessageList({
   bottomRef,
   onScroll,
   onMessageContextMenu,
+  onOpenSocratic,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
 
@@ -867,6 +888,7 @@ const ChatMessageList = memo(function ChatMessageList({
             wsConnected={wsConnected}
             quickSend={quickSend}
             onContextMenu={onMessageContextMenu}
+            onOpenSocratic={onOpenSocratic}
           />
         );
       })}
@@ -902,7 +924,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [runtimeMode, setRuntimeMode] = useState<string>('direct');
   const [compactions, setCompactions] = useState<number | null>(null);
   const [queueInfo, setQueueInfo] = useState<string>('--');
-  const [, setLogPath] = useState(DEFAULT_LOG_PATH);
+  const [, setLogPath] = useState('');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [gatewayRunning, setGatewayRunning] = useState(false);
   const [gatewayManaged, setGatewayManaged] = useState(false);
@@ -916,6 +938,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: number; text: string } | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
+  const [showSocratic, setShowSocratic] = useState(false);
+  // AI 自动触发的苏格拉底数据：customRounds（自然格式）或 templateId（THINK_MODE 标记）
+  const [activeSocratic, setActiveSocratic] = useState<{
+    rounds?: SocraticRound[];
+    templateId?: string;
+  } | null>(null);
 
   // ===== 所有 useRef 集中声明 =====
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -1009,7 +1037,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     ipcRenderer.invoke('get-env', 'OPENCLAW_LOG_PATH').then((p: string) => {
         if (p) setLogPath(p);
         // 自动启动日志监控
-        ipcRenderer.invoke('start-log-watch', p || DEFAULT_LOG_PATH);
+        ipcRenderer.invoke('start-log-watch', p || '');
       });
   }, []);
 
@@ -1146,10 +1174,33 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       userScrolledUp.current = false;
 
       // 先捕获后清空，防止 React 批处理时回调读到已清空的 ref
-      const finalStreamContent = content || streamingMessageRef.current;
+      let finalStreamContent = content || streamingMessageRef.current;
       streamingMessageRef.current = '';
       const systemReply = pendingSystemReply.current;
       pendingSystemReply.current = false;
+
+      // ── 苏格拉底自动触发检测 ──────────────────────────────────
+      if (!systemReply && finalStreamContent) {
+        const thinkModeId = detectThinkModeMarker(finalStreamContent);
+        if (thinkModeId) {
+          // [THINK_MODE:xxx] 标记：剥离标记后显示，延迟弹出面板
+          finalStreamContent = stripThinkModeMarker(finalStreamContent);
+          setTimeout(() => {
+            setActiveSocratic({ templateId: thinkModeId });
+            setShowSocratic(true);
+          }, 400);
+        } else {
+          // 检测自然多段 checkbox 格式（2组及以上）
+          const sections = parseSocraticSections(finalStreamContent);
+          if (sections) {
+            setTimeout(() => {
+              setActiveSocratic({ rounds: sections });
+              setShowSocratic(true);
+            }, 400);
+          }
+        }
+      }
+      // ──────────────────────────────────────────────────────────
 
       // 解析 /status 系统回复，更新状态栏
       const isSystem = systemReply;
@@ -1200,7 +1251,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           );
         }
         if (finalStreamContent || data.text) {
-          const textContent = finalStreamContent || String(data.text || '');
+          const textContent = (finalStreamContent || String(data.text || '')).trim();
+          if (!textContent) return prev;
+          // 去重：最后一条已是助手消息且内容相同，避免 Gateway 多路转发（如 chat + agent）导致重复
+          if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
+            return prev;
+          }
           return [
             ...prev,
             {
@@ -1229,12 +1285,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         streamingMessageRef.current = content;
       }
       const buf = streamingMessageRef.current;
+      if (!buf) return;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
           return prev.map((msg, idx) =>
             idx === prev.length - 1 ? { ...msg, content: buf } : msg
           );
+        }
+        // 去重：最后一条已是完成态的助手消息且内容完全相同，避免重复
+        if (last?.role === 'assistant' && !last.isStreaming && (last.content ?? '').trim() === buf.trim()) {
+          return prev;
         }
         return [
           ...prev,
@@ -1539,6 +1600,27 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   return (
     <>
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+      {showSocratic && (
+        <SocraticPanel
+          contextText={(() => {
+            const recent = messages.slice(-6);
+            const lastUser = [...recent].reverse().find((m) => m.role === 'user');
+            const lastAI   = [...recent].reverse().find((m) => m.role === 'assistant');
+            return [lastUser?.content, lastAI?.content].filter(Boolean).join(' ');
+          })()}
+          customRounds={activeSocratic?.rounds}
+          suggestedTemplateId={activeSocratic?.templateId}
+          onComplete={(text) => {
+            setInjectInputText(text);
+            setShowSocratic(false);
+            setActiveSocratic(null);
+          }}
+          onClose={() => {
+            setShowSocratic(false);
+            setActiveSocratic(null);
+          }}
+        />
+      )}
       {contextMenu && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setContextMenu(null)} />
@@ -1653,6 +1735,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           bottomRef={bottomRef}
           onScroll={handleChatScroll}
           onMessageContextMenu={(e, msg, raw) => setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id, text: raw })}
+          onOpenSocratic={() => setShowSocratic(true)}
         />
         {showScrollBtn && (
           <div
@@ -1816,7 +1899,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             <div className="section-header">
               <span className="section-title">
                 <span className={`gw-dot ${gatewayRunning || gatewayPortInUse ? 'running' : 'stopped'}`} />
-                ◈ Gateway 日志
+                Gateway 日志
               </span>
               <div className="gw-controls">
                 <button
