@@ -1302,34 +1302,36 @@ ipcMain.handle('start-log-watch', async (_, logPath: string) => {
         windowsHide: true,
       });
     }
-    let buf = '';
-    logTailProcess.stdout?.on('data', (chunk: Buffer) => {
-      buf += chunk.toString('utf8');
-      const lines = buf.split(/\r?\n/);
-      buf = lines.pop() ?? '';
-      for (const raw of lines) {
-        const t = raw.trim();
-        if (!t || seenRaw.has(t)) continue;
-        seenRaw.add(t);
-        const msg = (() => { try { const o = JSON.parse(t); return o?.['1'] ?? o?.message ?? ''; } catch { return t; } })();
-        if (isNoisyLogLine(msg)) continue;
-        const out = formatGatewayLogLine(t);
-        if (!out) continue;
-        mainWindow?.webContents.send('openclaw-log-lines', [out]);
-      }
-    });
+    if (logTailProcess) {
+      let buf = '';
+      logTailProcess.stdout?.on('data', (chunk: Buffer) => {
+        buf += chunk.toString('utf8');
+        const lines = buf.split(/\r?\n/);
+        buf = lines.pop() ?? '';
+        for (const raw of lines) {
+          const t = raw.trim();
+          if (!t || seenRaw.has(t)) continue;
+          seenRaw.add(t);
+          const msg = (() => { try { const o = JSON.parse(t); return o?.['1'] ?? o?.message ?? ''; } catch { return t; } })();
+          if (isNoisyLogLine(msg)) continue;
+          const out = formatGatewayLogLine(t);
+          if (!out) continue;
+          mainWindow?.webContents.send('openclaw-log-lines', [out]);
+        }
+      });
 
-    logTailProcess.stderr?.on('data', (chunk: Buffer) => {
-      const msg = chunk.toString('utf8').trim();
-      if (msg) mainWindow?.webContents.send('openclaw-log-lines', [`[ERR] ${msg}`]);
-    });
+      logTailProcess.stderr?.on('data', (chunk: Buffer) => {
+        const msg = chunk.toString('utf8').trim();
+        if (msg) mainWindow?.webContents.send('openclaw-log-lines', [`[ERR] ${msg}`]);
+      });
 
-    logTailProcess.on('exit', (code) => {
-      logTailProcess = null;
-      if (code !== 0 && code !== null) {
-        mainWindow?.webContents.send('openclaw-log-lines', [`[LOG] tail 进程退出: ${code}`]);
-      }
-    });
+      logTailProcess.on('exit', (code) => {
+        logTailProcess = null;
+        if (code !== 0 && code !== null) {
+          mainWindow?.webContents.send('openclaw-log-lines', [`[LOG] tail 进程退出: ${code}`]);
+        }
+      });
+    }
 
     mainWindow?.webContents.send('openclaw-log-lines', ['[LOG] 正在监听日志...']);
     return { success: true };
