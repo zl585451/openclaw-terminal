@@ -1,6 +1,6 @@
 {
   "name": "openclaw-terminal",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "少爷",
   "description": "OpenClaw Terminal - Windows 超级系统助手",
   "main": "dist-electron/main.js",

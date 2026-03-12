@@ -386,6 +386,7 @@ interface ChatMessageItemProps {
   currentPage: number;
   onPageChange: (msgId: number, page: number) => void;
   isStreamingMsg: boolean;
+  agentPhase: 'idle' | 'thinking' | 'typing';
   speakingMessageId: number | null;
   wsConnected: boolean;
   quickSend: (text: string) => void;
@@ -402,6 +403,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
   currentPage,
   onPageChange,
   isStreamingMsg,
+  agentPhase,
   speakingMessageId,
   wsConnected,
   quickSend,
@@ -429,6 +431,11 @@ const ChatMessageItem = memo(function ChatMessageItem({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
             <span style={{ color: '#00ff88', fontSize: '11px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>AMY</span>
+            {isStreamingMsg && agentPhase !== 'idle' && (
+              <span className="agent-status-badge">
+                {agentPhase === 'thinking' ? '思考中' : '打字中'}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -456,7 +463,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
                 type="button"
                 className="socratic-trigger-btn"
                 onClick={onOpenSocratic}
-                title="苏格拉底模式：帮你逐步理清思路"
+                title="思维引导：帮你逐步理清思路"
               >
                 ◌ 理清思路 →
               </button>
@@ -813,6 +820,7 @@ interface ChatMessageListProps {
   awaitingResponse: boolean;
   displayedStreamingLength: number;
   speakingMessageId: number | null;
+  agentPhase: 'idle' | 'thinking' | 'typing';
   wsConnected: boolean;
   quickSend: (text: string) => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
@@ -828,6 +836,7 @@ const ChatMessageList = memo(function ChatMessageList({
   awaitingResponse,
   displayedStreamingLength,
   speakingMessageId,
+  agentPhase,
   wsConnected,
   quickSend,
   bottomRef,
@@ -854,6 +863,7 @@ const ChatMessageList = memo(function ChatMessageList({
       {showTypingIndicator && (
         <div className="chat-thinking">
           <span className="msg-label">◈ AMY</span>
+          {agentPhase === 'thinking' && <span className="agent-status-badge">思考中</span>}
           <span className="processing-blocks typing-dots">
             <span className="block" />
             <span className="block" />
@@ -884,6 +894,7 @@ const ChatMessageList = memo(function ChatMessageList({
             currentPage={pageByMsgId[msg.id] ?? 1}
             onPageChange={handlePageChange}
             isStreamingMsg={!!msg.isStreaming}
+            agentPhase={agentPhase}
             speakingMessageId={speakingMessageId}
             wsConnected={wsConnected}
             quickSend={quickSend}
@@ -939,7 +950,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: number; text: string } | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [showSocratic, setShowSocratic] = useState(false);
-  // AI 自动触发的苏格拉底数据：customRounds（自然格式）或 templateId（THINK_MODE 标记）
+  const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
+  // AI 自动触发的思维引导数据：customRounds（自然格式）或 templateId（THINK_MODE 标记）
   const [activeSocratic, setActiveSocratic] = useState<{
     rounds?: SocraticRound[];
     templateId?: string;
@@ -1074,6 +1086,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         if (status?.model) setModelName(String(status.model));
         if (!status?.connected) {
           setAwaitingResponse(false);
+          setAgentPhase('idle');
           userScrolledUp.current = false;
         }
       } catch (e) {
@@ -1089,6 +1102,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           setWsConnected(connected);
           if (!connected) {
             setAwaitingResponse(false);
+            setAgentPhase('idle');
             userScrolledUp.current = false;
           }
         }
@@ -1137,9 +1151,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   };
 
   const handleIncomingMessage = (
-    data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean }
+    data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean }
   ) => {
     if (!data || data.type === 'status' || data.connected !== undefined) return;
+    if (data.type === 'agent-phase') {
+      const phase = data.phase;
+      if (phase === 'thinking' || phase === 'typing' || phase === 'idle') setAgentPhase(phase);
+      return;
+    }
     if (data.type !== 'chat') return;
 
     const u = data.usage;
@@ -1171,6 +1190,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     if (done) {
       setAwaitingResponse(false);
+      setAgentPhase('idle');
       userScrolledUp.current = false;
 
       // 先捕获后清空，防止 React 批处理时回调读到已清空的 ref
@@ -1179,7 +1199,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       const systemReply = pendingSystemReply.current;
       pendingSystemReply.current = false;
 
-      // ── 苏格拉底自动触发检测 ──────────────────────────────────
+      // ── 思维引导自动触发检测 ──────────────────────────────────
       if (!systemReply && finalStreamContent) {
         const thinkModeId = detectThinkModeMarker(finalStreamContent);
         if (thinkModeId) {
@@ -1278,6 +1298,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     if (content) {
       setAwaitingResponse(false);
+      if (isDelta) setAgentPhase('typing');
       // 仅对 delta 增量追加；Gateway 用 text 字段时每次为全量，应替换
       if (isDelta) {
         streamingMessageRef.current += content;
@@ -1420,6 +1441,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     streamingMessageRef.current = '';
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
+      setAgentPhase('thinking');
     }
     userScrolledUp.current = false;
     setMessages((prev) => [
@@ -1475,7 +1497,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     pendingSystemReply.current = isSystemCommand(content.trim());
     streamingMessageRef.current = '';
-    if (!pendingSystemReply.current) setAwaitingResponse(true);
+    if (!pendingSystemReply.current) {
+      setAwaitingResponse(true);
+      setAgentPhase('thinking');
+    }
     userScrolledUp.current = false;
     setMessages((prev) => [
       ...prev,
@@ -1730,6 +1755,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           awaitingResponse={awaitingResponse}
           displayedStreamingLength={displayedStreamingLength}
           speakingMessageId={speakingMessageId}
+          agentPhase={agentPhase}
           wsConnected={wsConnected}
           quickSend={quickSend}
           bottomRef={bottomRef}
