@@ -1,0 +1,11 @@
+{
+  "agents": {
+    "AMY": {
+      "model": "openai/gpt-4o",
+      "description": "管理员 Agent，拥有最高权限",
+      "permissions": "admin"
+    }
+  },
+  "channels": {},
+  "modelProviders": {}
+}

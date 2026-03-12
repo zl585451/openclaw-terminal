@@ -30,6 +30,13 @@
       "electron/terminal-window.html",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/openclaw",
+        "to": "openclaw",
+        "filter": ["**/*", "!**/.git/**"]
+      }
+    ],
     "win": {
       "target": [
         {

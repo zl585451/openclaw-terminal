@@ -142,6 +142,52 @@ const VALID_LICENSE_HASHES: string[] = [
 const GATEWAY_PORT = 18789;
 const GATEWAY_CMD = path.join(os.homedir(), '.openclaw', 'gateway.cmd');
 
+// 内嵌 OpenClaw 路径（打包后在 resources/openclaw，开发时在项目根/resources/openclaw）
+function getEmbeddedOpenClawEntry(): string | null {
+  const candidates = [
+    // 打包后
+    path.join(process.resourcesPath || '', 'openclaw', 'node_modules', 'openclaw', 'dist', 'index.js'),
+    // 开发时
+    path.join(__dirname, '..', 'resources', 'openclaw', 'node_modules', 'openclaw', 'dist', 'index.js'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+// 获取内嵌 OpenClaw 的工作目录（用户数据目录 ~/.openclaw）
+function getOpenClawWorkDir(): string {
+  const dir = path.join(os.homedir(), '.openclaw');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    console.log('[Gateway] Created OpenClaw workdir:', dir);
+  }
+  return dir;
+}
+
+// 初始化：如果用户没有 config.json，从内嵌默认配置复制
+function initOpenClawUserData(): void {
+  const userConfigPath = path.join(os.homedir(), '.openclaw', 'config.json');
+  if (!fs.existsSync(userConfigPath)) {
+    const defaultConfigCandidates = [
+      path.join(process.resourcesPath || '', 'openclaw', 'defaults', 'config.json'),
+      path.join(__dirname, '..', 'resources', 'openclaw', 'defaults', 'config.json'),
+    ];
+    for (const src of defaultConfigCandidates) {
+      if (fs.existsSync(src)) {
+        try {
+          fs.copyFileSync(src, userConfigPath);
+          console.log('[Gateway] Initialized user config from default:', src);
+        } catch (e) {
+          console.warn('[Gateway] Failed to copy default config:', e);
+        }
+        break;
+      }
+    }
+  }
+}
+
 function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
@@ -1368,6 +1414,61 @@ async function startGatewayProcess(): Promise<{ success: boolean; error?: string
   if (inUse) {
     return { success: false, portInUse: true, error: 'Gateway 已在运行，端口 18789 已被占用' };
   }
+
+  // 初始化用户数据目录
+  initOpenClawUserData();
+
+  // 优先使用内嵌 OpenClaw
+  const embeddedEntry = getEmbeddedOpenClawEntry();
+  if (embeddedEntry) {
+    console.log('[Gateway] Using embedded OpenClaw:', embeddedEntry);
+    try {
+      const nodeBin = process.execPath; // Electron 内置 Node.js
+      const workDir = getOpenClawWorkDir();
+      gatewayProcess = spawn(nodeBin, [embeddedEntry, 'gateway', '--port', String(GATEWAY_PORT)], {
+        cwd: workDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        detached: false,
+        env: {
+          ...process.env,
+          OPENCLAW_GATEWAY_PORT: String(GATEWAY_PORT),
+          ELECTRON_RUN_AS_NODE: '1',
+        },
+      });
+      gatewayManagedByUs = true;
+      console.log('[Gateway] Started (embedded) PID:', gatewayProcess.pid);
+      mainWindow?.webContents.send('gateway-status', { running: true, managed: true, pid: gatewayProcess.pid });
+
+      let stdoutBuf = '';
+      gatewayProcess.stdout?.on('data', (chunk: Buffer) => {
+        stdoutBuf += chunk.toString('utf8');
+        const lines = stdoutBuf.split(/\r?\n/);
+        stdoutBuf = lines.pop() ?? '';
+        lines.forEach(sendGatewayLogLine);
+      });
+      gatewayProcess.stderr?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString('utf8');
+        text.split(/\r?\n/).forEach((l) => { if (l.trim()) sendGatewayLogLine(`[ERR] ${l.trim()}`); });
+      });
+      gatewayProcess.on('error', (err) => {
+        console.error('[Gateway] Process error:', err);
+        mainWindow?.webContents.send('openclaw-log-lines', [`[Gateway ERROR] ${err.message}`]);
+      });
+      gatewayProcess.on('exit', (code, signal) => {
+        console.log('[Gateway] Exited, code:', code, 'signal:', signal);
+        gatewayProcess = null;
+        gatewayManagedByUs = false;
+        mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
+        mainWindow?.webContents.send('openclaw-log-lines', [`[Gateway] 进程已退出 (code: ${code ?? signal})`]);
+      });
+      return { success: true };
+    } catch (e: any) {
+      console.warn('[Gateway] Embedded start failed, fallback to system gateway:', e?.message);
+    }
+  }
+
+  // 回退：使用系统安装的 gateway.cmd（向下兼容）
   if (!fs.existsSync(GATEWAY_CMD)) {
     return { success: false, error: `Gateway 未找到: ${GATEWAY_CMD}` };
   }
