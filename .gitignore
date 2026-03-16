@@ -2,13 +2,31 @@ node_modules/
 dist/
 dist-electron/
 release/
+build/
+
+# 环境配置（永不提交）
 .env
+.env.local
+.env.production
+.env.*
+
+# 凭证与密钥
+credentials.json
+config.secret.json
+*.key
+*.secret
+*.pem
+*.crt
 scripts/license_keys.txt
 
-# 敏感文件
-.proxyrc
+# 数据库文件
+*.db
+*.sqlite
+
+# 日志
 *.log
 oct_*.log
+logs/
 
 # 本地开发文件（不提交）
 启动.bat
