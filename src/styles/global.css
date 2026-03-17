@@ -234,3 +234,11 @@ button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.msg-user-body { border-radius: 12px 12px 2px 12px !important; }
+.msg-assistant-body { border-radius: 8px !important; }
+pre, .code-block, .code-wrapper { border-radius: 6px !important; }
+.tb-task-item { border-radius: 6px !important; }
+.tb-parking-item { border-radius: 6px !important; }
+.tb-quick-input input { border-radius: 6px !important; }
+.log-terminal-dom { border-radius: 6px !important; }

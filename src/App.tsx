@@ -14,7 +14,6 @@ export type TabType = 'chat' | 'sound' | 'reaper';
 const App: React.FC = () => {
   const [isActivated, setIsActivated] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('chat');
-  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messageIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -29,14 +28,6 @@ const App: React.FC = () => {
       setIsActivated(false);
     });
   }, []);
-
-  useEffect(() => {
-    // 获取初始置顶状态
-    if (!isActivated) return;
-    window.electronAPI?.getAlwaysOnTop().then((result: unknown) => {
-      setIsAlwaysOnTop(result as boolean);
-    });
-  }, [isActivated]);
 
   useEffect(() => {
     const load = window.electronAPI?.chatHistoryLoad;
@@ -74,12 +65,6 @@ const App: React.FC = () => {
 
   const getNextMessageId = () => ++messageIdRef.current;
 
-  const toggleAlwaysOnTop = async () => {
-    const newState = !isAlwaysOnTop;
-    await window.electronAPI?.setAlwaysOnTop(newState);
-    setIsAlwaysOnTop(newState);
-  };
-
   if (isActivated !== true) {
     return (
       <ActivationWindow onActivated={() => setIsActivated(true)} />
@@ -113,8 +98,6 @@ const App: React.FC = () => {
             messages={messages}
             setMessages={setMessages}
             getNextMessageId={getNextMessageId}
-            isAlwaysOnTop={isAlwaysOnTop}
-            onToggleAlwaysOnTop={toggleAlwaysOnTop}
             onStatusChange={() => {}}
           />
         )}

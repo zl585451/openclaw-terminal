@@ -83,14 +83,14 @@
   align-items: center;
   padding: 8px 12px;
   background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   position: relative;
   overflow: hidden;
 }
 
 /* 顶部聊天 header 居中对齐对话区域 */
 .chat-section > .section-header {
-  max-width: 760px;
+  max-width: 800px;
   margin: 0 auto;
   width: 100%;
   padding: 8px 24px;
@@ -183,15 +183,15 @@
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
   background: var(--bg-primary);
   font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   min-height: 0;  /* 防止 flex 子项撑破容器 */
   /* 居中显示 */
-  max-width: 760px;
+  max-width: 860px;
   margin: 0 auto;
   width: 100%;
-  padding: 12px 24px;
+  padding: 0 32px;
 }
 
 /* 聊天区滚动条 */
@@ -236,16 +236,19 @@
   font-size: 14px;
   line-height: 1.8;
   position: relative;
+  margin-bottom: 0;
 }
 
 .chat-message.user {
   align-self: flex-end;
-  background: var(--user-msg-bg);
-  border: 1px solid var(--user-msg-border);
-  border-radius: 8px;
+  background: var(--user-msg-bg, var(--bg-surface));
+  border: 1px solid var(--user-msg-border, var(--border-color));
+  border-radius: 12px 12px 2px 12px;
   padding: 10px 14px;
   margin: 4px 0;
   max-width: 72%;
+  margin-left: auto;
+  margin-right: 0;
   color: var(--text-primary);
 }
 
@@ -278,20 +281,20 @@
 }
 
 .chat-message.assistant {
-  align-self: flex-start;
+  align-self: stretch;
   background: transparent;
   border: none;
-  border-left: 2px solid var(--accent);
   border-radius: 0;
-  padding: 4px 0 4px 14px;
-  margin: 4px 0;
+  padding: 0;
+  margin: 0 0 24px 0;
   width: 100%;
   max-width: 100%;
+  box-shadow: none;
   color: var(--text-primary);
 }
 
 .chat-message.assistant.speaking {
-  border-left-color: var(--accent);
+  border-left-color: transparent;
 }
 
 .chat-message.assistant.streaming {
@@ -365,7 +368,7 @@
 
 .chat-message.assistant .msg-label {
   background: rgba(78, 201, 176, 0.15);
-  color: #4ec9b0;
+  color: var(--accent);
   animation: label-scanline 3s ease-in-out infinite;
 }
 
@@ -392,6 +395,12 @@
   font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   font-size: 14px;
   line-height: 1.75;
+  background: rgba(255,255,255,0.02);
+  border: none;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 4px 0 16px 0;
+  width: 100%;
 }
 
 .msg-content {
@@ -495,23 +504,26 @@
 }
 
 .msg-content.markdown-body code {
-  background: var(--bg-surface) !important;
+  background: rgba(0,0,0,0.25) !important;
   padding: 2px 6px;
   border-radius: 2px;
   font-size: 13px;
   font-family: 'Share Tech Mono', 'Courier New', monospace;
   color: #79c0ff !important;
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .msg-content.markdown-body pre {
   margin: 0;
   padding: 0;
-  background: var(--bg-surface) !important;
+  background: rgba(0,0,0,0.25) !important;
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .msg-content.markdown-body pre code {
   color: #79c0ff !important;
+  background: transparent !important;
+  border: none;
 }
 
 .msg-content.markdown-body a {
@@ -539,11 +551,12 @@
   margin: 8px 0;
   font-size: 13px;
   font-family: 'Share Tech Mono', 'Courier New', monospace;
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .msg-content.markdown-body th,
 .msg-content.markdown-body td {
-  border: 1px solid var(--border-color);
+  border: none;
   padding: 6px 12px;
   text-align: left;
   white-space: nowrap;
@@ -555,10 +568,12 @@
   color: var(--accent);
   font-weight: 500;
   letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
 }
 
 .msg-content.markdown-body td {
   color: var(--text-primary);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .msg-content.markdown-body tr:nth-child(even) {
@@ -689,12 +704,12 @@
   align-items: flex-end;
   gap: 8px;
   background: var(--bg-primary);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   flex-shrink: 0;  /* 防止被挤压变形 */
   min-height: fit-content;  /* 保持内容高度 */
   /* 居中显示 */
-  max-width: 760px;
+  max-width: 800px;
   margin: 0 auto;
   width: 100%;
   padding: 10px 24px;
@@ -750,10 +765,10 @@
   position: relative;
   padding: 8px 10px;
   background: #161b22;
-  border-top: 1px solid rgba(78, 201, 176, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;  /* 防止被挤压变形 */
   /* 居中显示 */
-  max-width: 760px;
+  max-width: 800px;
   margin: 0 auto;
   width: 100%;
   padding-left: 24px;
@@ -789,7 +804,7 @@
 .file-preview-wrap {
   padding: 8px 10px;
   background: #161b22;
-  border-top: 1px solid rgba(78, 201, 176, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1056,7 +1071,7 @@
   flex: 1;
   overflow-y: auto;
   min-height: 150px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Gateway 日志区域 - 固定高度 */
@@ -1082,7 +1097,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .right-panel-middle {
@@ -1091,7 +1106,7 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
 }
 
@@ -1163,7 +1178,7 @@
 
 .right-panel-terminal .section-header {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .terminal-test-btn {
@@ -1204,7 +1219,7 @@
   flex-shrink: 0;
   padding: 8px 12px;
   background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   margin-top: 0;
   min-height: 36px;
   align-items: center;
@@ -1295,7 +1310,7 @@
   flex-shrink: 0;
   padding: 6px 10px;
   background: #0d1117;
-  border-bottom: 1px solid #1e3a3a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 10px;
   font-family: 'JetBrains Mono', Consolas, monospace;
   color: #8b949e;
@@ -1493,8 +1508,8 @@
   border-left-color: #00aaff;
 }
 .log-line.log-AGENT {
-  color: #00ff88;
-  border-left-color: #00ff88;
+  color: var(--accent);
+  border-left-color: var(--accent);
 }
 
 .log-line strong {
@@ -1530,7 +1545,7 @@
 .right-panel-tabs {
   display: flex;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: var(--bg-surface);
 }
 

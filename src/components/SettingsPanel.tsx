@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSettings, type StreamSpeed, type ThemeColor, THEME_PRESETS, getActiveThemeVars, type ThemeVars } from '../contexts/SettingsContext';
+import { useSettings, type StreamSpeed } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import { THEMES, applyTheme, getCurrentTheme, type ThemeKey } from '../styles/themes';
@@ -46,10 +46,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [autoScroll, setAutoScroll] = useState(true);
   const [showNotifications, setShowNotifications] = useState(true);
   const [maxHistory, setMaxHistory] = useState(100);
-  const [showCustomPicker, setShowCustomPicker] = useState(false);
-  const [customColors, setCustomColors] = useState<ThemeVars>(
-    () => local.customTheme ?? THEME_PRESETS.matrix.vars
-  );
 
   const [apiKeys, setApiKeys] = useState({
     DASHSCOPE_API_KEY: '',
@@ -408,73 +404,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <span className="toggle-slider" />
                   </label>
                 </div>
-                <div className="settings-row theme-row">
-                  <label>主题颜色</label>
-                </div>
-                <div className="theme-grid">
-                  {(Object.keys(THEME_PRESETS) as Exclude<ThemeColor, 'custom'>[]).map((key) => {
-                    const preset = THEME_PRESETS[key];
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        className={`theme-card ${local.theme === key ? 'active' : ''}`}
-                        onClick={() => setLocal((s) => ({ ...s, theme: key }))}
-                      >
-                        <span className="theme-swatch" style={{ background: preset.vars['--primary-color'] }} />
-                        <span className="theme-swatch-accent" style={{ background: preset.vars['--accent-color'] }} />
-                        <span className="theme-card-label">{preset.label}</span>
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className={`theme-card ${local.theme === 'custom' ? 'active' : ''}`}
-                    onClick={() => {
-                      setLocal((s) => ({ ...s, theme: 'custom', customTheme: customColors }));
-                      setShowCustomPicker(true);
-                    }}
-                  >
-                    <span className="theme-swatch theme-swatch-custom">✦</span>
-                    <span className="theme-card-label">自定义</span>
-                  </button>
-                </div>
-                {showCustomPicker && local.theme === 'custom' && (
-                  <div className="custom-theme-picker">
-                    {([
-                      ['--primary-color', '主色调'],
-                      ['--accent-color', '强调色'],
-                      ['--bg-primary', '主背景'],
-                      ['--bg-secondary', '次背景'],
-                      ['--text-primary', '文字色'],
-                    ] as [keyof ThemeVars, string][]).map(([varKey, label]) => (
-                      <div key={varKey} className="color-field">
-                        <label>{label}</label>
-                        <div className="color-input-wrap">
-                          <input
-                            type="color"
-                            value={customColors[varKey]}
-                            onChange={(e) => {
-                              const next = { ...customColors, [varKey]: e.target.value };
-                              setCustomColors(next);
-                              setLocal((s) => ({ ...s, customTheme: next }));
-                            }}
-                            className="color-picker-input"
-                          />
-                          <span className="color-hex">{customColors[varKey]}</span>
-                        </div>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="settings-btn"
-                      style={{ marginTop: 8, fontSize: 12 }}
-                      onClick={() => setShowCustomPicker(false)}
-                    >
-                      收起
-                    </button>
-                  </div>
-                )}
               </section>
               <section className="settings-section">
                 <h3>界面</h3>
@@ -679,7 +608,7 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                     <div style={{ marginTop: 20 }}>
                       <h4 style={{ marginBottom: 8, fontSize: '13px', color: '#00ff88' }}>核心记忆 URI</h4>
                       <ul style={{ margin: 0, paddingLeft: 20, fontSize: '12px', color: '#ccc' }}>
-                        {nocturneDetail.coreMemoryUris!.map((uri) => (
+                        {nocturneDetail?.coreMemoryUris?.map((uri) => (
                           <li key={uri} style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
                             <code style={{ flex: 1, wordBreak: 'break-all' }}>{uri}</code>
                             <button

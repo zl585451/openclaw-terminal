@@ -196,7 +196,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
           openExternal(href);
         }
       }}
-      style={{ color: '#00cc88', textDecoration: 'underline', cursor: 'pointer' }}
+      style={{ color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}
       title={href}
     >{children}</a>
   ),
@@ -217,7 +217,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
     if (!isBlock) {
       return (
         <code style={{
-          background: '#0a1a0a', color: '#00ff88',
+          background: 'var(--bg-primary)', color: 'var(--accent)',
           padding: '1px 5px', borderRadius: '3px',
           fontSize: '12px', fontFamily: 'Share Tech Mono',
         }}>{children}</code>
@@ -240,13 +240,13 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
         <div style={{ position: 'relative', margin: '8px 0' }}>
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            background: '#050f05',
-            border: '1px solid #0d2d0d',
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border-color)',
             borderBottom: 'none',
             borderRadius: '4px 4px 0 0',
             padding: '4px 12px',
           }}>
-            <span style={{ fontSize: '10px', color: '#00aa44', fontFamily: 'Share Tech Mono', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--accent)', fontFamily: 'Share Tech Mono', letterSpacing: '1px' }}>
               {(className?.replace('language-', '') || 'code').toUpperCase()} · {lines} lines
             </span>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -255,15 +255,13 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
                   onClick={() => setExpanded(!expanded)}
                   style={{
                     background: 'transparent',
-                    border: '1px solid #00662a',
+                    border: '1px solid var(--border-color)',
                     borderRadius: '3px',
-                    color: '#00cc55',
+                    color: 'var(--text-secondary)',
                     fontSize: '10px', fontFamily: 'Share Tech Mono',
                     padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
                     transition: 'all 0.15s',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#00ff41'; e.currentTarget.style.color = '#00ff41'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#00662a'; e.currentTarget.style.color = '#00cc55'; }}
                 >
                   {expanded ? '收起' : '展开'}
                 </button>
@@ -271,25 +269,23 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
               <button
                 onClick={handleCopy}
                 style={{
-                  background: copied ? 'rgba(0,255,136,0.1)' : 'transparent',
+                  background: copied ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent',
                   border: '1px solid',
-                  borderColor: copied ? '#00ff88' : '#00662a',
+                  borderColor: copied ? 'var(--accent)' : 'var(--border-color)',
                   borderRadius: '3px',
-                  color: copied ? '#00ff88' : '#00cc55',
+                  color: copied ? 'var(--accent)' : 'var(--text-secondary)',
                   fontSize: '10px', fontFamily: 'Share Tech Mono',
                   padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
                   transition: 'all 0.2s',
                 }}
-                onMouseEnter={(e) => { if (!copied) { e.currentTarget.style.borderColor = '#00ff41'; e.currentTarget.style.color = '#00ff41'; } }}
-                onMouseLeave={(e) => { if (!copied) { e.currentTarget.style.borderColor = '#00662a'; e.currentTarget.style.color = '#00cc55'; } }}
               >
       {copied ? '✓' : '⎘'}
               </button>
             </div>
           </div>
           <pre style={{
-            background: '#050f05',
-            border: '1px solid #0d2d0d',
+            background: 'rgba(0,0,0,0.25)',
+            border: '1px solid rgba(255,255,255,0.08)',
             borderRadius: '0 0 4px 4px',
             padding: '12px',
             overflow: 'auto',
@@ -298,14 +294,14 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
             transition: 'max-height 0.3s ease',
             position: 'relative',
           }}>
-            <code style={{ color: '#00ff41', fontSize: '12px', fontFamily: 'Share Tech Mono' }}>
+            <code style={{ color: 'var(--text-primary)', fontSize: '12px', fontFamily: 'Share Tech Mono' }}>
               {code}
             </code>
             {isLong && !expanded && (
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
                 height: '40px',
-                background: 'linear-gradient(transparent, #050f05)',
+                background: 'linear-gradient(transparent, rgba(0,0,0,0.25))',
                 pointerEvents: 'none',
               }} />
             )}
@@ -520,7 +516,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
-            <span style={{ color: '#00ff88', fontSize: '11px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>AMY</span>
+            <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>AMY</span>
             {isStreamingMsg && agentPhase !== 'idle' && (
               <span className="agent-status-badge">
                 {agentPhase === 'thinking' ? '思考中' : '打字中'}
@@ -679,7 +675,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
         onMouseEnter={() => setHoverTime(true)}
         onMouseLeave={() => setHoverTime(false)}
         style={{
-          color: hoverTime ? '#00ff88' : '#00772a',
+          color: hoverTime ? 'var(--accent)' : 'var(--text-secondary)',
           fontSize: '10px',
           fontFamily: 'Share Tech Mono',
           cursor: 'default',
@@ -2202,10 +2198,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             transform: 'translateY(-50%)',
             width: '24px',
             height: '48px',
-            background: 'var(--bg-panel)',
-            border: '1px solid var(--border-color)',
+            background: 'var(--bg-panel, #1a1a1a)',
+            border: '1px solid var(--border-color, #2a2a2a)',
             borderRadius: '4px',
-            color: 'var(--text-secondary)',
+            color: 'var(--text-secondary, #888888)',
             cursor: 'pointer',
             fontSize: '12px',
             zIndex: 10,
