@@ -64,11 +64,6 @@ const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected }) => {
       s.trail.push({ x: s.x, y });
       if (s.trail.length > TRAIL_LEN) s.trail.shift();
 
-      // 清除扫描点前方区域（黑色遮罩）
-      ctx.fillStyle = 'rgba(10, 18, 12, 1)';
-      ctx.fillRect(s.x, 0, 30, H);
-
-      // 画轨迹线，带渐变透明度
       if (s.trail.length > 1) {
         for (let i = 1; i < s.trail.length; i++) {
           const alpha = i / s.trail.length;
