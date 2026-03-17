@@ -1,17 +1,5 @@
 /* TaskBoard 任务看板样式 - OCT 暗色主题 */
-/* 主题色变量 */
-:root {
-  --tb-primary-bg: #0a0a0a;
-  --tb-panel-bg: #1a1a1a;
-  --tb-border-color: #2a2a2a;
-  --tb-accent-green: #00ff88;
-  --tb-text-primary: #e0e0e0;
-  --tb-text-secondary: #888888;
-  --tb-red-warning: #ff4444;
-  --tb-p0-color: #ff4444;
-  --tb-p1-color: #ffaa00;
-  --tb-p2-color: #00ff88;
-}
+/* 使用全局主题变量 */
 
 /* ═══════════════════════════════════════════════════════════
    紧凑模式样式 - 用于右侧面板
@@ -22,7 +10,7 @@
   height: 100%;
   overflow: hidden;
   font-family: 'Share Tech Mono', monospace;
-  background: var(--tb-primary-bg);
+  background: var(--bg-primary);
 }
 
 /* 标题行 */
@@ -31,26 +19,26 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--tb-border-color);
+  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
 .tb-title {
   font-size: 12px;
-  color: var(--tb-accent-green);
+  color: var(--accent);
   letter-spacing: 1px;
 }
 
 .tb-count {
   font-size: 11px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   margin-left: auto;
 }
 
 .tb-refresh-btn {
   background: transparent;
-  border: 1px solid var(--tb-border-color);
-  color: var(--tb-text-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 2px;
@@ -59,17 +47,17 @@
 }
 
 .tb-refresh-btn:hover {
-  border-color: var(--tb-accent-green);
-  color: var(--tb-accent-green);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* 今日意图 */
 .tb-intention {
   font-size: 11px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   padding: 4px 12px;
   background: rgba(0, 255, 136, 0.03);
-  border-bottom: 1px solid var(--tb-border-color);
+  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
@@ -86,7 +74,7 @@
   align-items: center;
   justify-content: center;
   height: 60px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -97,8 +85,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  background: var(--tb-panel-bg);
-  border: 0.5px solid var(--tb-border-color);
+  background: var(--bg-surface);
+  border: 0.5px solid var(--border-color);
   border-radius: 6px;
   margin: 4px 12px;
   cursor: pointer;
@@ -128,7 +116,7 @@
 .tb-task-content {
   flex: 1;
   font-size: 13px;
-  color: var(--tb-text-primary);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -154,7 +142,7 @@
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid var(--tb-border-color);
+  border: 1px solid var(--border-color);
   border-radius: 3px;
   font-size: 10px;
   cursor: pointer;
@@ -162,23 +150,23 @@
 }
 
 .tb-complete-btn {
-  color: var(--tb-accent-green);
+  color: var(--accent);
   border-color: rgba(0, 255, 136, 0.3);
 }
 
 .tb-complete-btn:hover {
   background: rgba(0, 255, 136, 0.1);
-  border-color: var(--tb-accent-green);
+  border-color: var(--accent);
 }
 
 .tb-delete-btn {
-  color: var(--tb-red-warning);
+  color: var(--p0);
   border-color: rgba(255, 68, 68, 0.3);
 }
 
 .tb-delete-btn:hover {
   background: rgba(255, 68, 68, 0.1);
-  border-color: var(--tb-red-warning);
+  border-color: var(--p0);
 }
 
 /* 删除确认条 */
@@ -193,7 +181,7 @@
   border: 1px solid rgba(255, 68, 68, 0.3);
   border-radius: 4px;
   font-size: 11px;
-  color: var(--tb-red-warning);
+  color: var(--p0);
 }
 
 .tb-delete-confirm button {
@@ -207,7 +195,7 @@
 }
 
 .tb-delete-confirm button:first-of-type {
-  color: var(--tb-red-warning);
+  color: var(--p0);
 }
 
 .tb-delete-confirm button:first-of-type:hover {
@@ -215,7 +203,7 @@
 }
 
 .tb-delete-confirm button:last-of-type {
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
 }
 
 .tb-delete-confirm button:last-of-type:hover {
@@ -229,25 +217,25 @@
   justify-content: center;
   gap: 12px;
   padding: 8px 12px;
-  border-top: 1px solid var(--tb-border-color);
+  border-top: 1px solid var(--border-color);
   font-size: 12px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
 }
 
 .tb-pagination button {
   padding: 4px 10px;
   background: transparent;
-  border: 1px solid var(--tb-border-color);
+  border: 1px solid var(--border-color);
   border-radius: 3px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .tb-pagination button:hover:not(:disabled) {
-  border-color: var(--tb-accent-green);
-  color: var(--tb-accent-green);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .tb-pagination button:disabled {
@@ -258,7 +246,7 @@
 /* 分割线 */
 .tb-divider {
   height: 1px;
-  background: var(--tb-border-color);
+  background: var(--border-color);
   margin: 0 12px;
   flex-shrink: 0;
 }
@@ -272,7 +260,7 @@
 
 .tb-parking-header {
   font-size: 12px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
@@ -282,16 +270,16 @@
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  background: var(--tb-panel-bg);
-  border: 0.5px solid var(--tb-border-color);
+  background: var(--bg-surface);
+  border: 0.5px solid var(--border-color);
   border-radius: 6px;
   margin-bottom: 4px;
 }
 
 .tb-parking-tag {
   padding: 2px 6px;
-  background: var(--tb-border-color);
-  color: var(--tb-text-secondary);
+  background: var(--border-color);
+  color: var(--text-secondary);
   font-size: 10px;
   border-radius: 3px;
 }
@@ -299,7 +287,7 @@
 .tb-parking-content {
   flex: 1;
   font-size: 12px;
-  color: var(--tb-text-primary);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -321,7 +309,7 @@
 .tb-remove-btn {
   padding: 2px 8px;
   background: transparent;
-  border: 1px solid var(--tb-border-color);
+  border: 1px solid var(--border-color);
   border-radius: 3px;
   font-size: 10px;
   cursor: pointer;
@@ -329,27 +317,27 @@
 }
 
 .tb-promote-btn {
-  color: var(--tb-accent-green);
+  color: var(--accent);
   border-color: rgba(0, 255, 136, 0.3);
 }
 
 .tb-promote-btn:hover {
   background: rgba(0, 255, 136, 0.1);
-  border-color: var(--tb-accent-green);
+  border-color: var(--accent);
 }
 
 .tb-remove-btn {
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
 }
 
 .tb-remove-btn:hover {
-  border-color: var(--tb-red-warning);
-  color: var(--tb-red-warning);
+  border-color: var(--p0);
+  color: var(--p0);
 }
 
 .tb-parking-empty {
   font-size: 12px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   text-align: center;
   padding: 20px 0;
 }
@@ -359,7 +347,7 @@
   display: flex;
   gap: 8px;
   padding: 8px 12px;
-  border-top: 1px solid var(--tb-border-color);
+  border-top: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
@@ -367,9 +355,9 @@
   flex: 1;
   padding: 8px 10px;
   background: #111111;
-  border: 1px solid var(--tb-border-color);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
-  color: var(--tb-text-primary);
+  color: var(--text-primary);
   font-size: 12px;
   font-family: 'Share Tech Mono', monospace;
   outline: none;
@@ -381,15 +369,15 @@
 }
 
 .tb-quick-input input:focus {
-  border-color: var(--tb-accent-green);
+  border-color: var(--accent);
 }
 
 .tb-add-btn {
   padding: 8px 16px;
   background: transparent;
-  border: 1px solid var(--tb-accent-green);
+  border: 1px solid var(--accent);
   border-radius: 4px;
-  color: var(--tb-accent-green);
+  color: var(--accent);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
@@ -406,8 +394,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--tb-primary-bg);
-  border: 1px solid var(--tb-border-color);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   overflow: hidden;
   font-family: 'Share Tech Mono', monospace;
@@ -415,14 +403,14 @@
 
 .tb-full-header {
   padding: 12px 14px;
-  background: linear-gradient(180deg, #161b22 0%, var(--tb-primary-bg) 100%);
-  border-bottom: 1px solid var(--tb-border-color);
+  background: linear-gradient(180deg, #161b22 0%, var(--bg-primary) 100%);
+  border-bottom: 1px solid var(--border-color);
   position: relative;
 }
 
 .tb-full-date {
   font-size: 14px;
-  color: var(--tb-accent-green);
+  color: var(--accent);
   letter-spacing: 2px;
   margin-bottom: 6px;
 }
@@ -436,7 +424,7 @@
 
 .tb-intention-label {
   font-size: 9px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   letter-spacing: 2px;
   padding: 2px 6px;
   background: rgba(0, 255, 136, 0.1);
@@ -445,7 +433,7 @@
 
 .tb-intention-text {
   font-size: 11px;
-  color: var(--tb-text-primary);
+  color: var(--text-primary);
 }
 
 .tb-close-btn {
@@ -455,9 +443,9 @@
   width: 24px;
   height: 24px;
   background: transparent;
-  border: 1px solid var(--tb-border-color);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   font-size: 16px;
   cursor: pointer;
   display: flex;
@@ -467,8 +455,8 @@
 }
 
 .tb-close-btn:hover {
-  border-color: var(--tb-accent-green);
-  color: var(--tb-accent-green);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .tb-full-content {
@@ -483,11 +471,11 @@
   justify-content: space-between;
   align-items: center;
   padding: 6px 14px;
-  background: var(--tb-panel-bg);
-  border-top: 1px solid var(--tb-border-color);
-  border-bottom: 1px solid var(--tb-border-color);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
   font-size: 9px;
-  color: var(--tb-text-secondary);
+  color: var(--text-secondary);
   letter-spacing: 3px;
   text-transform: uppercase;
 }
@@ -500,16 +488,16 @@
 
 .tb-task-section::-webkit-scrollbar-track,
 .tb-full-content::-webkit-scrollbar-track {
-  background: var(--tb-panel-bg);
+  background: var(--bg-surface);
 }
 
 .tb-task-section::-webkit-scrollbar-thumb,
 .tb-full-content::-webkit-scrollbar-thumb {
-  background: var(--tb-border-color);
+  background: var(--border-color);
   border-radius: 3px;
 }
 
 .tb-task-section::-webkit-scrollbar-thumb:hover,
 .tb-full-content::-webkit-scrollbar-thumb:hover {
-  background: var(--tb-accent-green);
+  background: var(--accent);
 }

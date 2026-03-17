@@ -5,6 +5,7 @@ import ChatTab, { ChatMessage } from './components/ChatTab';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
 import ActivationWindow from './components/ActivationWindow';
+import { loadSavedTheme } from './styles/themes';
 import './styles/App.css';
 
 
@@ -19,6 +20,9 @@ const App: React.FC = () => {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // 加载已保存的主题
+    loadSavedTheme();
+    
     window.electronAPI?.licenseCheck?.().then((result: unknown) => {
       setIsActivated(!!result);
     }).catch(() => {

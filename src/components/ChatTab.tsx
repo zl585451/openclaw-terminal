@@ -1218,6 +1218,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     templateId?: string;
   } | null>(null);
   // 任务看板显示状态
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // ===== 所有 useRef 集中声明 =====
   const logContainerRef = useRef<HTMLDivElement>(null);
   // xterm 相关 ref 已移除
@@ -2185,7 +2186,42 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         />
       </div>
 
-      <div className="right-panel">
+      <div className="right-panel" style={{
+        width: sidebarCollapsed ? '40px' : '380px',
+        transition: 'width 0.2s ease',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* 折叠按钮 */}
+        <button
+          onClick={() => setSidebarCollapsed(v => !v)}
+          style={{
+            position: 'absolute',
+            left: sidebarCollapsed ? '8px' : '-14px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: '24px',
+            height: '48px',
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '4px',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: '12px',
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {sidebarCollapsed ? '›' : '‹'}
+        </button>
+        {/* 内容区域 - 折叠时隐藏 */}
+        <div style={{
+          display: sidebarCollapsed ? 'none' : 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        }}>
         {/* 1. 顶部状态行：GW/MEM 信号+ 时间 */}
         <div
           style={{
@@ -2512,7 +2548,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             )}
           </div>
         </div>
+        {/* 内容区域结束 */}
       </div>
+      {/* right-panel 结束 */}
+      </div>
+    {/* chat-tab 结束 */}
     </div>
 
     {screenshotFlash && (
@@ -2520,7 +2560,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         <span className="screenshot-flash-text">已截图</span>
       </div>
     )}
-    </>
+  </>
   );
 };
 

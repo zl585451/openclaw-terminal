@@ -61,7 +61,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;  /* 子元素居中 */
-  background: #0d1117;
+  background: var(--bg-primary);
   border: 1px solid var(--border-color);
   min-width: 0;
   min-height: 0;  /* 防止 flex 子项撑破容器 */
@@ -82,7 +82,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: #161b22;
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;
@@ -117,7 +117,7 @@
 
 .section-title {
   font-size: 12px;
-  color: #4ec9b0;
+  color: var(--accent);
   letter-spacing: 1px;
 }
 
@@ -184,8 +184,8 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: #0d1117;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg-primary);
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   min-height: 0;  /* 防止 flex 子项撑破容器 */
   /* 居中显示 */
   max-width: 760px;
@@ -206,7 +206,7 @@
   border-radius: 2px;
 }
 .chat-messages::-webkit-scrollbar-thumb:hover {
-  background: #4ec9b0;
+  background: var(--accent);
   box-shadow: 0 0 6px rgba(78, 201, 176, 0.5);
 }
 
@@ -240,10 +240,13 @@
 
 .chat-message.user {
   align-self: flex-end;
-  background: #1c2128;
-  border: none;
-  border-right: 3px solid #4ec9b0;
-  color: #e6edf3;
+  background: var(--user-msg-bg);
+  border: 1px solid var(--user-msg-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 4px 0;
+  max-width: 72%;
+  color: var(--text-primary);
 }
 
 .msg-copy-wrap {
@@ -276,15 +279,19 @@
 
 .chat-message.assistant {
   align-self: flex-start;
-  background: #161b22;
+  background: transparent;
   border: none;
-  border-left: 3px solid #4ec9b0;
-  padding-left: 12px;
-  color: #e6edf3;
+  border-left: 2px solid var(--accent);
+  border-radius: 0;
+  padding: 4px 0 4px 14px;
+  margin: 4px 0;
+  width: 100%;
+  max-width: 100%;
+  color: var(--text-primary);
 }
 
 .chat-message.assistant.speaking {
-  border-left-color: #4ec9b0;
+  border-left-color: var(--accent);
 }
 
 .chat-message.assistant.streaming {
@@ -310,6 +317,9 @@
 
 .msg-user-text {
   display: block;
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .msg-wave {
@@ -379,6 +389,9 @@
   gap: 0;
   flex: 1;
   min-width: 0;
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  font-size: 14px;
+  line-height: 1.75;
 }
 
 .msg-content {
@@ -390,7 +403,10 @@
 /* Markdown 渲染样式 - OCT 双色调护眼风格 */
 .msg-content.markdown-body {
   white-space: normal;
-  color: #e6edf3;
+  color: var(--text-primary);
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  font-size: 14px;
+  line-height: 1.75;
 }
 
 .msg-content-streaming {
@@ -420,7 +436,7 @@
 .msg-content.markdown-body p {
   margin: 0 0 10px;
   line-height: 1.6;
-  color: #e6edf3 !important;
+  color: var(--text-primary) !important;
 }
 
 .msg-content.markdown-body p:last-child {
@@ -433,7 +449,7 @@
 .msg-content.markdown-body h4 {
   margin: 14px 0 8px;
   font-weight: 600;
-  color: #4ec9b0;
+  color: var(--accent);
 }
 
 .msg-content.markdown-body h1 { font-size: 1.35em; }
@@ -443,7 +459,7 @@
 
 .msg-content.markdown-body strong {
   font-weight: 600;
-  color: #e6edf3;
+  color: var(--text-primary);
 }
 
 .msg-content.markdown-body em {
@@ -462,7 +478,7 @@
 
 .msg-content.markdown-body ul li {
   margin: 4px 0;
-  color: #e6edf3 !important;
+  color: var(--text-primary) !important;
 }
 
 .msg-content.markdown-body ol {
@@ -471,26 +487,27 @@
 
 .msg-content.markdown-body ol li {
   margin: 4px 0;
-  color: #e6edf3 !important;
+  color: var(--text-primary) !important;
 }
 
 .msg-content.markdown-body li::marker {
-  color: #4ec9b0;
+  color: var(--accent);
 }
 
 .msg-content.markdown-body code {
-  background: #161b22 !important;
+  background: var(--bg-surface) !important;
   padding: 2px 6px;
   border-radius: 2px;
-  font-size: 0.9em;
+  font-size: 13px;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
   color: #79c0ff !important;
-  border: 1px solid #1e3a3a;
+  border: 1px solid var(--border-color);
 }
 
 .msg-content.markdown-body pre {
   margin: 0;
   padding: 0;
-  background: #161b22 !important;
+  background: var(--bg-surface) !important;
 }
 
 .msg-content.markdown-body pre code {
@@ -498,7 +515,7 @@
 }
 
 .msg-content.markdown-body a {
-  color: #4ec9b0;
+  color: var(--accent);
   text-decoration: underline;
 }
 
@@ -509,8 +526,8 @@
 .msg-content.markdown-body blockquote {
   margin: 8px 0;
   padding-left: 12px;
-  border-left: 3px solid #4ec9b0;
-  color: #8b949e;
+  border-left: 3px solid var(--accent);
+  color: var(--text-secondary);
 }
 
 /* GFM 表格：边框、表头、对齐、间距，流式时不错位 */
@@ -521,34 +538,35 @@
   min-width: 320px;
   margin: 8px 0;
   font-size: 13px;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
 }
 
 .msg-content.markdown-body th,
 .msg-content.markdown-body td {
-  border: 1px solid #1e3a3a;
+  border: 1px solid var(--border-color);
   padding: 6px 12px;
   text-align: left;
   white-space: nowrap;
-  color: #e6edf3;
+  color: var(--text-primary);
 }
 
 .msg-content.markdown-body th {
-  background: #161b22;
-  color: #4ec9b0;
+  background: var(--bg-surface);
+  color: var(--accent);
   font-weight: 500;
   letter-spacing: 0.5px;
 }
 
 .msg-content.markdown-body td {
-  color: #e6edf3;
+  color: var(--text-primary);
 }
 
 .msg-content.markdown-body tr:nth-child(even) {
-  background: #161b22;
+  background: var(--bg-surface);
 }
 
 .msg-content.markdown-body tr:hover {
-  background: #1c2128;
+  background: var(--bg-panel);
 }
 
 /* 表格容器允许横向滚动 */
@@ -637,11 +655,11 @@
 }
 
 .chat-message.user .msg-content {
-  color: #e6edf3;
+  color: var(--text-primary);
 }
 
 .chat-message.assistant .msg-content {
-  color: #e6edf3;
+  color: var(--text-primary);
 }
 
 /* AMY 气泡内 markdown 文字提升对比度 */
@@ -657,7 +675,7 @@
 .chat-message.assistant .msg-content.markdown-body td,
 .chat-message.assistant .msg-content.markdown-body th,
 .chat-message.assistant .msg-content.markdown-body blockquote {
-  color: #e6edf3 !important;
+  color: var(--text-primary) !important;
 }
 
 .chat-message.assistant .cursor-blink {
@@ -670,7 +688,7 @@
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  background: #0d1117;
+  background: var(--bg-primary);
   border-top: 1px solid var(--border-color);
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   flex-shrink: 0;  /* 防止被挤压变形 */
@@ -925,10 +943,10 @@
 
 .chat-input {
   flex: 1;
-  background: #161b22;
-  border: 1px solid #1e3a3a;
-  border-left: 2px solid #4ec9b0;
-  color: #e6edf3;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--accent);
+  color: var(--text-primary);
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 15px;
@@ -945,7 +963,7 @@
 }
 
 .chat-input.focused {
-  border-color: #4ec9b0;
+  border-color: var(--accent);
   box-shadow: 0 0 12px rgba(78, 201, 176, 0.3);
 }
 
@@ -1028,8 +1046,8 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: #0d1117;
-  border: 1px solid #1e3a3a;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   min-height: 0;
 }
 
@@ -1038,7 +1056,7 @@
   flex: 1;
   overflow-y: auto;
   min-height: 150px;
-  border-bottom: 1px solid #1e3a3a;
+  border-bottom: 1px solid var(--border-color);
 }
 
 /* Gateway 日志区域 - 固定高度 */
@@ -1064,7 +1082,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid #1e3a3a;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .right-panel-middle {
@@ -1072,8 +1090,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #0d1117;
-  border-bottom: 1px solid #1e3a3a;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
   overflow: hidden;
 }
 
@@ -1111,16 +1129,16 @@
   font-size: 11px;
   padding: 4px 10px;
   background: transparent;
-  border: 1px solid #1e3a3a;
-  color: #8b949e;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .right-panel-quick-btn:hover:not(:disabled) {
-  border-color: #4ec9b0;
-  color: #4ec9b0;
+  border-color: var(--accent);
+  color: var(--accent);
   background: rgba(78, 201, 176, 0.1);
 }
 
@@ -1130,9 +1148,9 @@
 }
 
 .right-panel-quick-btn.active {
-  border-color: #4ec9b0;
+  border-color: var(--accent);
   background: rgba(78, 201, 176, 0.15);
-  color: #4ec9b0;
+  color: var(--accent);
 }
 
 .right-panel-terminal {
@@ -1152,15 +1170,15 @@
   font-size: 9px;
   padding: 2px 6px;
   background: transparent;
-  border: 1px solid #1e3a3a;
-  color: #8b949e;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
   cursor: pointer;
   font-family: inherit;
 }
 
 .terminal-test-btn:hover:not(:disabled) {
-  border-color: #4ec9b0;
-  color: #4ec9b0;
+  border-color: var(--accent);
+  color: var(--accent);
   background: rgba(78, 201, 176, 0.1);
 }
 
@@ -1185,8 +1203,8 @@
 .gw-control-row {
   flex-shrink: 0;
   padding: 8px 12px;
-  background: #161b22;
-  border-bottom: 1px solid #1e3a3a;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
   margin-top: 0;
   min-height: 36px;
   align-items: center;
@@ -1394,7 +1412,7 @@
   flex: 1;
   min-height: 60px;
   padding: 6px;
-  background: #161b22;
+  background: var(--bg-surface);
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -1404,13 +1422,13 @@
   flex: 1;
   min-height: 60px;
   padding: 6px 8px;
-  background: #161b22;
+  background: var(--bg-surface);
   overflow-y: auto;
   overflow-x: hidden;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   font-size: 11px;
   line-height: 1.5;
-  color: #e0e0e0;
+  color: var(--text-primary);
 }
 
 /* 日志终端滚动条样式 */
@@ -1419,16 +1437,16 @@
 }
 
 .log-terminal-dom::-webkit-scrollbar-track {
-  background: #161b22;
+  background: var(--bg-surface);
 }
 
 .log-terminal-dom::-webkit-scrollbar-thumb {
-  background: #1e3a3a;
+  background: var(--border-color);
   border-radius: 3px;
 }
 
 .log-terminal-dom::-webkit-scrollbar-thumb:hover {
-  background: #4ec9b0;
+  background: var(--accent);
 }
 
 /* 日志行样式 - 基础 */
@@ -1512,8 +1530,8 @@
 .right-panel-tabs {
   display: flex;
   flex-shrink: 0;
-  border-bottom: 1px solid #1e3a3a;
-  background: #161b22;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-surface);
 }
 
 .right-panel-tab {
@@ -1522,7 +1540,7 @@
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #8b949e;
+  color: var(--text-secondary);
   font-size: 11px;
   font-family: 'Share Tech Mono', monospace;
   letter-spacing: 1px;
@@ -1531,13 +1549,13 @@
 }
 
 .right-panel-tab:hover {
-  color: #4ec9b0;
+  color: var(--accent);
   background: rgba(78, 201, 176, 0.03);
 }
 
 .right-panel-tab.active {
-  color: #4ec9b0;
-  border-bottom-color: #4ec9b0;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
   background: rgba(78, 201, 176, 0.05);
 }
 

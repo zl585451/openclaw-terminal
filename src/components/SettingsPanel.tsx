@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSettings, type StreamSpeed, type ThemeColor, THEME_PRESETS, getActiveThemeVars, type ThemeVars } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import type { PermissionConfig } from '../utils/permissionCheck';
+import { THEMES, applyTheme, getCurrentTheme, type ThemeKey } from '../styles/themes';
 import '../styles/SettingsPanel.css';
 
 const SCREENSHOT_SHORTCUT_OPTIONS = [
@@ -76,6 +77,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [memoryReadLoading, setMemoryReadLoading] = useState(false);
   const [restartingBackend, setRestartingBackend] = useState(false);
   const [amyWorkModeWriting, setAmyWorkModeWriting] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<ThemeKey>(() => getCurrentTheme());
 
   useEffect(() => {
     const api = (window as any).electronAPI;
@@ -360,6 +362,35 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           {activeTab === 'interface' && (
             <div className="settings-tab-content">
+              <section className="settings-section">
+                <h3>界面主题</h3>
+                <div className="settings-desc" style={{ marginBottom: 12 }}>选择你喜欢的配色方案</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {Object.entries(THEMES).map(([key, theme]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        applyTheme(key as ThemeKey);
+                        setCurrentTheme(key as ThemeKey);
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: currentTheme === key ? 'var(--accent)' : 'transparent',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: currentTheme === key ? '#000' : 'var(--text-secondary)',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      {theme.name}
+                    </button>
+                  ))}
+                </div>
+              </section>
               <section className="settings-section">
                 <h3>基础设置</h3>
                 <div className="settings-row">

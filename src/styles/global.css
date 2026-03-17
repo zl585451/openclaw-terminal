@@ -22,6 +22,20 @@
   --oct-green-ui: #00ff41;
   --oct-green-ui-dim: #00cc6644;
 
+  /* 新主题系统变量 - 默认 hacker 主题 */
+  --bg-panel: #0d1a0d;
+  --bg-surface: #1a1a1a;
+  --accent: #00ff88;
+  --accent-dim: #00cc66;
+  --text-muted: #444444;
+  --p0: #ff4444;
+  --p1: #ffaa00;
+  --p2: #00ff88;
+  --user-msg-bg: #1a3a1a;
+  --user-msg-border: #2a4a2a;
+  --amy-msg-bg: #0a1a0a;
+  --amy-msg-border: #1a2a1a;
+
   /* 保持向后兼容的变量 */
   --primary-color: #00ff41;
   --accent-color: #4ec9b0;
