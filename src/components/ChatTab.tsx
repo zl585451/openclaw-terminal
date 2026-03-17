@@ -1482,7 +1482,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (!systemReply && finalStreamContent) {
         const thinkModeId = detectThinkModeMarker(finalStreamContent);
         if (thinkModeId) {
-          // [THINK_MODE:xxx] 标记：剥离标记后显示，延迟弹出面          finalStreamContent = stripThinkModeMarker(finalStreamContent);
+          // [THINK_MODE:xxx] 标记：剥离标记后显示，延迟弹出面板
+          finalStreamContent = stripThinkModeMarker(finalStreamContent);
           setTimeout(() => {
             setActiveSocratic({ templateId: thinkModeId });
             setShowSocratic(true);
@@ -1542,7 +1543,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
-          // done 时：保存最终内容，但继续让打字机跑          // isStreaming 保持 true，让打字机继续跑
+          // done 时：保存最终内容，但继续让打字机跑完
+          // isStreaming 保持 true，让打字机继续跑
           return prev.map((msg, idx) =>
             idx === prev.length - 1
               ? { ...msg, content: finalStreamContent }
@@ -1552,7 +1554,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         if (finalStreamContent || data.text) {
           const textContent = (finalStreamContent || String(data.text || '')).trim();
           if (!textContent) return prev;
-          // 去重：最后一条已是助手消息且内容相同，避Gateway 多路转发（如 chat + agent）导致重          if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
+          // 去重：最后一条已是助手消息且内容相同，避免 Gateway 多路转发（如 chat + agent）导致重复
+          if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
             return prev;
           }
           return [
@@ -1561,14 +1564,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               id: getNextMessageId(),
               role: 'assistant' as const,
               content: textContent,
-              isStreaming: true, // 保持 true，让打字机跑              isSystemReply: systemReply,
+              isStreaming: true, // 保持 true，让打字机跑完
+              isSystemReply: systemReply,
               timestamp: Date.now(),
             },
           ];
         }
         return prev;
       });
-      // 不立setIsStreaming(false)，等打字机跑完再结束
+      // 不立即 setIsStreaming(false)，等打字机跑完再结束
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 50);
       return;
     }
@@ -1580,7 +1584,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         streamDoneReceived.current = false; // 开始流式时重置
       }
       
-      // delta 模式：追加增量；全量模式：直接替      if (isDelta) {
+      // delta 模式：追加增量；全量模式：直接替换
+      if (isDelta) {
         streamingMessageRef.current += content;
       } else {
         streamingMessageRef.current = content;
@@ -1647,7 +1652,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
     if (!settings.typingSound || !msg.content) return;
     const plain = stripMarkdown(msg.content);
-    const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗 : plain;
+    const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗口' : plain;
     if (!truncated.trim()) return;
     setSpeakingMessageId(msg.id);
     const result = await ipcRenderer.invoke('tts-speak', { text: truncated });
@@ -1709,7 +1714,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     // 权限检查与危险命令拦截
     const permCheck = checkPermission(fullContent, permissions);
     if (!permCheck.allowed) {
-      window.alert(permCheck.reason || '此操作已被权限设置拦截);
+      window.alert(permCheck.reason || '此操作已被权限设置拦截');
       return;
     }
     const dangerMatch = getDangerMatch(fullContent);
@@ -1769,7 +1774,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     const permCheck = checkPermission(content.trim(), permissions);
     if (!permCheck.allowed) {
-      window.alert(permCheck.reason || '此操作已被权限设置拦截);
+      window.alert(permCheck.reason || '此操作已被权限设置拦截');
       return;
     }
     const dangerMatch = getDangerMatch(content.trim());
@@ -1819,8 +1824,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const onLogLines = (_: any, lines: string[]) => {
       setLogLines((prev) => {
         const updated = [...prev, ...lines];
-        return updated.slice(-50); // 只保留最50       });
-      // 自动滚动到底      if (logContainerRef.current) {
+        return updated.slice(-50); // 只保留最新50条
+      });
+      // 自动滚动到底部
+      if (logContainerRef.current) {
         logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
       }
     };
@@ -1852,7 +1859,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       return;
     }
 
-    // 打字机效果已启动，跳    if (typewriterTimerRef.current) return;
+    // 打字机效果已启动，跳过
+    if (typewriterTimerRef.current) return;
 
     typewriterTimerRef.current = setInterval(() => {
       // ref 追踪内容长度
@@ -2015,7 +2023,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               type="button"
               className={`voice-toggle ${settings.typingSound ? 'on' : 'off'}`}
               onClick={() => setSettings((s) => ({ ...s, typingSound: !s.typingSound }))}
-              title={settings.typingSound ? '点击关闭打字音效' : '点击开启打字音}
+              title={settings.typingSound ? '点击关闭打字音效' : '点击开启打字音效'}
             >
               {settings.typingSound ? '♪ VOICE ON' : '♪ VOICE OFF'}
             </button>
