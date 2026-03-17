@@ -151,3 +151,49 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── Pill 模式（≤4个选项）：单击直接发送 ── */
+.option-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.option-pill {
+  padding: 7px 16px;
+  background: transparent;
+  border: 1px solid #1a6633;
+  border-radius: 20px;
+  color: #00cc66;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.18s;
+  line-height: 1.4;
+  letter-spacing: 0.3px;
+}
+
+.option-pill:hover:not(:disabled) {
+  border-color: #00ff88;
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.08);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.15);
+  transform: translateY(-1px);
+}
+
+.option-pill.sent {
+  border-color: #00ff88;
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.12);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
+}
+
+.option-pill.faded {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.option-pill:disabled {
+  cursor: default;
+}

@@ -18,6 +18,8 @@ interface SocraticPanelProps {
   suggestedTemplateId?: string | null;
   onComplete: (text: string) => void;
   onClose: () => void;
+  /** 内联模式：不显示全屏遮罩，作为卡片嵌入对话流 */
+  inline?: boolean;
 }
 
 export default function SocraticPanel({
@@ -26,6 +28,7 @@ export default function SocraticPanel({
   suggestedTemplateId,
   onComplete,
   onClose,
+  inline = false,
 }: SocraticPanelProps) {
   const [template, setTemplate] = useState<SocraticTemplate | null>(null);
   const [activeRounds, setActiveRounds] = useState<SocraticRound[]>([]);
@@ -131,12 +134,8 @@ export default function SocraticPanel({
     selected.size > 0 &&
     !(selected.size === 1 && selected.has('__other__') && !otherText.trim());
 
-  return (
-    <div
-      className="socratic-overlay"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="socratic-panel">
+  const panelContent = (
+      <div className={`socratic-panel${inline ? ' socratic-panel--inline' : ''}`}>
 
         {/* ── Header：极简 ── */}
         <div className="socratic-header">
@@ -263,6 +262,22 @@ export default function SocraticPanel({
         )}
 
       </div>
+  );
+
+  if (inline) {
+    return (
+      <div className="socratic-inline-wrap">
+        {panelContent}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="socratic-overlay"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {panelContent}
     </div>
   );
 }

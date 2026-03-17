@@ -1,18 +1,90 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type StreamSpeed = 'fast' | 'medium' | 'slow';
-export type ThemeColor = 'green' | 'cyan' | 'yellow';
+export type ThemeColor = 'matrix' | 'cyber' | 'sunset' | 'midnight' | 'custom';
+
+export interface ThemeVars {
+  '--primary-color': string;
+  '--accent-color': string;
+  '--bg-primary': string;
+  '--bg-secondary': string;
+  '--bg-tertiary': string;
+  '--text-primary': string;
+  '--text-dim': string;
+  '--border-color': string;
+  '--glow-color': string;
+}
+
+export const THEME_PRESETS: Record<Exclude<ThemeColor, 'custom'>, { label: string; vars: ThemeVars }> = {
+  matrix: {
+    label: 'Matrix 绿',
+    vars: {
+      '--primary-color': '#00ff41',
+      '--accent-color': '#00ff88',
+      '--bg-primary': '#020c06',
+      '--bg-secondary': '#030f08',
+      '--bg-tertiary': '#041210',
+      '--text-primary': '#00ff9f',
+      '--text-dim': '#006644',
+      '--border-color': 'rgba(0,255,65,0.2)',
+      '--glow-color': 'rgba(0,255,65,0.4)',
+    },
+  },
+  cyber: {
+    label: 'Cyber 蓝',
+    vars: {
+      '--primary-color': '#00d4ff',
+      '--accent-color': '#00e5ff',
+      '--bg-primary': '#020a10',
+      '--bg-secondary': '#031018',
+      '--bg-tertiary': '#041520',
+      '--text-primary': '#b0e0ff',
+      '--text-dim': '#2277aa',
+      '--border-color': 'rgba(0,212,255,0.2)',
+      '--glow-color': 'rgba(0,212,255,0.4)',
+    },
+  },
+  sunset: {
+    label: 'Sunset 橙',
+    vars: {
+      '--primary-color': '#ff6b2b',
+      '--accent-color': '#ffaa00',
+      '--bg-primary': '#0c0604',
+      '--bg-secondary': '#120a06',
+      '--bg-tertiary': '#180e08',
+      '--text-primary': '#ffe0c0',
+      '--text-dim': '#885522',
+      '--border-color': 'rgba(255,107,43,0.2)',
+      '--glow-color': 'rgba(255,107,43,0.4)',
+    },
+  },
+  midnight: {
+    label: 'Midnight 紫',
+    vars: {
+      '--primary-color': '#a855f7',
+      '--accent-color': '#c084fc',
+      '--bg-primary': '#08041a',
+      '--bg-secondary': '#0c0620',
+      '--bg-tertiary': '#100828',
+      '--text-primary': '#e0d0ff',
+      '--text-dim': '#6633aa',
+      '--border-color': 'rgba(168,85,247,0.2)',
+      '--glow-color': 'rgba(168,85,247,0.4)',
+    },
+  },
+};
 
 export interface Settings {
   streamSpeed: StreamSpeed;
   typingSound: boolean;
   theme: ThemeColor;
+  customTheme?: ThemeVars;
 }
 
 const DEFAULT: Settings = {
   streamSpeed: 'medium',
   typingSound: false,
-  theme: 'green',
+  theme: 'matrix',
 };
 
 const STORAGE_KEY = 'claw-terminal-settings';
@@ -21,6 +93,32 @@ const SPEED_MS: Record<StreamSpeed, number> = {
   medium: 50,
   slow: 100,
 };
+
+function applyThemeVars(vars: ThemeVars) {
+  const root = document.documentElement;
+  for (const [key, value] of Object.entries(vars)) {
+    root.style.setProperty(key, value);
+  }
+}
+
+const LEGACY_THEME_MAP: Record<string, ThemeColor> = {
+  green: 'matrix',
+  cyan: 'cyber',
+  yellow: 'sunset',
+};
+
+function normalizeTheme(raw: string | undefined): ThemeColor {
+  if (!raw) return 'matrix';
+  if (raw in LEGACY_THEME_MAP) return LEGACY_THEME_MAP[raw];
+  if (raw in THEME_PRESETS || raw === 'custom') return raw as ThemeColor;
+  return 'matrix';
+}
+
+export function getActiveThemeVars(settings: Settings): ThemeVars {
+  if (settings.theme === 'custom' && settings.customTheme) return settings.customTheme;
+  const key = normalizeTheme(settings.theme);
+  return THEME_PRESETS[key === 'custom' ? 'matrix' : key].vars;
+}
 
 const SettingsContext = createContext<{
   settings: Settings;
@@ -37,7 +135,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         return {
           streamSpeed: data.streamSpeed ?? DEFAULT.streamSpeed,
           typingSound: typeof data.typingSound === 'boolean' ? data.typingSound : DEFAULT.typingSound,
-          theme: data.theme ?? DEFAULT.theme,
+          theme: normalizeTheme(data.theme),
+          customTheme: data.customTheme,
         };
       }
     } catch {}
@@ -47,6 +146,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    applyThemeVars(getActiveThemeVars(settings));
+  }, [settings.theme, settings.customTheme]);
 
   const streamSpeedMs = SPEED_MS[settings.streamSpeed];
 

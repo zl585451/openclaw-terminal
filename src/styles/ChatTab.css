@@ -1,4 +1,4 @@
-/* ChatTab.css */
+/* ChatTab.css - OCT 双色调护眼终端风格 */
 
 /* 扫描线动画 */
 @keyframes scanline {
@@ -24,20 +24,35 @@
   50% { opacity: 1; }
 }
 
+/* 右侧信号灯呼吸动画 */
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px #00ff41; }
+  50% { opacity: 0.4; box-shadow: none; }
+}
+@keyframes pulse-blue {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px #4ec9b0; }
+  50% { opacity: 0.3; box-shadow: none; }
+}
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px #ff4444; }
+  50% { opacity: 0.3; box-shadow: none; }
+}
+
 .msg-processing .block:nth-child(1) { animation-delay: 0s; }
 .msg-processing .block:nth-child(2) { animation-delay: 0.15s; }
 .msg-processing .block:nth-child(3) { animation-delay: 0.3s; }
 
 /* 输入框闪烁 */
 @keyframes input-flash {
-  0% { box-shadow: 0 0 20px rgba(0, 255, 159, 0.8); border-color: #00ff9f; }
-  100% { box-shadow: 0 0 5px rgba(0, 255, 159, 0.3); border-color: var(--border-color); }
+  0% { box-shadow: 0 0 20px rgba(78, 201, 176, 0.8); border-color: #4ec9b0; }
+  100% { box-shadow: 0 0 5px rgba(78, 201, 176, 0.3); border-color: var(--border-color); }
 }
 
 .chat-tab {
   display: flex;
   height: 100%;
   gap: 10px;
+  overflow: hidden;  /* 防止内容溢出 */
 }
 
 /* 聊天区域 */
@@ -45,9 +60,12 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #020c06;
+  align-items: center;  /* 子元素居中 */
+  background: #0d1117;
   border: 1px solid var(--border-color);
   min-width: 0;
+  min-height: 0;  /* 防止 flex 子项撑破容器 */
+  overflow: hidden;  /* 防止内容溢出 */
 }
 
 /* 日志区域 */
@@ -64,10 +82,18 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: #030e07;
+  background: #161b22;
   border-bottom: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;
+}
+
+/* 顶部聊天 header 居中对齐对话区域 */
+.chat-section > .section-header {
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 8px 24px;
 }
 
 .section-header::before {
@@ -77,7 +103,7 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+  background: linear-gradient(90deg, transparent, #4ec9b0, transparent);
   animation: scanline 3s linear infinite;
 }
 
@@ -91,7 +117,7 @@
 
 .section-title {
   font-size: 12px;
-  color: var(--cyan);
+  color: #4ec9b0;
   letter-spacing: 1px;
 }
 
@@ -99,8 +125,8 @@
   font-size: 10px;
   padding: 4px 8px;
   background: transparent;
-  border: 1px solid rgba(0, 229, 255, 0.4);
-  color: var(--cyan);
+  border: 1px solid rgba(78, 201, 176, 0.4);
+  color: #4ec9b0;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   cursor: pointer;
   letter-spacing: 1px;
@@ -108,8 +134,8 @@
 }
 
 .voice-toggle.on {
-  border-color: var(--cyan);
-  color: #00e5ff;
+  border-color: #4ec9b0;
+  color: #4ec9b0;
 }
 
 .voice-toggle.off {
@@ -117,7 +143,7 @@
 }
 
 .voice-toggle:hover {
-  background: rgba(0, 229, 255, 0.1);
+  background: rgba(78, 201, 176, 0.1);
 }
 
 .ws-status {
@@ -130,7 +156,7 @@
 }
 
 .ws-status.connected {
-  color: var(--green);
+  color: #00ff41;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -140,14 +166,14 @@
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: #00ff88;
+  background: #00ff41;
   border-radius: 50%;
   animation: pulse-dot 1.2s ease-in-out infinite;
-  box-shadow: 0 0 6px #00ff88;
+  box-shadow: 0 0 6px #00ff41;
 }
 
 .ws-status.disconnected {
-  color: var(--text-dim);
+  color: #8b949e;
 }
 
 /* 聊天消息区 - 整体滚动，气泡高度随内容撑开 */
@@ -155,12 +181,17 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: #020c06;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  background: #0d1117;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  min-height: 0;  /* 防止 flex 子项撑破容器 */
+  /* 居中显示 */
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 12px 24px;
 }
 
 /* 聊天区滚动条 */
@@ -171,12 +202,12 @@
   background: transparent;
 }
 .chat-messages::-webkit-scrollbar-thumb {
-  background: #1a4d2a;
+  background: #1e3a3a;
   border-radius: 2px;
 }
 .chat-messages::-webkit-scrollbar-thumb:hover {
-  background: #00ff41;
-  box-shadow: 0 0 6px rgba(0,255,65,0.5);
+  background: #4ec9b0;
+  box-shadow: 0 0 6px rgba(78, 201, 176, 0.5);
 }
 
 .chat-empty {
@@ -186,12 +217,12 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: var(--text-dim);
+  color: #8b949e;
 }
 
 .empty-icon {
   font-size: 24px;
-  color: var(--text-dim);
+  color: #8b949e;
 }
 
 .chat-message {
@@ -201,18 +232,18 @@
   padding: 12px 16px;
   border-radius: 8px;
   max-width: 85%;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-  font-size: 15px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
   line-height: 1.8;
   position: relative;
 }
 
 .chat-message.user {
   align-self: flex-end;
-  background: #001a0d;
+  background: #1c2128;
   border: none;
-  border-right: 3px solid #00ccff;
-  color: #a8ffcf;
+  border-right: 3px solid #4ec9b0;
+  color: #e6edf3;
 }
 
 .msg-copy-wrap {
@@ -231,29 +262,37 @@
   font-size: 10px;
   padding: 4px 8px;
   background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(0, 229, 255, 0.5);
-  color: #00e5ff;
+  border: 1px solid rgba(78, 201, 176, 0.5);
+  color: #4ec9b0;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .msg-copy-btn:hover {
-  background: rgba(0, 229, 255, 0.2);
-  border-color: #00e5ff;
+  background: rgba(78, 201, 176, 0.2);
+  border-color: #4ec9b0;
 }
 
 .chat-message.assistant {
   align-self: flex-start;
-  background: #001510;
+  background: #161b22;
   border: none;
-  border-left: 3px solid #00ff41;
+  border-left: 3px solid #4ec9b0;
   padding-left: 12px;
-  color: #e0fff4;
+  color: #e6edf3;
 }
 
 .chat-message.assistant.speaking {
-  border-left-color: #00e5ff;
+  border-left-color: #4ec9b0;
+}
+
+.chat-message.assistant.streaming {
+  min-height: 60px;
+}
+
+.chat-message.assistant.streaming .msg-assistant-body {
+  min-height: 1.5em;
 }
 
 .msg-user-body {
@@ -266,7 +305,7 @@
   max-width: 200px;
   max-height: 150px;
   border-radius: 4px;
-  border: 1px solid rgba(0, 255, 159, 0.3);
+  border: 1px solid rgba(78, 201, 176, 0.3);
 }
 
 .msg-user-text {
@@ -275,7 +314,7 @@
 
 .msg-wave {
   font-size: 12px;
-  color: #00e5ff;
+  color: #4ec9b0;
   animation: wave-pulse 0.6s ease-in-out infinite;
   margin-right: 6px;
 }
@@ -310,13 +349,13 @@
 }
 
 .chat-message.user .msg-label {
-  background: rgba(0, 255, 159, 0.15);
-  color: #00ff9f;
+  background: rgba(78, 201, 176, 0.15);
+  color: #4ec9b0;
 }
 
 .chat-message.assistant .msg-label {
-  background: rgba(0, 229, 255, 0.15);
-  color: #00e5ff;
+  background: rgba(78, 201, 176, 0.15);
+  color: #4ec9b0;
   animation: label-scanline 3s ease-in-out infinite;
 }
 
@@ -348,10 +387,10 @@
   flex: 1;
 }
 
-/* Markdown 渲染样式 - 极客绿色风格 */
+/* Markdown 渲染样式 - OCT 双色调护眼风格 */
 .msg-content.markdown-body {
   white-space: normal;
-  color: #00ff9f;
+  color: #e6edf3;
 }
 
 .msg-content-streaming {
@@ -360,9 +399,28 @@
   font-family: inherit;
 }
 
+/* 流式输出时表格以纯文本展示，避免反复重排导致跳动；样式与最终表格接近以减小结束时的高度差 */
+.msg-content-streaming-root {
+  display: block;
+  contain: layout;
+}
+
+.msg-streaming-raw-table {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #4ec9b0;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0;
+  padding: 4px 0;
+  font-family: inherit;
+}
+
 .msg-content.markdown-body p {
   margin: 0 0 10px;
   line-height: 1.6;
+  color: #e6edf3 !important;
 }
 
 .msg-content.markdown-body p:last-child {
@@ -375,7 +433,7 @@
 .msg-content.markdown-body h4 {
   margin: 14px 0 8px;
   font-weight: 600;
-  color: #00ff9f;
+  color: #4ec9b0;
 }
 
 .msg-content.markdown-body h1 { font-size: 1.35em; }
@@ -385,11 +443,11 @@
 
 .msg-content.markdown-body strong {
   font-weight: 600;
-  color: #00ff9f;
+  color: #e6edf3;
 }
 
 .msg-content.markdown-body em {
-  color: #00ff9fcc;
+  color: #8b949e;
 }
 
 .msg-content.markdown-body ul,
@@ -404,6 +462,7 @@
 
 .msg-content.markdown-body ul li {
   margin: 4px 0;
+  color: #e6edf3 !important;
 }
 
 .msg-content.markdown-body ol {
@@ -412,66 +471,98 @@
 
 .msg-content.markdown-body ol li {
   margin: 4px 0;
+  color: #e6edf3 !important;
 }
 
 .msg-content.markdown-body li::marker {
-  color: #00ff9f99;
+  color: #4ec9b0;
 }
 
 .msg-content.markdown-body code {
-  background: rgba(0, 0, 0, 0.4);
+  background: #161b22 !important;
   padding: 2px 6px;
   border-radius: 2px;
   font-size: 0.9em;
-  color: #00ff9f;
-  border: 1px solid #00ff9f33;
+  color: #79c0ff !important;
+  border: 1px solid #1e3a3a;
 }
 
 .msg-content.markdown-body pre {
   margin: 0;
   padding: 0;
-  background: none;
+  background: #161b22 !important;
+}
+
+.msg-content.markdown-body pre code {
+  color: #79c0ff !important;
 }
 
 .msg-content.markdown-body a {
-  color: #00e5ff;
+  color: #4ec9b0;
   text-decoration: underline;
 }
 
 .msg-content.markdown-body a:hover {
-  color: #00ff9f;
+  color: #79c0ff;
 }
 
 .msg-content.markdown-body blockquote {
   margin: 8px 0;
   padding-left: 12px;
-  border-left: 3px solid #00ff9f66;
-  color: #00ff9fcc;
+  border-left: 3px solid #4ec9b0;
+  color: #8b949e;
 }
 
-/* GFM 表格 */
+/* GFM 表格：边框、表头、对齐、间距，流式时不错位 */
 .msg-content.markdown-body table {
   border-collapse: collapse;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  min-width: 320px;
+  margin: 8px 0;
+  font-size: 13px;
 }
+
 .msg-content.markdown-body th,
 .msg-content.markdown-body td {
-  border: 1px solid #00ff8844;
-  padding: 4px 8px;
+  border: 1px solid #1e3a3a;
+  padding: 6px 12px;
   text-align: left;
+  white-space: nowrap;
+  color: #e6edf3;
 }
+
 .msg-content.markdown-body th {
-  background: #00ff8820;
-  color: #00ff88;
+  background: #161b22;
+  color: #4ec9b0;
+  font-weight: 500;
+  letter-spacing: 0.5px;
 }
+
+.msg-content.markdown-body td {
+  color: #e6edf3;
+}
+
 .msg-content.markdown-body tr:nth-child(even) {
-  background: #00ff8808;
+  background: #161b22;
+}
+
+.msg-content.markdown-body tr:hover {
+  background: #1c2128;
+}
+
+/* 表格容器允许横向滚动 */
+.msg-content .md-table-wrap,
+.msg-content table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
 }
 
 /* 时间戳 */
 .msg-timestamp {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.3);
+  color: #8b949e;
   text-align: right;
   margin-top: 4px;
 }
@@ -491,11 +582,11 @@
 }
 
 .chat-thinking .processing-blocks .block {
-  background: #00e5ff;
+  background: #4ec9b0;
 }
 
 .chat-thinking .processing-text {
-  color: rgba(0, 229, 255, 0.8);
+  color: rgba(78, 201, 176, 0.8);
 }
 
 /* 打字中 processing 动画 */
@@ -519,7 +610,7 @@
   display: inline-block;
   width: 8px;
   height: 14px;
-  background: #00e5ff;
+  background: #4ec9b0;
   animation: block-blink 0.6s ease-in-out infinite;
   border-radius: 2px;
 }
@@ -541,16 +632,16 @@
 
 .processing-text {
   font-size: 12px;
-  color: rgba(224, 255, 244, 0.6);
+  color: #8b949e;
   letter-spacing: 1px;
 }
 
 .chat-message.user .msg-content {
-  color: #a8ffcf;
+  color: #e6edf3;
 }
 
 .chat-message.assistant .msg-content {
-  color: #e0ffe0;
+  color: #e6edf3;
 }
 
 /* AMY 气泡内 markdown 文字提升对比度 */
@@ -566,11 +657,11 @@
 .chat-message.assistant .msg-content.markdown-body td,
 .chat-message.assistant .msg-content.markdown-body th,
 .chat-message.assistant .msg-content.markdown-body blockquote {
-  color: #e0ffe0;
+  color: #e6edf3 !important;
 }
 
 .chat-message.assistant .cursor-blink {
-  color: #00e5ff;
+  color: #4ec9b0;
   animation: blink 1s step-end infinite;
 }
 
@@ -578,11 +669,17 @@
 .chat-input-area {
   display: flex;
   align-items: flex-end;
-  padding: 10px;
   gap: 8px;
-  background: #020c06;
+  background: #0d1117;
   border-top: 1px solid var(--border-color);
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  flex-shrink: 0;  /* 防止被挤压变形 */
+  min-height: fit-content;  /* 保持内容高度 */
+  /* 居中显示 */
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 10px 24px;
 }
 
 .mic-btn-icon {
@@ -590,8 +687,8 @@
   height: 28px;
   padding: 0;
   background: transparent;
-  border: 1px solid rgba(0, 255, 159, 0.4);
-  color: #a8ffcf;
+  border: 1px solid rgba(78, 201, 176, 0.4);
+  color: #4ec9b0;
   font-size: 14px;
   cursor: pointer;
   display: flex;
@@ -602,8 +699,8 @@
 }
 
 .mic-btn-icon:hover:not(:disabled) {
-  border-color: #00ff9f;
-  background: rgba(0, 255, 159, 0.1);
+  border-color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.1);
 }
 
 .mic-btn-icon.recording {
@@ -627,22 +724,29 @@
 }
 
 .chat-section.drag-over {
-  border: 2px dashed #00ff88;
-  background: rgba(0, 255, 136, 0.03);
+  border: 2px dashed #4ec9b0;
+  background: rgba(78, 201, 176, 0.03);
 }
 
 .image-preview-wrap {
   position: relative;
   padding: 8px 10px;
-  background: #001a0d;
-  border-top: 1px solid rgba(0, 255, 159, 0.2);
+  background: #161b22;
+  border-top: 1px solid rgba(78, 201, 176, 0.2);
+  flex-shrink: 0;  /* 防止被挤压变形 */
+  /* 居中显示 */
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+  padding-left: 24px;
+  padding-right: 24px;
 }
 
 .image-preview {
   max-width: 200px;
   max-height: 120px;
   border-radius: 4px;
-  border: 1px solid rgba(0, 255, 159, 0.3);
+  border: 1px solid rgba(78, 201, 176, 0.3);
 }
 
 .image-remove {
@@ -666,8 +770,8 @@
 /* 文件预览区域 */
 .file-preview-wrap {
   padding: 8px 10px;
-  background: #001a0d;
-  border-top: 1px solid rgba(0, 255, 159, 0.2);
+  background: #161b22;
+  border-top: 1px solid rgba(78, 201, 176, 0.2);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -680,8 +784,8 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: rgba(0, 255, 159, 0.05);
-  border: 1px solid rgba(0, 255, 159, 0.2);
+  background: rgba(78, 201, 176, 0.05);
+  border: 1px solid rgba(78, 201, 176, 0.2);
   border-radius: 4px;
   font-size: 12px;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
@@ -692,7 +796,7 @@
 }
 
 .file-name {
-  color: var(--cyan);
+  color: #4ec9b0;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -700,7 +804,7 @@
 }
 
 .file-size {
-  color: var(--text-dim);
+  color: #8b949e;
   font-size: 10px;
 }
 
@@ -732,16 +836,16 @@
   font-size: 14px;
   padding: 4px 8px;
   background: transparent;
-  border: 1px solid rgba(0, 229, 255, 0.4);
-  color: #00e5ff;
+  border: 1px solid rgba(78, 201, 176, 0.4);
+  color: #4ec9b0;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .file-menu-btn:hover {
-  border-color: #00e5ff;
-  background: rgba(0, 229, 255, 0.1);
+  border-color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.1);
 }
 
 .file-menu-dropdown {
@@ -749,8 +853,8 @@
   bottom: 100%;
   left: 0;
   margin-bottom: 4px;
-  background: #0a1a12;
-  border: 1px solid rgba(0, 229, 255, 0.4);
+  background: #161b22;
+  border: 1px solid rgba(78, 201, 176, 0.4);
   border-radius: 4px;
   padding: 4px;
   min-width: 140px;
@@ -763,7 +867,7 @@
   padding: 6px 10px;
   background: transparent;
   border: none;
-  color: var(--text-primary);
+  color: #e6edf3;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   font-size: 12px;
   text-align: left;
@@ -772,24 +876,24 @@
 }
 
 .file-menu-dropdown button:hover {
-  background: rgba(0, 229, 255, 0.1);
-  color: #00e5ff;
+  background: rgba(78, 201, 176, 0.1);
+  color: #4ec9b0;
 }
 
 .attach-btn {
   font-size: 14px;
   padding: 4px 8px;
   background: transparent;
-  border: 1px solid rgba(0, 255, 159, 0.4);
-  color: #a8ffcf;
+  border: 1px solid rgba(78, 201, 176, 0.4);
+  color: #4ec9b0;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .attach-btn:hover {
-  border-color: #00ff9f;
-  background: rgba(0, 255, 159, 0.1);
+  border-color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.1);
 }
 
 @keyframes rec-blink {
@@ -799,8 +903,8 @@
 
 .quick-menu-btn {
   background: transparent;
-  border: 1px solid rgba(0, 255, 65, 0.4);
-  color: #00ff41;
+  border: 1px solid rgba(78, 201, 176, 0.4);
+  color: #4ec9b0;
   font-size: 16px;
   padding: 6px 10px;
   cursor: pointer;
@@ -808,23 +912,23 @@
 }
 
 .quick-menu-btn:hover {
-  background: rgba(0, 255, 65, 0.1);
-  box-shadow: 0 0 8px rgba(0, 255, 65, 0.3);
+  background: rgba(78, 201, 176, 0.1);
+  box-shadow: 0 0 8px rgba(78, 201, 176, 0.3);
 }
 
 .input-prompt {
-  color: #00ff41;
+  color: #4ec9b0;
   font-size: 14px;
   font-weight: bold;
-  text-shadow: 0 0 8px #00ff41;
+  text-shadow: 0 0 8px rgba(78, 201, 176, 0.5);
 }
 
 .chat-input {
   flex: 1;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-left: 2px solid #00ff41;
-  color: var(--text-primary);
+  background: #161b22;
+  border: 1px solid #1e3a3a;
+  border-left: 2px solid #4ec9b0;
+  color: #e6edf3;
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 15px;
@@ -841,8 +945,8 @@
 }
 
 .chat-input.focused {
-  border-color: #00ff41;
-  box-shadow: 0 0 12px rgba(0, 255, 65, 0.3);
+  border-color: #4ec9b0;
+  box-shadow: 0 0 12px rgba(78, 201, 176, 0.3);
 }
 
 .chat-input.flash {
@@ -850,7 +954,7 @@
 }
 
 .chat-input::placeholder {
-  color: var(--text-dim);
+  color: #8b949e;
 }
 
 .chat-input:disabled {
@@ -859,8 +963,8 @@
 
 @keyframes screenshot-flash-border {
   0%, 100% { border-color: transparent; opacity: 0; }
-  15% { border-color: #00ff88; opacity: 1; }
-  85% { border-color: #00ff88; opacity: 1; }
+  15% { border-color: #4ec9b0; opacity: 1; }
+  85% { border-color: #4ec9b0; opacity: 1; }
 }
 
 @keyframes screenshot-flash-text {
@@ -883,7 +987,7 @@
   content: '';
   position: absolute;
   inset: 8px;
-  border: 4px solid #00ff88;
+  border: 4px solid #4ec9b0;
   animation: screenshot-flash-border 1.5s ease-out forwards;
 }
 
@@ -891,9 +995,9 @@
   position: relative;
   z-index: 1;
   padding: 10px 20px;
-  background: rgba(0, 10, 6, 0.9);
-  border: 2px solid #00ff88;
-  color: #00ff88;
+  background: rgba(13, 17, 23, 0.9);
+  border: 2px solid #4ec9b0;
+  color: #4ec9b0;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   font-size: 14px;
   letter-spacing: 2px;
@@ -903,17 +1007,17 @@
 .send-btn {
   padding: 8px 16px;
   background: transparent;
-  border: 1px solid var(--text-primary);
-  color: var(--text-primary);
+  border: 1px solid #4ec9b0;
+  color: #4ec9b0;
   font-family: var(--font-mono);
   font-size: 13px;
   transition: all 0.2s ease;
 }
 
 .send-btn:hover:not(:disabled) {
-  background: var(--text-primary);
-  color: var(--bg-primary);
-  box-shadow: 0 0 16px rgba(0, 255, 65, 0.5);
+  background: rgba(78, 201, 176, 0.15);
+  color: #4ec9b0;
+  box-shadow: 0 0 16px rgba(78, 201, 176, 0.3);
   letter-spacing: 2px;
 }
 
@@ -922,9 +1026,37 @@
   width: 380px;
   display: flex;
   flex-direction: column;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  height: 100%;
+  overflow: hidden;
+  background: #0d1117;
+  border: 1px solid #1e3a3a;
   min-height: 0;
+}
+
+/* 任务看板区域 - flex:1 自适应 */
+.task-board-section {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 150px;
+  border-bottom: 1px solid #1e3a3a;
+}
+
+/* Gateway 日志区域 - 固定高度 */
+.gateway-log-section {
+  height: 200px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.gateway-log-section .section-header {
+  flex-shrink: 0;
+}
+
+.gateway-log-section .log-terminal-dom {
+  flex: 1;
+  overflow-y: auto;
 }
 
 .right-panel-upper {
@@ -932,27 +1064,26 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+  border-bottom: 1px solid #1e3a3a;
 }
 
 .right-panel-middle {
-  flex-shrink: 0;
-  height: 35px;
-  min-height: 35px;
-  max-height: 35px;
+  flex: 1;
+  min-height: 0;
   display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  background: #020c06;
-  border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+  flex-direction: column;
+  background: #0d1117;
+  border-bottom: 1px solid #1e3a3a;
+  overflow: hidden;
 }
 
 .right-panel-middle-header {
-  flex: 1;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 10px;
+  min-height: 32px;
 }
 
 .right-panel-middle-actions {
@@ -973,22 +1104,24 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
+  min-height: 36px;
 }
 
 .right-panel-quick-btn {
   font-size: 11px;
   padding: 4px 10px;
   background: transparent;
-  border: 1px solid rgba(0, 255, 159, 0.4);
-  color: #a8ffcf;
+  border: 1px solid #1e3a3a;
+  color: #8b949e;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .right-panel-quick-btn:hover:not(:disabled) {
-  border-color: #00ff9f;
-  background: rgba(0, 255, 159, 0.1);
+  border-color: #4ec9b0;
+  color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.1);
 }
 
 .right-panel-quick-btn:disabled {
@@ -997,9 +1130,9 @@
 }
 
 .right-panel-quick-btn.active {
-  border-color: #00ff9f;
-  background: rgba(0, 255, 159, 0.15);
-  color: #00ff9f;
+  border-color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.15);
+  color: #4ec9b0;
 }
 
 .right-panel-terminal {
@@ -1019,14 +1152,16 @@
   font-size: 9px;
   padding: 2px 6px;
   background: transparent;
-  border: 1px solid #00ff9f44;
-  color: #00ff9f;
+  border: 1px solid #1e3a3a;
+  color: #8b949e;
   cursor: pointer;
   font-family: inherit;
 }
 
 .terminal-test-btn:hover:not(:disabled) {
-  background: rgba(0, 255, 159, 0.1);
+  border-color: #4ec9b0;
+  color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.1);
 }
 
 .terminal-test-btn:disabled {
@@ -1034,9 +1169,55 @@
   cursor: default;
 }
 
+/* Gateway 日志区：与上方状态栏分离，避免被连接状态等遮挡 */
+.gw-log-section {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.gw-log-title-row {
+  flex-shrink: 0;
+}
+
+.gw-control-row {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: #161b22;
+  border-bottom: 1px solid #1e3a3a;
+  margin-top: 0;
+  min-height: 36px;
+  align-items: center;
+}
+
+.gw-control-row::before {
+  display: none;
+}
+
+.gw-control-label {
+  font-size: 11px;
+  color: #8b949e;
+  letter-spacing: 1px;
+  margin-right: 10px;
+  font-weight: 600;
+}
+
+/* Gateway 控制区按钮：加大尺寸，便于识别和点击 */
+.gw-controls-buttons .terminal-test-btn {
+  font-size: 11px;
+  padding: 5px 10px;
+  min-width: 4.5em;
+}
+
 .gw-controls {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.gw-controls-log {
   gap: 6px;
 }
 
@@ -1050,8 +1231,8 @@
 }
 
 .gw-dot.running {
-  background: #00ff9f;
-  box-shadow: 0 0 4px #00ff9f;
+  background: #00ff41;
+  box-shadow: 0 0 4px #00ff41;
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
@@ -1060,36 +1241,49 @@
 }
 
 .amy-status-dot.reconnecting {
-  background: #ffb84d;
-  box-shadow: 0 0 4px #ffb84d;
+  background: #d29922;
+  box-shadow: 0 0 4px #d29922;
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
 .gw-btn-start {
-  border-color: #00ff9f88;
-  color: #00ff9f;
+  border-color: #4ec9b088;
+  color: #4ec9b0;
 }
 
 .gw-btn-stop {
-  border-color: #ff3c6e66;
-  color: #ff3c6e;
+  border-color: #f8514966;
+  color: #f85149;
+}
+
+.gw-btn-restart {
+  border-color: #79c0ff66;
+  color: #79c0ff;
 }
 
 .gw-btn-external {
-  border-color: #00ff9f66;
-  color: #00ff9f;
+  border-color: #4ec9b066;
+  color: #4ec9b0;
   cursor: default;
   opacity: 0.9;
+}
+
+.gw-btn-clear-port {
+  border-color: #d2992266;
+  color: #d29922;
 }
 
 .amy-status-bar {
   flex-shrink: 0;
   padding: 6px 10px;
-  background: #000;
-  border-bottom: 1px solid var(--border-color);
+  background: #0d1117;
+  border-bottom: 1px solid #1e3a3a;
   font-size: 10px;
   font-family: 'JetBrains Mono', Consolas, monospace;
-  color: #00ff9f66;
+  color: #8b949e;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .amy-status-line {
@@ -1141,22 +1335,22 @@
 
 .amy-status-icon,
 .amy-status-label {
-  color: #00ff9f66;
+  color: #8b949e;
 }
 
 .amy-status-val {
-  color: #00ff9f;
+  color: #e6edf3;
 }
 
 .amy-status-sep {
-  color: #00ff9f33;
+  color: #1e3a3a;
   user-select: none;
 }
 
 .amy-status-refresh-btn {
   background: transparent;
-  border: 1px solid #003d12;
-  color: #00aa44;
+  border: 1px solid #1e3a3a;
+  color: #8b949e;
   font-size: 12px;
   cursor: pointer;
   padding: 2px 6px;
@@ -1165,14 +1359,14 @@
   transition: all 0.15s;
 }
 .amy-status-refresh-btn:hover {
-  border-color: #00ff41;
-  color: #00ff41;
-  box-shadow: 0 0 6px rgba(0,255,65,0.3);
+  border-color: #4ec9b0;
+  color: #4ec9b0;
+  box-shadow: 0 0 6px rgba(78, 201, 176, 0.3);
 }
 
 .amy-status-clock {
   font-size: 11px !important;
-  color: #00aa44 !important;
+  color: #4ec9b0 !important;
   letter-spacing: 1px;
 }
 
@@ -1180,7 +1374,7 @@
   width: 100%;
   height: 40px;
   display: block;
-  background: #000;
+  background: #0d1117;
   border-radius: 2px;
   flex: 1;
   min-width: 80px;
@@ -1190,8 +1384,8 @@
 .amy-tag {
   font-size: 10px;
   padding: 2px 6px;
-  background: rgba(0, 229, 255, 0.15);
-  color: #00e5ff;
+  background: rgba(78, 201, 176, 0.15);
+  color: #4ec9b0;
   border-radius: 3px;
 }
 
@@ -1200,7 +1394,7 @@
   flex: 1;
   min-height: 60px;
   padding: 6px;
-  background: #0a0a0f;
+  background: #161b22;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -1209,15 +1403,14 @@
 .log-terminal-dom {
   flex: 1;
   min-height: 60px;
-  padding: 8px;
-  background: #0a0a0f;
+  padding: 6px 8px;
+  background: #161b22;
   overflow-y: auto;
   overflow-x: hidden;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   font-size: 11px;
   line-height: 1.5;
-  color: #00ff41;
-  border-top: 1px solid #00ff4120;
+  color: #e0e0e0;
 }
 
 /* 日志终端滚动条样式 */
@@ -1226,19 +1419,19 @@
 }
 
 .log-terminal-dom::-webkit-scrollbar-track {
-  background: #0a0a0f;
+  background: #161b22;
 }
 
 .log-terminal-dom::-webkit-scrollbar-thumb {
-  background: #00ff4166;
+  background: #1e3a3a;
   border-radius: 3px;
 }
 
 .log-terminal-dom::-webkit-scrollbar-thumb:hover {
-  background: #00ff41aa;
+  background: #4ec9b0;
 }
 
-/* 日志行样式 */
+/* 日志行样式 - 基础 */
 .log-line {
   padding: 2px 0;
   border-left: 2px solid transparent;
@@ -1246,6 +1439,49 @@
   margin-bottom: 2px;
   word-break: break-all;
   white-space: pre-wrap;
+  color: #e0e0e0; /* 默认色 */
+}
+
+/* 日志颜色区分 - 根据关键词（提高优先级） */
+/* 记忆相关：蓝色 */
+.log-line.log-memory {
+  color: #00aaff !important;
+  border-left-color: #00aaff !important;
+}
+
+/* 错误：红色 */
+.log-line.log-error {
+  color: #ff4444 !important;
+  border-left-color: #ff4444 !important;
+  background: rgba(255, 68, 68, 0.06) !important;
+}
+
+/* 调试：灰色（降低视觉权重） */
+.log-line.log-debug {
+  color: #888888 !important;
+  border-left-color: transparent !important;
+}
+
+/* 普通日志级别颜色 */
+.log-line.log-INFO {
+  color: #888888;
+}
+.log-line.log-WARN {
+  color: #ffaa00;
+  border-left-color: #ffaa00;
+}
+.log-line.log-LOG {
+  color: #00aaff;
+  border-left-color: #00aaff;
+}
+.log-line.log-AGENT {
+  color: #00ff88;
+  border-left-color: #00ff88;
+}
+
+.log-line strong {
+  color: inherit;
+  opacity: 1;
 }
 
 /* 空状态样式 - Matrix 闪烁效果 */
@@ -1254,118 +1490,60 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #00ff4166;
+  color: #888888;
   font-style: italic;
   animation: matrix-flicker 2s ease-in-out infinite;
 }
 
 @keyframes matrix-flicker {
-  0%, 100% { opacity: 0.4; text-shadow: 0 0 5px #00ff41; }
-  50% { opacity: 1; text-shadow: 0 0 15px #00ff41, 0 0 25px #00ff41; }
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 .log-terminal-xterm .xterm-viewport,
 .log-terminal-xterm .xterm-screen {
-  background: #0a0a0f !important;
+  background: #161b22 !important;
 }
 
-.amy-quick-actions,
-.amy-remembered {
+/* ═══════════════════════════════════════════════════════════════
+   任务看板标签切换样式
+   ═══════════════════════════════════════════════════════════════ */
+
+.right-panel-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid #1e3a3a;
+  background: #161b22;
+}
+
+.right-panel-tab {
+  flex: 1;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8b949e;
+  font-size: 11px;
+  font-family: 'Share Tech Mono', monospace;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.right-panel-tab:hover {
+  color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.03);
+}
+
+.right-panel-tab.active {
+  color: #4ec9b0;
+  border-bottom-color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.05);
+}
+
+.right-panel-task-board {
+  flex: 1;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.amy-quick-label {
-  font-size: 10px;
-  color: var(--text-dim);
-  letter-spacing: 1px;
-}
-
-.amy-quick-btn {
-  font-size: 11px;
-  padding: 6px 10px;
-  background: rgba(0, 255, 159, 0.2);
-  border: 1px solid rgba(0, 255, 159, 0.3);
-  color: #a8ffcf;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.2s;
-}
-
-.amy-quick-btn:hover {
-  background: rgba(0, 255, 159, 0.15);
-  border-color: #00ff9f;
-}
-
-.amy-remembered-list {
-  margin: 0;
-  padding-left: 16px;
-  font-size: 11px;
-  color: #a8ffcf;
-}
-
-.amy-empty {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-/* 状态栏区块样式 - 星际争霸风格 */
-.amy-status-section {
-  padding: 6px 12px;
-  border-bottom: 1px solid #1a4d2a;
-}
-.amy-status-section-title {
-  color: #00cc55;
-  font-size: 9px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  margin-bottom: 4px;
-  font-family: 'Share Tech Mono', monospace;
-}
-.amy-status-section .amy-status-row {
-  display: flex;
-  align-items: center;
-  height: 20px;
-}
-.amy-status-section .amy-status-label {
-  width: 80px;
-  font-size: 10px;
-  color: #00994d;
-  font-family: 'Share Tech Mono', monospace;
-  flex-shrink: 0;
-}
-.amy-status-section .amy-status-val {
-  font-size: 11px;
-  color: #00ff88;
-  font-family: 'Share Tech Mono', monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.amy-status-val .ctx-bar {
-  color: #00ff41;
-}
-
-/* 日志行颜色 - 调暗更易读 */
-.log-line.log-INFO {
-  color: #339966;
-}
-.log-line.log-WARN {
-  color: #cc7700;
-  border-left-color: #cc7700;
-}
-.log-line.log-ERROR {
-  color: #cc2233;
-  border-left-color: #cc2233;
-  background: rgba(204, 34, 51, 0.06);
-}
-.log-line.log-LOG {
-  color: #00cc44;
-  border-left-color: #00cc44;
-}
-.log-line strong {
-  color: #226633;
-  opacity: 1;
 }

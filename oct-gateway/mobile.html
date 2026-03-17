@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OCT">
+<title>OCT Terminal</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+:root { --green: #00ff41; --green-dim: #00ff4133; --green-bg: #001510; --bg: #020c06; --bg2: #030e07; --cyan: #00e5ff; --text: #e0ffe0; --text-dim: #a8ffcf; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; overflow: hidden; }
+.app { display: flex; flex-direction: column; height: 100vh; height: -webkit-fill-available; }
+.header { background: var(--bg2); border-bottom: 1px solid var(--green-dim); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; padding-top: max(12px, env(safe-area-inset-top)); }
+.header-title { color: var(--green); font-size: 14px; letter-spacing: 2px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; display: inline-block; margin-right: 6px; }
+.status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+.status-text { color: var(--green); font-size: 11px; display: flex; align-items: center; }
+.messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
+.msg { max-width: 88%; display: flex; flex-direction: column; gap: 4px; }
+.msg.user { align-self: flex-end; }
+.msg.assistant { align-self: flex-start; }
+.bubble { padding: 10px 13px; border-radius: 4px; font-size: 14px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.msg.user .bubble { background: #001a0d; border-right: 3px solid var(--cyan); color: var(--text-dim); border-radius: 8px 0 0 8px; }
+.msg.assistant .bubble { background: var(--green-bg); border-left: 3px solid var(--green); color: var(--text); border-radius: 0 8px 8px 0; }
+.timestamp { font-size: 10px; color: var(--green-dim); }
+.msg.user .timestamp { text-align: right; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pill-btn { background: #00ff4115; border: 1px solid var(--green-dim); color: #00ff88; font-family: monospace; font-size: 12px; padding: 5px 12px; border-radius: 14px; cursor: pointer; -webkit-appearance: none; }
+.pill-btn:active { background: #00ff4130; }
+.checkbox-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.checkbox-item { display: flex; align-items: center; gap: 8px; background: #00ff4108; border: 1px solid var(--green-dim); padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.checkbox-item input { accent-color: var(--green); width: 16px; height: 16px; cursor: pointer; }
+.checkbox-item label { color: var(--text); font-size: 13px; cursor: pointer; flex: 1; }
+.checkbox-send { margin-top: 6px; background: transparent; border: 1px solid var(--green); color: var(--green); font-family: monospace; font-size: 12px; padding: 6px 16px; border-radius: 4px; cursor: pointer; width: 100%; }
+.tasklist { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.task-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; border-left: 2px solid var(--green-dim); }
+.task-item input { accent-color: var(--green); width: 16px; height: 16px; cursor: pointer; }
+.task-item label { color: var(--text); font-size: 13px; cursor: pointer; flex: 1; }
+.task-item.done label { text-decoration: line-through; color: #00ff4155; }
+.system-msg { align-self: center; background: #001a0d; border: 1px solid #ffaa0033; border-left: 3px solid #ffaa00; padding: 8px 12px; border-radius: 4px; max-width: 90%; }
+.system-msg p { color: #ffaa00; font-size: 12px; line-height: 1.5; }
+.thinking { display: flex; align-items: center; gap: 8px; padding: 10px 13px; background: var(--green-bg); border-left: 3px solid var(--green); border-radius: 0 8px 8px 0; align-self: flex-start; }
+.thinking span { color: var(--green); font-size: 13px; }
+.dot-anim { display: inline-flex; gap: 3px; }
+.dot-anim i { width: 5px; height: 5px; background: var(--green); border-radius: 50%; animation: bounce 0.8s infinite; display: inline-block; }
+.dot-anim i:nth-child(2){animation-delay:.15s} .dot-anim i:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+.input-area { background: var(--bg); border-top: 1px solid var(--green-dim); padding: 10px 12px; display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+.input-wrap { flex: 1; background: #001a0d; border: 1px solid var(--green-dim); border-left: 2px solid var(--green); padding: 8px 12px; border-radius: 4px; }
+textarea { background: transparent; border: none; outline: none; color: var(--text); font-family: monospace; font-size: 14px; width: 100%; resize: none; min-height: 20px; max-height: 100px; line-height: 1.4; }
+textarea::placeholder { color: var(--green-dim); }
+.send-btn { background: transparent; border: 1px solid var(--text); color: var(--text); font-family: monospace; font-size: 12px; padding: 8px 14px; border-radius: 4px; cursor: pointer; white-space: nowrap; height: 38px; }
+.send-btn:active { background: var(--text); color: var(--bg); }
+.cursor-blink { display: inline-block; color: var(--cyan); animation: blink 1s step-end infinite; }
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <span class="header-title">◈ OCT</span>
+    <span class="status-text" id="statusText">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusLabel">连接中...</span>
+    </span>
+  </div>
+  <div class="messages" id="messages"></div>
+  <div class="input-area">
+    <div class="input-wrap">
+      <textarea id="input" placeholder="// 输入消息..." rows="1"></textarea>
+    </div>
+    <button class="send-btn" id="sendBtn">SEND</button>
+  </div>
+</div>
+<script>
+const WS_PORT = location.port ? parseInt(location.port) - 1 : 18789;
+const WS_URL = 'ws://' + location.hostname + ':' + WS_PORT;
+let ws = null;
+let streaming = false;
+let streamingEl = null;
+let streamingText = '';
+const messages = document.getElementById('messages');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const statusDot = document.getElementById('statusDot');
+const statusLabel = document.getElementById('statusLabel');
+
+function setStatus(connected, text) {
+  statusDot.className = 'status-dot' + (connected ? ' connected' : '');
+  statusLabel.textContent = text;
+}
+
+function scrollBottom() {
+  setTimeout(function() { messages.scrollTop = messages.scrollHeight; }, 50);
+}
+
+function formatTime() {
+  var d = new Date();
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+function parsePills(text) {
+  return text.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.startsWith('■'); }).map(function(l) { return l.replace(/^■\s*/, ''); });
+}
+
+function parseCheckbox(text) {
+  return text.split('\n').filter(function(l) { return /\-\s*\[\s*\]/.test(l); }).map(function(l) { return l.replace(/^[-*+]?\s*\[\s*\]\s*/, '').trim(); });
+}
+
+function stripTags(text) {
+  return text
+    .replace(/\[pills\][\s\S]*?\[\/pills\]/gi, '')
+    .replace(/\[checkbox\][\s\S]*?\[\/checkbox\]/gi, '')
+    .replace(/\[tasklist\][\s\S]*?\[\/tasklist\]/gi, '')
+    .replace(/\[question\][\s\S]*?\[\/question\]/gi, '')
+    .replace(/\[text\]([\s\S]*?)\[\/text\]/gi, '$1')
+    .trim();
+}
+
+function extractTag(text, tag) {
+  var re = new RegExp('\\[' + tag + '\\]([\\s\\S]*?)\\[\\/' + tag + '\\]', 'i');
+  var m = text.match(re);
+  return m ? m[1].trim() : null;
+}
+
+function renderMessage(role, content, isSystem) {
+  if (isSystem) {
+    var div = document.createElement('div');
+    div.className = 'system-msg';
+    div.innerHTML = '<p>' + content + '</p>';
+    messages.appendChild(div);
+    scrollBottom();
+    return null;
+  }
+
+  var msgDiv = document.createElement('div');
+  msgDiv.className = 'msg ' + role;
+
+  var bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  if (role === 'assistant') {
+    var pillsContent = extractTag(content, 'pills');
+    var checkboxContent = extractTag(content, 'checkbox');
+    var tasklistContent = extractTag(content, 'tasklist');
+    var plainText = stripTags(content).replace(/\[THINK_MODE:[^\]]+\]/g, '').trim();
+
+    if (plainText) bubble.textContent = plainText;
+
+    if (pillsContent) {
+      var pills = parsePills(pillsContent);
+      if (pills.length > 0) {
+        var pillsDiv = document.createElement('div');
+        pillsDiv.className = 'pills';
+        pills.forEach(function(p) {
+          var btn = document.createElement('button');
+          btn.className = 'pill-btn';
+          btn.textContent = p;
+          btn.onclick = function() { sendMessage(p); };
+          pillsDiv.appendChild(btn);
+        });
+        bubble.appendChild(pillsDiv);
+      }
+    }
+
+    if (checkboxContent) {
+      var items = parseCheckbox(checkboxContent);
+      if (items.length > 0) {
+        var listDiv = document.createElement('div');
+        listDiv.className = 'checkbox-list';
+        items.forEach(function(item, i) {
+          var row = document.createElement('div');
+          row.className = 'checkbox-item';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox'; cb.id = 'cb-' + Date.now() + '-' + i;
+          var lb = document.createElement('label');
+          lb.htmlFor = cb.id; lb.textContent = item;
+          row.appendChild(cb); row.appendChild(lb);
+          listDiv.appendChild(row);
+        });
+        var sendBtn2 = document.createElement('button');
+        sendBtn2.className = 'checkbox-send';
+        sendBtn2.textContent = '✓ 确认发送';
+        sendBtn2.onclick = function() {
+          var checked = Array.from(listDiv.querySelectorAll('input:checked')).map(function(c) { return c.nextSibling.textContent; });
+          if (checked.length > 0) sendMessage(checked.join('，'));
+        };
+        listDiv.appendChild(sendBtn2);
+        bubble.appendChild(listDiv);
+      }
+    }
+
+    if (tasklistContent) {
+      var taskItems = parseCheckbox(tasklistContent);
+      if (taskItems.length > 0) {
+        var taskDiv = document.createElement('div');
+        taskDiv.className = 'tasklist';
+        taskItems.forEach(function(item, i) {
+          var row = document.createElement('div');
+          row.className = 'task-item';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox'; cb.id = 'tk-' + Date.now() + '-' + i;
+          cb.onchange = function() { row.classList.toggle('done', cb.checked); };
+          var lb = document.createElement('label');
+          lb.htmlFor = cb.id; lb.textContent = item;
+          row.appendChild(cb); row.appendChild(lb);
+          taskDiv.appendChild(row);
+        });
+        bubble.appendChild(taskDiv);
+      }
+    }
+  } else {
+    bubble.textContent = content;
+  }
+
+  var ts = document.createElement('span');
+  ts.className = 'timestamp';
+  ts.textContent = formatTime();
+
+  msgDiv.appendChild(bubble);
+  msgDiv.appendChild(ts);
+  messages.appendChild(msgDiv);
+  scrollBottom();
+  return bubble;
+}
+
+function showThinking() {
+  var div = document.createElement('div');
+  div.className = 'thinking';
+  div.id = 'thinking-indicator';
+  div.innerHTML = '<span>AMY 思考中</span><div class="dot-anim"><i></i><i></i><i></i></div>';
+  messages.appendChild(div);
+  scrollBottom();
+}
+
+function hideThinking() {
+  var el = document.getElementById('thinking-indicator');
+  if (el) el.remove();
+}
+
+function connect() {
+  setStatus(false, '连接中...');
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = function() {
+    console.log('[WS] Connected');
+  };
+
+  ws.onmessage = function(e) {
+    var msg = JSON.parse(e.data);
+
+    if (msg.type === 'event' && msg.event === 'connect.challenge') {
+      ws.send(JSON.stringify({
+        type: 'req', id: 'connect-1', method: 'connect',
+        params: { auth: { token: '' }, sessionKey: 'mobile', client: { id: 'mobile-web', version: '1.0.0' } }
+      }));
+    }
+
+    if (msg.type === 'res' && msg.ok && msg.payload && msg.payload.type === 'hello-ok') {
+      setStatus(true, '已连接');
+    }
+
+    if (msg.type === 'event' && msg.event === 'agent-phase') {
+      if (msg.phase === 'thinking') showThinking();
+      else hideThinking();
+    }
+
+    if (msg.type === 'event' && msg.event === 'chat') {
+      var payload = msg.payload;
+      if (payload.state === 'delta' && payload.delta) {
+        hideThinking();
+        if (!streaming || !streamingEl) {
+          streaming = true;
+          streamingText = '';
+          var sMsgDiv = document.createElement('div');
+          sMsgDiv.className = 'msg assistant';
+          var sBubble = document.createElement('div');
+          sBubble.className = 'bubble';
+          var cursor = document.createElement('span');
+          cursor.className = 'cursor-blink';
+          cursor.textContent = '\u258B';
+          sBubble.appendChild(cursor);
+          sMsgDiv.appendChild(sBubble);
+          messages.appendChild(sMsgDiv);
+          streamingEl = sBubble;
+          scrollBottom();
+        }
+        streamingText += payload.delta;
+        var cur = streamingEl.querySelector('.cursor-blink');
+        if (cur) {
+          streamingEl.textContent = streamingText;
+          streamingEl.appendChild(cur);
+        }
+        scrollBottom();
+      }
+
+      if (payload.done) {
+        streaming = false;
+        hideThinking();
+        if (streamingEl) {
+          var parent = streamingEl.closest('.msg');
+          if (parent) parent.remove();
+          streamingEl = null;
+        }
+        var finalText = payload.text || streamingText;
+        streamingText = '';
+        if (finalText) {
+          renderMessage('assistant', finalText, payload.isSystemReply);
+        }
+      }
+    }
+  };
+
+  ws.onclose = function() {
+    setStatus(false, '已断开');
+    streaming = false;
+    streamingEl = null;
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = function() {
+    setStatus(false, '连接失败');
+  };
+}
+
+function sendMessage(text) {
+  if (!text.trim() || !ws || ws.readyState !== WebSocket.OPEN) return;
+  renderMessage('user', text);
+  ws.send(JSON.stringify({
+    type: 'req', id: 'msg-' + Date.now(), method: 'chat.send',
+    params: { sessionKey: 'mobile', message: text, idempotencyKey: '' + Date.now() }
+  }));
+  showThinking();
+}
+
+input.addEventListener('input', function() {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+});
+
+input.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    var text = input.value.trim();
+    if (text) { sendMessage(text); input.value = ''; input.style.height = 'auto'; }
+  }
+});
+
+sendBtn.addEventListener('click', function() {
+  var text = input.value.trim();
+  if (text) { sendMessage(text); input.value = ''; input.style.height = 'auto'; }
+});
+
+connect();
+</script>
+</body>
+</html>

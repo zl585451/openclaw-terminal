@@ -782,10 +782,24 @@ function extractTextFromPayload(payload: any): string {
   if (typeof direct === 'string') return direct;
   const msg = payload.message;
   if (msg?.content && Array.isArray(msg.content)) {
-    return msg.content
-      .filter((b: any) => b?.type === 'text' && b?.text)
-      .map((b: any) => String(b.text))
-      .join('');
+    const parts: string[] = [];
+    for (const b of msg.content) {
+      if (!b) continue;
+      if (typeof b === 'string') { parts.push(b); continue; }
+      const t = (b.type || '').toString().toLowerCase();
+      // 常见文本块：text / output_text；部分实现可能没有 type 但有 text/content 字段
+      const rawText =
+        (typeof b.text === 'string' ? b.text : '') ||
+        (typeof b.content === 'string' ? b.content : '') ||
+        (typeof b.value === 'string' ? b.value : '') ||
+        (typeof b.text?.value === 'string' ? b.text.value : '') ||
+        (typeof b.text?.text === 'string' ? b.text.text : '');
+      if (!rawText) continue;
+      if (!t || t === 'text' || t === 'output_text' || t === 'output-text') {
+        parts.push(String(rawText));
+      }
+    }
+    return parts.join('');
   }
   if (direct?.text) return String(direct.text);
   const raw = payload.content ?? payload.message;
@@ -830,6 +844,16 @@ function forwardChatToFrontend(payload: any, eventName?: string, isStreaming = f
   // 斜杠命令的系统回复：payload 直接有 text，无 message.content
   const isSystemReply = !!(payload?.text && typeof payload.text === 'string' && !payload?.message?.content);
   
+  // DEBUG: 当提取文本为空时，打印 payload 摘要帮助定位“正文丢失”
+  try {
+    const isEmptyText = !text || String(text).trim().length === 0;
+    const maybeDone = done === true || payload?.state === 'done';
+    if (isEmptyText && maybeDone) {
+      console.warn('[ChatForward] empty text extracted. payload keys=', Object.keys(payload || {}));
+      console.warn('[ChatForward] empty text extracted. payload snippet=', JSON.stringify(payload).slice(0, 800));
+    }
+  } catch {}
+
   if (text || done !== undefined) {
     const msg: any = { 
       type: 'event',
@@ -856,6 +880,9 @@ function handleMessage(msg: any) {
         console.log('[OpenClaw] Challenge received, nonce:', nonce);
         sendConnLog('收到 connect.challenge，正在发送 connect 请求...');
         sendConnectRequest(nonce);
+      } else if (msg.event === 'task-board-update') {
+        mainWindow?.webContents.send('task-board-update');
+        mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
       } else if (msg.event === 'chat' && msg.payload) {
         const isDelta = msg.payload?.state === 'delta';
         forwardChatToFrontend(msg.payload, msg.event, isDelta);
@@ -1647,6 +1674,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   }
 
   const promptsDir = path.join(__dirname, '..', 'docs', '01_system_prompts');
+  const tasksPath = path.join(app.getPath('userData'), 'tasks.json');
 
   try {
     octGatewayProcess = spawn('node', [entry], {
@@ -1659,6 +1687,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         OCT_GATEWAY_PORT: String(GATEWAY_PORT),
         OCT_PROMPTS_DIR: promptsDir,
         OCT_CONFIG_FILE: CONFIG_FILE,
+        OPENCLAW_TASKS_PATH: tasksPath,
       },
     });
 
@@ -3093,10 +3122,46 @@ function saveTasksData(data: TasksData): boolean {
   }
 }
 
-/** 读取所有任务 */
+/** 读取所有任务（返回原始 JSON） */
 ipcMain.handle('tasks-read', async () => {
-  const data = loadTasksData();
-  return { ok: true, data };
+  const filePath = path.join(app.getPath('userData'), 'tasks.json');
+  try {
+    console.log('[TasksLocal] tasks-read filePath:', filePath);
+  } catch {}
+  if (!fs.existsSync(filePath)) {
+    return { tasks: [], parking: [], intention: '', updatedAt: '' };
+  }
+  const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  try {
+    console.log('[TasksLocal] tasks-read counts:', {
+      tasks: Array.isArray(raw?.tasks) ? raw.tasks.length : 0,
+      parking: Array.isArray(raw?.parking) ? raw.parking.length : 0,
+      updatedAt: raw?.updatedAt || '',
+    });
+  } catch {}
+  return {
+    tasks: raw.tasks || [],
+    parking: raw.parking || [],
+    intention: raw.intention || '',
+    updatedAt: raw.updatedAt || '',
+  };
+});
+
+/** 写入任务数据（全量覆盖） */
+ipcMain.handle('tasks-write', async (_: Electron.IpcMainInvokeEvent, data: { tasks: TaskItem[]; parking: any[]; intention?: string }) => {
+  const filePath = path.join(app.getPath('userData'), 'tasks.json');
+  const payload = {
+    tasks: data.tasks || [],
+    parking: data.parking || [],
+    intention: data.intention || '',
+    updatedAt: new Date().toISOString(),
+  };
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+  mainWindow?.webContents.send('task-board-update');
+  mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
+  return { ok: true };
 });
 
 /** 添加任务 */

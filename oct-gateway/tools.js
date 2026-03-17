@@ -1,0 +1,706 @@
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+const memory = require('./memory');
+const memoryHistory = require('./memory_history');
+const memorySearch = require('./memory_search');
+const os = require('os');
+
+// ============================================================
+// 本地任务存储路径（与 Electron userData 保持一致）
+// OPENCLAW_TASKS_PATH 由 Electron 传入，确保 Gateway 与渲染进程读写同一文件
+// ============================================================
+function getTasksFilePath() {
+  const tasksFilePath = process.env.OPENCLAW_TASKS_PATH ||
+    (process.platform === 'win32'
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'openclaw-terminal', 'tasks.json')
+      : path.join(os.homedir(), '.config', 'openclaw-terminal', 'tasks.json'));
+  return tasksFilePath;
+}
+const TASKS_FILE_PATH = getTasksFilePath();
+console.log('[TasksLocal] TASKS_FILE_PATH =', TASKS_FILE_PATH);
+
+let onTaskBoardUpdate = null;
+function setOnTaskBoardUpdate(fn) {
+  onTaskBoardUpdate = fn;
+}
+
+function loadTasksData() {
+  try {
+    if (fs.existsSync(TASKS_FILE_PATH)) {
+      const content = fs.readFileSync(TASKS_FILE_PATH, 'utf-8');
+      const data = JSON.parse(content);
+      return {
+        tasks: data.tasks || [],
+        parking: data.parking || [],
+        intention: data.intention || '',
+        updatedAt: data.updatedAt || '',
+      };
+    }
+  } catch (e) {
+    console.error('[TasksLocal] 加载失败:', e);
+  }
+  return { tasks: [], parking: [], intention: '', updatedAt: '' };
+}
+
+function saveTasksData(data) {
+  try {
+    data.updatedAt = new Date().toISOString();
+    const dir = path.dirname(TASKS_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(TASKS_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    return true;
+  } catch (e) {
+    console.error('[TasksLocal] 保存失败:', e);
+    return false;
+  }
+}
+
+// ============================================================
+// memory_write 队列机制 & 超时保护
+// ============================================================
+const WRITE_QUEUE = [];
+let isProcessingQueue = false;
+const WRITE_TIMEOUT_MS = 5000;
+const WRITE_DELAY_MS = 200;
+
+/**
+ * 带超时的写入操作
+ * @param {string} uri
+ * @param {string} content
+ * @param {number} priority
+ * @param {string} disclosure
+ * @returns {Promise<{ok: boolean, data?: any, error?: string, created?: boolean, updated?: boolean}>}
+ */
+async function writeWithTimeout(uri, content, priority, disclosure) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      console.error(`[MemoryWrite] 超时 (${WRITE_TIMEOUT_MS}ms): ${uri}`);
+      resolve({ ok: false, error: `写入超时 (${WRITE_TIMEOUT_MS}ms)` });
+    }, WRITE_TIMEOUT_MS);
+
+    (async () => {
+      try {
+        const m = uri.match(/^([^:]+):\/\/(.+)$/);
+        if (!m) {
+          clearTimeout(timer);
+          resolve({ ok: false, error: `无效 URI: ${uri}` });
+          return;
+        }
+        const [, domain, pathPart] = m;
+
+        // 检查是否存在
+        const exists = await memory.readMemory(uri);
+        if (exists.ok && exists.data) {
+          const r = await memory.writeMemory(uri, content, priority, disclosure);
+          clearTimeout(timer);
+          resolve({ ...r, updated: r.ok });
+        } else {
+          await memoryHistory.ensurePathExists(domain, pathPart);
+          const r = await memory.createMemory(uri, content, priority, disclosure);
+          clearTimeout(timer);
+          resolve({ ...r, created: r.ok });
+        }
+      } catch (e) {
+        clearTimeout(timer);
+        console.error(`[MemoryWrite] 写入异常: ${uri}`, e?.message || e);
+        resolve({ ok: false, error: e?.message || String(e) });
+      }
+    })();
+  });
+}
+
+/**
+ * 处理队列中的写入任务
+ */
+async function processQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+
+  while (WRITE_QUEUE.length > 0) {
+    const task = WRITE_QUEUE.shift();
+    console.log(`[MemoryWrite] 执行队列任务: ${task.uri}, 剩余 ${WRITE_QUEUE.length} 条`);
+
+    try {
+      const result = await writeWithTimeout(task.uri, task.content, task.priority, task.disclosure);
+      if (result.ok) {
+        memorySearch.invalidateGlossaryCache();
+        task.resolve({ success: true, created: result.created, updated: result.updated });
+      } else {
+        console.error(`[MemoryWrite] 任务失败: ${task.uri}, ${result.error}`);
+        task.resolve({ success: false, error: result.error });
+      }
+    } catch (e) {
+      console.error(`[MemoryWrite] 任务异常: ${task.uri}`, e?.message || e);
+      task.resolve({ success: false, error: e?.message || String(e) });
+    }
+
+    // 每条写入完成后等待 200ms
+    if (WRITE_QUEUE.length > 0) {
+      await new Promise(r => setTimeout(r, WRITE_DELAY_MS));
+    }
+  }
+
+  isProcessingQueue = false;
+}
+
+/**
+ * 将 memory_write 任务加入队列
+ * @param {string} uri
+ * @param {string} content
+ * @param {number} priority
+ * @param {string} disclosure
+ * @returns {Promise<{success: boolean, created?: boolean, updated?: boolean, error?: string}>}
+ */
+function enqueueWrite(uri, content, priority, disclosure) {
+  return new Promise((resolve) => {
+    WRITE_QUEUE.push({ uri, content, priority, disclosure, resolve });
+    console.log(`[MemoryWrite] 任务入队: ${uri}, 队列长度 ${WRITE_QUEUE.length}`);
+    processQueue();
+  });
+}
+
+// Node.js native fetch 不走系统代理，需要手动配置
+let proxyDispatcher = null;
+const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+if (proxyUrl) {
+  try {
+    const { ProxyAgent } = require('undici');
+    proxyDispatcher = new ProxyAgent(proxyUrl);
+    console.log('[Tools] proxy enabled: ' + proxyUrl);
+  } catch (e) {
+    console.log('[Tools] undici ProxyAgent not available, fetch will not use proxy');
+  }
+}
+
+function proxyFetch(url, options = {}) {
+  if (proxyDispatcher && !options.dispatcher) {
+    return fetch(url, { ...options, dispatcher: proxyDispatcher });
+  }
+  return fetch(url, options);
+}
+
+// web_fetch 结果缓存（5 分钟 TTL，最多 100 条）
+const fetchCache = new Map();
+const FETCH_CACHE_TTL = 5 * 60 * 1000;
+const FETCH_CACHE_MAX = 100;
+
+const TOOL_DEFINITIONS = [
+  {
+    type: 'function',
+    function: {
+      name: 'read_file',
+      description: '读取文件内容',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件绝对路径' },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'write_file',
+      description: '写入文件内容',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件绝对路径' },
+          content: { type: 'string', description: '写入内容' },
+        },
+        required: ['path', 'content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'exec_command',
+      description: '执行 shell 命令，返回输出结果',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: '要执行的命令' },
+          cwd: { type: 'string', description: '工作目录（可选）' },
+        },
+        required: ['command'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: '搜索互联网内容，返回相关结果摘要。优先使用此工具获取最新信息。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '搜索关键词' },
+          engine: { type: 'string', description: '搜索引擎：auto/brave/duckduckgo/tavily，默认 auto', enum: ['auto', 'brave', 'duckduckgo', 'tavily'] },
+          count: { type: 'number', description: '返回结果数量，默认 5' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'web_fetch',
+      description: '获取指定 URL 的网页内容，适合已知链接的详细阅读',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: '要获取的完整 URL' },
+        },
+        required: ['url'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'memory_read',
+      description: '读取 Nocturne 记忆节点，支持 core://xxx/yyy 或 system://boot',
+      parameters: {
+        type: 'object',
+        properties: {
+          uri: { type: 'string', description: '记忆 URI，如 core://amy/identity' },
+        },
+        required: ['uri'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'memory_write',
+      description: '写入或更新 Nocturne 记忆节点',
+      parameters: {
+        type: 'object',
+        properties: {
+          uri: { type: 'string', description: '记忆 URI' },
+          content: { type: 'string', description: '记忆内容' },
+          priority: { type: 'number', description: '优先级 0-2，0 最高' },
+          disclosure: { type: 'string', description: '触发条件描述' },
+        },
+        required: ['uri', 'content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'memory_search',
+      description: '按关键词搜索 Nocturne 记忆（支持模糊匹配，少爷提到邮箱/项目/钱包等时可自动调用）',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '搜索关键词' },
+          domain: { type: 'string', description: '限定域，如 core（可选）' },
+          limit: { type: 'number', description: '返回条数，默认 10' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  // ── 本地任务存储工具（脱离 Nocturne）──
+  {
+    type: 'function',
+    function: {
+      name: 'tasks_read',
+      description: '读取本地任务看板数据（tasks + parking + intention），AMY 通过此工具查看当前任务列表',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'tasks_add',
+      description: '添加新任务到任务看板',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: '任务内容' },
+          priority: { type: 'string', description: '优先级: p0(紧急), p1(重要), p2(普通)', enum: ['p0', 'p1', 'p2'] },
+        },
+        required: ['content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'tasks_update',
+      description: '更新任务状态（完成/未完成/内容/优先级）',
+      parameters: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: '任务 ID' },
+          done: { type: 'boolean', description: '是否完成' },
+          content: { type: 'string', description: '新内容（可选）' },
+          priority: { type: 'string', description: '新优先级（可选）', enum: ['p0', 'p1', 'p2'] },
+        },
+        required: ['taskId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'tasks_delete',
+      description: '删除指定任务',
+      parameters: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: '任务 ID' },
+        },
+        required: ['taskId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'parking_add',
+      description: '添加项目到停车场（待后续处理的备忘事项）',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: '备忘内容' },
+        },
+        required: ['content'],
+      },
+    },
+  },
+  // ── AMY 任务看板工具（按 title 操作，直接读写 userData/tasks.json）──
+  {
+    type: 'function',
+    function: {
+      name: 'task_add',
+      description: '添加任务到任务看板',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '任务标题' },
+          priority: { type: 'string', description: '优先级', enum: ['P0', 'P1', 'P2', ''] },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'task_done',
+      description: '将指定任务标记为完成（按标题匹配）',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '任务标题' },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'task_delete',
+      description: '删除指定任务（按标题匹配）',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '任务标题' },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'task_list',
+      description: '列出所有任务和停车场内容',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+];
+
+async function executeTool(name, args) {
+  try {
+    switch (name) {
+      case 'read_file': {
+        const content = fs.readFileSync(args.path, 'utf-8');
+        return { success: true, content: content.slice(0, 10000) };
+      }
+      case 'write_file': {
+        const dir = path.dirname(args.path);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(args.path, args.content, 'utf-8');
+        return { success: true, message: `已写入 ${args.path}` };
+      }
+      case 'exec_command': {
+        const output = execSync(args.command, {
+          cwd: args.cwd || process.cwd(),
+          encoding: 'utf-8',
+          timeout: 30000,
+          windowsHide: true,
+        });
+        return { success: true, output: output.slice(0, 5000) };
+      }
+      case 'web_search': {
+        const query = args.query;
+        const engine = args.engine || 'auto';
+        const count = args.count || 5;
+        const braveKey = process.env.BRAVE_API_KEY || '';
+        const tavilyKey = process.env.TAVILY_API_KEY || '';
+
+        // auto 优先级：Tavily（国内可用）→ Brave → DuckDuckGo（国内不通）
+        const useEngine = engine === 'auto'
+          ? (tavilyKey ? 'tavily' : (braveKey ? 'brave' : 'duckduckgo'))
+          : engine;
+
+        // 显式指定引擎但没有 Key 时，直接报错而不尝试请求
+        if (useEngine === 'brave' && !braveKey) {
+          return { success: false, error: 'BRAVE_API_KEY 未配置，请在 .env 中填入或使用 /model tavily' };
+        }
+        if (useEngine === 'tavily' && !tavilyKey) {
+          return { success: false, error: 'TAVILY_API_KEY 未配置，请在 .env 中填入' };
+        }
+
+        if (useEngine === 'brave') {
+          const res = await proxyFetch(
+            `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`,
+            {
+              headers: { 'Accept': 'application/json', 'X-Subscription-Token': braveKey },
+              signal: AbortSignal.timeout(10000),
+            }
+          );
+          if (!res.ok) throw new Error(`Brave API ${res.status}`);
+          const data = await res.json();
+          const results = (data.web?.results || []).slice(0, count).map(r => ({
+            title: r.title, url: r.url, snippet: r.description || '',
+          }));
+          return { success: true, engine: 'brave', query, results };
+
+        } else if (useEngine === 'tavily') {
+          const res = await proxyFetch('https://api.tavily.com/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: tavilyKey, query, max_results: count,
+              search_depth: 'basic', include_answer: true,
+            }),
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!res.ok) throw new Error(`Tavily API ${res.status}`);
+          const data = await res.json();
+          const results = (data.results || []).slice(0, count).map(r => ({
+            title: r.title, url: r.url, snippet: r.content || '',
+          }));
+          return { success: true, engine: 'tavily', query, answer: data.answer || '', results };
+
+        } else {
+          const res = await proxyFetch(
+            `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (!res.ok) throw new Error(`DDG API ${res.status}`);
+          const data = await res.json();
+          const results = [];
+          if (data.AbstractText) {
+            results.push({ title: data.Heading || query, url: data.AbstractURL || '', snippet: data.AbstractText });
+          }
+          for (const t of (data.RelatedTopics || []).slice(0, count - 1)) {
+            if (t.Text && t.FirstURL) {
+              results.push({ title: t.Text.slice(0, 60), url: t.FirstURL, snippet: t.Text });
+            }
+          }
+          if (results.length === 0) {
+            return { success: true, engine: 'duckduckgo', query, results: [], hint: 'DuckDuckGo 无即时结果（国内可能无法访问），建议用 Tavily' };
+          }
+          return { success: true, engine: 'duckduckgo', query, results };
+        }
+      }
+      case 'web_fetch': {
+        const url = args.url;
+        const cached = fetchCache.get(url);
+        if (cached && Date.now() - cached.timestamp < FETCH_CACHE_TTL) {
+          return { success: true, content: cached.content, status: cached.status, cached: true };
+        }
+        const res = await proxyFetch(url, { signal: AbortSignal.timeout(10000) });
+        const text = await res.text();
+        const stripped = text.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').slice(0, 8000);
+        fetchCache.set(url, { content: stripped, status: res.status, timestamp: Date.now() });
+        if (fetchCache.size > FETCH_CACHE_MAX) {
+          const firstKey = fetchCache.keys().next().value;
+          if (firstKey !== undefined) fetchCache.delete(firstKey);
+        }
+        return { success: true, content: stripped, status: res.status, cached: false };
+      }
+      case 'memory_read': {
+        const r = await memory.readMemory(args.uri);
+        return r.ok ? { success: true, data: r.data } : { success: false, error: r.error };
+      }
+      case 'memory_write': {
+        const uri = args.uri || '';
+        const content = args.content ?? '';
+        const priority = args.priority ?? 2;
+        const disclosure = args.disclosure ?? '';
+        const m = uri.match(/^([^:]+):\/\/(.+)$/);
+        if (!m) return { success: false, error: `无效 URI: ${uri}` };
+        // 使用队列机制执行写入
+        const result = await enqueueWrite(uri, content, priority, disclosure);
+        return result;
+      }
+      case 'memory_search': {
+        const r = await memorySearch.searchMemory(args.query, {
+          domain: args.domain || 'core',
+          limit: args.limit || 10,
+          include_content: true,
+        });
+        if (!r.ok) return { success: false, error: r.error };
+        return { success: true, results: r.data || [] };
+      }
+      // ── 本地任务存储工具 ──
+      case 'tasks_read': {
+        const data = loadTasksData();
+        return { success: true, data };
+      }
+      case 'tasks_add': {
+        const data = loadTasksData();
+        const newTask = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          content: (args.content || '').trim(),
+          priority: args.priority || 'p2',
+          done: false,
+          source: 'amy',
+          createdAt: new Date().toISOString(),
+        };
+        data.tasks.push(newTask);
+        if (saveTasksData(data)) {
+          const icon = newTask.priority === 'p0' ? '🔴' : newTask.priority === 'p1' ? '🟡' : '🟢';
+          console.log(`[TasksLocal] 添加任务: ${icon} ${newTask.content}`);
+          return { success: true, taskId: newTask.id, message: `任务已添加: ${icon} ${newTask.content}` };
+        }
+        return { success: false, error: '保存失败' };
+      }
+      case 'tasks_update': {
+        const data = loadTasksData();
+        const idx = data.tasks.findIndex(t => t.id === args.taskId);
+        if (idx === -1) return { success: false, error: '任务不存在' };
+        
+        const updates = {};
+        if (args.done !== undefined) updates.done = args.done;
+        if (args.content) updates.content = args.content.trim();
+        if (args.priority) updates.priority = args.priority;
+        
+        data.tasks[idx] = { ...data.tasks[idx], ...updates };
+        if (saveTasksData(data)) {
+          console.log(`[TasksLocal] 更新任务: ${args.taskId}`, updates);
+          return { success: true, message: '任务已更新' };
+        }
+        return { success: false, error: '保存失败' };
+      }
+      case 'tasks_delete': {
+        const data = loadTasksData();
+        const originalLen = data.tasks.length;
+        data.tasks = data.tasks.filter(t => t.id !== args.taskId);
+        if (data.tasks.length === originalLen) {
+          return { success: false, error: '任务不存在' };
+        }
+        if (saveTasksData(data)) {
+          console.log(`[TasksLocal] 删除任务: ${args.taskId}`);
+          return { success: true, message: '任务已删除' };
+        }
+        return { success: false, error: '保存失败' };
+      }
+      case 'parking_add': {
+        const data = loadTasksData();
+        const newItem = {
+          id: `${Date.now()}`,
+          content: (args.content || '').trim(),
+          createdAt: new Date().toISOString(),
+        };
+        data.parking.push(newItem);
+        if (saveTasksData(data)) {
+          console.log(`[TasksLocal] 添加停车场项目: ${newItem.content}`);
+          console.log('[TasksLocal] parking_add saved. counts=', { tasks: data.tasks?.length || 0, parking: data.parking?.length || 0 });
+          if (onTaskBoardUpdate) onTaskBoardUpdate();
+          return { success: true, itemId: newItem.id, message: `已添加到停车场: ${newItem.content}` };
+        }
+        return { success: false, error: '保存失败' };
+      }
+      case 'task_add': {
+        const title = (args.title || '').trim();
+        if (!title) return { success: false, error: '任务标题不能为空' };
+        let pr = (args.priority || '').toUpperCase();
+        if (pr !== 'P0' && pr !== 'P1' && pr !== 'P2') pr = 'P2';
+        const data = loadTasksData();
+        const newTask = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          content: title,
+          priority: pr.toLowerCase(),
+          done: false,
+          source: 'amy',
+          createdAt: new Date().toISOString(),
+        };
+        data.tasks.push(newTask);
+        if (saveTasksData(data)) {
+          console.log('[TasksLocal] task_add saved. counts=', { tasks: data.tasks?.length || 0, parking: data.parking?.length || 0 });
+          if (onTaskBoardUpdate) onTaskBoardUpdate();
+          return { success: true, taskId: newTask.id, message: `任务已添加: ${title}` };
+        }
+        return { success: false, error: '保存失败' };
+      }
+      case 'task_done': {
+        const title = (args.title || '').trim();
+        if (!title) return { success: false, error: '任务标题不能为空' };
+        const data = loadTasksData();
+        const idx = data.tasks.findIndex(t => (t.content || '').trim() === title);
+        if (idx === -1) return { success: false, error: `未找到任务: ${title}` };
+        data.tasks[idx].done = true;
+        if (saveTasksData(data)) {
+          return { success: true, message: `任务已完成: ${title}` };
+        }
+        return { success: false, error: '保存失败' };
+      }
+      case 'task_delete': {
+        const title = (args.title || '').trim();
+        if (!title) return { success: false, error: '任务标题不能为空' };
+        const data = loadTasksData();
+        const before = data.tasks.length;
+        data.tasks = data.tasks.filter(t => (t.content || '').trim() !== title);
+        if (data.tasks.length === before) return { success: false, error: `未找到任务: ${title}` };
+        if (saveTasksData(data)) {
+          return { success: true, message: `任务已删除: ${title}` };
+        }
+        return { success: false, error: '保存失败' };
+      }
+      case 'task_list': {
+        const data = loadTasksData();
+        return { success: true, data };
+      }
+      default:
+        return { success: false, error: `未知工具: ${name}` };
+    }
+  } catch (e) {
+    return { success: false, error: e?.message || String(e) };
+  }
+}
+
+module.exports = { TOOL_DEFINITIONS, executeTool, setOnTaskBoardUpdate };

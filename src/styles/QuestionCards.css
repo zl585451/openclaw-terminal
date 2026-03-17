@@ -1,0 +1,125 @@
+.question-cards {
+  margin-top: 14px;
+  border: 1px solid #1a3a4d;
+  border-left: 3px solid #00aaff;
+  border-radius: 5px;
+  overflow: hidden;
+  animation: qc-in 0.2s ease;
+}
+
+@keyframes qc-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 标题行 ── */
+.question-cards-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #030e14;
+  border-bottom: 1px solid #0d2535;
+}
+
+.question-cards-icon {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: #00aaff;
+}
+
+.question-cards-title {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: #005580;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.question-cards-hint-global {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 9px;
+  color: #003344;
+  letter-spacing: 0.3px;
+}
+
+/* ── 问题卡片列表 ── */
+.question-cards-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 单个问题卡片 ── */
+.question-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-left-color 0.15s;
+  border-bottom: 1px solid #060d12;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.question-card:last-child {
+  border-bottom: none;
+}
+
+.question-card:hover {
+  background: rgba(0, 170, 255, 0.05);
+}
+
+.question-card:hover .question-card-action {
+  opacity: 1;
+  color: #00aaff;
+}
+
+.question-card.quoted {
+  background: rgba(0, 170, 255, 0.08);
+}
+
+.question-card.quoted .question-card-action {
+  opacity: 1;
+  color: #00ff88;
+}
+
+/* 序号 */
+.question-card-num {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: #00aaff;
+  background: rgba(0, 170, 255, 0.1);
+  border-radius: 2px;
+  margin-top: 1px;
+}
+
+/* 问题文本 */
+.question-card-text {
+  flex: 1;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  color: #8ad4f0;
+  line-height: 1.5;
+}
+
+/* 操作提示（默认隐藏，hover 显示） */
+.question-card-action {
+  flex-shrink: 0;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: #003344;
+  letter-spacing: 1px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  align-self: center;
+  white-space: nowrap;
+}

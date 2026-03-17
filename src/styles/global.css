@@ -8,18 +8,36 @@
 }
 
 :root {
-  --bg-primary: #020c06;
-  --bg-secondary: #030f08;
-  --bg-tertiary: #041210;
-  --text-primary: #00ff9f;
-  --text-secondary: #00cc7f;
-  --text-dim: #006644;
-  --cyan: #00ffff;
-  --yellow: #ffff00;
-  --red: #ff4444;
-  --green: #00ff00;
-  --border-color: #00ff9f33;
-  --glow: 0 0 10px #00ff9f44;
+  /* OCT 双色调护眼终端风格 */
+  --oct-bg-primary: #0d1117;
+  --oct-bg-secondary: #161b22;
+  --oct-bg-tertiary: #1c2128;
+  --oct-border: #1e3a3a;
+  --oct-border-bright: #2d4a4a;
+  --oct-accent: #4ec9b0;
+  --oct-accent-dim: #2a7a6a;
+  --oct-text-primary: #e6edf3;
+  --oct-text-secondary: #8b949e;
+  --oct-text-accent: #4ec9b0;
+  --oct-green-ui: #00ff41;
+  --oct-green-ui-dim: #00cc6644;
+
+  /* 保持向后兼容的变量 */
+  --primary-color: #00ff41;
+  --accent-color: #4ec9b0;
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #1c2128;
+  --text-primary: #e6edf3;
+  --text-dim: #8b949e;
+  --border-color: #1e3a3a;
+  --glow-color: rgba(78, 201, 176, 0.4);
+  --text-secondary: var(--accent-color);
+  --cyan: #4ec9b0;
+  --yellow: #d29922;
+  --red: #f85149;
+  --green: var(--primary-color);
+  --glow: 0 0 10px var(--glow-color);
   --font-mono: 'Share Tech Mono', 'Courier New', monospace;
 }
 
@@ -172,6 +190,12 @@ body {
 @keyframes blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
+}
+
+/* 呼吸灯动画 */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
 }
 
 .cursor-blink {

@@ -1108,6 +1108,17 @@ const ChatMessageList = function ChatMessageList({
         const raw = typeof msg.content === 'string'
           ? msg.content
           : String((msg.content as any)?.text ?? (msg.content as any)?.content ?? msg.content ?? '');
+        try {
+          if (msg.role === 'assistant' && (!raw || raw.trim().length === 0)) {
+            console.warn('[ChatTab] render assistant with empty raw content. msg=', {
+              id: msg.id,
+              role: msg.role,
+              isStreaming: msg.isStreaming,
+              isSystemReply: msg.isSystemReply,
+              ts: msg.timestamp,
+            });
+          }
+        } catch {}
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
         // 流式消息：用 displayedLength 控制显示进度，实现打字机效果
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
@@ -1413,16 +1424,32 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     if (src?.delta !== undefined && src?.delta !== null) return String(src.delta);
     if (src?.text) return String(src.text);
     if (src?.message?.content && Array.isArray(src.message.content)) {
-      return src.message.content
-        .filter((b: any) => b?.type === 'text' && b?.text)
-        .map((b: any) => String(b.text))
-        .join('');
+      const parts: string[] = [];
+      for (const b of src.message.content) {
+        if (!b) continue;
+        if (typeof b === 'string') { parts.push(b); continue; }
+        const t = (b.type || '').toString().toLowerCase();
+        const rawText =
+          (typeof b.text === 'string' ? b.text : '') ||
+          (typeof b.content === 'string' ? b.content : '') ||
+          (typeof b.value === 'string' ? b.value : '') ||
+          (typeof b.text?.value === 'string' ? b.text.value : '') ||
+          (typeof b.text?.text === 'string' ? b.text.text : '');
+        if (!rawText) continue;
+        if (!t || t === 'text' || t === 'output_text' || t === 'output-text') {
+          parts.push(String(rawText));
+        }
+      }
+      return parts.join('');
     }
     if (typeof src?.message === 'string') return src.message;
     if (src?.message?.text) return String(src.message.text);
     if (src?.message?.content && typeof src.message.content === 'string') return src.message.content;
     if (Array.isArray(src?.blocks)) {
-      return src.blocks.map((b: any) => String(b?.text ?? b?.content ?? '')).filter(Boolean).join('');
+      return src.blocks
+        .map((b: any) => String(b?.text ?? b?.content ?? b?.value ?? b?.text?.value ?? ''))
+        .filter(Boolean)
+        .join('');
     }
     return '';
   };
@@ -1465,6 +1492,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const content = extractContent(data);
     const done = (data.done === true) || (data.payload?.done === true);
     const isDelta = isDeltaPayload(data);
+
+    // DEBUG: 当收到 chat 事件但提取到的文本为空时，打印原始结构（截断）
+    try {
+      const empty = !content || String(content).trim().length === 0;
+      if (empty) {
+        const src = data.payload ?? data;
+        console.warn('[ChatTab] empty extracted content. type/event=', data.type, data.event);
+        console.warn('[ChatTab] empty extracted content. payload keys=', Object.keys(src || {}));
+        console.warn('[ChatTab] empty extracted content. raw snippet=', JSON.stringify(data).slice(0, 1200));
+      }
+    } catch {}
 
     if (done) {
       setAwaitingResponse(false);
@@ -1552,7 +1590,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           );
         }
         if (finalStreamContent || data.text) {
-          const textContent = (finalStreamContent || String(data.text || '')).trim();
+          const rawText = (finalStreamContent || String(data.text || ''));
+          const textContent = rawText.trim();
+          // done 包可能只有空白（例如 "\n\n"），此时不新建气泡
           if (!textContent) return prev;
           // 去重：最后一条已是助手消息且内容相同，避免 Gateway 多路转发（如 chat + agent）导致重复
           if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
@@ -1576,6 +1616,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 50);
       return;
     }
+
+    // delta 阶段：忽略纯空白增量（例如 "\n\n"），避免创建“空白流式消息”导致后续正文合并异常
+    const isWhitespaceOnlyDelta = isDelta && typeof content === 'string' && content.trim().length === 0;
+    if (isWhitespaceOnlyDelta) return;
 
     if (content) {
       setAwaitingResponse(false);

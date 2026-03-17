@@ -1,0 +1,515 @@
+/* TaskBoard 任务看板样式 - OCT 暗色主题 */
+/* 主题色变量 */
+:root {
+  --tb-primary-bg: #0a0a0a;
+  --tb-panel-bg: #1a1a1a;
+  --tb-border-color: #2a2a2a;
+  --tb-accent-green: #00ff88;
+  --tb-text-primary: #e0e0e0;
+  --tb-text-secondary: #888888;
+  --tb-red-warning: #ff4444;
+  --tb-p0-color: #ff4444;
+  --tb-p1-color: #ffaa00;
+  --tb-p2-color: #00ff88;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   紧凑模式样式 - 用于右侧面板
+   ═══════════════════════════════════════════════════════════ */
+.task-board-compact-new {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Share Tech Mono', monospace;
+  background: var(--tb-primary-bg);
+}
+
+/* 标题行 */
+.tb-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--tb-border-color);
+  flex-shrink: 0;
+}
+
+.tb-title {
+  font-size: 12px;
+  color: var(--tb-accent-green);
+  letter-spacing: 1px;
+}
+
+.tb-count {
+  font-size: 11px;
+  color: var(--tb-text-secondary);
+  margin-left: auto;
+}
+
+.tb-refresh-btn {
+  background: transparent;
+  border: 1px solid var(--tb-border-color);
+  color: var(--tb-text-secondary);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tb-refresh-btn:hover {
+  border-color: var(--tb-accent-green);
+  color: var(--tb-accent-green);
+}
+
+/* 今日意图 */
+.tb-intention {
+  font-size: 11px;
+  color: var(--tb-text-secondary);
+  padding: 4px 12px;
+  background: rgba(0, 255, 136, 0.03);
+  border-bottom: 1px solid var(--tb-border-color);
+  flex-shrink: 0;
+}
+
+/* 任务区域 */
+.tb-task-section {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.tb-loading,
+.tb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60px;
+  color: var(--tb-text-secondary);
+  font-size: 12px;
+}
+
+/* 任务条目 */
+.tb-task-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--tb-panel-bg);
+  border: 0.5px solid var(--tb-border-color);
+  border-radius: 6px;
+  margin: 4px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tb-task-item:hover {
+  background: #1f1f1f;
+}
+
+/* 优先级圆点 */
+.tb-priority-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.tb-priority-dot:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* 任务内容 */
+.tb-task-content {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* 操作按钮 - 默认隐藏 */
+.tb-task-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tb-task-item:hover .tb-task-actions {
+  opacity: 1;
+}
+
+.tb-action-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--tb-border-color);
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tb-complete-btn {
+  color: var(--tb-accent-green);
+  border-color: rgba(0, 255, 136, 0.3);
+}
+
+.tb-complete-btn:hover {
+  background: rgba(0, 255, 136, 0.1);
+  border-color: var(--tb-accent-green);
+}
+
+.tb-delete-btn {
+  color: var(--tb-red-warning);
+  border-color: rgba(255, 68, 68, 0.3);
+}
+
+.tb-delete-btn:hover {
+  background: rgba(255, 68, 68, 0.1);
+  border-color: var(--tb-red-warning);
+}
+
+/* 删除确认条 */
+.tb-delete-confirm {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--tb-red-warning);
+}
+
+.tb-delete-confirm button {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tb-delete-confirm button:first-of-type {
+  color: var(--tb-red-warning);
+}
+
+.tb-delete-confirm button:first-of-type:hover {
+  background: rgba(255, 68, 68, 0.2);
+}
+
+.tb-delete-confirm button:last-of-type {
+  color: var(--tb-text-secondary);
+}
+
+.tb-delete-confirm button:last-of-type:hover {
+  background: rgba(136, 136, 136, 0.1);
+}
+
+/* 翻页控件 */
+.tb-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--tb-border-color);
+  font-size: 12px;
+  color: var(--tb-text-secondary);
+}
+
+.tb-pagination button {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--tb-border-color);
+  border-radius: 3px;
+  color: var(--tb-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tb-pagination button:hover:not(:disabled) {
+  border-color: var(--tb-accent-green);
+  color: var(--tb-accent-green);
+}
+
+.tb-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 分割线 */
+.tb-divider {
+  height: 1px;
+  background: var(--tb-border-color);
+  margin: 0 12px;
+  flex-shrink: 0;
+}
+
+/* 停车场区域 */
+.tb-parking-section {
+  min-height: 120px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+.tb-parking-header {
+  font-size: 12px;
+  color: var(--tb-text-secondary);
+  margin-bottom: 8px;
+}
+
+.tb-parking-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--tb-panel-bg);
+  border: 0.5px solid var(--tb-border-color);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.tb-parking-tag {
+  padding: 2px 6px;
+  background: var(--tb-border-color);
+  color: var(--tb-text-secondary);
+  font-size: 10px;
+  border-radius: 3px;
+}
+
+.tb-parking-content {
+  flex: 1;
+  font-size: 12px;
+  color: var(--tb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.tb-parking-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tb-parking-item:hover .tb-parking-actions {
+  opacity: 1;
+}
+
+.tb-promote-btn,
+.tb-remove-btn {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--tb-border-color);
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tb-promote-btn {
+  color: var(--tb-accent-green);
+  border-color: rgba(0, 255, 136, 0.3);
+}
+
+.tb-promote-btn:hover {
+  background: rgba(0, 255, 136, 0.1);
+  border-color: var(--tb-accent-green);
+}
+
+.tb-remove-btn {
+  color: var(--tb-text-secondary);
+}
+
+.tb-remove-btn:hover {
+  border-color: var(--tb-red-warning);
+  color: var(--tb-red-warning);
+}
+
+.tb-parking-empty {
+  font-size: 12px;
+  color: var(--tb-text-secondary);
+  text-align: center;
+  padding: 20px 0;
+}
+
+/* 快速输入框 */
+.tb-quick-input {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--tb-border-color);
+  flex-shrink: 0;
+}
+
+.tb-quick-input input {
+  flex: 1;
+  padding: 8px 10px;
+  background: #111111;
+  border: 1px solid var(--tb-border-color);
+  border-radius: 4px;
+  color: var(--tb-text-primary);
+  font-size: 12px;
+  font-family: 'Share Tech Mono', monospace;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.tb-quick-input input::placeholder {
+  color: #444444;
+}
+
+.tb-quick-input input:focus {
+  border-color: var(--tb-accent-green);
+}
+
+.tb-add-btn {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--tb-accent-green);
+  border-radius: 4px;
+  color: var(--tb-accent-green);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tb-add-btn:hover {
+  background: rgba(0, 255, 136, 0.1);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   完整模式样式
+   ═══════════════════════════════════════════════════════════ */
+.task-board-full {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--tb-primary-bg);
+  border: 1px solid var(--tb-border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.tb-full-header {
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #161b22 0%, var(--tb-primary-bg) 100%);
+  border-bottom: 1px solid var(--tb-border-color);
+  position: relative;
+}
+
+.tb-full-date {
+  font-size: 14px;
+  color: var(--tb-accent-green);
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+
+.tb-full-intention {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tb-intention-label {
+  font-size: 9px;
+  color: var(--tb-text-secondary);
+  letter-spacing: 2px;
+  padding: 2px 6px;
+  background: rgba(0, 255, 136, 0.1);
+  border-radius: 3px;
+}
+
+.tb-intention-text {
+  font-size: 11px;
+  color: var(--tb-text-primary);
+}
+
+.tb-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--tb-border-color);
+  border-radius: 4px;
+  color: var(--tb-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.tb-close-btn:hover {
+  border-color: var(--tb-accent-green);
+  color: var(--tb-accent-green);
+}
+
+.tb-full-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.tb-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 14px;
+  background: var(--tb-panel-bg);
+  border-top: 1px solid var(--tb-border-color);
+  border-bottom: 1px solid var(--tb-border-color);
+  font-size: 9px;
+  color: var(--tb-text-secondary);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+/* 滚动条样式 */
+.tb-task-section::-webkit-scrollbar,
+.tb-full-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tb-task-section::-webkit-scrollbar-track,
+.tb-full-content::-webkit-scrollbar-track {
+  background: var(--tb-panel-bg);
+}
+
+.tb-task-section::-webkit-scrollbar-thumb,
+.tb-full-content::-webkit-scrollbar-thumb {
+  background: var(--tb-border-color);
+  border-radius: 3px;
+}
+
+.tb-task-section::-webkit-scrollbar-thumb:hover,
+.tb-full-content::-webkit-scrollbar-thumb:hover {
+  background: var(--tb-accent-green);
+}

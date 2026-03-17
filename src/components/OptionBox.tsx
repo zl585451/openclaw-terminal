@@ -3,6 +3,7 @@ import type { OptionItem } from '../utils/optionBoxParser';
 import '../styles/OptionBox.css';
 
 const DEFAULT_OPTIONS_PER_PAGE = 5;
+const PILL_THRESHOLD = 4;
 
 interface OptionBoxProps {
   messageId: number;
@@ -11,10 +12,40 @@ interface OptionBoxProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onSelect: (value: string) => void;
+  forcePills?: boolean;
 }
 
-export default function OptionBox({ messageId: _messageId, options, totalPages: totalPagesFromContent, currentPage, onPageChange, onSelect }: OptionBoxProps) {
+/** ≤4个选项：Pill模式，单击直接发送 */
+function PillOptionBox({ options, onSelect }: { options: OptionItem[]; onSelect: (v: string) => void }) {
+  const [sent, setSent] = useState<string | null>(null);
+
+  const handleClick = (value: string) => {
+    if (sent) return;
+    setSent(value);
+    onSelect(value);
+  };
+
+  return (
+    <div className="option-pills">
+      {options.map((opt) => (
+        <button
+          key={`${opt.num}-${opt.label}`}
+          type="button"
+          className={`option-pill ${sent === opt.value ? 'sent' : ''} ${sent && sent !== opt.value ? 'faded' : ''}`}
+          onClick={() => handleClick(opt.value)}
+          disabled={!!sent}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function OptionBox({ messageId: _messageId, options, totalPages: totalPagesFromContent, currentPage, onPageChange, onSelect, forcePills }: OptionBoxProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const isPillMode = forcePills === true ? true : forcePills === false ? false : options.length <= PILL_THRESHOLD;
 
   const { totalPages: effectiveTotalPages, optionsPerPage } = useMemo(() => {
     if (totalPagesFromContent != null && totalPagesFromContent >= 1) {
@@ -51,6 +82,10 @@ export default function OptionBox({ messageId: _messageId, options, totalPages: 
   };
 
   if (!options || options.length === 0) return null;
+
+  if (isPillMode) {
+    return <PillOptionBox options={options} onSelect={onSelect} />;
+  }
 
   return (
     <div className="option-box">

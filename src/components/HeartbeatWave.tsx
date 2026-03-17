@@ -46,16 +46,6 @@ const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected }) => {
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
 
-      // 背景网格
-      ctx.strokeStyle = 'rgba(0, 80, 30, 0.2)';
-      ctx.lineWidth = 0.5;
-      for (let gx = 0; gx < W; gx += 20) {
-        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
-      }
-      for (let gy = 0; gy < H; gy += 10) {
-        ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
-      }
-
       // 中线
       ctx.strokeStyle = 'rgba(0, 150, 60, 0.3)';
       ctx.lineWidth = 0.5;
@@ -121,8 +111,8 @@ const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected }) => {
     <canvas
       ref={canvasRef}
       width={290}
-      height={55}
-      style={{ display: 'block', width: '100%', height: '55px' }}
+      height={65}
+      style={{ display: 'block', width: '100%', height: '65px' }}
     />
   );
 };

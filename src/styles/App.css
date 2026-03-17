@@ -1,17 +1,4 @@
-/* 赛博坦主题变量 */
-:root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #0f0f1a;
-  --bg-tertiary: #151525;
-  --green: #00ff88;
-  --cyan: #00d4ff;
-  --red: #ff0055;
-  --yellow: #ffaa00;
-  --text-primary: #e0e0e0;
-  --text-dim: #666680;
-  --border-color: rgba(0, 255, 136, 0.2);
-  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-}
+/* 主题变量由 SettingsContext 动态注入到 :root，这里不再重复定义 */
 
 /* 全局样式 */
 * {
