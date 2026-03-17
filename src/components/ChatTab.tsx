@@ -3,8 +3,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 // xterm 已完全移除以修复闪退问题
 import '../styles/ChatTab.css';
-import { parseOptionBox, type OptionItem } from '../utils/optionBoxParser';
+import { parseOptionBox, type OptionItem, type RenderSegment } from '../utils/optionBoxParser';
 import OptionBox from './OptionBox';
+import TaskList from './TaskList';
+import TaskBoard from './TaskBoard';
+import QuestionCards from './QuestionCards';
+import ThinkModeMenu from './ThinkModeMenu';
 import SettingsPanel from './SettingsPanel';
 import SocraticPanel from './SocraticPanel';
 import {
@@ -17,6 +21,7 @@ import CodeBlock from './CodeBlock';
 import QuickCommandMenu from './QuickCommandMenu';
 import HeartbeatWave from './HeartbeatWave';
 import AmyAvatar from './AmyAvatar';
+import SetupGuide from './SetupGuide';
 import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
@@ -31,17 +36,15 @@ const ipcRenderer =
         off: () => {},
         removeListener: () => {},
       };
-// 日志路径由 main 进程根据平台提供，前端仅在 env 未设置时传空串
-
-// 已改用 DOM 渲染，此函数保留供参考
-// function getLogAnsiColor(line: string): string {
+// 日志路径main 进程根据平台提供，前端仅env 未设置时传空
+// 已改DOM 渲染，此函数保留供参// function getLogAnsiColor(line: string): string {
 //   if (line.startsWith('[ERR]') || /\[ERROR\]/i.test(line)) return '\x1b[38;2;255;68;68m';
 //   if (/\[WARN\]/i.test(line)) return '\x1b[38;2;255;170;0m';
 //   if (/\[LOG\]/i.test(line)) return '\x1b[38;2;0;204;204m';
 //   return '\x1b[32m';
 // }
 
-// DOM 日志级别判断 - 优先解析原始 JSON 的 level 字段
+// DOM 日志级别判断 - 优先解析原始 JSON level 字段
 function getLogLevel(rawLine: string): string {
   try {
     const parsed = JSON.parse(rawLine) as { _meta?: { logLevelName?: string }; level?: string };
@@ -58,6 +61,29 @@ function getLogLevel(rawLine: string): string {
   if (/\[LOG\]/.test(rawLine)) return 'LOG';
   if (/\[AGENT\]|\[OpenClaw\]/i.test(rawLine)) return 'AGENT';
   return 'INFO';
+}
+
+// 日志颜色分类 - 根据关键词判断
+function getLogColorClass(rawLine: string): string {
+  const lower = rawLine.toLowerCase();
+  
+  // 记忆相关：蓝色
+  if (lower.includes('memory') || lower.includes('记忆') || /\[memory\]/i.test(rawLine)) {
+    return 'log-memory';
+  }
+  
+  // 错误：红色
+  if (/error|错误|failed|exception/i.test(rawLine)) {
+    return 'log-error';
+  }
+  
+  // 调试：灰色
+  if (/debug|调试/i.test(rawLine)) {
+    return 'log-debug';
+  }
+  
+  // 默认
+  return '';
 }
 
 // const LOG_NOISE_PATTERNS = [
@@ -135,7 +161,7 @@ async function fileToUploadedFile(file: File): Promise<UploadedFile> {
   };
 }
 
-/** 判断是否为 Gateway 直接处理的系统命令（不等待 AMY 回复） */
+/** 判断是否Gateway 直接处理的系统命令（不等AMY 回复*/
 function isSystemCommand(text: string): boolean {
   const t = (text || '').trim();
   return /^\/(status|restart|stop|new|think\s+\w+)\s*$/.test(t);
@@ -158,30 +184,34 @@ function MsgCopyButton({ text }: { text: string }) {
 }
 
 const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (href) {
+          const openExternal = typeof (window as any).require === 'function'
+            ? (window as any).require('electron').shell.openExternal
+            : (url: string) => window.open(url, '_blank');
+          openExternal(href);
+        }
+      }}
+      style={{ color: '#00cc88', textDecoration: 'underline', cursor: 'pointer' }}
+      title={href}
+    >{children}</a>
+  ),
+  input: ({ type, ...props }) => {
+    if (type === 'checkbox') return null;
+    return <input type={type} {...props} />;
+  },
   table: ({ children }) => (
-    <table style={{
-      borderCollapse: 'collapse',
-      width: '100%',
-      margin: '8px 0',
-      fontSize: '13px',
-    }}>{children}</table>
+    <table className="md-table">{children}</table>
   ),
-  th: ({ children }) => (
-    <th style={{
-      border: '1px solid #1a4d2a',
-      padding: '6px 10px',
-      background: '#0a1f0a',
-      color: '#00ff88',
-      textAlign: 'left',
-    }}>{children}</th>
-  ),
-  td: ({ children }) => (
-    <td style={{
-      border: '1px solid #0d2d0d',
-      padding: '5px 10px',
-      color: '#00cc66',
-    }}>{children}</td>
-  ),
+  thead: ({ children }) => <thead>{children}</thead>,
+  tbody: ({ children }) => <tbody>{children}</tbody>,
+  tr: ({ children }) => <tr>{children}</tr>,
+  th: ({ children }) => <th>{children}</th>,
+  td: ({ children }) => <td>{children}</td>,
   code: ({ children, className }) => {
     const isBlock = className?.includes('language-') || String(children).includes('\n');
     if (!isBlock) {
@@ -235,7 +265,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#00ff41'; e.currentTarget.style.color = '#00ff41'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#00662a'; e.currentTarget.style.color = '#00cc55'; }}
                 >
-                  {expanded ? '▲ 收起' : '▼ 展开'}
+                  {expanded ? '收起' : '展开'}
                 </button>
               )}
               <button
@@ -253,7 +283,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
                 onMouseEnter={(e) => { if (!copied) { e.currentTarget.style.borderColor = '#00ff41'; e.currentTarget.style.color = '#00ff41'; } }}
                 onMouseLeave={(e) => { if (!copied) { e.currentTarget.style.borderColor = '#00662a'; e.currentTarget.style.color = '#00cc55'; } }}
               >
-                {copied ? '✓ COPIED' : 'COPY'}
+      {copied ? '✓' : '⎘'}
               </button>
             </div>
           </div>
@@ -298,34 +328,76 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
   },
 };
 
-const MarkdownContent = memo(function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
-  const text = content || '';
-  const isDone = !isStreaming;
+/** 流式输出时：从第一个表格行开始到结尾都当作纯文本，避免表格在逐字更新时反复重排导致跳*/
+function splitTableBlockForStreaming(text: string): { before: string; tableAndRest: string } | null {
+  const lines = text.split('\n');
+  const idx = lines.findIndex((line) => /^\|.+\|/.test(line.trim()));
+  if (idx < 0) return null;
+  return {
+    before: lines.slice(0, idx).join('\n'),
+    tableAndRest: lines.slice(idx).join('\n'),
+  };
+}
 
-  // 流式输出时，未完成的表格用纯文本显示
-  if (!isDone) {
-    const lines = text.split('\n');
-    const hasIncompleteTable = lines.some((l) => l.trim().startsWith('|'))
-      && !lines.some((l) => l.trim().match(/^\|[-|]+\|$/));
-    if (hasIncompleteTable) {
+/** 打字机光标：单独组件避免随内容重渲染导致闪烁 */
+const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <span className="cursor-blink">▋</span>;
+});
+
+const MarkdownContent = memo(
+  function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+    const text = content || '';
+
+    if (isStreaming) {
+      // 流式期间：检测是否有表格
+      const tableBlock = splitTableBlockForStreaming(text);
+      if (tableBlock) {
+        return (
+          <span className="msg-content markdown-body msg-content-streaming-root">
+            {tableBlock.before && (
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {tableBlock.before}
+              </ReactMarkdown>
+            )}
+            <span style={{
+              display: 'block',
+              fontFamily: 'Share Tech Mono, monospace',
+              fontSize: '13px',
+              color: '#00cc88',
+              whiteSpace: 'pre',
+              lineHeight: 1.6,
+              marginTop: '4px',
+              opacity: 0.8,
+            }}>
+              {tableBlock.tableAndRest}
+            </span>
+          </span>
+        );
+      }
+
+      // 流式期间无表格：正常 ReactMarkdown 渲染
       return (
-        <span className="msg-content markdown-body">
-          <span style={{ color: '#00cc66', whiteSpace: 'pre-wrap' }}>{text}</span>
-          <span className="cursor-blink">▋</span>
+        <span className="msg-content markdown-body msg-content-streaming-root">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {text}
+          </ReactMarkdown>
         </span>
       );
     }
-  }
 
-  return (
-    <span className="msg-content markdown-body">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {text}
-      </ReactMarkdown>
-      {isStreaming && <span className="cursor-blink">▋</span>}
-    </span>
-  );
-});
+    // 完成后：完整 ReactMarkdown 渲染
+    return (
+      <span className="msg-content markdown-body">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {text}
+        </ReactMarkdown>
+      </span>
+    );
+  },
+  (prev, next) =>
+    prev.content === next.content && prev.isStreaming === next.isStreaming
+);
 
 const UI_CTRL_PATTERNS = [/\[上一页\]/, /\[下一页\]/, /\[第\d+\/\d+页\]/, /\[确认导入\]/, /\[取消\]/];
 
@@ -354,7 +426,7 @@ const SystemMessage = ({ text }: { text: string }) => {
         </span>
         {isLong && (
           <span style={{ color: '#ffaa00', fontSize: '10px', fontFamily: 'Share Tech Mono', opacity: 0.7 }}>
-            {collapsed ? '▼ 展开' : '▲ 收起'}
+            {collapsed ? '展开' : '收起'}
           </span>
         )}
       </div>
@@ -382,6 +454,9 @@ interface ChatMessageItemProps {
   textToShow: string;
   raw: string;
   optionsToShow: OptionItem[];
+  isTaskList: boolean;
+  isReflectiveQuestions: boolean;
+  forcePills?: boolean;
   totalPages: number | undefined;
   currentPage: number;
   onPageChange: (msgId: number, page: number) => void;
@@ -391,7 +466,14 @@ interface ChatMessageItemProps {
   wsConnected: boolean;
   quickSend: (text: string) => void;
   onContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
-  onOpenSocratic: () => void;
+  /** templateId 可选：指定打开哪种思维模式 */
+  onOpenSocratic: (templateId?: string) => void;
+  /** 点击反思问引用到输入框 */
+  onQuoteQuestion: (text: string) => void;
+  /** 是否是最后一条助手消息（只有最后一条才显示思维模式按钮*/
+  isLastAssistantMsg: boolean;
+  /** 成对标签解析出的渲染段（存在时优先渲染） */
+  segments?: RenderSegment[];
 }
 
 const ChatMessageItem = memo(function ChatMessageItem({
@@ -399,6 +481,9 @@ const ChatMessageItem = memo(function ChatMessageItem({
   textToShow,
   raw,
   optionsToShow,
+  isTaskList,
+  isReflectiveQuestions,
+  forcePills,
   totalPages,
   currentPage,
   onPageChange,
@@ -409,11 +494,16 @@ const ChatMessageItem = memo(function ChatMessageItem({
   quickSend,
   onContextMenu,
   onOpenSocratic,
+  onQuoteQuestion,
+  isLastAssistantMsg,
+  segments,
 }: ChatMessageItemProps) {
   const [hoverTime, setHoverTime] = React.useState(false);
+  const [thinkMenuOpen, setThinkMenuOpen] = React.useState(false);
+  const thinkBtnRef = React.useRef<HTMLButtonElement>(null);
   return (
     <div
-      className={`chat-message ${msg.role} ${msg.isSystemReply ? 'system-reply' : ''} ${speakingMessageId === msg.id ? 'speaking' : ''}`}
+      className={`chat-message ${msg.role} ${msg.isSystemReply ? 'system-reply' : ''} ${speakingMessageId === msg.id ? 'speaking' : ''} ${isStreamingMsg ? 'streaming' : ''}`}
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu(e, msg, raw);
@@ -426,7 +516,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
       )}
       <div className="msg-header">
         {msg.role === 'user' ? (
-          <span className="msg-label">YOU ◈</span>
+          <span className="msg-label">YOU ▶</span>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
@@ -445,28 +535,135 @@ const ChatMessageItem = memo(function ChatMessageItem({
             <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />
           ) : (
           <div className="msg-assistant-body">
-            <MarkdownContent content={filterExpectedEffect(textToShow)} isStreaming={isStreamingMsg} />
-            {optionsToShow.length > 0 && (
-              <OptionBox
-                messageId={msg.id}
-                options={optionsToShow}
-                totalPages={totalPages}
-                currentPage={currentPage}
-                onPageChange={(page) => onPageChange(msg.id, page)}
-                onSelect={(value) => {
-                  if (value && wsConnected) quickSend(value);
-                }}
-              />
+            {segments && segments.length > 0 ? (
+              <>
+                {segments.map((seg, idx) => {
+                switch (seg.type) {
+                  case 'text':
+                    return <MarkdownContent key={idx} content={seg.content} isStreaming={isStreamingMsg} />;
+                  case 'pills':
+                    return seg.options.length > 0 ? (
+                      <OptionBox
+                        key={idx}
+                        messageId={msg.id}
+                        options={seg.options}
+                        totalPages={undefined}
+                        currentPage={1}
+                        onPageChange={(page) => onPageChange(msg.id, page)}
+                        onSelect={(value) => { if (value && wsConnected) quickSend(value); }}
+                        forcePills={true}
+                      />
+                    ) : null;
+                  case 'checkbox':
+                    return seg.options.length > 0 ? (
+                      <OptionBox
+                        key={idx}
+                        messageId={msg.id}
+                        options={seg.options}
+                        totalPages={undefined}
+                        currentPage={1}
+                        onPageChange={(page) => onPageChange(msg.id, page)}
+                        onSelect={(value) => { if (value && wsConnected) quickSend(value); }}
+                        forcePills={false}
+                      />
+                    ) : null;
+                  case 'question':
+                    return seg.options.length > 0 ? (
+                      <QuestionCards key={idx} questions={seg.options} onQuote={onQuoteQuestion} />
+                    ) : null;
+                  case 'tasklist':
+                    return seg.options.length > 0 ? (
+                      <TaskList key={idx} items={seg.options} />
+                    ) : null;
+                  default:
+                    return null;
+                }
+              })}
+                {isStreamingMsg && <TypewriterCursor show />}
+              </>
+            ) : (
+              <>
+                {(() => {
+                  const cleanedText = filterExpectedEffect(textToShow);
+                  const hasInlinePlaceholder = cleanedText.includes('<!--OPTIONS_HERE-->');
+                  const showInlineOptions = hasInlinePlaceholder && optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions;
+
+                  if (showInlineOptions) {
+                    const parts = cleanedText.split('<!--OPTIONS_HERE-->');
+                    const before = parts[0]?.trim() || '';
+                    const after = parts.slice(1).join('').trim();
+                    return (
+                      <>
+                        {before && <MarkdownContent content={before} isStreaming={isStreamingMsg} />}
+                        <OptionBox
+                          messageId={msg.id}
+                          options={optionsToShow}
+                          totalPages={totalPages}
+                          currentPage={currentPage}
+                          onPageChange={(page) => onPageChange(msg.id, page)}
+                          onSelect={(value) => {
+                            if (value && wsConnected) quickSend(value);
+                          }}
+                          forcePills={forcePills}
+                        />
+                        {after && <MarkdownContent content={after} isStreaming={isStreamingMsg} />}
+                        {isStreamingMsg && <TypewriterCursor show />}
+                      </>
+                    );
+                  }
+
+                  return (
+                    <>
+                      <MarkdownContent content={cleanedText} isStreaming={isStreamingMsg} />
+                      {isStreamingMsg && <TypewriterCursor show />}
+                      {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (
+                        <OptionBox
+                          messageId={msg.id}
+                          options={optionsToShow}
+                          totalPages={totalPages}
+                          currentPage={currentPage}
+                          onPageChange={(page) => onPageChange(msg.id, page)}
+                          onSelect={(value) => {
+                            if (value && wsConnected) quickSend(value);
+                          }}
+                          forcePills={forcePills}
+                        />
+                      )}
+                    </>
+                  );
+                })()}
+                {optionsToShow.length > 0 && isTaskList && (
+                  <TaskList items={optionsToShow} />
+                )}
+                {optionsToShow.length > 0 && isReflectiveQuestions && (
+                  <QuestionCards
+                    questions={optionsToShow}
+                    onQuote={onQuoteQuestion}
+                  />
+                )}
+              </>
             )}
-            {!isStreamingMsg && !msg.isSystemReply && (
-              <button
-                type="button"
-                className="socratic-trigger-btn"
-                onClick={onOpenSocratic}
-                title="思维引导：帮你逐步理清思路"
-              >
-                ◌ 理清思路 →
-              </button>
+            {!isStreamingMsg && !msg.isSystemReply && isLastAssistantMsg && (
+              <>
+                <button
+                  ref={thinkBtnRef}
+                  type="button"
+                  className="socratic-trigger-btn"
+                  onClick={() => setThinkMenuOpen((v) => !v)}
+                  title="思维模式：帮你理清思路、做决定、拆解目标"
+                >
+                  ◈ 思维模式
+                </button>
+                <ThinkModeMenu
+                  anchorRef={thinkBtnRef}
+                  visible={thinkMenuOpen}
+                  onClose={() => setThinkMenuOpen(false)}
+                  onSelect={(templateId) => {
+                    setThinkMenuOpen(false);
+                    onOpenSocratic(templateId);
+                  }}
+                />
+              </>
             )}
           </div>
           )
@@ -476,7 +673,6 @@ const ChatMessageItem = memo(function ChatMessageItem({
             {textToShow && <span className="msg-content msg-user-text">{textToShow}</span>}
           </div>
         )}
-        {msg.isStreaming && msg.role === 'assistant' && <span className="cursor-blink">▋</span>}
       </div>
       <span
         className="msg-timestamp"
@@ -529,12 +725,36 @@ interface ChatTabProps {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   getNextMessageId: () => number;
-  isAlwaysOnTop?: boolean;
-  onToggleAlwaysOnTop?: () => void;
   onStatusChange?: (wsConnected: boolean, isStreaming: boolean, modelName?: string, tokenIn?: number | null, tokenOut?: number | null, ctxUsed?: number | null, ctxMax?: number | null) => void;
 }
 
 const MAX_VISIBLE_MESSAGES = 50;
+
+// ── STREAK 工具函数 ──────────────────────────────────────────────────────
+function getTodayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getStreakData(): { streak: number; lastActiveDate: string } {
+  try {
+    const raw = localStorage.getItem('oct_streak');
+    if (raw) return JSON.parse(raw) as { streak: number; lastActiveDate: string };
+  } catch {}
+  return { streak: 0, lastActiveDate: '' };
+}
+
+function touchStreak(): number {
+  const today = getTodayStr();
+  const data = getStreakData();
+  if (data.lastActiveDate === today) return data.streak;
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const newStreak = data.lastActiveDate === yesterday ? data.streak + 1 : 1;
+  try {
+    localStorage.setItem('oct_streak', JSON.stringify({ streak: newStreak, lastActiveDate: today }));
+  } catch {}
+  return newStreak;
+}
+// ────────────────────────────────────────────────────────────────────────
 
 interface ChatInputAreaProps {
   imagePreview: string | null;
@@ -599,7 +819,7 @@ const ChatInputArea = memo(function ChatInputArea({
 
   const handleSend = useCallback(() => {
     const text = inputValue.trim();
-    if ((!text && !imagePreview && uploadedFiles.length === 0) || !wsConnected) return;
+    if (!text && !imagePreview && uploadedFiles.length === 0) return;
     if (text) {
       setInputHistory((prev) => [text, ...prev.slice(0, 49)]);
       setHistoryIndex(-1);
@@ -730,7 +950,7 @@ const ChatInputArea = memo(function ChatInputArea({
           disabled
           title="录音功能即将推出"
         >
-          {isRecording ? '●' : '🎤'}
+          {isRecording ? '⏹' : '🎤'}
         </button>
         <button
           ref={quickMenuAnchorRef}
@@ -739,8 +959,7 @@ const ChatInputArea = memo(function ChatInputArea({
           onClick={() => setQuickMenuOpen((v) => !v)}
           title="快捷指令"
         >
-          ⚡
-        </button>
+          ◀        </button>
         <QuickCommandMenu
           anchorRef={quickMenuAnchorRef}
           visible={quickMenuOpen}
@@ -803,11 +1022,11 @@ const ChatInputArea = memo(function ChatInputArea({
         <button
           className="send-btn"
           onClick={handleSend}
-          disabled={!wsConnected || isStreaming || (!inputValue.trim() && !imagePreview && uploadedFiles.length === 0)}
-          title={isStreaming ? 'AMY 正在回复...' : undefined}
+          disabled={isStreaming || (!inputValue.trim() && !imagePreview && uploadedFiles.length === 0)}
+          title={isStreaming ? 'AMY 正在回复...' : !wsConnected ? '连接..' : undefined}
         >
           [ SEND ] →
-        </button>
+          </button>
       </div>
     </>
   );
@@ -818,7 +1037,8 @@ interface ChatMessageListProps {
   displayMessages: ChatMessage[];
   isStreaming: boolean;
   awaitingResponse: boolean;
-  displayedStreamingLength: number;
+  streamingContent: string;
+  displayedLength: number;
   speakingMessageId: number | null;
   agentPhase: 'idle' | 'thinking' | 'typing';
   wsConnected: boolean;
@@ -826,15 +1046,17 @@ interface ChatMessageListProps {
   bottomRef: React.RefObject<HTMLDivElement | null>;
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
   onMessageContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
-  onOpenSocratic: () => void;
+  onOpenSocratic: (templateId?: string) => void;
+  onQuoteQuestion: (text: string) => void;
 }
 
-const ChatMessageList = memo(function ChatMessageList({
+const ChatMessageList = function ChatMessageList({
   messages,
   displayMessages,
   isStreaming,
   awaitingResponse,
-  displayedStreamingLength,
+  streamingContent,
+  displayedLength,
   speakingMessageId,
   agentPhase,
   wsConnected,
@@ -843,8 +1065,19 @@ const ChatMessageList = memo(function ChatMessageList({
   onScroll,
   onMessageContextMenu,
   onOpenSocratic,
+  onQuoteQuestion,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
+
+  const lastAssistantMsgId = useMemo(() => {
+    for (let i = displayMessages.length - 1; i >= 0; i--) {
+      const m = displayMessages[i];
+      if (m.role === 'assistant' && !m.isStreaming && !m.isSystemReply) {
+        return m.id;
+      }
+    }
+    return null;
+  }, [displayMessages]);
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
@@ -856,13 +1089,13 @@ const ChatMessageList = memo(function ChatMessageList({
     <div className="chat-messages" onScroll={onScroll}>
       {messages.length === 0 && (
         <div className="chat-empty">
-          <span className="empty-icon">◈</span>
-          <span>输入消息开始对话...</span>
+          <span className="empty-icon">✦</span>
+          <span>输入消息开始对..</span>
         </div>
       )}
       {showTypingIndicator && (
         <div className="chat-thinking">
-          <span className="msg-label">◈ AMY</span>
+          <span className="msg-label">◆ AMY</span>
           {agentPhase === 'thinking' && <span className="agent-status-badge">思考中</span>}
           <span className="processing-blocks typing-dots">
             <span className="block" />
@@ -876,13 +1109,21 @@ const ChatMessageList = memo(function ChatMessageList({
           ? msg.content
           : String((msg.content as any)?.text ?? (msg.content as any)?.content ?? msg.content ?? '');
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
-        const display = isStreamingMsg
-          ? raw.slice(0, displayedStreamingLength)
-          : raw;
-        const parsed = msg.role === 'assistant' && !msg.isStreaming ? parseOptionBox(raw) : { text: display, options: [], totalPages: undefined };
-        const textToShow = msg.role === 'assistant' && !msg.isStreaming ? parsed.text : display;
+        // 流式消息：用 displayedLength 控制显示进度，实现打字机效果
+        const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
+        const display = isStreamingMsg ? fullContent.slice(0, displayedLength) : fullContent;
+        const parsed = (msg.role === 'assistant' && !isStreamingMsg)
+          ? parseOptionBox(raw)
+          : { text: display, options: [] as OptionItem[], totalPages: undefined, isTaskList: false, isReflectiveQuestions: false, forcePills: undefined, segments: undefined };
+        const textToShow = msg.role === 'assistant'
+          ? (isStreamingMsg ? display : (parsed.text?.trim() ? parsed.text : raw))
+          : display;
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;
+        const isTaskList = !!parsed.isTaskList;
+        const isReflectiveQuestions = !!parsed.isReflectiveQuestions;
+        const forcePills = parsed.forcePills;
+        const segmentsToShow = parsed.segments;
         return (
           <ChatMessageItem
             key={msg.id}
@@ -890,7 +1131,11 @@ const ChatMessageList = memo(function ChatMessageList({
             raw={raw}
             textToShow={textToShow}
             optionsToShow={optionsToShow}
+            isTaskList={isTaskList}
+            isReflectiveQuestions={isReflectiveQuestions}
+            forcePills={forcePills}
             totalPages={totalPages}
+            segments={segmentsToShow}
             currentPage={pageByMsgId[msg.id] ?? 1}
             onPageChange={handlePageChange}
             isStreamingMsg={!!msg.isStreaming}
@@ -900,26 +1145,29 @@ const ChatMessageList = memo(function ChatMessageList({
             quickSend={quickSend}
             onContextMenu={onMessageContextMenu}
             onOpenSocratic={onOpenSocratic}
+            onQuoteQuestion={onQuoteQuestion}
+            isLastAssistantMsg={msg.id === lastAssistantMsgId}
           />
         );
       })}
       <div ref={bottomRef as React.Ref<HTMLDivElement>} />
     </div>
   );
-});
+}
 
-const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, isAlwaysOnTop = false, onToggleAlwaysOnTop, onStatusChange }) => {
+const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange }) => {
   const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
 
   // ===== 所有 useState 集中声明 =====
   const [wsConnected, setWsConnected] = useState(false);
+  const [nocturneOnline, setNocturneOnline] = useState(false);
   const [wsReconnecting, setWsReconnecting] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [displayedStreamingLength, setDisplayedStreamingLength] = useState(0);
+  const [streamingDisplayContent, setStreamingDisplayContent] = useState('');
   const [modelName, setModelName] = useState('--');
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
   const [localTime, setLocalTime] = useState('');
@@ -929,12 +1177,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [ctxUsed, setCtxUsed] = useState<number | null>(null);
   const [ctxMax, setCtxMax] = useState<number | null>(null);
   const [, setCost] = useState<number | null>(null);
-  const [session, setSession] = useState<string | null>(null);
-  const [apiKeyInfo, setApiKeyInfo] = useState<string>('--');
-  const [thinkMode, setThinkMode] = useState<string>('off');
-  const [runtimeMode, setRuntimeMode] = useState<string>('direct');
-  const [compactions, setCompactions] = useState<number | null>(null);
-  const [queueInfo, setQueueInfo] = useState<string>('--');
+  const [, setSession] = useState<string | null>(null);
+  const [, setApiKeyInfo] = useState<string>('--');
+  const [, setThinkMode] = useState<string>('off');
+  const [, setRuntimeMode] = useState<string>('direct');
+  const [, setCompactions] = useState<number | null>(null);
+  const [, setQueueInfo] = useState<string>('--');
   const [, setLogPath] = useState('');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [gatewayRunning, setGatewayRunning] = useState(false);
@@ -951,12 +1199,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [showSocratic, setShowSocratic] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
-  // AI 自动触发的思维引导数据：customRounds（自然格式）或 templateId（THINK_MODE 标记）
+  const [streak, setStreak] = useState<number>(() => getStreakData().streak);
+  const [displayedLength, setDisplayedLength] = useState(0);
+  // AI 自动触发的思维引导数据：customRounds（自然格式）templateId（THINK_MODE 标记）
   const [activeSocratic, setActiveSocratic] = useState<{
     rounds?: SocraticRound[];
     templateId?: string;
   } | null>(null);
-
+  // 任务看板显示状态
   // ===== 所有 useRef 集中声明 =====
   const logContainerRef = useRef<HTMLDivElement>(null);
   // xterm 相关 ref 已移除
@@ -965,8 +1215,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingMessageRef = useRef('');
   const typewriterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const displayedLengthRef = useRef(0);
   const userScrolledUp = useRef<boolean>(false);
   const pendingSystemReply = useRef<boolean>(false);
+  const streamDoneReceived = useRef<boolean>(false);
 
   // ===== 所有 useEffect 放在 useState/useRef 之后 =====
   // 通知父组件状态变化
@@ -1020,6 +1272,24 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
   }, []);
 
+  // 周期性检查 Nocturne 记忆系统健康状态
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const checkNocturne = async () => {
+      try {
+        const result = await ipcRenderer.invoke('nocturne-health');
+        setNocturneOnline(result?.ok === true);
+      } catch {
+        setNocturneOnline(false);
+      }
+    };
+    checkNocturne();
+    timer = setInterval(checkNocturne, 30000);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'S') {
@@ -1071,7 +1341,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   useEffect(() => {
     ipcRenderer.invoke('openclaw-status').then((r: { connected?: boolean; sessionKey?: string }) => {
       if (r?.connected === true) {
-        console.log('[ChatTab] Initial status: connected');
         setWsConnected(true);
       }
       if (r?.sessionKey) setSession(r.sessionKey);
@@ -1079,7 +1348,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     const handleStatus = (_: any, status: { connected?: boolean; error?: string; model?: string; reconnecting?: boolean }) => {
       try {
-        console.log('[CTX DEBUG] openclaw-status event:', JSON.stringify(status));
         setWsConnected(!!status?.connected);
         setWsReconnecting(status?.reconnecting ?? false);
         setWsError(status?.error ?? null);
@@ -1098,7 +1366,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       try {
         if (msg && (msg.type === 'status' || msg.connected !== undefined)) {
           const connected = msg.connected === true;
-          console.log('[ChatTab] Status from message:', { connected, msg });
           setWsConnected(connected);
           if (!connected) {
             setAwaitingResponse(false);
@@ -1123,13 +1390,23 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   const isDeltaPayload = (data: any): boolean => {
     if (!data) return false;
-    if (data.delta !== undefined && data.delta !== null) return true;
     const src = data.data ?? data.payload;
+    // 检state 字段delta 字段
+    if (src?.state === 'delta') return true;
+    if (data.delta !== undefined && data.delta !== null) return true;
     return src?.delta !== undefined && src?.delta !== null;
   };
 
   const extractContent = (data: any): string => {
     if (!data) return '';
+    
+    // 新格式：{ type: 'event', event: 'chat', payload: { delta: '...', text: '...' } }
+    if (data.payload) {
+      const payloadContent = data.payload.delta ?? data.payload.text ?? data.payload.content;
+      if (typeof payloadContent === 'string') return payloadContent;
+    }
+    
+    // 旧格式兼容
     const raw = data.text ?? data.delta ?? data.content;
     if (typeof raw === 'string') return raw;
     const src = data.data ?? data.payload;
@@ -1159,11 +1436,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (phase === 'thinking' || phase === 'typing' || phase === 'idle') setAgentPhase(phase);
       return;
     }
-    if (data.type !== 'chat') return;
+    // 新格式：{type: 'event', event: 'chat', payload: {...}}
+    // 旧格式：{type: 'chat', ...}
+    if (data.type !== 'chat' && !(data.type === 'event' && data.event === 'chat')) return;
 
     const u = data.usage;
     if (u) {
-      console.log('[CTX DEBUG] usage payload:', JSON.stringify(u));
       // snapshot=true 时直接覆盖（来自 session.status 查询），否则累加
       const isSnapshot = data.snapshot === true || (data.text === '' && data.done === true && !data.delta);
       if (u.inputTokens != null) {
@@ -1185,32 +1463,32 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
 
     const content = extractContent(data);
-    const done = data.done === true;
+    const done = (data.done === true) || (data.payload?.done === true);
     const isDelta = isDeltaPayload(data);
 
     if (done) {
       setAwaitingResponse(false);
       setAgentPhase('idle');
       userScrolledUp.current = false;
-
-      // 先捕获后清空，防止 React 批处理时回调读到已清空的 ref
-      let finalStreamContent = content || streamingMessageRef.current;
-      streamingMessageRef.current = '';
+      streamDoneReceived.current = true; // 标记 done 已收
+      // 优先streamingMessageRef 里的完整流式内容
+      // 只有在流式内容为空时才用 done 消息里的 content
+      let finalStreamContent = streamingMessageRef.current || content;
+      // 不立刻清空，让打字机跑完
       const systemReply = pendingSystemReply.current;
       pendingSystemReply.current = false;
 
-      // ── 思维引导自动触发检测 ──────────────────────────────────
+      // ── 思维引导自动触发检──────────────────────────────────
       if (!systemReply && finalStreamContent) {
         const thinkModeId = detectThinkModeMarker(finalStreamContent);
         if (thinkModeId) {
-          // [THINK_MODE:xxx] 标记：剥离标记后显示，延迟弹出面板
-          finalStreamContent = stripThinkModeMarker(finalStreamContent);
+          // [THINK_MODE:xxx] 标记：剥离标记后显示，延迟弹出面          finalStreamContent = stripThinkModeMarker(finalStreamContent);
           setTimeout(() => {
             setActiveSocratic({ templateId: thinkModeId });
             setShowSocratic(true);
           }, 400);
         } else {
-          // 检测自然多段 checkbox 格式（2组及以上）
+          // 检测自然多轮 checkbox 格式（3组及以上）
           const sections = parseSocraticSections(finalStreamContent);
           if (sections) {
             setTimeout(() => {
@@ -1264,17 +1542,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
+          // done 时：保存最终内容，但继续让打字机跑          // isStreaming 保持 true，让打字机继续跑
           return prev.map((msg, idx) =>
             idx === prev.length - 1
-              ? { ...msg, content: finalStreamContent, isStreaming: false }
+              ? { ...msg, content: finalStreamContent }
               : msg
           );
         }
         if (finalStreamContent || data.text) {
           const textContent = (finalStreamContent || String(data.text || '')).trim();
           if (!textContent) return prev;
-          // 去重：最后一条已是助手消息且内容相同，避免 Gateway 多路转发（如 chat + agent）导致重复
-          if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
+          // 去重：最后一条已是助手消息且内容相同，避Gateway 多路转发（如 chat + agent）导致重          if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
             return prev;
           }
           return [
@@ -1283,29 +1561,34 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               id: getNextMessageId(),
               role: 'assistant' as const,
               content: textContent,
-              isStreaming: false,
-              isSystemReply: systemReply,
+              isStreaming: true, // 保持 true，让打字机跑              isSystemReply: systemReply,
               timestamp: Date.now(),
             },
           ];
         }
         return prev;
       });
-      setIsStreaming(false);
+      // 不立setIsStreaming(false)，等打字机跑完再结束
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 50);
       return;
     }
 
     if (content) {
       setAwaitingResponse(false);
-      if (isDelta) setAgentPhase('typing');
-      // 仅对 delta 增量追加；Gateway 用 text 字段时每次为全量，应替换
       if (isDelta) {
+        setAgentPhase('typing');
+        streamDoneReceived.current = false; // 开始流式时重置
+      }
+      
+      // delta 模式：追加增量；全量模式：直接替      if (isDelta) {
         streamingMessageRef.current += content;
       } else {
         streamingMessageRef.current = content;
       }
+      
       const buf = streamingMessageRef.current;
+      setStreamingDisplayContent(buf);
+      
       if (!buf) return;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -1314,8 +1597,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             idx === prev.length - 1 ? { ...msg, content: buf } : msg
           );
         }
-        // 去重：最后一条已是完成态的助手消息且内容完全相同，避免重复
-        if (last?.role === 'assistant' && !last.isStreaming && (last.content ?? '').trim() === buf.trim()) {
+        if (last?.role === 'assistant' && !last.isStreaming && 
+            (last.content ?? '').trim() === buf.trim()) {
           return prev;
         }
         return [
@@ -1330,7 +1613,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         ];
       });
       setIsStreaming(true);
-      if (!userScrolledUp.current) bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      if (!userScrolledUp.current) 
+        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
     }
   };
 
@@ -1363,7 +1647,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
     if (!settings.typingSound || !msg.content) return;
     const plain = stripMarkdown(msg.content);
-    const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗口' : plain;
+    const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗 : plain;
     if (!truncated.trim()) return;
     setSpeakingMessageId(msg.id);
     const result = await ipcRenderer.invoke('tts-speak', { text: truncated });
@@ -1399,7 +1683,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [isStreaming, messages, windowFocused, playTTSForMessage]);
 
   const sendMessage = useCallback(async (text: string, imageDataUrl: string | null, files?: UploadedFile[]) => {
-    if ((!text.trim() && !imageDataUrl && !files?.length) || !wsConnected) return;
+    if (!text.trim() && !imageDataUrl && !files?.length) return;
 
     // 构建消息内容
     let contentToSend = text;
@@ -1425,13 +1709,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     // 权限检查与危险命令拦截
     const permCheck = checkPermission(fullContent, permissions);
     if (!permCheck.allowed) {
-      window.alert(permCheck.reason || '此操作已被权限设置拦截。');
+      window.alert(permCheck.reason || '此操作已被权限设置拦截);
       return;
     }
     const dangerMatch = getDangerMatch(fullContent);
     if (dangerMatch) {
       const ok = window.confirm(
-        `⚠ 危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`
+        `危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`
       );
       if (!ok) return;
     }
@@ -1444,6 +1728,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setAgentPhase('thinking');
     }
     userScrolledUp.current = false;
+    setStreak(touchStreak());
     setMessages((prev) => [
       ...prev,
       {
@@ -1480,17 +1765,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, []);
 
   const quickSend = useCallback((content: string) => {
-    if (!content.trim() || !wsConnected) return;
+    if (!content.trim()) return;
 
     const permCheck = checkPermission(content.trim(), permissions);
     if (!permCheck.allowed) {
-      window.alert(permCheck.reason || '此操作已被权限设置拦截。');
+      window.alert(permCheck.reason || '此操作已被权限设置拦截);
       return;
     }
     const dangerMatch = getDangerMatch(content.trim());
     if (dangerMatch) {
       const ok = window.confirm(
-        `⚠ 危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`
+        `危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`
       );
       if (!ok) return;
     }
@@ -1516,23 +1801,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     (window as any).electronAPI?.chatHistorySave?.([]);
   }, []);
 
-  const lastAmyContent = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === 'assistant' && !messages[i].isStreaming && messages[i].content) {
-        return typeof messages[i].content === 'string' ? messages[i].content : String(messages[i].content);
-      }
-    }
-    return '';
-  }, [messages]);
-
-  const copyLastAmyReply = useCallback(async () => {
-    const raw = stripMarkdown(lastAmyContent);
-    if (!raw) return;
-    try {
-      await navigator.clipboard.writeText(raw);
-    } catch (_) {}
-  }, [lastAmyContent]);
-
   useEffect(() => {
     // 查询 Gateway 初始状态
     ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
@@ -1551,10 +1819,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const onLogLines = (_: any, lines: string[]) => {
       setLogLines((prev) => {
         const updated = [...prev, ...lines];
-        return updated.slice(-50); // 只保留最近 50 行
-      });
-      // 自动滚动到底部
-      if (logContainerRef.current) {
+        return updated.slice(-50); // 只保留最50       });
+      // 自动滚动到底      if (logContainerRef.current) {
         logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
       }
     };
@@ -1580,20 +1846,54 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         clearInterval(typewriterTimerRef.current);
         typewriterTimerRef.current = null;
       }
-      setDisplayedStreamingLength(0);
+      setDisplayedLength(0);
+      displayedLengthRef.current = 0;
+      streamDoneReceived.current = false;
       return;
     }
 
-    const target = streamingMessageRef.current.length;
-    if (displayedStreamingLength >= target) return;
+    // 打字机效果已启动，跳    if (typewriterTimerRef.current) return;
 
     typewriterTimerRef.current = setInterval(() => {
-      const current = streamingMessageRef.current.length;
-      setDisplayedStreamingLength((prev) => {
-        const next = prev + 1;
-        if (settings.typingSound && next <= current) playClickSound();
-        return Math.min(next, current);
-      });
+      // ref 追踪内容长度
+      const fullLen = streamingMessageRef.current.length;
+      const current = displayedLengthRef.current;
+      
+      if (current >= fullLen) {
+        // 打字机跑完了
+        if (streamDoneReceived.current) {
+          // done 已收到，现在可以结束 streaming
+          clearInterval(typewriterTimerRef.current!);
+          typewriterTimerRef.current = null;
+          setDisplayedLength(0);
+          displayedLengthRef.current = 0;
+          streamingMessageRef.current = '';
+          setStreamingDisplayContent('');
+          streamDoneReceived.current = false;
+          setIsStreaming(false);
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant' && last?.isStreaming) {
+              return prev.map((msg, idx) =>
+                idx === prev.length - 1 ? { ...msg, isStreaming: false } : msg
+              );
+            }
+            return prev;
+          });
+        }
+        return;
+      }
+      
+      // 内容越多、落后越多，每次推进越快，保证能追上
+      const CHARS_PER_TICK = Math.max(3, Math.ceil((fullLen - current) / 20));
+      const next = Math.min(current + CHARS_PER_TICK, fullLen);
+      displayedLengthRef.current = next;
+      setDisplayedLength(next);
+      
+      if (settings.typingSound) playClickSound();
+      if (!userScrolledUp.current) {
+        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      }
     }, streamSpeedMs);
 
     return () => {
@@ -1602,7 +1902,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         typewriterTimerRef.current = null;
       }
     };
-  }, [messages, displayedStreamingLength, streamSpeedMs, settings.typingSound]);
+  }, [messages, streamSpeedMs, settings.typingSound]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -1622,30 +1922,16 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
   }, []);
 
+  const socraticContextText = useMemo(() => {
+    const recent = messages.slice(-6);
+    const lastUser = [...recent].reverse().find((m) => m.role === 'user');
+    const lastAI   = [...recent].reverse().find((m) => m.role === 'assistant');
+    return [lastUser?.content, lastAI?.content].filter(Boolean).join(' ');
+  }, [messages]);
+
   return (
     <>
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
-      {showSocratic && (
-        <SocraticPanel
-          contextText={(() => {
-            const recent = messages.slice(-6);
-            const lastUser = [...recent].reverse().find((m) => m.role === 'user');
-            const lastAI   = [...recent].reverse().find((m) => m.role === 'assistant');
-            return [lastUser?.content, lastAI?.content].filter(Boolean).join(' ');
-          })()}
-          customRounds={activeSocratic?.rounds}
-          suggestedTemplateId={activeSocratic?.templateId}
-          onComplete={(text) => {
-            setInjectInputText(text);
-            setShowSocratic(false);
-            setActiveSocratic(null);
-          }}
-          onClose={() => {
-            setShowSocratic(false);
-            setActiveSocratic(null);
-          }}
-        />
-      )}
       {contextMenu && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setContextMenu(null)} />
@@ -1665,7 +1951,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           >
             {[
               { icon: '⎘', label: '复制消息', action: () => navigator.clipboard.writeText(contextMenu.text), danger: false },
-              { icon: '↩', label: '重新发送', action: () => { setInjectInputText(contextMenu.text); setContextMenu(null); }, danger: false },
+              { icon: '↺', label: '重新发送', action: () => { setInjectInputText(contextMenu.text); setContextMenu(null); }, danger: false },
               { icon: '✕', label: '删除消息', action: () => { setMessages((prev) => prev.filter((m) => m.id !== contextMenu.msgId)); setContextMenu(null); }, danger: true },
             ].map((item) => (
               <div
@@ -1724,12 +2010,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         )}
         <div className="section-header">
           <div className="header-left">
-            <span className="section-title">◈ OpenClaw Chat</span>
+            <span className="section-title">◆ OpenClaw Chat</span>
             <button
               type="button"
               className={`voice-toggle ${settings.typingSound ? 'on' : 'off'}`}
               onClick={() => setSettings((s) => ({ ...s, typingSound: !s.typingSound }))}
-              title={settings.typingSound ? '点击关闭打字音效' : '点击开启打字音效'}
+              title={settings.typingSound ? '点击关闭打字音效' : '点击开启打字音}
             >
               {settings.typingSound ? '♪ VOICE ON' : '♪ VOICE OFF'}
             </button>
@@ -1744,16 +2030,32 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           </div>
           <span className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`}>
             {wsConnected && <span className="status-dot" />}
-            {wsConnected ? 'CONNECTED' : wsReconnecting ? '重连中...' : wsError || 'DISCONNECTED'}
+            {wsConnected ? 'CONNECTED' : wsReconnecting ? '重连..' : wsError || 'DISCONNECTED'}
           </span>
         </div>
+
+        <SetupGuide
+          wsConnected={wsConnected}
+          gatewayRunning={gatewayRunning || gatewayPortInUse}
+          onStartGateway={() => {
+            ipcRenderer.invoke('start-gateway').then(() => {
+              ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
+                setGatewayRunning(s.running);
+                setGatewayManaged(s.managed);
+                setGatewayPortInUse(s.portInUse ?? false);
+              });
+            });
+          }}
+          onOpenSettings={() => setShowSettings(true)}
+        />
 
         <ChatMessageList
           messages={messages}
           displayMessages={messages.length > MAX_VISIBLE_MESSAGES ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages}
           isStreaming={isStreaming}
           awaitingResponse={awaitingResponse}
-          displayedStreamingLength={displayedStreamingLength}
+          streamingContent={streamingDisplayContent}
+          displayedLength={displayedLength}
           speakingMessageId={speakingMessageId}
           agentPhase={agentPhase}
           wsConnected={wsConnected}
@@ -1761,8 +2063,29 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           bottomRef={bottomRef}
           onScroll={handleChatScroll}
           onMessageContextMenu={(e, msg, raw) => setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id, text: raw })}
-          onOpenSocratic={() => setShowSocratic(true)}
+          onOpenSocratic={(templateId?: string) => {
+            if (templateId) setActiveSocratic({ templateId });
+            setShowSocratic(true);
+          }}
+          onQuoteQuestion={(text: string) => setInjectInputText(text)}
         />
+        {showSocratic && (
+          <SocraticPanel
+            inline
+            contextText={socraticContextText}
+            customRounds={activeSocratic?.rounds}
+            suggestedTemplateId={activeSocratic?.templateId}
+            onComplete={(text) => {
+              setInjectInputText(text);
+              setShowSocratic(false);
+              setActiveSocratic(null);
+            }}
+            onClose={() => {
+              setShowSocratic(false);
+              setActiveSocratic(null);
+            }}
+          />
+        )}
         {showScrollBtn && (
           <div
             onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
@@ -1811,247 +2134,331 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       </div>
 
       <div className="right-panel">
-        {/* 上区：预留终端 - 状态栏+心跳+日志终端 flex:4 */}
-        <div className="right-panel-upper">
-          <div className="amy-status-bar">
-            {/* 大时钟 */}
-            <div style={{
-              textAlign: 'center',
-              padding: '12px 0 8px 0',
-              borderBottom: '1px solid #0d2d0d',
-              position: 'relative'
-            }}>
-              <div style={{
-                fontSize: '11px',
-                color: '#006620',
-                letterSpacing: '4px',
-                marginBottom: '4px',
-                fontFamily: 'Share Tech Mono, monospace'
-              }}>◈ SYSTEM CLOCK ◈</div>
-              <span style={{
-                fontSize: '36px',
-                fontFamily: 'Share Tech Mono, monospace',
-                color: '#00ff88',
-                letterSpacing: '6px',
-                textShadow: '0 0 20px rgba(0,255,136,0.6), 0 0 40px rgba(0,255,136,0.2)',
-                display: 'block',
-                lineHeight: 1
-              }}>{localTime || '--:--'}</span>
-              <div style={{
-                fontSize: '11px',
-                color: '#00ff88',
-                letterSpacing: '1px',
-                marginTop: '4px',
-                fontFamily: 'Share Tech Mono, monospace',
-                textAlign: 'center',
-              }}>{localDate || ''}</div>
-              <div style={{
+        {/* 1. 顶部状态行：GW/MEM 信号+ 时间 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '8px 12px',
+            borderBottom: '1px solid #1e3a3a',
+            flexShrink: 0,
+          }}
+        >
+          {/* 信号：Gateway 连接状态（绿色*/}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: wsConnected ? '#00ff41' : '#ff4444',
+                animation: wsConnected ? 'pulse-green 2s infinite' : 'pulse-red 1s infinite',
+              }}
+            />
+            <span
+              style={{
                 fontSize: '9px',
-                color: '#004d1a',
-                letterSpacing: '2px',
-                marginTop: '4px',
-                fontFamily: 'Share Tech Mono, monospace'
-              }}>
-                {wsConnected
-                  ? '● CONNECTED'
-                  : wsReconnecting
-                    ? '◌ RECONNECTING'
-                    : '○ DISCONNECTED'}
-              </div>
-            </div>
+                color: '#8b949e',
+                fontFamily: 'Share Tech Mono',
+              }}
+            >
+              GW
+            </span>
+          </div>
 
-            {/* 心跳线 */}
-            <div className="amy-status-line amy-status-line-3">
-              <HeartbeatWave connected={wsConnected} pulse={heartbeatPulse} />
-            </div>
+          {/* 信号：Nocturne 记忆系统（青绿） */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: nocturneOnline ? '#4ec9b0' : '#ff4444',
+                animation: nocturneOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite',
+              }}
+            />
+            <span
+              style={{
+                fontSize: '9px',
+                color: '#8b949e',
+                fontFamily: 'Share Tech Mono',
+              }}
+            >
+              MEM
+            </span>
+          </div>
 
-            {/* 区块2：AGENT 状态 */}
-            <div className="amy-status-section">
-              <div className="amy-status-section-title">AGENT</div>
-              {[
-                { label: 'MODEL', value: modelName || '--' },
-                { label: 'API', value: apiKeyInfo || '--' },
-                { label: 'THINK', value: thinkMode || 'off' },
-                { label: 'RUNTIME', value: runtimeMode || 'direct' },
-              ].map(({ label, value }) => (
-                <div key={label} className="amy-status-row">
-                  <span className="amy-status-label">{label}</span>
-                  <span className="amy-status-val">{value}</span>
-                </div>
-              ))}
+          {/* 时间日期靠右对齐 - 同行排列 */}
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: '8px',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '20px',
+                color: '#e0e0e0',
+                fontFamily: 'Share Tech Mono',
+                fontWeight: 500,
+                letterSpacing: '1px',
+                lineHeight: 1,
+              }}
+            >
+              {localTime || '--:--'}
             </div>
-
-            {/* 区块3：资源状态 */}
-            <div className="amy-status-section">
-              <div className="amy-status-section-title">RESOURCES</div>
-              <div className="amy-status-row">
-                <span className="amy-status-label">TOK</span>
-                <span className="amy-status-val">
-                  {tokenIn != null ? `${(tokenIn/1000).toFixed(1)}k` : '0'} / {ctxMax != null ? `${(ctxMax/1000).toFixed(0)}k` : '--'}
-                </span>
-              </div>
-              <div className="amy-status-row">
-                <span className="amy-status-label">CTX</span>
-                <span className="amy-status-val">
-                  {ctxUsed != null && ctxMax != null && ctxMax > 0 ? (
-                    <>
-                      {'▓'.repeat(Math.round((ctxUsed/ctxMax)*10))}{'░'.repeat(10 - Math.round((ctxUsed/ctxMax)*10))}
-                      {` ${(ctxUsed/1000).toFixed(1)}k (${Math.round((ctxUsed/ctxMax)*100)}%)`}
-                    </>
-                  ) : '░░░░░░░░░░ 0%'}
-                </span>
-              </div>
-              <div className="amy-status-row">
-                <span className="amy-status-label">SESSION</span>
-                <span className="amy-status-val" style={{fontSize:'10px'}}>{session || '--'}</span>
-              </div>
-            </div>
-
-            {/* 区块4：系统状态 */}
-            <div className="amy-status-section">
-              <div className="amy-status-section-title">SYSTEM</div>
-              {[
-                { label: 'COMPACTIONS', value: compactions != null ? String(compactions) : '0' },
-                { label: 'QUEUE', value: queueInfo || 'collect (depth 0)' },
-              ].map(({ label, value }) => (
-                <div key={label} className="amy-status-row">
-                  <span className="amy-status-label">{label}</span>
-                  <span className="amy-status-val">{value}</span>
-                </div>
-              ))}
+            <div
+              style={{
+                width: '1px',
+                height: '16px',
+                background: '#2a2a2a',
+              }}
+            />
+            <div
+              style={{
+                fontSize: '12px',
+                color: '#888888',
+                fontFamily: 'Share Tech Mono',
+                letterSpacing: '0.5px',
+                lineHeight: 1,
+              }}
+            >
+              {localDate || ''}
             </div>
           </div>
-          <div className="right-panel-terminal">
-            <div className="section-header">
-              <span className="section-title">
-                <span className={`gw-dot ${gatewayRunning || gatewayPortInUse ? 'running' : 'stopped'}`} />
-                Gateway 日志
-              </span>
-              <div className="gw-controls">
-                <button
-                  type="button"
-                  className="terminal-test-btn gw-btn-export"
-                  onClick={async () => {
-                    if (logLines.length === 0) return;
-                    const content = logLines.join('\n');
-                    const blob = new Blob([content], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `gateway-log-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.txt`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                  title="导出日志"
-                >
-                  📥 导出
-                </button>
-                <button
-                  type="button"
-                  className="terminal-test-btn gw-btn-clear"
-                  onClick={() => {
-                    setLogLines([]);
-                  }}
-                  title="清空日志"
-                >
-                  ⌧ 清空
-                </button>
-                {gatewayRunning ? (
-                  <button
-                    type="button"
-                    className="terminal-test-btn gw-btn-stop"
-                    onClick={() => ipcRenderer.invoke('stop-gateway')}
-                    title="停止 Gateway"
-                    disabled={!gatewayManaged}
-                  >{gatewayManaged ? '■ 停止' : '● 外部运行'}</button>
-                ) : gatewayPortInUse ? (
-                  <span className="terminal-test-btn gw-btn-external" title="外部 Gateway 已连接">● 已连接</span>
-                ) : (
-                  <button
-                    type="button"
-                    className="terminal-test-btn gw-btn-start"
-                    onClick={() => {
-                      ipcRenderer.invoke('start-gateway').then(() => {
-                        ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
-                          setGatewayRunning(s.running);
-                          setGatewayManaged(s.managed);
-                          setGatewayPortInUse(s.portInUse ?? false);
-                        });
-                      });
-                    }}
-                    title="启动 Gateway 并捕获日志"
-                  >▶ 启动</button>
-                )}
-              </div>
+        </div>
+
+        {/* 2. 心跳- 完整显示 65px */}
+        <div style={{ 
+          borderBottom: '1px solid #0d2d0d', 
+          height: '65px',
+          padding: '8px 0',
+          overflow: 'visible',
+          flexShrink: 0,
+        }}>
+          <HeartbeatWave connected={wsConnected} pulse={heartbeatPulse} />
+        </div>
+
+        {/* 3. 系统信息 */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          padding: '4px 12px',
+          borderBottom: '1px solid #0d2d0d',
+          gap: '8px',
+          fontSize: '10px',
+          fontFamily: 'Share Tech Mono',
+        }}>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <span style={{ color: '#004d1a' }}>MODEL</span>
+            <span style={{ color: '#00cc66' }}>{modelName || '--'}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <span style={{ color: '#004d1a' }}>TOK</span>
+            <span style={{ color: '#00cc66' }}>
+              {tokenIn != null ? `${(tokenIn/1000).toFixed(1)}k` : '0'}/{ctxMax != null ? `${(ctxMax/1000).toFixed(0)}k` : '--'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <span style={{ color: '#004d1a' }}>CTX</span>
+            <span style={{ color: ctxUsed != null && ctxMax != null && ctxMax > 0 && (ctxUsed / ctxMax) > 0.8 ? '#ff6666' : '#00cc66' }}>
+              {ctxUsed != null && ctxMax != null && ctxMax > 0 ? `${(ctxUsed / 1000).toFixed(1)}k (${Math.round((ctxUsed / ctxMax) * 100)}%)` : '0%'}
+            </span>
+          </div>
+          {streak > 0 && (
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <span style={{ color: '#ffaa0099' }}>🔥 STREAK {streak}</span>
             </div>
-            <div ref={logContainerRef} className="log-terminal-dom" tabIndex={-1}>
-              {logLines.length === 0 ? (
-                <div className="log-empty">[LOG] 等待 Gateway 日志...</div>
-              ) : (
-                logLines.map((line, i) => {
-                  // 提取括号标签并加粗
-                  const match = line.match(/^(\[[^\]]+\])(.*)/);
-                  if (match) {
-                    return (
-                      <div key={i} className={`log-line log-${getLogLevel(line)}`}>
-                        <strong style={{ color: 'inherit', fontWeight: 900, textShadow: '0 0 8px currentColor' }}>{match[1]}</strong>
-                        {match[2]}
-                      </div>
-                    );
-                  }
+          )}
+        </div>
+
+        {/* 4. 控制按钮*/}
+        <div style={{
+          display: 'flex',
+          gap: '4px',
+          padding: '6px 12px',
+          borderBottom: '1px solid #0d2d0d',
+        }}>
+          <button
+            type="button"
+            onClick={() => {
+              if (gatewayRunning) {
+                if (gatewayManaged) {
+                  ipcRenderer.invoke('stop-gateway');
+                  ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
+                    setGatewayRunning(s.running);
+                    setGatewayManaged(s.managed);
+                    setGatewayPortInUse(s.portInUse ?? false);
+                  });
+                }
+              } else {
+                ipcRenderer.invoke('start-gateway').then(() => {
+                  ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
+                    setGatewayRunning(s.running);
+                    setGatewayManaged(s.managed);
+                    setGatewayPortInUse(s.portInUse ?? false);
+                  });
+                });
+              }
+            }}
+            style={{
+              flex: 1,
+              padding: '4px 0',
+              fontSize: '10px',
+              fontFamily: 'Share Tech Mono',
+              background: 'transparent',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              letterSpacing: '1px',
+              transition: 'all 0.15s',
+              border: `1px solid ${gatewayRunning ? '#ff444444' : '#00ff4144'}`,
+              color: gatewayRunning ? '#ff6666' : '#00cc66',
+            }}
+          >
+            {gatewayRunning ? '■ 停止' : '▶ 启动'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              ipcRenderer.invoke('gateway-clear-port-and-start').then(() => {
+                ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
+                  setGatewayRunning(s.running);
+                  setGatewayManaged(s.managed);
+                  setGatewayPortInUse(s.portInUse ?? false);
+                });
+              });
+            }}
+            style={{
+              flex: 1,
+              padding: '4px 0',
+              fontSize: '10px',
+              fontFamily: 'Share Tech Mono',
+              background: 'transparent',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              letterSpacing: '1px',
+              transition: 'all 0.15s',
+              border: '1px solid #ffaa0033',
+              color: '#ffaa0099',
+            }}
+          >
+            ↺ 重启
+          </button>
+          <button
+            type="button"
+            onClick={() => ipcRenderer.invoke('open-terminal-window')}
+            style={{
+              flex: 1,
+              padding: '4px 0',
+              fontSize: '10px',
+              fontFamily: 'Share Tech Mono',
+              background: 'transparent',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              letterSpacing: '1px',
+              transition: 'all 0.15s',
+              border: '1px solid #00ff4144',
+              color: '#00cc66',
+            }}
+          >
+            &gt; 终端
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined' && (window as any).electronAPI?.enterFloatingMode) {
+                (window as any).electronAPI.enterFloatingMode();
+              }
+            }}
+            style={{
+              flex: 1,
+              padding: '4px 0',
+              fontSize: '10px',
+              fontFamily: 'Share Tech Mono',
+              background: 'transparent',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              letterSpacing: '1px',
+              transition: 'all 0.15s',
+              border: '1px solid #00ff4144',
+              color: '#00cc66',
+            }}
+          >
+            ◎ 悬浮
+          </button>
+        </div>
+
+        {/* 5. 任务看板 - flex:1 自适应 */}
+        <div className="task-board-section">
+          <TaskBoard compact />
+        </div>
+
+        {/* 6. Gateway 日志 - 固定高度 */}
+          <div className="gateway-log-section">
+          <div className="section-header gw-log-title-row" style={{ borderTop: '1px solid #0d2d0d' }}>
+            <span className="section-title" style={{ color: '#00aa55' }}>
+              Gateway 日志
+            </span>
+            <div className="gw-controls gw-controls-log">
+              <button
+                type="button"
+                className="terminal-test-btn gw-btn-export"
+                onClick={async () => {
+                  if (logLines.length === 0) return;
+                  const content = logLines.join('\n');
+                  const blob = new Blob([content], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `gateway-log-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.txt`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                title="导出日志"
+              >
+                导出
+              </button>
+              <button
+                type="button"
+                className="terminal-test-btn gw-btn-clear"
+                onClick={() => {
+                  setLogLines([]);
+                }}
+                title="清空日志"
+              >
+                清空
+              </button>
+            </div>
+          </div>
+          <div ref={logContainerRef} className="log-terminal-dom" tabIndex={-1}>
+            {logLines.length === 0 ? (
+              <div className="log-empty">[LOG] 等待 Gateway 日志...</div>
+            ) : (
+              logLines.map((line, i) => {
+                const match = line.match(/^(\[[^\]]+\])(.*)/);
+                const colorClass = getLogColorClass(line);
+                const levelClass = `log-${getLogLevel(line)}`;
+                const combinedClass = `log-line ${levelClass} ${colorClass}`.trim();
+                if (match) {
                   return (
-                    <div key={i} className={`log-line log-${getLogLevel(line)}`}>
-                      {line}
+                    <div key={i} className={combinedClass}>
+                      <strong style={{ color: 'inherit', fontWeight: 900, textShadow: '0 0 8px currentColor' }}>{match[1]}</strong>
+                      {match[2]}
                     </div>
                   );
-                })
-              )}
-            </div>
+                }
+                return (
+                  <div key={i} className={combinedClass}>
+                    {line}
+                  </div>
+                );
+              })
+            )}
           </div>
-        </div>
-
-        {/* 中区：系统终端 - 折叠标题栏 */}
-        <div className="right-panel-middle">
-          <div className="right-panel-middle-header">
-            <span className="section-title">◈ 终端</span>
-            <div className="right-panel-middle-actions">
-              <button
-                type="button"
-                className="right-panel-quick-btn"
-                onClick={() => ipcRenderer.invoke('open-terminal-window')}
-                title="打开终端窗口"
-              >
-                [ ⊞ 终端 ]
-              </button>
-              <button
-                type="button"
-                className={`right-panel-quick-btn ${isAlwaysOnTop ? 'active' : ''}`}
-                onClick={() => onToggleAlwaysOnTop?.()}
-                title={isAlwaysOnTop ? '取消置顶' : '置顶窗口'}
-              >
-                [ 🔒 ]
-              </button>
-              <button
-                type="button"
-                className="right-panel-quick-btn"
-                onClick={() => {
-                  if (typeof window !== 'undefined' && (window as any).electronAPI?.enterFloatingMode) {
-                    (window as any).electronAPI.enterFloatingMode();
-                  } else {
-                    console.warn('[ChatTab] enterFloatingMode API not available');
-                  }
-                }}
-                title="进入悬浮模式"
-              >
-                [ ⭘ ]
-              </button>
-            </div>
-          </div>
-        </div>
-        <div className="right-panel-quick-btns">
-          <button type="button" className="right-panel-quick-btn" onClick={copyLastAmyReply} disabled={!lastAmyContent} title="复制最后一条 AMY 回复">
-            [ ⎘ 复制 ]
-          </button>
         </div>
       </div>
     </div>
