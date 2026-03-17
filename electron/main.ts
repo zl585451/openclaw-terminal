@@ -4,7 +4,7 @@ import * as path from 'path';
 const envPath = path.join(__dirname, '..', '.env');
 dotenv.config({ path: envPath });
 
-import { app, BrowserWindow, ipcMain, Notification, dialog, screen, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, Notification, dialog, screen, globalShortcut, shell } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
@@ -22,8 +22,11 @@ let openclawWs: WebSocket | null = null;
 let requestId = 0;
 const MAX_RECONNECT_RETRIES = 999; // 增加重连次数上限
 let reconnectRetryCount = 0;
+/** 应用/主窗口正在关闭，避免 WebSocket 断开回调里向已销毁的窗口 send 导致报错 */
+let appQuitting = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
+let currentSessionKey: string = 'main';
 const SESSION_STATE_FILE = path.join(app.getPath('userData'), 'session-state.json');
 const LICENSE_FILE = path.join(app.getPath('userData'), 'license.json');
 const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
@@ -140,50 +143,76 @@ const VALID_LICENSE_HASHES: string[] = [
 
 // Gateway 进程管理
 const GATEWAY_PORT = 18789;
-const GATEWAY_CMD = path.join(os.homedir(), '.openclaw', 'gateway.cmd');
 
-// 内嵌 OpenClaw 路径（打包后在 resources/openclaw，开发时在项目根/resources/openclaw）
-function getEmbeddedOpenClawEntry(): string | null {
+// 获取 Nocturne Memory 路径（打包后 resources/nocturne_memory，开发时项目 resources/nocturne_memory）
+function getNocturnePath(): string {
   const candidates = [
-    // 打包后
-    path.join(process.resourcesPath || '', 'openclaw', 'node_modules', 'openclaw', 'dist', 'index.js'),
-    // 开发时
-    path.join(__dirname, '..', 'resources', 'openclaw', 'node_modules', 'openclaw', 'dist', 'index.js'),
+    path.join(process.resourcesPath || '', 'nocturne_memory'),
+    path.join(__dirname, '..', 'resources', 'nocturne_memory'),
+    path.join(__dirname, '..', '..', 'resources', 'nocturne_memory'),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
-  return null;
+  return '';
 }
 
-// 获取内嵌 OpenClaw 的工作目录（用户数据目录 ~/.openclaw）
-function getOpenClawWorkDir(): string {
-  const dir = path.join(os.homedir(), '.openclaw');
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    console.log('[Gateway] Created OpenClaw workdir:', dir);
+// 获取 Nocturne MCP Server 脚本绝对路径
+function getNocturneMcpPath(): string {
+  const base = getNocturnePath();
+  return base ? path.join(base, 'backend', 'mcp_server.py') : '';
+}
+
+// 获取用于运行 Nocturne 的 Python 可执行路径（需 3.10+）
+// 返回 [executable, ...extraArgs] 以便 spawn 正确拆分
+function getPythonForNocturne(): string[] {
+  const { execSync } = require('child_process');
+  const cmds: string[][] = process.platform === 'win32'
+    ? [['py', '-3'], ['python']]
+    : [['python3'], ['python']];
+  for (const parts of cmds) {
+    try {
+      const v = execSync(`${parts.join(' ')} --version`, { encoding: 'utf8', timeout: 3000 });
+      const m = v.match(/Python 3\.(\d+)/);
+      if (m && parseInt(m[1], 10) >= 10) return parts;
+      if (!m) return parts;
+    } catch {
+      continue;
+    }
   }
-  return dir;
+  return process.platform === 'win32' ? ['py', '-3'] : ['python3'];
 }
 
-// 初始化：如果用户没有 config.json，从内嵌默认配置复制
-function initOpenClawUserData(): void {
-  const userConfigPath = path.join(os.homedir(), '.openclaw', 'config.json');
-  if (!fs.existsSync(userConfigPath)) {
-    const defaultConfigCandidates = [
-      path.join(process.resourcesPath || '', 'openclaw', 'defaults', 'config.json'),
-      path.join(__dirname, '..', 'resources', 'openclaw', 'defaults', 'config.json'),
-    ];
-    for (const src of defaultConfigCandidates) {
-      if (fs.existsSync(src)) {
-        try {
-          fs.copyFileSync(src, userConfigPath);
-          console.log('[Gateway] Initialized user config from default:', src);
-        } catch (e) {
-          console.warn('[Gateway] Failed to copy default config:', e);
-        }
-        break;
-      }
+// 确保 Nocturne 的 .env 存在（DATABASE_URL 指向 userData）
+// 同时写入 nocturne_memory/.env 与 backend/.env，保证 uvicorn cwd=backend 时能加载到
+function ensureNocturneEnv(): void {
+  const base = getNocturnePath();
+  if (!base) return;
+  const rootEnvPath = path.join(base, '.env');
+  if (fs.existsSync(rootEnvPath)) return;
+  const userDataDir = app.getPath('userData');
+  try {
+    if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
+  } catch {}
+  const dbPath = path.join(userDataDir, 'nocturne_memory.db');
+  const dbUrl = `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
+  const envContent = `# OCT + Nocturne Memory - auto-generated
+DATABASE_URL=${dbUrl}
+VALID_DOMAINS=core,writer,notes,system
+
+# 热记忆（L1）：每次 system://boot 自动加载
+# 按优先级排列：AMY 身份 → 少爷信息 → 情感连接 → 重要凭证
+CORE_MEMORY_URIS=core://agent/identity,core://agent/principles,core://my_user,core://my_user/profile,core://agent/my_user,core://agent/love,core://credentials/github
+`;
+  const envPaths = [rootEnvPath, path.join(base, 'backend', '.env')];
+  for (const envPath of envPaths) {
+    try {
+      const dir = path.dirname(envPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(envPath, envContent, 'utf-8');
+      console.log('[Nocturne] .env ready:', envPath);
+    } catch (e) {
+      console.warn('[Nocturne] Failed to write .env at', envPath, e);
     }
   }
 }
@@ -200,8 +229,47 @@ function isPortInUse(port: number): Promise<boolean> {
     socket.connect(port, '127.0.0.1');
   });
 }
+
+async function killPortProcess(port: number): Promise<void> {
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    if (process.platform === 'win32') {
+      exec(
+        `for /f "tokens=5" %%a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %%a`,
+        { windowsHide: true },
+        () => resolve()
+      );
+    } else {
+      exec(`lsof -ti :${port} | xargs kill -9`, () => resolve());
+    }
+  });
+}
+
+/** Windows：启动前强制清理端口上残留进程（同步杀进程 + 短等待） */
+async function forceKillPort(port: number): Promise<void> {
+  if (process.platform !== 'win32') return;
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync(
+      `netstat -ano | findstr :${port}`,
+      { encoding: 'utf8', windowsHide: true }
+    );
+    const lines = result.split('\n').filter((l: string) => l.includes('LISTENING'));
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      const pid = parts[parts.length - 1];
+      if (pid && pid !== '0') {
+        try {
+          execSync(`taskkill /PID ${pid} /F`, { windowsHide: true });
+          console.log(`[Gateway] 清理旧进程 PID ${pid}`);
+        } catch {}
+      }
+    }
+    await new Promise(r => setTimeout(r, 500));
+  } catch {}
+}
+
 let gatewayProcess: ReturnType<typeof spawn> | null = null;
-let gatewayManagedByUs = false; // 是否由本程序启动
 
 // OpenClaw WebSocket config：优先从 userData/config.json 读取，打包后 .env 不存在时使用
 let OPENCLAW_WS_URL = 'ws://127.0.0.1:18789';
@@ -440,6 +508,7 @@ function createWindow() {
     minHeight: 500,
     frame: false,
     backgroundColor: '#0a1a12',
+    show: false, // 先隐藏，等页面加载完成后再显示
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -449,9 +518,16 @@ function createWindow() {
     alwaysOnTop: false,
   });
 
+  // 窗口准备好后显示，避免白屏/黑屏
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    console.log('[Electron] Window ready to show');
+  });
+
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-    const devPort = parseInt(process.env.VITE_DEV_PORT || '5174');
+    const devPort = parseInt(process.env.VITE_DEV_PORT || '5176');
     const devUrl = process.env.VITE_DEV_SERVER_URL || `http://localhost:${devPort}`;
+    console.log('[Electron] Loading dev URL:', devUrl);
     mainWindow.loadURL(devUrl);
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -461,6 +537,19 @@ function createWindow() {
   // if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
   //   mainWindow.webContents.openDevTools({ mode: 'detach' });
   // }
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    const currentUrl = mainWindow?.webContents.getURL() ?? '';
+    if (url !== currentUrl && !url.startsWith('http://localhost')) {
+      e.preventDefault();
+      shell.openExternal(url);
+    }
+  });
 
   mainWindow.webContents.on('did-fail-load', (_e, errCode, errDesc) => {
     console.error('[Electron] 页面加载失败:', errCode, errDesc);
@@ -477,10 +566,8 @@ function createWindow() {
     sendStatus({ connected });
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    floatWindow?.close();
-    floatWindow = null;
+  mainWindow.on('closed', async () => {
+    appQuitting = true;
     if (openclawWs) {
       openclawWs.close();
       openclawWs = null;
@@ -497,6 +584,18 @@ function createWindow() {
       gatewayProcess.kill();
       gatewayProcess = null;
     }
+    if (octGatewayProcess && !octGatewayProcess.killed) {
+      octGatewayProcess.kill();
+      octGatewayProcess = null;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    if (nocturneBackendProcess && !nocturneBackendProcess.killed) {
+      nocturneBackendProcess.kill();
+      nocturneBackendProcess = null;
+    }
+    mainWindow = null;
+    floatWindow?.close();
+    floatWindow = null;
   });
 }
 
@@ -547,19 +646,59 @@ function generateId(): string {
   return `req-${Date.now()}-${++requestId}`;
 }
 
+/** 将连接/系统信息写入 Gateway 日志区，便于排查错误 */
+function sendConnLog(line: string) {
+  if (!line.trim() || appQuitting) return;
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send('openclaw-log-lines', [`[连接] ${line.trim()}`]);
+}
+
 function connectOpenClaw() {
   if (openclawWs?.readyState === WebSocket.OPEN) return;
 
   openclawWs = null;
   console.log('[OpenClaw] Connecting to', OPENCLAW_WS_URL, 'retry:', reconnectRetryCount);
-  console.log('[OpenClaw] Token loaded:', OPENCLAW_TOKEN ? `${OPENCLAW_TOKEN.slice(0, 8)}...` : 'NONE');
-  console.log('[OpenClaw] Device ID:', deviceKeys?.deviceId || 'NOT SET');
+  sendConnLog(`正在连接 ${OPENCLAW_WS_URL} (重试 #${reconnectRetryCount})`);
+  sendConnLog(`Device ID: ${deviceKeys?.deviceId || '未初始化'} | Token: ${OPENCLAW_TOKEN ? OPENCLAW_TOKEN.slice(0, 8) + '...' : '未设置'}`);
 
   const ws = new WebSocket(OPENCLAW_WS_URL);
   openclawWs = ws;
 
+  let heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
+  let pongTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  const clearHeartbeat = () => {
+    if (heartbeatIntervalId) {
+      clearInterval(heartbeatIntervalId);
+      heartbeatIntervalId = null;
+    }
+    if (pongTimeoutId) {
+      clearTimeout(pongTimeoutId);
+      pongTimeoutId = null;
+    }
+  };
+
   ws.on('open', () => {
     console.log('[OpenClaw] WebSocket opened, waiting for challenge...');
+    sendConnLog('WebSocket 已连接，等待 Gateway 下发 challenge...');
+    heartbeatIntervalId = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (pongTimeoutId) {
+        clearTimeout(pongTimeoutId);
+        pongTimeoutId = null;
+      }
+      ws.ping();
+      pongTimeoutId = setTimeout(() => {
+        pongTimeoutId = null;
+        ws.terminate();
+      }, 10000);
+    }, 30000);
+  });
+
+  ws.on('pong', () => {
+    if (pongTimeoutId) {
+      clearTimeout(pongTimeoutId);
+      pongTimeoutId = null;
+    }
   });
 
   ws.on('message', (data) => {
@@ -568,41 +707,66 @@ function connectOpenClaw() {
       handleMessage(msg);
     } catch (e) {
       console.error('[OpenClaw] Parse error:', e);
+      sendConnLog(`消息解析失败：${e instanceof Error ? e.message : String(e)}`);
     }
   });
 
-  ws.on('close', () => {
-    console.log('[OpenClaw] WebSocket disconnected');
+  let closeHandled = false;
+  const scheduleReconnect = () => {
+    if (closeHandled || appQuitting) return;
+    closeHandled = true;
+    clearHeartbeat();
     openclawWs = null;
     if (!mainWindow) return;
+    if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
     reconnectRetryCount++;
     if (reconnectRetryCount <= MAX_RECONNECT_RETRIES) {
+      const delay = Math.min(5000 * Math.pow(2, reconnectRetryCount - 1), 60000);
       sendStatus({ connected: false, reconnecting: true });
-      setTimeout(connectOpenClaw, 5000);
+      sendConnLog(`${delay / 1000} 秒后重连`);
+      setTimeout(connectOpenClaw, delay);
     } else {
       sendStatus({ connected: false, error: '连接失败，请检查Gateway' });
+      sendConnLog('已停止自动重连，请检查 Gateway 是否启动或点击「重启」');
     }
+  };
+
+  ws.on('close', (code: number, reason: Buffer) => {
+    clearHeartbeat();
+    const reasonStr = (reason?.length ? reason.toString('utf8') : '') || '(无)';
+    console.log('[OpenClaw] WebSocket disconnected', code, reasonStr);
+    sendConnLog(`WebSocket 已断开 code=${code} reason=${reasonStr}，${reconnectRetryCount <= MAX_RECONNECT_RETRIES ? '将按退避延迟重连' : '已达重试上限'}`);
+    scheduleReconnect();
   });
 
   ws.on('error', (error) => {
+    clearHeartbeat();
     console.error('[OpenClaw] Connection error:', error);
-    sendStatus({ connected: false, error: '连接失败: ' + error.message });
+    const msg = error.message || String(error);
+    sendConnLog(`连接错误: ${msg}，将按退避延迟重连`);
+    if (msg.includes('ECONNRESET')) {
+      sendConnLog('提示: 若持续出现 ECONNRESET，可能是 18789 被其他程序占用，请点「停止」再「启动」或「重启」确保仅运行 OCT Gateway');
+    }
+    sendStatus({ connected: false, reconnecting: true, error: '连接失败: ' + msg });
+    scheduleReconnect();
   });
 }
 
 function sendStatus(status: { connected: boolean; error?: string; model?: string; reconnecting?: boolean }) {
+  if (appQuitting) return;
   if (status.connected) reconnectRetryCount = 0;
   console.log('[OpenClaw] Sending status to frontend:', status);
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
     mainWindow.webContents.send('openclaw-status', status);
     console.log('[OpenClaw] Status sent successfully');
   } else {
-    console.warn('[OpenClaw] mainWindow is null, cannot send status');
+    console.warn('[OpenClaw] mainWindow not available, skip send status');
   }
 }
 
 function sendMessage(msg: any) {
-  mainWindow?.webContents.send('openclaw-message', msg);
+  if (appQuitting || !mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send('openclaw-message', msg);
 }
 
 function floatFlash() {
@@ -659,24 +823,38 @@ function forwardChatToFrontend(payload: any, eventName?: string, isStreaming = f
   const text = extractTextFromPayload(payload);
   const done = payload?.done ?? (payload?.state === 'done' || payload?.state === 'complete' ? true : isStreaming ? false : true);
   const usage = extractUsage(payload);
+  if (usage?.session) {
+    currentSessionKey = usage.session;
+    saveSessionState({ ...(lastSessionState || {}), sessionKey: usage.session });
+  }
   // 斜杠命令的系统回复：payload 直接有 text，无 message.content
   const isSystemReply = !!(payload?.text && typeof payload.text === 'string' && !payload?.message?.content);
+  
   if (text || done !== undefined) {
-    const msg: any = { type: 'chat', text: String(text || ''), done: done ?? true, event: eventName };
-    if (usage) msg.usage = usage;
-    if (isSystemReply) msg.isSystemReply = true;
+    const msg: any = { 
+      type: 'event',
+      event: 'chat',
+      payload: {
+        delta: payload?.delta ?? text,
+        text: String(text || ''),
+        state: payload?.state ?? (done ? 'done' : 'delta'),
+        done: done ?? true,
+      },
+    };
+    if (usage) msg.payload.usage = usage;
+    if (isSystemReply) msg.payload.isSystemReply = true;
     sendMessage(msg);
     if (text) floatFlash();
   }
 }
 
 function handleMessage(msg: any) {
-  console.log('[OpenClaw] Received message:', JSON.stringify(msg).slice(0, 500));
   switch (msg.type) {
     case 'event':
       if (msg.event === 'connect.challenge') {
         const nonce = msg.payload?.nonce || '';
         console.log('[OpenClaw] Challenge received, nonce:', nonce);
+        sendConnLog('收到 connect.challenge，正在发送 connect 请求...');
         sendConnectRequest(nonce);
       } else if (msg.event === 'chat' && msg.payload) {
         const isDelta = msg.payload?.state === 'delta';
@@ -686,6 +864,10 @@ function handleMessage(msg: any) {
         const text = src?.delta ?? src?.text ?? extractTextFromPayload(src);
         const isDelta = src?.delta !== undefined;
         const usage = extractUsage(src);
+        if (usage?.session) {
+          currentSessionKey = usage.session;
+          saveSessionState({ ...(lastSessionState || {}), sessionKey: usage.session });
+        }
         if (text || src?.done !== undefined) {
           const out: any = { type: 'chat', text: String(text || ''), done: src?.done ?? !isDelta, event: msg.event };
           if (usage) out.usage = usage;
@@ -709,12 +891,15 @@ function handleMessage(msg: any) {
       if (msg.ok && (msg.payload?.type === 'hello-ok' || msg.method === 'connect')) {
         const model = msg.payload?.model || msg.payload?.agent?.model || undefined;
         console.log('[OpenClaw] Connection successful!');
+        sendConnLog(`认证成功，已连接 (model: ${model || '—'})`);
         sendStatus({ connected: true, model });
       } else if (!msg.ok) {
+        const errMsg = msg.error?.message || JSON.stringify(msg.error) || 'Connection failed';
         console.error('[OpenClaw] Error:', JSON.stringify(msg.error, null, 2));
+        sendConnLog(`认证失败: ${errMsg}`);
         sendStatus({ 
           connected: false, 
-          error: msg.error?.message || JSON.stringify(msg.error) || 'Connection failed'
+          error: errMsg
         });
       } else if (msg.ok && msg.payload) {
         const text = extractTextFromPayload(msg.payload);
@@ -722,6 +907,7 @@ function handleMessage(msg: any) {
         else sendStatus({ connected: true });
       } else if (msg.ok) {
         console.log('[OpenClaw] Connection successful (no payload)!');
+        sendConnLog('认证成功，已连接');
         sendStatus({ connected: true });
       }
       break;
@@ -734,10 +920,12 @@ function handleMessage(msg: any) {
 function sendConnectRequest(nonce: string) {
   if (!deviceKeys) {
     console.error('[OpenClaw] No device keys');
+    sendConnLog('错误: 未初始化 device keys，无法发送 connect');
     return;
   }
 
   console.log('[OpenClaw] Sending connect request...');
+  sendConnLog('已发送 connect 请求（含 device 签名）');
   
   const now = Date.now();
   const platform = process.platform; // win32, darwin, linux
@@ -800,7 +988,17 @@ function sendConnectRequest(nonce: string) {
   };
   
   console.log('[OpenClaw] Sending connect (client.id=%s, client.mode=%s, platform=%s)', clientId, clientMode, platform);
-  openclawWs?.send(JSON.stringify(connectMsg));
+  try {
+    openclawWs?.send(JSON.stringify(connectMsg));
+  } catch (err: any) {
+    if (err?.code === 'EPIPE' || (err?.message && String(err.message).includes('broken pipe'))) {
+      openclawWs = null;
+      sendStatus({ connected: false, reconnecting: true });
+      setTimeout(connectOpenClaw, 1500);
+    } else {
+      throw err;
+    }
+  }
 }
 
 interface UploadedFile {
@@ -826,13 +1024,12 @@ function sendChatMessage(content: string, imageDataUrl?: string | null, files?: 
   }
 
   const reqId = generateId();
-  const sessionKey = process.env.OPENCLAW_SESSION_KEY || 'main';
   const idempotencyKey = crypto.randomUUID();
 
-  // OpenClaw chat.send: message 必须是字符串，图片放入 attachments
+  // OpenClaw chat.send: message 必须是字符串，图片放入 attachments；sessionKey 一致则 Gateway 在同一会话内回复
   const finalMessage = message.trim() || (imageDataUrl || (files && files.length > 0) ? '[文件/图片]' : '');
   const params: { sessionKey: string; idempotencyKey: string; message: string; attachments?: any[] } = {
-    sessionKey,
+    sessionKey: currentSessionKey,
     idempotencyKey,
     message: finalMessage,
   };
@@ -871,8 +1068,26 @@ function sendChatMessage(content: string, imageDataUrl?: string | null, files?: 
 
   const payloadStr = JSON.stringify(chatMsg);
   console.log('[OCT DEBUG] sending to gateway:', payloadStr.slice(0, 200));
-  openclawWs.send(payloadStr);
-  return { success: true };
+  try {
+    openclawWs.send(payloadStr);
+    return { success: true };
+  } catch (err: any) {
+    const isBrokenPipe = err?.code === 'EPIPE' || (err?.message && String(err.message).includes('broken pipe'));
+    if (isBrokenPipe && openclawWs) {
+      sendConnLog(`发送失败: broken pipe，连接已断开，1.5s 后重连`);
+      openclawWs = null;
+      sendStatus({ connected: false, reconnecting: true });
+      setTimeout(connectOpenClaw, 1500);
+    } else if (err?.message) {
+      sendConnLog(`发送失败: ${err.message}`);
+    }
+    return {
+      success: false,
+      error: isBrokenPipe
+        ? '连接已断开（如休眠/睡眠后），正在重连，请稍后再发'
+        : (err?.message || String(err)),
+    };
+  }
 }
 
 // IPC handlers
@@ -1406,158 +1621,405 @@ function sendGatewayLogLine(line: string) {
   mainWindow?.webContents.send('openclaw-log-lines', [line.trim()]);
 }
 
-async function startGatewayProcess(): Promise<{ success: boolean; error?: string; alreadyRunning?: boolean; portInUse?: boolean }> {
-  if (gatewayProcess && !gatewayProcess.killed) {
-    return { success: true, alreadyRunning: true };
+// OCT 自己的 Gateway 路径
+function getOctGatewayEntry(): string | null {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'oct-gateway', 'index.js'),
+    path.join(__dirname, '..', 'oct-gateway', 'index.js'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
   }
-  const inUse = await isPortInUse(GATEWAY_PORT);
-  if (inUse) {
-    return { success: false, portInUse: true, error: 'Gateway 已在运行，端口 18789 已被占用' };
-  }
+  return null;
+}
 
-  // 初始化用户数据目录
-  initOpenClawUserData();
+let octGatewayProcess: ReturnType<typeof spawn> | null = null;
 
-  // 优先使用内嵌 OpenClaw
-  const embeddedEntry = getEmbeddedOpenClawEntry();
-  if (embeddedEntry) {
-    console.log('[Gateway] Using embedded OpenClaw:', embeddedEntry);
-    try {
-      const nodeBin = process.execPath; // Electron 内置 Node.js
-      const workDir = getOpenClawWorkDir();
-      gatewayProcess = spawn(nodeBin, [embeddedEntry, 'gateway', '--port', String(GATEWAY_PORT)], {
-        cwd: workDir,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-        detached: false,
-        env: {
-          ...process.env,
-          OPENCLAW_GATEWAY_PORT: String(GATEWAY_PORT),
-          ELECTRON_RUN_AS_NODE: '1',
-        },
-      });
-      gatewayManagedByUs = true;
-      console.log('[Gateway] Started (embedded) PID:', gatewayProcess.pid);
-      mainWindow?.webContents.send('gateway-status', { running: true, managed: true, pid: gatewayProcess.pid });
-
-      let stdoutBuf = '';
-      gatewayProcess.stdout?.on('data', (chunk: Buffer) => {
-        stdoutBuf += chunk.toString('utf8');
-        const lines = stdoutBuf.split(/\r?\n/);
-        stdoutBuf = lines.pop() ?? '';
-        lines.forEach(sendGatewayLogLine);
-      });
-      gatewayProcess.stderr?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString('utf8');
-        text.split(/\r?\n/).forEach((l) => { if (l.trim()) sendGatewayLogLine(`[ERR] ${l.trim()}`); });
-      });
-      gatewayProcess.on('error', (err) => {
-        console.error('[Gateway] Process error:', err);
-        mainWindow?.webContents.send('openclaw-log-lines', [`[Gateway ERROR] ${err.message}`]);
-      });
-      gatewayProcess.on('exit', (code, signal) => {
-        console.log('[Gateway] Exited, code:', code, 'signal:', signal);
-        gatewayProcess = null;
-        gatewayManagedByUs = false;
-        mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
-        mainWindow?.webContents.send('openclaw-log-lines', [`[Gateway] 进程已退出 (code: ${code ?? signal})`]);
-      });
-      return { success: true };
-    } catch (e: any) {
-      console.warn('[Gateway] Embedded start failed, fallback to system gateway:', e?.message);
-    }
+async function startOctGateway(): Promise<{ success: boolean; error?: string }> {
+  if (octGatewayProcess && !octGatewayProcess.killed) {
+    return { success: true };
   }
 
-  // 回退：使用系统安装的 gateway.cmd（向下兼容）
-  if (!fs.existsSync(GATEWAY_CMD)) {
-    return { success: false, error: `Gateway 未找到: ${GATEWAY_CMD}` };
+  const entry = getOctGatewayEntry();
+  if (!entry) {
+    console.warn('[OCT Gateway] oct-gateway/index.js 未找到，回退到 OpenClaw');
+    return { success: false, error: 'OCT Gateway 未找到' };
   }
+
+  const promptsDir = path.join(__dirname, '..', 'docs', '01_system_prompts');
+
   try {
-    gatewayProcess = spawn('cmd', ['/c', GATEWAY_CMD], {
+    octGatewayProcess = spawn('node', [entry], {
+      cwd: path.dirname(entry),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
-    });
-    gatewayManagedByUs = true;
-    console.log('[Gateway] Started PID:', gatewayProcess.pid);
-    mainWindow?.webContents.send('gateway-status', { running: true, managed: true, pid: gatewayProcess.pid });
-
-    let stdoutBuf = '';
-    gatewayProcess.stdout?.on('data', (chunk: Buffer) => {
-      stdoutBuf += chunk.toString('utf8');
-      const lines = stdoutBuf.split(/\r?\n/);
-      stdoutBuf = lines.pop() ?? '';
-      lines.forEach(sendGatewayLogLine);
+      env: {
+        ...process.env,
+        OCT_GATEWAY_PORT: String(GATEWAY_PORT),
+        OCT_PROMPTS_DIR: promptsDir,
+        OCT_CONFIG_FILE: CONFIG_FILE,
+      },
     });
 
-    gatewayProcess.stderr?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString('utf8');
-      const lines = text.split(/\r?\n/);
-      lines.forEach((l) => {
-        if (l.trim()) sendGatewayLogLine(`[ERR] ${l.trim()}`);
+    octGatewayProcess.stdout?.on('data', (chunk: Buffer) => {
+      chunk.toString('utf8').split('\n').forEach((l) => {
+        if (l.trim()) sendGatewayLogLine(`[OCT] ${l.trim()}`);
       });
     });
-
-    gatewayProcess.on('error', (err) => {
-      console.error('[Gateway] Process error:', err);
-      mainWindow?.webContents.send('openclaw-log-lines', [`[Gateway ERROR] ${err.message}`]);
+    octGatewayProcess.stderr?.on('data', (chunk: Buffer) => {
+      chunk.toString('utf8').split('\n').forEach((l) => {
+        if (l.trim()) sendGatewayLogLine(`[OCT ERR] ${l.trim()}`);
+      });
+    });
+    octGatewayProcess.on('exit', (code) => {
+      console.log('[OCT Gateway] 退出，code:', code);
+      octGatewayProcess = null;
+      if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
+        mainWindow.webContents.send('gateway-status', { running: false, managed: false });
+      }
     });
 
-    gatewayProcess.on('exit', (code, signal) => {
-      console.log('[Gateway] Exited, code:', code, 'signal:', signal);
-      gatewayProcess = null;
-      gatewayManagedByUs = false;
-      mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
-      mainWindow?.webContents.send('openclaw-log-lines', [`[Gateway] 进程已退出 (code: ${code ?? signal})`]);
-    });
-
+    console.log('[OCT Gateway] 已启动，PID:', octGatewayProcess.pid);
     return { success: true };
   } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
+    return { success: false, error: e?.message };
   }
 }
 
+// Nocturne Memory 集成
+ipcMain.handle('get-nocturne-status', async () => {
+  const base = getNocturnePath();
+  const available = !!base;
+  let backendAlive = false;
+  let frontendAlive = false;
+  let domains: Array<{ domain: string }> = [];
+  let coreMemoryUris: string[] = [];
+  if (base) {
+    try {
+      const envPath = path.join(base, '.env');
+      const envContent = fs.readFileSync(envPath, 'utf-8');
+      const m = envContent.match(/CORE_MEMORY_URIS=(.+)/);
+      if (m) coreMemoryUris = m[1]!.split(',').map((s: string) => s.trim()).filter(Boolean);
+    } catch {}
+    backendAlive = await isPortInUse(8000);
+    frontendAlive = await isPortInUse(3000);
+    if (backendAlive) {
+      try {
+        const res = await fetch('http://127.0.0.1:8000/browse/domains', { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) domains = data;
+          else if (data?.data && Array.isArray(data.data)) domains = data.data;
+        }
+      } catch {}
+    }
+  }
+  return {
+    available,
+    path: base || '',
+    backendAlive,
+    frontendAlive,
+    domains,
+    coreMemoryUris,
+  };
+});
+ipcMain.handle('open-nocturne-management', () => {
+  shell.openExternal('http://localhost:3000');
+  return { success: true };
+});
+ipcMain.handle('restart-nocturne-backend', async () => {
+  if (nocturneBackendProcess && !nocturneBackendProcess.killed) {
+    nocturneBackendProcess.kill();
+    nocturneBackendProcess = null;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  const ok = await startNocturneBackend();
+  return { success: ok };
+});
+ipcMain.handle('seed-nocturne-memories', async (): Promise<{ success: boolean; error?: string; output?: string }> => {
+  const base = getNocturnePath();
+  if (!base) return { success: false, error: 'Nocturne 未找到' };
+  const scriptPath = path.join(base, 'backend', 'scripts', 'seed_oct_memories.py');
+  if (!fs.existsSync(scriptPath)) return { success: false, error: 'seed 脚本未找到' };
+  const { execSync } = require('child_process');
+  const pythonCmd = getPythonForNocturne().join(' ');
+  try {
+    const cwd = path.join(base, 'backend');
+    const out = execSync(`${pythonCmd} -m scripts.seed_oct_memories`, {
+      cwd,
+      encoding: 'utf8',
+      timeout: 30000,
+      env: { ...process.env, PYTHONPATH: cwd, PYTHONIOENCODING: 'utf-8' },
+    });
+    return { success: true, output: out };
+  } catch (e: any) {
+    const msg = e?.stderr || e?.stdout || e?.message || String(e);
+    return { success: false, error: msg || '执行失败' };
+  }
+});
+ipcMain.handle('setup-nocturne-memory', async (): Promise<{ success: boolean; error?: string }> => {
+  const base = getNocturnePath();
+  if (!base) return { success: false, error: 'Nocturne 未找到' };
+  const reqPath = path.join(base, 'backend', 'requirements.txt');
+  if (!fs.existsSync(reqPath)) return { success: false, error: 'requirements.txt 未找到' };
+  const { execSync } = require('child_process');
+  const pythonCmd = getPythonForNocturne().join(' ');
+  try {
+    execSync(`${pythonCmd} -m pip install -r "${reqPath}"`, {
+      cwd: path.join(base, 'backend'),
+      encoding: 'utf8',
+      timeout: 120000,
+      stdio: 'pipe',
+    });
+    ensureNocturneEnv();
+    return { success: true };
+  } catch (e: any) {
+    const msg = e?.stderr || e?.message || String(e);
+    return { success: false, error: msg || 'pip 安装失败，请确保已安装 Python' };
+  }
+});
+
+// Nocturne 进程管理
+let nocturneBackendProcess: ReturnType<typeof spawn> | null = null;
+let nocturneFrontendProcess: ReturnType<typeof spawn> | null = null;
+
+function getLocalIP(): string {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+}
+
+async function startNocturneBackend(): Promise<boolean> {
+  if (nocturneBackendProcess && !nocturneBackendProcess.killed) return true;
+
+  const base = getNocturnePath();
+  if (!base) {
+    console.warn('[Nocturne] 未找到 nocturne_memory 目录，跳过自动启动');
+    return false;
+  }
+
+  const portInUse = await isPortInUse(8000);
+  if (portInUse) {
+    console.log('[Nocturne] 端口 8000 已被占用，跳过启动');
+    return true;
+  }
+
+  ensureNocturneEnv();
+  const userDataDir = app.getPath('userData');
+  const dbPath = path.join(userDataDir, 'nocturne_memory.db');
+  const dbUrl = `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
+  const [pyExe, ...pyArgs] = getPythonForNocturne();
+  const backendPath = path.join(base, 'backend');
+
+  nocturneBackendProcess = spawn(pyExe, [...pyArgs, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'], {
+    cwd: backendPath,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+    detached: false,
+    env: {
+      ...process.env,
+      DATABASE_URL: dbUrl,
+      PYTHONPATH: backendPath,
+      PYTHONIOENCODING: 'utf-8',
+    },
+  });
+
+  nocturneBackendProcess.stderr?.on('data', (data: Buffer) => {
+    const msg = data.toString().trim();
+    if (msg) console.log('[Nocturne]', msg);
+  });
+  nocturneBackendProcess.on('exit', (code) => {
+    console.log('[Nocturne] 后端退出，code:', code);
+    nocturneBackendProcess = null;
+    if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
+      mainWindow.webContents.send('nocturne-status', { backendAlive: false });
+    }
+  });
+  nocturneBackendProcess.on('error', (err) => {
+    console.error('[Nocturne] 启动失败:', err.message);
+    nocturneBackendProcess = null;
+    if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
+      mainWindow.webContents.send('nocturne-status', { backendAlive: false, error: err.message });
+    }
+  });
+
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    if (await isPortInUse(8000)) break;
+  }
+  if (!(await isPortInUse(8000))) {
+    console.warn('[Nocturne] 端口 8000 未就绪，启动超时');
+    return false;
+  }
+
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    try {
+      const res = await fetch('http://127.0.0.1:8000/health', { signal: AbortSignal.timeout(2000) });
+      if (res.ok) {
+        console.log('[Nocturne] 后端已就绪 port 8000 + DB 健康');
+        mainWindow?.webContents.send('openclaw-log-lines', ['[Nocturne] 记忆系统已启动 ✅']);
+        return true;
+      }
+    } catch {}
+  }
+  console.warn('[Nocturne] /health 未返回 200，可能数据库未连接');
+  mainWindow?.webContents.send('openclaw-log-lines', ['[Nocturne] 端口已监听，若仍显示不可用请点「重启 Nocturne 后端」']);
+  return true;
+}
+
+// 检测端口是否被监听
+async function checkPortListening(port: number, timeoutMs = 5000): Promise<boolean> {
+  const net = require('net');
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve(false);
+    }, timeoutMs);
+    socket.connect(port, '127.0.0.1', () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+  });
+}
+
+ipcMain.handle('start-nocturne-dashboard', async (): Promise<{ success: boolean; error?: string; backendUrl?: string; frontendUrl?: string }> => {
+  const base = getNocturnePath();
+  if (!base) return { success: false, error: 'Nocturne 未找到' };
+
+  const frontendPath = path.join(base, 'frontend');
+
+  // 后端已经在 startNocturneBackend() 里启动了，直接检查
+  const backendAlive = await isPortInUse(8000);
+  if (!backendAlive) {
+    await startNocturneBackend();
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+
+  // 启动前端（如果还没跑）
+  const frontendAlive = await isPortInUse(3000);
+  if (!frontendAlive && fs.existsSync(path.join(frontendPath, 'package.json'))) {
+    if (!nocturneFrontendProcess || nocturneFrontendProcess.killed) {
+      nocturneFrontendProcess = spawn('npm', ['run', 'dev'], {
+        cwd: frontendPath,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        detached: false,
+        shell: true,
+      });
+      nocturneFrontendProcess.on('exit', () => {
+        nocturneFrontendProcess = null;
+      });
+
+      // 等待前端就绪，最多 15 秒
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        if (await isPortInUse(3000)) break;
+      }
+    }
+  }
+
+  shell.openExternal('http://localhost:3000');
+
+  return {
+    success: true,
+    backendUrl: 'http://localhost:8000',
+    frontendUrl: 'http://localhost:3000',
+  };
+});
+
+ipcMain.handle('stop-nocturne-dashboard', () => {
+  if (nocturneBackendProcess && !nocturneBackendProcess.killed) {
+    nocturneBackendProcess.kill();
+    nocturneBackendProcess = null;
+  }
+  if (nocturneFrontendProcess && !nocturneFrontendProcess.killed) {
+    nocturneFrontendProcess.kill();
+    nocturneFrontendProcess = null;
+  }
+  return { success: true };
+});
+
+ipcMain.handle('nocturne-dashboard-status', () => {
+  return {
+    backendRunning: nocturneBackendProcess && !nocturneBackendProcess.killed,
+    frontendRunning: nocturneFrontendProcess && !nocturneFrontendProcess.killed,
+    backendPid: nocturneBackendProcess?.pid,
+    frontendPid: nocturneFrontendProcess?.pid,
+  };
+});
+
 ipcMain.handle('start-gateway', async () => {
-  const result = await startGatewayProcess();
-  if (result.alreadyRunning) {
-    mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 进程已在运行（由本程序管理）']);
-  } else if (result.portInUse) {
-    mainWindow?.webContents.send('openclaw-log-lines', ['[LOG] 检测到外部 Gateway，已连接']);
-    return { success: true, portInUse: true };
-  } else if (!result.success) {
-    mainWindow?.webContents.send('openclaw-log-lines', [`[Gateway] 启动失败: ${result.error}`]);
-  } else {
-    mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 正在启动...']);
+  // 清理端口
+  if (await isPortInUse(GATEWAY_PORT)) {
+    await killPortProcess(GATEWAY_PORT);
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  // 启动 OCT Gateway
+  const result = await startOctGateway();
+  if (result.success) {
+    mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已启动 ✅']);
   }
   return result;
 });
 
 ipcMain.handle('stop-gateway', () => {
+  // 停止 OCT Gateway
+  if (octGatewayProcess && !octGatewayProcess.killed) {
+    octGatewayProcess.kill();
+    octGatewayProcess = null;
+  }
   if (gatewayProcess && !gatewayProcess.killed) {
     gatewayProcess.kill();
     gatewayProcess = null;
-    gatewayManagedByUs = false;
-    mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
-    mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 已停止']);
-    return { success: true };
   }
-  return { success: false, error: 'Gateway 未在运行' };
+  mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
+  mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 已停止']);
+  return { success: true };
 });
 
 ipcMain.handle('gateway-restart', async () => {
+  if (octGatewayProcess && !octGatewayProcess.killed) {
+    octGatewayProcess.kill();
+    octGatewayProcess = null;
+  }
   if (gatewayProcess && !gatewayProcess.killed) {
     gatewayProcess.kill();
     gatewayProcess = null;
-    gatewayManagedByUs = false;
   }
+  mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
   mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 正在重启...']);
-  const result = await startGatewayProcess();
-  if (result.success || result.portInUse) {
-    mainWindow?.webContents.send('openclaw-log-lines', [result.portInUse ? '[Gateway] 外部进程已占用端口，已连接' : '[Gateway] 已启动']);
-    return { success: true };
+  // 强制清理 18789 端口，避免 EADDRINUSE（旧进程未及时释放端口）
+  await killPortProcess(GATEWAY_PORT);
+  await new Promise(r => setTimeout(r, 2500));
+  const octEntry = getOctGatewayEntry();
+  if (octEntry) {
+    const octResult = await startOctGateway();
+    if (octResult.success) {
+      await new Promise(r => setTimeout(r, 1500));
+      mainWindow?.webContents.send('gateway-status', { running: true, managed: true });
+      mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 已启动']);
+      if (openclawWs) { openclawWs.close(); openclawWs = null; }
+      reconnectRetryCount = 0;
+      connectOpenClaw();
+      return { success: true };
+    }
   }
-  mainWindow?.webContents.send('openclaw-log-lines', [`[Gateway] 重启失败: ${result.error}`]);
-  return { success: false, error: result.error };
+  mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 重启失败']);
+  return { success: false, error: 'OCT Gateway 启动失败' };
 });
 
 ipcMain.handle('kill-port-18789', async () => {
@@ -1585,13 +2047,76 @@ ipcMain.handle('kill-port-18789', async () => {
   }
 });
 
+/** 清理 18789 端口上所有进程并启动 OCT Gateway（解决 ECONNRESET：端口被其他程序占用） */
+ipcMain.handle('gateway-clear-port-and-start', async () => {
+  mainWindow?.webContents.send('openclaw-log-lines', ['[System] 正在清理 18789 端口并启动 OCT Gateway...']);
+  if (octGatewayProcess && !octGatewayProcess.killed) {
+    octGatewayProcess.kill();
+    octGatewayProcess = null;
+  }
+  if (gatewayProcess && !gatewayProcess.killed) {
+    gatewayProcess.kill();
+    gatewayProcess = null;
+  }
+  const { execSync } = await import('child_process');
+  const port = GATEWAY_PORT;
+  try {
+    const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf-8', windowsHide: true });
+    const lines = out.trim().split(/\r?\n/);
+    const pidsToKill = new Set<number>();
+    for (const line of lines) {
+      if (!/LISTENING/i.test(line)) continue;
+      const m = line.trim().match(/\s+(\d+)\s*$/);
+      if (m) {
+        const pid = parseInt(m[1], 10);
+        if (pid > 0) pidsToKill.add(pid);
+      }
+    }
+    for (const pid of pidsToKill) {
+      try {
+        execSync(`taskkill /F /PID ${pid}`, { encoding: 'utf-8', windowsHide: true });
+        mainWindow?.webContents.send('openclaw-log-lines', [`[System] 已终止监听端口 ${port} 的进程 PID ${pid}`]);
+      } catch (_) {}
+    }
+    if (pidsToKill.size === 0) {
+      mainWindow?.webContents.send('openclaw-log-lines', ['[System] 端口 18789 当前无进程监听']);
+    }
+  } catch (_) {
+    mainWindow?.webContents.send('openclaw-log-lines', ['[System] 端口 18789 当前无进程监听']);
+  }
+  mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
+  await new Promise(r => setTimeout(r, 2000));
+  const octEntry = getOctGatewayEntry();
+  if (!octEntry) {
+    mainWindow?.webContents.send('openclaw-log-lines', ['[System] 未找到 oct-gateway，无法启动']);
+    return { success: false, error: 'OCT Gateway 未找到' };
+  }
+  const octResult = await startOctGateway();
+  if (!octResult.success) {
+    mainWindow?.webContents.send('openclaw-log-lines', [`[System] 启动失败: ${octResult.error}`]);
+    return { success: false, error: octResult.error };
+  }
+  mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已启动，等待就绪...']);
+  await new Promise(r => setTimeout(r, 1500));
+  mainWindow?.webContents.send('gateway-status', { running: true, managed: true });
+  mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已启动 ✅', '[连接] 正在连接...']);
+  if (openclawWs) {
+    openclawWs.close();
+    openclawWs = null;
+  }
+  reconnectRetryCount = 0;
+  connectOpenClaw();
+  return { success: true };
+});
+
 ipcMain.handle('gateway-status', async () => {
+  const octRunning = !!(octGatewayProcess && !octGatewayProcess.killed);
   const portInUse = await isPortInUse(GATEWAY_PORT);
   return {
-    running: !!gatewayProcess && !gatewayProcess.killed,
-    managed: gatewayManagedByUs,
-    pid: gatewayProcess?.pid,
+    running: octRunning || portInUse,
+    managed: octRunning,
     portInUse,
+    engine: octRunning ? 'oct-gateway' : portInUse ? 'external' : 'none',
   };
 });
 
@@ -1662,7 +2187,7 @@ OPENCLAW_TOKEN=your_openclaw_token_here
 EAGLE_API_URL=http://localhost:41595
 
 # Vite 开发服务器端口
-VITE_DEV_PORT=5174
+VITE_DEV_PORT=5176
 
 # OpenClaw 日志路径
 OPENCLAW_LOG_PATH=
@@ -1697,6 +2222,8 @@ OPENCLAW_LOG_PATH=
     }
     if (keys.OPENCLAW_WS_URL !== undefined) cfg.OPENCLAW_WS_URL = keys.OPENCLAW_WS_URL || '';
     if (keys.OPENCLAW_TOKEN !== undefined) cfg.OPENCLAW_TOKEN = keys.OPENCLAW_TOKEN || '';
+    if (keys.DASHSCOPE_API_KEY !== undefined) cfg.DASHSCOPE_API_KEY = keys.DASHSCOPE_API_KEY || '';
+    if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
     Object.assign(cfg, {
       OPENCLAW_WS_URL: cfg.OPENCLAW_WS_URL ?? DEFAULT_CONFIG.OPENCLAW_WS_URL,
       OPENCLAW_TOKEN: cfg.OPENCLAW_TOKEN ?? '',
@@ -1709,6 +2236,27 @@ OPENCLAW_LOG_PATH=
       openclawWs.close();
       openclawWs = null;
     }
+    mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
+    const inUse = await isPortInUse(GATEWAY_PORT);
+    if (!inUse) {
+      mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 端口 18789 空闲，正在自动启动 OCT Gateway...']);
+      const octEntry = getOctGatewayEntry();
+      if (octEntry) {
+        const octResult = await startOctGateway();
+        if (octResult.success) {
+          mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已自动启动', '[连接] 1.5s 后发起连接']);
+          mainWindow?.webContents.send('gateway-status', { running: true, managed: true });
+          await new Promise(r => setTimeout(r, 1500));
+        } else {
+          mainWindow?.webContents.send('openclaw-log-lines', [`[系统] Gateway 启动失败: ${octResult.error}`]);
+        }
+      } else {
+        mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 未找到 oct-gateway，请手动启动 Gateway']);
+      }
+    } else {
+      mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 端口 18789 已占用，直接连接']);
+    }
+    reconnectRetryCount = 0;
     connectOpenClaw();
     
     return { success: true };
@@ -1795,8 +2343,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDa
 });
 
 ipcMain.handle('openclaw-status', () => {
-  const sessionKey = process.env.OPENCLAW_SESSION_KEY || 'main';
-  return { connected: openclawWs?.readyState === WebSocket.OPEN, sessionKey };
+  return { connected: openclawWs?.readyState === WebSocket.OPEN, sessionKey: currentSessionKey };
 });
 
 ipcMain.handle('show-notification', (_, { title, body }: { title: string; body: string }) => {
@@ -1838,38 +2385,66 @@ ipcMain.handle('tts-speak', async (_, { text }: { text: string }) => {
 
 app.whenReady().then(async () => {
   loadOpenClawConfig();
+  const loaded = loadSessionState();
+  if (loaded?.sessionKey) currentSessionKey = loaded.sessionKey;
+
+  // 1. 先创建窗口（显示界面，但不连接）
   createWindow();
 
-  // 先尝试启动 Gateway（如果端口未被占用）
+  // 2. 启动 Nocturne（不等待，后台跑）
+  startNocturneBackend().catch(e =>
+    console.warn('[Nocturne] 自动启动失败:', e)
+  );
+
+  // 3. 清理可能残留的旧 Gateway 进程
   const inUse = await isPortInUse(GATEWAY_PORT);
-  if (!inUse) {
-    console.log('[Gateway] Port not in use, starting Gateway...');
-    const result = await startGatewayProcess();
-    if (result.success) {
-      // 等待 Gateway 启动完成，轮询端口
-      let ready = false;
-      for (let i = 0; i < 10; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        if (await isPortInUse(GATEWAY_PORT)) {
-          ready = true;
-          break;
-        }
-      }
-      if (ready) {
-        console.log('[Gateway] Ready on port', GATEWAY_PORT);
-        mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 已启动']);
-      } else {
-        console.warn('[Gateway] Failed to start, port not responding');
-        mainWindow?.webContents.send('openclaw-log-lines', ['[ERR] Gateway 启动超时']);
-      }
-    } else {
-      mainWindow?.webContents.send('openclaw-log-lines', [`[ERR] Gateway 启动失败: ${result.error}`]);
-    }
-  } else {
-    console.log('[Gateway] Port already in use, external Gateway detected');
-    mainWindow?.webContents.send('openclaw-log-lines', ['[LOG] 检测到外部 Gateway，尝试连接...']);
+  if (inUse) {
+    console.log('[Gateway] 检测到端口占用，强制清理...');
+    mainWindow?.webContents.send('openclaw-log-lines',
+      ['[Gateway] 检测到旧进程，正在清理...']
+    );
+    await forceKillPort(GATEWAY_PORT);
+    await new Promise(r => setTimeout(r, 800));
   }
 
+  // 4. 启动 OCT Gateway
+  const octResult = await startOctGateway();
+  if (!octResult.success) {
+    console.error('[Gateway] 启动失败:', octResult.error);
+    mainWindow?.webContents.send('openclaw-log-lines',
+      [`[ERR] Gateway 启动失败: ${octResult.error}`]
+    );
+    const config = loadClawConfig();
+    registerScreenshotShortcut(config.screenshotShortcut);
+    return;
+  }
+
+  // 5. 等待 Gateway 真正就绪（健康检查）
+  let ready = false;
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 300));
+    if (await isPortInUse(GATEWAY_PORT)) {
+      ready = true;
+      break;
+    }
+  }
+
+  if (!ready) {
+    mainWindow?.webContents.send('openclaw-log-lines',
+      ['[ERR] Gateway 启动超时，请手动重启']
+    );
+    const config = loadClawConfig();
+    registerScreenshotShortcut(config.screenshotShortcut);
+    return;
+  }
+
+  mainWindow?.webContents.send('gateway-status', { running: true, managed: true });
+  mainWindow?.webContents.send('openclaw-log-lines',
+    ['[OCT Gateway] 已就绪 ✅']
+  );
+
+  // 6. Gateway 就绪后再连接 WebSocket
+  await new Promise(r => setTimeout(r, 200));
   connectOpenClaw();
 
   const config = loadClawConfig();
@@ -1888,7 +2463,18 @@ ipcMain.handle('set-screenshot-shortcut', (_, shortcut: string) => {
 });
 
 app.on('will-quit', () => {
+  appQuitting = true;
   globalShortcut.unregisterAll();
+  
+  // 停止所有子进程
+  if (octGatewayProcess && !octGatewayProcess.killed) {
+    try { octGatewayProcess.kill('SIGTERM'); } catch {}
+    octGatewayProcess = null;
+  }
+  if (nocturneBackendProcess && !nocturneBackendProcess.killed) {
+    try { nocturneBackendProcess.kill('SIGTERM'); } catch {}
+    nocturneBackendProcess = null;
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -1897,6 +2483,868 @@ app.on('window-all-closed', () => {
   }
 });
 
+
+// ═══════════════════════════════════════════════════════════════
+// Nocturne Memory — 完整 API 代理层
+// 把 Nocturne 的 6 个工具全部暴露为 IPC，AMY 通过这里直接访问
+// 追加到 main.ts 末尾（app.on('activate') 之前）
+// ═══════════════════════════════════════════════════════════════
+
+const NOCTURNE_BASE = 'http://127.0.0.1:8000';
+
+/** 检查 Nocturne 后端是否在运行 */
+async function isNocturneBackendAlive(): Promise<boolean> {
+  try {
+    const res = await fetch(`${NOCTURNE_BASE}/health`, { signal: AbortSignal.timeout(1500) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** 通用 Nocturne HTTP 请求封装 */
+async function nocturneRequest(
+  method: 'GET' | 'PUT' | 'POST' | 'DELETE',
+  path: string,
+  params?: Record<string, string>,
+  body?: unknown
+): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+  try {
+    const url = new URL(NOCTURNE_BASE + path);
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    }
+    const res = await fetch(url.toString(), {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return { ok: false, error: `HTTP ${res.status}: ${text}` };
+    }
+    const data = await res.json().catch(() => null);
+    return { ok: true, data };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+/** URI 拆分：core://agent/identity → { domain: 'core', path: 'agent/identity' } */
+function splitUri(uri: string): { domain: string; path: string } | null {
+  const m = uri.match(/^([^:]+):\/\/(.+)$/);
+  if (!m) return null;
+  return { domain: m[1]!, path: m[2]! };
+}
+
+// ── 1. read_memory ────────────────────────────────────────────
+// 读取节点内容和子节点
+// 支持: core://xxx/yyy  system://boot  system://index  system://recent
+ipcMain.handle('nocturne-read', async (_, { uri }: { uri: string }) => {
+  if (!uri) return { ok: false, error: 'uri 不能为空' };
+
+  // 特殊系统入口
+  if (uri === 'system://boot') {
+    // 读取 .env 里配置的 CORE_MEMORY_URIS，逐条读取并合并
+    const base = getNocturnePath();
+    let coreUris: string[] = [];
+    if (base) {
+      const envPath = require('path').join(base, '.env');
+      try {
+        const envContent = require('fs').readFileSync(envPath, 'utf-8');
+        const m = envContent.match(/CORE_MEMORY_URIS=(.+)/);
+        if (m) coreUris = m[1]!.split(',').map((s: string) => s.trim()).filter(Boolean);
+      } catch {}
+    }
+    const results: unknown[] = [];
+    for (const u of coreUris) {
+      const parts = splitUri(u);
+      if (!parts) continue;
+      const r = await nocturneRequest('GET', '/browse/node', { path: parts.path, domain: parts.domain });
+      if (r.ok) results.push({ uri: u, ...(r.data as object) });
+    }
+    return { ok: true, data: results };
+  }
+
+  if (uri === 'system://index') {
+    const r = await nocturneRequest('GET', '/browse/domains');
+    return r;
+  }
+
+  if (uri === 'system://recent') {
+    // 读取所有 domain 的根节点作为最近记忆的近似
+    const domainsResult = await nocturneRequest('GET', '/browse/domains');
+    return domainsResult;
+  }
+
+  const parts = splitUri(uri);
+  if (!parts) return { ok: false, error: `无效的 URI: ${uri}` };
+  return nocturneRequest('GET', '/browse/node', { path: parts.path, domain: parts.domain });
+});
+
+// ── 2. create_memory ─────────────────────────────────────────
+// 在指定 URI 创建新记忆（PUT /browse/node）
+ipcMain.handle('nocturne-create', async (_, {
+  uri, content, priority, disclosure
+}: { uri: string; content: string; priority?: number; disclosure?: string }) => {
+  if (!uri) return { ok: false, error: 'uri 不能为空' };
+  const parts = splitUri(uri);
+  if (!parts) return { ok: false, error: `无效的 URI: ${uri}` };
+  const result = await nocturneRequest('PUT', '/browse/node',
+    { path: parts.path, domain: parts.domain },
+    { content, priority: priority ?? 2, disclosure: disclosure ?? '' }
+  );
+  // ✅ 写入成功后通知前端刷新
+  if (result.ok && mainWindow) {
+    mainWindow.webContents.executeJavaScript(
+      'window.dispatchEvent(new Event("nocturne-write-complete"))'
+    ).catch(() => {});
+  }
+  return result;
+});
+
+// ── 3. update_memory ─────────────────────────────────────────
+// 更新已有记忆（同样用 PUT，Nocturne 会创建新版本快照）
+ipcMain.handle('nocturne-update', async (_, {
+  uri, content, priority, disclosure
+}: { uri: string; content?: string; priority?: number; disclosure?: string }) => {
+  if (!uri) return { ok: false, error: 'uri 不能为空' };
+  const parts = splitUri(uri);
+  if (!parts) return { ok: false, error: `无效的 URI: ${uri}` };
+  const body: Record<string, unknown> = {};
+  if (content !== undefined) body.content = content;
+  if (priority !== undefined) body.priority = priority;
+  if (disclosure !== undefined) body.disclosure = disclosure;
+  const result = await nocturneRequest('PUT', '/browse/node',
+    { path: parts.path, domain: parts.domain },
+    body
+  );
+  // ✅ 写入成功后通知前端刷新
+  if (result.ok && mainWindow) {
+    mainWindow.webContents.executeJavaScript(
+      'window.dispatchEvent(new Event("nocturne-write-complete"))'
+    ).catch(() => {});
+  }
+  return result;
+});
+
+// ── 4. delete_memory ─────────────────────────────────────────
+// 删除一条访问路径（通过 review 系统实现软删除）
+// Nocturne 没有直接 DELETE /browse/node，用 review/groups 的 rollback 替代
+// 这里提供一个"标记废弃"的实现：把内容清空并标注
+ipcMain.handle('nocturne-delete', async (_, { uri }: { uri: string }) => {
+  if (!uri) return { ok: false, error: 'uri 不能为空' };
+  const parts = splitUri(uri);
+  if (!parts) return { ok: false, error: `无效的 URI: ${uri}` };
+  // 用内容覆盖标记为已删除（Nocturne 会生成快照，可在 Dashboard 审查）
+  return nocturneRequest('PUT', '/browse/node',
+    { path: parts.path, domain: parts.domain },
+    { content: '[DELETED]', priority: 99, disclosure: '此节点已被删除' }
+  );
+});
+
+// ── 5. add_alias ─────────────────────────────────────────────
+// 为同一内容添加别名路径（先读原 URI 内容，再 PUT 到新 URI）
+ipcMain.handle('nocturne-alias', async (_, {
+  sourceUri, targetUri, priority, disclosure
+}: { sourceUri: string; targetUri: string; priority?: number; disclosure?: string }) => {
+  const srcParts = splitUri(sourceUri);
+  const tgtParts = splitUri(targetUri);
+  if (!srcParts) return { ok: false, error: `无效的 sourceUri: ${sourceUri}` };
+  if (!tgtParts) return { ok: false, error: `无效的 targetUri: ${targetUri}` };
+
+  // 读取源节点内容
+  const readResult = await nocturneRequest('GET', '/browse/node',
+    { path: srcParts.path, domain: srcParts.domain }
+  );
+  if (!readResult.ok) return { ok: false, error: `读取源节点失败: ${readResult.error}` };
+
+  const srcData = readResult.data as any;
+  const content = srcData?.node?.content ?? srcData?.content ?? '';
+
+  // 在目标 URI 创建（内容相同）
+  return nocturneRequest('PUT', '/browse/node',
+    { path: tgtParts.path, domain: tgtParts.domain },
+    {
+      content,
+      priority: priority ?? srcData?.node?.priority ?? 2,
+      disclosure: disclosure ?? srcData?.node?.disclosure ?? ''
+    }
+  );
+});
+
+// ── 6. search_memory ─────────────────────────────────────────
+// 按关键词搜索记忆（遍历 domains，在 /browse/node 路径中搜索）
+// Nocturne 没有全局搜索接口，用 /browse/glossary 作为入口
+ipcMain.handle('nocturne-search', async (_, { query, domain }: { query: string; domain?: string }) => {
+  if (!query) return { ok: false, error: 'query 不能为空' };
+
+  // 先尝试 glossary 关键词匹配
+  const glossaryResult = await nocturneRequest('GET', '/browse/glossary');
+  const matches: Array<{ uri: string; matched_by: string }> = [];
+
+  if (glossaryResult.ok && Array.isArray(glossaryResult.data)) {
+    const keywords = glossaryResult.data as Array<{ keyword: string; uri?: string }>;
+    const q = query.toLowerCase();
+    for (const kw of keywords) {
+      if (kw.keyword?.toLowerCase().includes(q)) {
+        matches.push({ uri: kw.uri || '', matched_by: 'glossary' });
+      }
+    }
+  }
+
+  // 再枚举 domains 做路径匹配
+  const domainsResult = await nocturneRequest('GET', '/browse/domains');
+  if (domainsResult.ok && Array.isArray(domainsResult.data)) {
+    const domains = (domainsResult.data as Array<{ domain: string }>)
+      .map((d) => d.domain)
+      .filter((d) => !domain || d === domain);
+
+    for (const dom of domains) {
+      const rootResult = await nocturneRequest('GET', '/browse/node', { path: '', domain: dom, nav_only: 'true' });
+      if (!rootResult.ok) continue;
+      const rootData = rootResult.data as any;
+      const children: Array<{ path: string }> = rootData?.children ?? [];
+      const q = query.toLowerCase();
+      for (const child of children) {
+        if (child.path?.toLowerCase().includes(q)) {
+          matches.push({ uri: `${dom}://${child.path}`, matched_by: 'path' });
+        }
+      }
+    }
+  }
+
+  return { ok: true, data: matches };
+});
+
+// ── 状态检查 ─────────────────────────────────────────────────
+ipcMain.handle('nocturne-health', async () => {
+  const alive = await isNocturneBackendAlive();
+  return { ok: alive, url: NOCTURNE_BASE };
+});
+
+// ── 批量导入（迁移工具用） ────────────────────────────────────
+ipcMain.handle('nocturne-batch-import', async (_, {
+  memories
+}: {
+  memories: Array<{ uri: string; content: string; priority?: number; disclosure?: string }>
+}) => {
+  const results: Array<{ uri: string; ok: boolean; error?: string }> = [];
+  for (const m of memories) {
+    const parts = splitUri(m.uri);
+    if (!parts) {
+      results.push({ uri: m.uri, ok: false, error: '无效 URI' });
+      continue;
+    }
+    const r = await nocturneRequest('PUT', '/browse/node',
+      { path: parts.path, domain: parts.domain },
+      { content: m.content, priority: m.priority ?? 2, disclosure: m.disclosure ?? '' }
+    );
+    results.push({ uri: m.uri, ok: r.ok, error: r.error });
+  }
+  const succeeded = results.filter((r) => r.ok).length;
+  return { ok: true, data: { total: memories.length, succeeded, failed: memories.length - succeeded, results } };
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Task Board 任务看板 API
+// 数据存储路径: core://my_user/daily/今日日期/tasks
+// ═══════════════════════════════════════════════════════════════
+
+/** 获取今日日期字符串 YYYY-MM-DD */
+function getTodayDateString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** 从 Nocturne 读取今日任务 */
+ipcMain.handle('nocturne-get-tasks', async () => {
+  try {
+    const todayStr = getTodayDateString();
+    const alive = await isNocturneBackendAlive();
+    if (!alive) {
+      return { ok: false, error: 'Nocturne 离线', tasks: [], intention: '', parkingLot: [] };
+    }
+
+    // 1. 读取今日意图
+    const intentionResult = await nocturneRequest('GET', '/browse/node', {
+      path: `my_user/daily/${todayStr}/intention`,
+      domain: 'core',
+    });
+    const intention = intentionResult.ok
+      ? (intentionResult.data as any)?.node?.content || (intentionResult.data as any)?.content || ''
+      : '';
+
+    // 2. 读取今日任务列表
+    const tasksResult = await nocturneRequest('GET', '/browse/node', {
+      path: `my_user/daily/${todayStr}/tasks`,
+      domain: 'core',
+    });
+
+    const tasks: Array<{
+      id: string;
+      content: string;
+      priority: 'p0' | 'p1' | 'p2';
+      done: boolean;
+      source: 'amy' | 'user';
+      createdAt: string;
+    }> = [];
+
+    if (tasksResult.ok) {
+      const children = (tasksResult.data as any)?.node?.children || (tasksResult.data as any)?.children || [];
+      for (const child of children) {
+        const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
+        if (!childPath) continue;
+        const taskResult = await nocturneRequest('GET', '/browse/node', {
+          path: childPath,
+          domain: 'core',
+        });
+        if (!taskResult.ok) continue;
+        const content = (taskResult.data as any)?.node?.content || (taskResult.data as any)?.content || '';
+        try {
+          const parsed = JSON.parse(content);
+          tasks.push({
+            id: childPath.split('/').pop() || childPath,
+            content: parsed.content || '',
+            priority: parsed.priority || 'p2',
+            done: !!parsed.done,
+            source: parsed.source || 'amy',
+            createdAt: parsed.createdAt || new Date().toISOString(),
+          });
+        } catch {
+          // 非JSON格式，直接作为任务内容
+          if (content && content !== '[DELETED]') {
+            tasks.push({
+              id: childPath.split('/').pop() || childPath,
+              content: content,
+              priority: 'p2',
+              done: false,
+              source: 'amy',
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+
+    // 3. 读取停车场
+    const parkingResult = await nocturneRequest('GET', '/browse/node', {
+      path: `my_user/daily/${todayStr}/parking_lot`,
+      domain: 'core',
+    });
+
+    const parkingLot: Array<{
+      id: string;
+      content: string;
+      priority: 'p0' | 'p1' | 'p2';
+      done: boolean;
+      source: 'amy' | 'user';
+      createdAt: string;
+    }> = [];
+
+    if (parkingResult.ok) {
+      const children = (parkingResult.data as any)?.node?.children || (parkingResult.data as any)?.children || [];
+      for (const child of children) {
+        const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
+        if (!childPath) continue;
+        const itemResult = await nocturneRequest('GET', '/browse/node', {
+          path: childPath,
+          domain: 'core',
+        });
+        if (!itemResult.ok) continue;
+        const content = (itemResult.data as any)?.node?.content || (itemResult.data as any)?.content || '';
+        try {
+          const parsed = JSON.parse(content);
+          if (!parsed.done) {
+            parkingLot.push({
+              id: childPath.split('/').pop() || childPath,
+              content: parsed.item || parsed.content || '',
+              priority: 'p1',
+              done: false,
+              source: 'amy',
+              createdAt: parsed.time || new Date().toISOString(),
+            });
+          }
+        } catch {
+          if (content && content !== '[DELETED]') {
+            parkingLot.push({
+              id: childPath.split('/').pop() || childPath,
+              content: content,
+              priority: 'p1',
+              done: false,
+              source: 'amy',
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+
+    return { ok: true, tasks, intention, parkingLot };
+  } catch (e: any) {
+    console.error('[TaskBoard] 获取任务失败:', e);
+    return { ok: false, error: e?.message, tasks: [], intention: '', parkingLot: [] };
+  }
+});
+
+/** 更新任务状态（完成/未完成） */
+ipcMain.handle('nocturne-update-task', async (_, { taskId, done }: { taskId: string; done: boolean }) => {
+  try {
+    const todayStr = getTodayDateString();
+    const alive = await isNocturneBackendAlive();
+    if (!alive) return { ok: false, error: 'Nocturne 离线' };
+
+    // 先读取现有任务
+    const taskResult = await nocturneRequest('GET', '/browse/node', {
+      path: `my_user/daily/${todayStr}/tasks/${taskId}`,
+      domain: 'core',
+    });
+
+    let taskData: Record<string, unknown> = { content: '', priority: 'p2', done, source: 'amy', createdAt: new Date().toISOString() };
+    if (taskResult.ok) {
+      const content = (taskResult.data as any)?.node?.content || (taskResult.data as any)?.content || '';
+      try {
+        taskData = { ...JSON.parse(content), done };
+      } catch {
+        taskData = { content, priority: 'p2', done, source: 'amy', createdAt: new Date().toISOString() };
+      }
+    }
+
+    // 更新任务
+    const updateResult = await nocturneRequest('PUT', '/browse/node', {
+      path: `my_user/daily/${todayStr}/tasks/${taskId}`,
+      domain: 'core',
+    }, { content: JSON.stringify(taskData), priority: 2, disclosure: '' });
+
+    return { ok: updateResult.ok, error: updateResult.error };
+  } catch (e: any) {
+    console.error('[TaskBoard] 更新任务失败:', e);
+    return { ok: false, error: e?.message };
+  }
+});
+
+/** 添加新任务 */
+ipcMain.handle('nocturne-add-task', async (_, { content, priority, source }: {
+  content: string;
+  priority: 'p0' | 'p1' | 'p2';
+  source: 'amy' | 'user';
+}) => {
+  try {
+    const todayStr = getTodayDateString();
+    const alive = await isNocturneBackendAlive();
+    if (!alive) return { ok: false, error: 'Nocturne 离线' };
+
+    // 生成唯一ID（时间戳 + 随机字符）
+    const taskId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    const taskData = {
+      content,
+      priority,
+      done: false,
+      source,
+      createdAt: new Date().toISOString(),
+    };
+
+    const result = await nocturneRequest('PUT', '/browse/node', {
+      path: `my_user/daily/${todayStr}/tasks/${taskId}`,
+      domain: 'core',
+    }, { content: JSON.stringify(taskData), priority: priority === 'p0' ? 1 : priority === 'p1' ? 2 : 3, disclosure: '' });
+
+    if (result.ok) {
+      mainWindow?.webContents.send('task-board-update');
+      // AMY 或用户写入后触发看板 1 秒后刷新
+      mainWindow?.webContents.executeJavaScript(
+        'window.dispatchEvent(new Event("nocturne-write-complete"))'
+      ).catch(() => {});
+    }
+
+    return { ok: result.ok, error: result.error, taskId };
+  } catch (e: any) {
+    console.error('[TaskBoard] 添加任务失败:', e);
+    return { ok: false, error: e?.message };
+  }
+});
+
+/** 清空已完成的任务 */
+ipcMain.handle('nocturne-clear-completed-tasks', async () => {
+  try {
+    const todayStr = getTodayDateString();
+    const alive = await isNocturneBackendAlive();
+    if (!alive) return { ok: false, error: 'Nocturne 离线' };
+
+    // 获取所有任务
+    const tasksResult = await nocturneRequest('GET', '/browse/node', {
+      path: `my_user/daily/${todayStr}/tasks`,
+      domain: 'core',
+    });
+
+    if (!tasksResult.ok) return { ok: true };
+
+    const children = (tasksResult.data as any)?.node?.children || (tasksResult.data as any)?.children || [];
+    for (const child of children) {
+      const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
+      if (!childPath) continue;
+
+      // 读取任务状态
+      const taskResult = await nocturneRequest('GET', '/browse/node', {
+        path: childPath,
+        domain: 'core',
+      });
+      if (!taskResult.ok) continue;
+
+      const content = (taskResult.data as any)?.node?.content || (taskResult.data as any)?.content || '';
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.done) {
+          // 标记为删除
+          await nocturneRequest('PUT', '/browse/node', {
+            path: childPath,
+            domain: 'core',
+          }, { content: '[DELETED]', priority: 99, disclosure: '已完成的任务' });
+        }
+      } catch {}
+    }
+
+    return { ok: true };
+  } catch (e: any) {
+    console.error('[TaskBoard] 清空已完成任务失败:', e);
+    return { ok: false, error: e?.message };
+  }
+});
+
+/** 设置今日意图 */
+ipcMain.handle('nocturne-set-intention', async (_, { intention }: { intention: string }) => {
+  try {
+    const todayStr = getTodayDateString();
+    const alive = await isNocturneBackendAlive();
+    if (!alive) return { ok: false, error: 'Nocturne 离线' };
+
+    const result = await nocturneRequest('PUT', '/browse/node', {
+      path: `my_user/daily/${todayStr}/intention`,
+      domain: 'core',
+    }, { content: intention, priority: 1, disclosure: '今日意图' });
+
+    return { ok: result.ok, error: result.error };
+  } catch (e: any) {
+    console.error('[TaskBoard] 设置意图失败:', e);
+    return { ok: false, error: e?.message };
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// END: Nocturne Memory 代理层
+// ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// 本地任务存储（脱离 Nocturne，避免写入时掉线）
+// ═══════════════════════════════════════════════════════════════
+const TASKS_FILE_PATH = path.join(app.getPath('userData'), 'tasks.json');
+
+interface TaskItem {
+  id: string;
+  content: string;
+  priority: 'p0' | 'p1' | 'p2';
+  done: boolean;
+  source: 'amy' | 'user';
+  createdAt: string;
+}
+
+interface TasksData {
+  tasks: TaskItem[];
+  parking: TaskItem[];
+  intention: string;
+  updatedAt: string;
+}
+
+function getTasksFilePath(): string {
+  return TASKS_FILE_PATH;
+}
+
+function loadTasksData(): TasksData {
+  try {
+    if (fs.existsSync(TASKS_FILE_PATH)) {
+      const content = fs.readFileSync(TASKS_FILE_PATH, 'utf-8');
+      const data = JSON.parse(content);
+      return {
+        tasks: data.tasks || [],
+        parking: data.parking || [],
+        intention: data.intention || '',
+        updatedAt: data.updatedAt || '',
+      };
+    }
+  } catch (e) {
+    console.error('[TasksLocal] 加载失败:', e);
+  }
+  return { tasks: [], parking: [], intention: '', updatedAt: '' };
+}
+
+function saveTasksData(data: TasksData): boolean {
+  try {
+    data.updatedAt = new Date().toISOString();
+    const dir = path.dirname(TASKS_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(TASKS_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    return true;
+  } catch (e) {
+    console.error('[TasksLocal] 保存失败:', e);
+    return false;
+  }
+}
+
+/** 读取所有任务 */
+ipcMain.handle('tasks-read', async () => {
+  const data = loadTasksData();
+  return { ok: true, data };
+});
+
+/** 添加任务 */
+ipcMain.handle('tasks-add', async (_, { content, priority, source }: {
+  content: string;
+  priority: 'p0' | 'p1' | 'p2';
+  source: 'amy' | 'user';
+}) => {
+  const data = loadTasksData();
+  const newTask: TaskItem = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    content: content.trim(),
+    priority,
+    done: false,
+    source,
+    createdAt: new Date().toISOString(),
+  };
+  data.tasks.push(newTask);
+  if (saveTasksData(data)) {
+    // 通知前端刷新
+    mainWindow?.webContents.send('task-board-update');
+    mainWindow?.webContents.executeJavaScript(
+      'window.dispatchEvent(new Event("tasks-updated"))'
+    ).catch(() => {});
+    return { ok: true, taskId: newTask.id };
+  }
+  return { ok: false, error: '保存失败' };
+});
+
+/** 更新任务（完成状态/内容/优先级） */
+ipcMain.handle('tasks-update', async (_, { taskId, updates }: {
+  taskId: string;
+  updates: Partial<Pick<TaskItem, 'done' | 'content' | 'priority'>>;
+}) => {
+  const data = loadTasksData();
+  const idx = data.tasks.findIndex(t => t.id === taskId);
+  if (idx === -1) return { ok: false, error: '任务不存在' };
+  
+  data.tasks[idx] = { ...data.tasks[idx], ...updates };
+  if (saveTasksData(data)) {
+    mainWindow?.webContents.send('task-board-update');
+    return { ok: true };
+  }
+  return { ok: false, error: '保存失败' };
+});
+
+/** 删除任务 */
+ipcMain.handle('tasks-delete', async (_, { taskId }: { taskId: string }) => {
+  const data = loadTasksData();
+  const originalLen = data.tasks.length;
+  data.tasks = data.tasks.filter(t => t.id !== taskId);
+  if (data.tasks.length === originalLen) {
+    return { ok: false, error: '任务不存在' };
+  }
+  if (saveTasksData(data)) {
+    mainWindow?.webContents.send('task-board-update');
+    return { ok: true };
+  }
+  return { ok: false, error: '保存失败' };
+});
+
+/** 清空已完成任务 */
+ipcMain.handle('tasks-clear-completed', async () => {
+  const data = loadTasksData();
+  const completedCount = data.tasks.filter(t => t.done).length;
+  data.tasks = data.tasks.filter(t => !t.done);
+  if (saveTasksData(data)) {
+    mainWindow?.webContents.send('task-board-update');
+    return { ok: true, cleared: completedCount };
+  }
+  return { ok: false, error: '保存失败' };
+});
+
+/** 设置今日意图 */
+ipcMain.handle('tasks-set-intention', async (_, { intention }: { intention: string }) => {
+  const data = loadTasksData();
+  data.intention = intention;
+  if (saveTasksData(data)) {
+    return { ok: true };
+  }
+  return { ok: false, error: '保存失败' };
+});
+
+/** 添加到停车场 */
+ipcMain.handle('tasks-parking-add', async (_, { content }: { content: string }) => {
+  const data = loadTasksData();
+  const newItem: TaskItem = {
+    id: `${Date.now()}`,
+    content: content.trim(),
+    priority: 'p2',
+    done: false,
+    source: 'amy',
+    createdAt: new Date().toISOString(),
+  };
+  data.parking.push(newItem);
+  if (saveTasksData(data)) {
+    return { ok: true, itemId: newItem.id };
+  }
+  return { ok: false, error: '保存失败' };
+});
+
+/** 从停车场移除 */
+ipcMain.handle('tasks-parking-remove', async (_, { itemId }: { itemId: string }) => {
+  const data = loadTasksData();
+  data.parking = data.parking.filter(p => p.id !== itemId);
+  if (saveTasksData(data)) {
+    return { ok: true };
+  }
+  return { ok: false, error: '保存失败' };
+});
+
+/** 从 Nocturne 迁移数据到本地 */
+ipcMain.handle('tasks-migrate-from-nocturne', async () => {
+  try {
+    const alive = await isNocturneBackendAlive();
+    if (!alive) {
+      return { ok: false, error: 'Nocturne 离线，无法迁移' };
+    }
+
+    const todayStr = getTodayDateString();
+    const localData = loadTasksData();
+    let migratedTasks = 0;
+    let migratedParking = 0;
+
+    // 迁移任务
+    const tasksResult = await nocturneRequest('GET', '/browse/node', {
+      path: `my_user/daily/${todayStr}/tasks`,
+      domain: 'core',
+    });
+
+    if (tasksResult.ok) {
+      const children = (tasksResult.data as any)?.node?.children || (tasksResult.data as any)?.children || [];
+      for (const child of children) {
+        const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
+        if (!childPath) continue;
+
+        const taskResult = await nocturneRequest('GET', '/browse/node', {
+          path: childPath,
+          domain: 'core',
+        });
+        if (!taskResult.ok) continue;
+
+        const content = (taskResult.data as any)?.node?.content || (taskResult.data as any)?.content || '';
+        try {
+          const parsed = JSON.parse(content);
+          if (parsed.archived) continue; // 跳过已归档
+          
+          // 检查是否已存在
+          const existingId = childPath.split('/').pop();
+          if (!localData.tasks.find(t => t.id === existingId)) {
+            localData.tasks.push({
+              id: existingId || `${Date.now()}`,
+              content: parsed.label || parsed.content || parsed.item || '未命名任务',
+              priority: parsed.priority || 'p2',
+              done: parsed.done || false,
+              source: parsed.source || 'amy',
+              createdAt: parsed.created || parsed.createdAt || '',
+            });
+            migratedTasks++;
+          }
+        } catch {
+          // 非 JSON 内容，跳过
+        }
+      }
+    }
+
+    // 迁移停车场
+    const parkingResult = await nocturneRequest('GET', '/browse/node', {
+      path: `my_user/daily/${todayStr}/parking_lot`,
+      domain: 'core',
+    });
+
+    if (parkingResult.ok) {
+      const children = (parkingResult.data as any)?.node?.children || (parkingResult.data as any)?.children || [];
+      for (const child of children) {
+        const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
+        if (!childPath) continue;
+
+        const itemResult = await nocturneRequest('GET', '/browse/node', {
+          path: childPath,
+          domain: 'core',
+        });
+        if (!itemResult.ok) continue;
+
+        const content = (itemResult.data as any)?.node?.content || (itemResult.data as any)?.content || '';
+        try {
+          const parsed = JSON.parse(content);
+          const existingId = childPath.split('/').pop();
+          if (!localData.parking.find(p => p.id === existingId)) {
+            localData.parking.push({
+              id: existingId || `${Date.now()}`,
+              content: parsed.item || content.slice(0, 50),
+              priority: 'p2',
+              done: false,
+              source: 'amy',
+              createdAt: parsed.time || '',
+            });
+            migratedParking++;
+          }
+        } catch {
+          // 非 JSON 内容，尝试作为纯文本
+          if (content && content !== '[DELETED]') {
+            const existingId = childPath.split('/').pop();
+            if (!localData.parking.find(p => p.id === existingId)) {
+              localData.parking.push({
+                id: existingId || `${Date.now()}`,
+                content: content.slice(0, 50),
+                priority: 'p2',
+                done: false,
+                source: 'amy',
+                createdAt: '',
+              });
+              migratedParking++;
+            }
+          }
+        }
+      }
+    }
+
+    // 迁移意图
+    const intentionResult = await nocturneRequest('GET', '/browse/node', {
+      path: `my_user/daily/${todayStr}/intention`,
+      domain: 'core',
+    });
+    if (intentionResult.ok) {
+      const content = (intentionResult.data as any)?.node?.content || (intentionResult.data as any)?.content || '';
+      if (content && !localData.intention) {
+        localData.intention = content;
+      }
+    }
+
+    // 保存迁移结果
+    if (saveTasksData(localData)) {
+      console.log(`[TasksLocal] 迁移完成: ${migratedTasks} 任务, ${migratedParking} 停车场项目`);
+      mainWindow?.webContents.send('task-board-update');
+      return { 
+        ok: true, 
+        migratedTasks, 
+        migratedParking,
+        message: `已从 Nocturne 迁移 ${migratedTasks} 条任务和 ${migratedParking} 条停车场项目`
+      };
+    }
+    return { ok: false, error: '保存迁移数据失败' };
+  } catch (e: any) {
+    console.error('[TasksLocal] 迁移失败:', e);
+    return { ok: false, error: e?.message };
+  }
+});
 app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();

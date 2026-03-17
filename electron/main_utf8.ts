@@ -24,6 +24,7 @@ const MAX_RECONNECT_RETRIES = 999; // 增加重连次数上限
 let reconnectRetryCount = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
+let currentSessionKey: string = 'main';
 const SESSION_STATE_FILE = path.join(app.getPath('userData'), 'session-state.json');
 
 // Gateway 进程管理
@@ -223,7 +224,7 @@ function createWindow() {
   });
 
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-    const devPort = parseInt(process.env.VITE_DEV_PORT || '5174');
+    const devPort = parseInt(process.env.VITE_DEV_PORT || '5176');
     const devUrl = process.env.VITE_DEV_SERVER_URL || `http://localhost:${devPort}`;
     mainWindow.loadURL(devUrl);
   } else {
@@ -331,8 +332,40 @@ function connectOpenClaw() {
   const ws = new WebSocket(OPENCLAW_WS_URL);
   openclawWs = ws;
 
+  let heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
+  let pongTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  const clearHeartbeat = () => {
+    if (heartbeatIntervalId) {
+      clearInterval(heartbeatIntervalId);
+      heartbeatIntervalId = null;
+    }
+    if (pongTimeoutId) {
+      clearTimeout(pongTimeoutId);
+      pongTimeoutId = null;
+    }
+  };
+
   ws.on('open', () => {
     console.log('[OpenClaw] WebSocket opened, waiting for challenge...');
+    heartbeatIntervalId = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (pongTimeoutId) {
+        clearTimeout(pongTimeoutId);
+        pongTimeoutId = null;
+      }
+      ws.ping();
+      pongTimeoutId = setTimeout(() => {
+        pongTimeoutId = null;
+        ws.terminate();
+      }, 10000);
+    }, 30000);
+  });
+
+  ws.on('pong', () => {
+    if (pongTimeoutId) {
+      clearTimeout(pongTimeoutId);
+      pongTimeoutId = null;
+    }
   });
 
   ws.on('message', (data) => {
@@ -344,22 +377,34 @@ function connectOpenClaw() {
     }
   });
 
-  ws.on('close', () => {
-    console.log('[OpenClaw] WebSocket disconnected');
+  let closeHandled = false;
+  const scheduleReconnect = () => {
+    if (closeHandled) return;
+    closeHandled = true;
+    clearHeartbeat();
     openclawWs = null;
     if (!mainWindow) return;
     reconnectRetryCount++;
     if (reconnectRetryCount <= MAX_RECONNECT_RETRIES) {
+      const delay = Math.min(5000 * Math.pow(2, reconnectRetryCount - 1), 60000);
       sendStatus({ connected: false, reconnecting: true });
-      setTimeout(connectOpenClaw, 5000);
+      setTimeout(connectOpenClaw, delay);
     } else {
       sendStatus({ connected: false, error: '连接失败，请检查Gateway' });
     }
+  };
+
+  ws.on('close', () => {
+    clearHeartbeat();
+    console.log('[OpenClaw] WebSocket disconnected');
+    scheduleReconnect();
   });
 
   ws.on('error', (error) => {
+    clearHeartbeat();
     console.error('[OpenClaw] Connection error:', error);
     sendStatus({ connected: false, error: '连接失败: ' + error.message });
+    scheduleReconnect();
   });
 }
 
@@ -432,6 +477,10 @@ function forwardChatToFrontend(payload: any, eventName?: string, isStreaming = f
   const text = extractTextFromPayload(payload);
   const done = payload?.done ?? (payload?.state === 'done' || payload?.state === 'complete' ? true : isStreaming ? false : true);
   const usage = extractUsage(payload);
+  if (usage?.session) {
+    currentSessionKey = usage.session;
+    saveSessionState({ ...(lastSessionState || {}), sessionKey: usage.session });
+  }
   // 斜杠命令的系统回复：payload 直接有 text，无 message.content
   const isSystemReply = !!(payload?.text && typeof payload.text === 'string' && !payload?.message?.content);
   if (text || done !== undefined) {
@@ -459,6 +508,10 @@ function handleMessage(msg: any) {
         const text = src?.delta ?? src?.text ?? extractTextFromPayload(src);
         const isDelta = src?.delta !== undefined;
         const usage = extractUsage(src);
+        if (usage?.session) {
+          currentSessionKey = usage.session;
+          saveSessionState({ ...(lastSessionState || {}), sessionKey: usage.session });
+        }
         if (text || src?.done !== undefined) {
           const out: any = { type: 'chat', text: String(text || ''), done: src?.done ?? !isDelta, event: msg.event };
           if (usage) out.usage = usage;
@@ -588,13 +641,12 @@ function sendChatMessage(content: string, imageDataUrl?: string | null): { succe
   }
 
   const reqId = generateId();
-  const sessionKey = process.env.OPENCLAW_SESSION_KEY || 'main';
   const idempotencyKey = crypto.randomUUID();
 
-  // OpenClaw chat.send: message 必须是字符串，图片放入 attachments
+  // OpenClaw chat.send: message 必须是字符串，图片放入 attachments；sessionKey 一致则 Gateway 在同一会话内回复
   const finalMessage = message.trim() || '[图片]';
   const params: { sessionKey: string; idempotencyKey: string; message: string; attachments?: any[] } = {
-    sessionKey,
+    sessionKey: currentSessionKey,
     idempotencyKey,
     message: finalMessage,
   };
@@ -1358,8 +1410,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDa
 });
 
 ipcMain.handle('openclaw-status', () => {
-  const sessionKey = process.env.OPENCLAW_SESSION_KEY || 'main';
-  return { connected: openclawWs?.readyState === WebSocket.OPEN, sessionKey };
+  return { connected: openclawWs?.readyState === WebSocket.OPEN, sessionKey: currentSessionKey };
 });
 
 ipcMain.handle('show-notification', (_, { title, body }: { title: string; body: string }) => {
@@ -1400,6 +1451,9 @@ ipcMain.handle('tts-speak', async (_, { text }: { text: string }) => {
 });
 
 app.whenReady().then(async () => {
+  const loaded = loadSessionState();
+  if (loaded?.sessionKey) currentSessionKey = loaded.sessionKey;
+
   createWindow();
 
   // 先尝试启动 Gateway（如果端口未被占用）

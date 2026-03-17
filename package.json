@@ -9,7 +9,7 @@
     "dev": "vite",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build": "tsc && vite build && npm run build:electron",
-    "start": "npm run build:electron && concurrently \"npm run dev\" \"wait-on http://localhost:5174 && cross-env NODE_ENV=development electron .\"",
+    "start": "npm run build:electron && concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
     "electron:dev": "npm run build:electron && concurrently \"npm run dev\" \"wait-on http://localhost:5174 && cross-env NODE_ENV=development electron .\"",
     "electron:build:win": "npm run build && electron-builder --win --x64",
     "electron:build:mac": "npm run build && electron-builder --mac --x64 --arm64",
@@ -32,9 +32,14 @@
     ],
     "extraResources": [
       {
-        "from": "resources/openclaw",
-        "to": "openclaw",
-        "filter": ["**/*", "!**/.git/**"]
+        "from": "resources/nocturne_memory",
+        "to": "nocturne_memory",
+        "filter": ["**/*", "!**/.git/**", "!**/__pycache__/**", "!**/*.pyc", "!**/demo.db", "!**/.env"]
+      },
+      {
+        "from": "docs/01_system_prompts",
+        "to": "prompts",
+        "filter": ["**/*"]
       }
     ],
     "win": {
