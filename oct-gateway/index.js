@@ -198,21 +198,30 @@ wss.on('connection', (ws) => {
 
       const imageAttachments = (params?.attachments || []).filter(a => a.type === 'image');
       let messageContent;
+
       if (imageAttachments.length > 0) {
-        let textPart = userMessage || '请分析这张图片';
-        try {
-          const analysis = await imageAnalyzer.analyzeImages(imageAttachments);
-          if (analysis) textPart = textPart + '\n\n' + analysis;
-        } catch (e) {
-          textPart = textPart + '\n\n[图片分析] 分析失败，请少爷描述图片内容。';
+        // 构建多模态消息内容
+        const contentParts = [];
+
+        // 先加文字
+        const textPart = userMessage || '请分析这张图片';
+        if (textPart) {
+          contentParts.push({ type: 'text', text: textPart });
         }
-        messageContent = [
-          { type: 'text', text: textPart },
-          ...imageAttachments.map(a => ({
+
+        // 直接把图片传给模型，不经过 imageAnalyzer 预分析
+        imageAttachments.forEach(a => {
+          const imageUrl = a.content?.startsWith('data:')
+            ? a.content
+            : `data:${a.mimeType};base64,${a.content}`;
+          contentParts.push({
             type: 'image_url',
-            image_url: { url: `data:${a.mimeType};base64,${a.content}` },
-          })),
-        ];
+            image_url: { url: imageUrl }
+          });
+        });
+
+        // 如果有图片，用数组格式；否则用纯文字
+        messageContent = contentParts.length > 1 ? contentParts : textPart;
       } else {
         messageContent = userMessage;
       }
