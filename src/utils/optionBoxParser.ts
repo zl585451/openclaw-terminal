@@ -189,8 +189,8 @@ function filterExpectedEffect(text: string): string {
       continue;
     }
     
-    // 保留表格行（包含 | 的行）
-    if (/^\s*\|/.test(line)) {
+    // 保留真正的 Markdown 表格行（排除文件树结构的误识别）
+    if (/^\s*\|/.test(line) && !isFileTreeLine(line)) {
       result.push(line);
       continue;
     }
@@ -244,23 +244,79 @@ function stripFencedCodeBlocks(text: string): string {
   return text.replace(/^`{3,}[^\n]*\n[\s\S]*?^`{3,}\s*$/gm, '');
 }
 
-/** 剥离 Markdown 表格行（2+ 连续以 | 开头的行视为表格块），避免表格内容触发交互检测 */
+/** 检查是否为 Markdown 表格分隔符行（如 |------|------| 或 |:-----|:----:|） */
+function isMarkdownTableSeparator(line: string): boolean {
+  // 分隔符行特征：以 | 开头，包含至少一个 - 或 :，且只有 | - : 和空白字符
+  const trimmed = line.trim();
+  if (!/^\s*\|/.test(trimmed)) return false;
+  // 检查是否包含 - 或 :，且只有允许的字符
+  const content = trimmed.replace(/^\s*\|/, '').replace(/\|\s*$/, '');
+  return /^[\s\-:|]+$/.test(content) && /[-]/.test(content);
+}
+
+/** 检查是否为文件树结构（包含 ├── └── │ 等符号） */
+function isFileTreeLine(line: string): boolean {
+  // 文件树结构特征：包含 ├──、└──、│ 等符号
+  return /[├└┌┐┘┼─│]/.test(line);
+}
+
+/** 剥离 Markdown 表格行（真正的表格：表头 + 分隔符行），避免表格内容触发交互检测
+ *  修复：排除文件树结构的误识别（文件树使用 | 符号但不是表格）
+ */
 function stripMarkdownTables(text: string): string {
   const lines = text.split('\n');
   const result: string[] = [];
   let i = 0;
+
   while (i < lines.length) {
-    if (/^\s*\|/.test(lines[i])) {
-      let j = i;
-      while (j < lines.length && /^\s*\|/.test(lines[j])) j++;
-      if (j - i >= 2) {
-        i = j;
+    const currentLine = lines[i];
+
+    // 检查是否以 | 开头（潜在表格行）
+    if (/^\s*\|/.test(currentLine)) {
+      // 首先排除文件树结构
+      if (isFileTreeLine(currentLine)) {
+        console.log('[stripMarkdownTables] 跳过文件树行，位置:', i);
+        result.push(currentLine);
+        i++;
         continue;
       }
+
+      // 收集连续的以 | 开头的行
+      const potentialTableLines: string[] = [currentLine];
+      let j = i + 1;
+      while (j < lines.length && /^\s*\|/.test(lines[j])) {
+        // 同样检查文件树
+        if (isFileTreeLine(lines[j])) {
+          break;
+        }
+        potentialTableLines.push(lines[j]);
+        j++;
+      }
+
+      // 检查是否是真正的 Markdown 表格：
+      // 1. 至少需要 2 行（表头 + 分隔符）
+      // 2. 第二行必须是分隔符行（包含 --- 格式）
+      if (potentialTableLines.length >= 2) {
+        const secondLine = potentialTableLines[1];
+        const hasSeparator = isMarkdownTableSeparator(secondLine);
+
+        if (hasSeparator) {
+          console.log('[stripMarkdownTables] 检测到真正的 Markdown 表格，起始位置:', i, '行数:', potentialTableLines.length, '分隔符验证: 通过');
+          // 跳过整个表格块
+          i = j;
+          continue;
+        } else {
+          console.log('[stripMarkdownTables] 排除伪表格（无分隔符行），位置:', i);
+        }
+      } else {
+        console.log('[stripMarkdownTables] 排除伪表格（行数不足），位置:', i, '行数:', potentialTableLines.length);
+      }
     }
-    result.push(lines[i]);
+
+    result.push(currentLine);
     i++;
   }
+
   return result.join('\n');
 }
 
