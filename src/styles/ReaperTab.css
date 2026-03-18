@@ -14,22 +14,22 @@
 
 .placeholder-icon {
   font-size: 48px;
-  color: var(--text-dim);
+  color: var(--text-tertiary);
   margin-bottom: 20px;
-  text-shadow: 0 0 20px rgba(0, 255, 159, 0.3);
+  text-shadow: none;
 }
 
 .placeholder-title {
   font-size: 24px;
-  color: var(--cyan);
+  color: var(--accent-primary);
   letter-spacing: 4px;
   margin-bottom: 10px;
-  text-shadow: var(--glow);
+  text-shadow: none;
 }
 
 .placeholder-subtitle {
   font-size: 14px;
-  color: var(--text-dim);
+  color: var(--text-tertiary);
   margin-bottom: 30px;
 }
 
@@ -48,8 +48,8 @@
 
 .status-line {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-tertiary);
   padding: 4px 12px;
-  background: var(--bg-secondary);
-  border-left: 2px solid var(--text-dim);
+  background: var(--bg-panel);
+  border-left: 2px solid var(--border-subtle);
 }

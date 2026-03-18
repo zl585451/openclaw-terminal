@@ -269,7 +269,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                       <summary>如何获取 Token？</summary>
                       <div className="settings-details-content">
                         <p style={{ marginBottom: 12 }}><strong>方法：在终端运行命令</strong></p>
-                        <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '6px', marginBottom: 12, fontFamily: 'monospace', fontSize: '13px', color: '#00ff88', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ background: 'var(--bg-surface)', padding: '12px', borderRadius: '6px', marginBottom: 12, fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span>openclaw dashboard --no-open</span>
                           <button
                             type="button"
@@ -286,8 +286,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                           </button>
                         </div>
                         <p style={{ marginBottom: 8 }}>命令执行后会输出类似这样的网址：</p>
-                        <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '6px', marginBottom: 12, fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all', color: '#00ff88aa' }}>
-                          http://127.0.0.1:18789/dashboard#token=<span style={{ color: '#ffff00' }}>xxxxx-xxxxx-xxxxx</span>&amp;...
+                        <div style={{ background: 'var(--bg-surface)', padding: '12px', borderRadius: '6px', marginBottom: 12, fontFamily: 'var(--font-mono)', fontSize: '12px', wordBreak: 'break-all', color: 'var(--text-secondary)' }}>
+                          http://127.0.0.1:18789/dashboard#token=<span style={{ color: 'var(--status-warning)' }}>xxxxx-xxxxx-xxxxx</span>&amp;...
                         </div>
                         <p><strong>复制黄色高亮部分的 token 值</strong>（#token= 后面到 &amp; 之前的内容），粘贴到上方输入框即可。</p>
                       </div>
@@ -456,7 +456,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               {/* 使用说明卡片 */}
               <div className="settings-guide-card" style={{ marginBottom: 20 }}>
                 <h4>Nocturne 记忆系统 使用说明</h4>
-                <div style={{ color: '#00ff88aa', fontSize: '13px', lineHeight: 1.8 }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.8 }}>
                   <p style={{ marginBottom: 12 }}><strong>什么是记忆系统？</strong></p>
                   <p style={{ marginBottom: 16, paddingLeft: 12 }}>记忆系统可以让 AI 「记住」你的个人信息、偏好、习惯等，让对话更加个性化和智能。例如：你的名字、职业、常用工具等。</p>
                   
@@ -476,14 +476,14 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <section className="settings-section">
                   <h3>记忆系统控制台</h3>
                   {/* 状态：后端 / 前端 / 已加载记忆数 */}
-                  <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(0,0,0,0.2)', borderRadius: 8, fontSize: '13px' }}>
-                    <p style={{ margin: '0 0 6px', color: '#00ff88' }}>
+                  <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--bg-surface)', borderRadius: 8, fontSize: '13px' }}>
+                    <p style={{ margin: '0 0 6px', color: 'var(--accent-primary)' }}>
                       后端状态：{nocturneDetail?.backendAlive ? '✅ http://localhost:8000 可访问' : '❌ 不可用'}
                     </p>
-                    <p style={{ margin: '0 0 6px', color: '#00ff88' }}>
+                    <p style={{ margin: '0 0 6px', color: 'var(--accent-primary)' }}>
                       前端状态：{nocturneDetail?.frontendAlive ? '✅ http://localhost:3000 可访问' : '❌ 不可用'}
                     </p>
-                    <p style={{ margin: 0, color: '#00ff8866' }}>
+                    <p style={{ margin: 0, color: 'var(--text-tertiary)' }}>
                       已加载记忆：{nocturneDetail?.domains?.length ?? 0} 个 domain
                     </p>
                   </div>
@@ -623,8 +623,8 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                   {/* 记忆快速操作：CORE_MEMORY_URIS + 查看 / 刷新核心记忆 */}
                   {(nocturneDetail?.coreMemoryUris?.length ?? 0) > 0 && (
                     <div style={{ marginTop: 20 }}>
-                      <h4 style={{ marginBottom: 8, fontSize: '13px', color: '#00ff88' }}>核心记忆 URI</h4>
-                      <ul style={{ margin: 0, paddingLeft: 20, fontSize: '12px', color: '#ccc' }}>
+                      <h4 style={{ marginBottom: 8, fontSize: '13px', color: 'var(--accent-primary)' }}>核心记忆 URI</h4>
+                      <ul style={{ margin: 0, paddingLeft: 20, fontSize: '12px', color: 'var(--text-secondary)' }}>
                         {nocturneDetail?.coreMemoryUris?.map((uri) => (
                           <li key={uri} style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
                             <code style={{ flex: 1, wordBreak: 'break-all' }}>{uri}</code>
@@ -692,7 +692,7 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                     </div>
                   )}
                   {memoryReadContent !== null && (
-                    <div style={{ marginTop: 12, padding: 12, background: 'rgba(0,0,0,0.3)', borderRadius: 8, fontSize: '12px', whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto' }}>
+                    <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-surface)', borderRadius: 8, fontSize: '12px', whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto' }}>
                       <button type="button" className="settings-btn" style={{ marginBottom: 8 }} onClick={() => setMemoryReadContent(null)}>关闭</button>
                       <pre style={{ margin: 0 }}>{memoryReadContent}</pre>
                     </div>

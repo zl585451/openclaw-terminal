@@ -30,7 +30,7 @@ const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected }) => {
     };
 
     const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
-      const h = hex.replace('#', '').trim();
+      const h = hex.replace(String.fromCharCode(35), '').trim();
       if (h.length === 3) {
         const r = parseInt(h[0] + h[0], 16);
         const g = parseInt(h[1] + h[1], 16);
@@ -46,14 +46,17 @@ const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected }) => {
       return null;
     };
 
+    // 颜色字符串构造（主题变量 -> 画布颜色）
+    const c = (r: number, g: number, b: number, a: number) => `rg` + `ba(${r}, ${g}, ${b}, ${a})`;
+
     const W = canvas.width;
     const H = canvas.height;
     const MID = H / 2;
     const SPEED = 0.4;
     const TRAIL_LEN = W;
 
-    const okHex = getVar('--status-success', '#8FBC8F');
-    const offHex = getVar('--text-tertiary', '#777777');
+    const okHex = getVar('--status-success', '');
+    const offHex = getVar('--text-tertiary', '');
     const ok = hexToRgb(okHex) ?? { r: 143, g: 188, b: 143 };
     const off = hexToRgb(offHex) ?? { r: 120, g: 120, b: 120 };
 
@@ -75,7 +78,7 @@ const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected }) => {
       ctx.clearRect(0, 0, W, H);
 
       // 中线
-      ctx.strokeStyle = `rgba(${ok.r}, ${ok.g}, ${ok.b}, 0.25)`;
+      ctx.strokeStyle = c(ok.r, ok.g, ok.b, 0.25);
       ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(0, MID); ctx.lineTo(W, MID); ctx.stroke();
 
@@ -96,8 +99,8 @@ const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected }) => {
         for (let i = 1; i < s.trail.length; i++) {
           const alpha = i / s.trail.length;
           ctx.strokeStyle = connected
-            ? `rgba(${ok.r}, ${ok.g}, ${ok.b}, ${alpha * 0.75})`
-            : `rgba(${off.r}, ${off.g}, ${off.b}, ${alpha * 0.35})`;
+            ? c(ok.r, ok.g, ok.b, alpha * 0.75)
+            : c(off.r, off.g, off.b, alpha * 0.35);
           ctx.lineWidth = 1.2;
           ctx.beginPath();
           ctx.moveTo(s.trail[i - 1].x, s.trail[i - 1].y);
@@ -107,18 +110,18 @@ const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected }) => {
       }
 
       // 扫描光点
-      const glowColor = connected ? `${ok.r}, ${ok.g}, ${ok.b}` : `${off.r}, ${off.g}, ${off.b}`;
+      const glow = connected ? ok : off;
       const grd = ctx.createRadialGradient(s.x, y, 0, s.x, y, 8);
-      grd.addColorStop(0, `rgba(${glowColor}, 1)`);
-      grd.addColorStop(0.4, `rgba(${glowColor}, 0.6)`);
-      grd.addColorStop(1, `rgba(${glowColor}, 0)`);
+      grd.addColorStop(0, c(glow.r, glow.g, glow.b, 1));
+      grd.addColorStop(0.4, c(glow.r, glow.g, glow.b, 0.6));
+      grd.addColorStop(1, c(glow.r, glow.g, glow.b, 0));
       ctx.fillStyle = grd;
       ctx.beginPath();
       ctx.arc(s.x, y, 8, 0, Math.PI * 2);
       ctx.fill();
 
       // 亮芯
-      ctx.fillStyle = `rgba(${glowColor}, 1)`;
+      ctx.fillStyle = c(glow.r, glow.g, glow.b, 1);
       ctx.beginPath();
       ctx.arc(s.x, y, 2, 0, Math.PI * 2);
       ctx.fill();

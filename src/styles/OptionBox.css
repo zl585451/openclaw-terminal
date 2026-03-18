@@ -190,8 +190,8 @@
 
 .option-pill {
   padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.10);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -203,13 +203,13 @@
 }
 
 .option-pill:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.20);
+  background: var(--bg-hover);
+  border-color: var(--border-focus);
 }
 
 .option-pill.sent {
   border-color: var(--border-focus);
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--accent-primary-muted);
   color: var(--text-primary);
 }
 

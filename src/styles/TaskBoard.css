@@ -10,7 +10,7 @@
   height: 100%;
   overflow: hidden;
   font-family: 'Share Tech Mono', monospace;
-  background: var(--bg-primary);
+  background: var(--bg-sidebar);
 }
 
 /* 标题行 */
@@ -19,13 +19,13 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
 .tb-title {
   font-size: 12px;
-  color: var(--accent);
+  color: var(--accent-primary);
   letter-spacing: 1px;
 }
 
@@ -37,7 +37,7 @@
 
 .tb-refresh-btn {
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-light);
   color: var(--text-secondary);
   font-size: 10px;
   padding: 2px 6px;
@@ -47,8 +47,8 @@
 }
 
 .tb-refresh-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 /* 今日意图 */
@@ -56,8 +56,8 @@
   font-size: 11px;
   color: var(--text-secondary);
   padding: 4px 12px;
-  background: color-mix(in srgb, var(--accent) 3%, transparent);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -86,7 +86,7 @@
   gap: 8px;
   padding: 8px 10px;
   background: var(--bg-surface);
-  border: 0.5px solid var(--border-color);
+  border: 0.5px solid var(--border-subtle);
   border-radius: 6px;
   margin: 4px 12px;
   cursor: pointer;
@@ -94,7 +94,7 @@
 }
 
 .tb-task-item:hover {
-  background: #1f1f1f;
+  background: var(--bg-hover);
 }
 
 /* 优先级圆点 */
@@ -142,7 +142,7 @@
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-light);
   border-radius: 3px;
   font-size: 10px;
   cursor: pointer;
@@ -150,23 +150,23 @@
 }
 
 .tb-complete-btn {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent-primary);
+  border-color: var(--border-light);
 }
 
 .tb-complete-btn:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border-color: var(--accent);
+  background: var(--accent-primary-muted);
+  border-color: var(--accent-primary);
 }
 
 .tb-delete-btn {
-  color: var(--p0);
-  border-color: rgba(255, 68, 68, 0.3);
+  color: var(--status-error);
+  border-color: var(--status-error);
 }
 
 .tb-delete-btn:hover {
-  background: rgba(255, 68, 68, 0.1);
-  border-color: var(--p0);
+  background: var(--status-error-bg);
+  border-color: var(--status-error);
 }
 
 /* 删除确认条 */
@@ -177,11 +177,11 @@
   gap: 8px;
   padding: 6px 8px;
   margin-top: 4px;
-  background: rgba(255, 68, 68, 0.1);
-  border: 1px solid rgba(255, 68, 68, 0.3);
+  background: var(--status-error-bg);
+  border: 1px solid var(--status-error);
   border-radius: 4px;
   font-size: 11px;
-  color: var(--p0);
+  color: var(--status-error);
 }
 
 .tb-delete-confirm button {
@@ -195,11 +195,11 @@
 }
 
 .tb-delete-confirm button:first-of-type {
-  color: var(--p0);
+  color: var(--status-error);
 }
 
 .tb-delete-confirm button:first-of-type:hover {
-  background: rgba(255, 68, 68, 0.2);
+  background: var(--status-error-bg);
 }
 
 .tb-delete-confirm button:last-of-type {
@@ -207,7 +207,7 @@
 }
 
 .tb-delete-confirm button:last-of-type:hover {
-  background: rgba(136, 136, 136, 0.1);
+  background: var(--bg-hover);
 }
 
 /* 翻页控件 */
@@ -217,7 +217,7 @@
   justify-content: center;
   gap: 12px;
   padding: 8px 12px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-subtle);
   font-size: 12px;
   color: var(--text-secondary);
 }
@@ -225,7 +225,7 @@
 .tb-pagination button {
   padding: 4px 10px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-light);
   border-radius: 3px;
   color: var(--text-secondary);
   font-size: 11px;
@@ -234,8 +234,8 @@
 }
 
 .tb-pagination button:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .tb-pagination button:disabled {
@@ -246,7 +246,7 @@
 /* 分割线 */
 .tb-divider {
   height: 1px;
-  background: var(--border-color);
+  background: var(--border-subtle);
   margin: 0 12px;
   flex-shrink: 0;
 }
@@ -317,13 +317,13 @@
 }
 
 .tb-promote-btn {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent-primary);
+  border-color: var(--border-light);
 }
 
 .tb-promote-btn:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border-color: var(--accent);
+  background: var(--accent-primary-muted);
+  border-color: var(--accent-primary);
 }
 
 .tb-remove-btn {
@@ -331,8 +331,8 @@
 }
 
 .tb-remove-btn:hover {
-  border-color: var(--p0);
-  color: var(--p0);
+  border-color: var(--status-error);
+  color: var(--status-error);
 }
 
 .tb-parking-empty {
@@ -347,15 +347,15 @@
   display: flex;
   gap: 8px;
   padding: 8px 12px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
 .tb-quick-input input {
   flex: 1;
   padding: 8px 10px;
-  background: #111111;
-  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
   color: var(--text-primary);
   font-size: 12px;
@@ -365,26 +365,26 @@
 }
 
 .tb-quick-input input::placeholder {
-  color: #444444;
+  color: var(--text-placeholder);
 }
 
 .tb-quick-input input:focus {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 
 .tb-add-btn {
   padding: 8px 16px;
   background: transparent;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-primary);
   border-radius: 4px;
-  color: var(--accent);
+  color: var(--accent-primary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .tb-add-btn:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: var(--accent-primary-muted);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -394,8 +394,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   overflow: hidden;
   font-family: 'Share Tech Mono', monospace;
@@ -403,14 +403,14 @@
 
 .tb-full-header {
   padding: 12px 14px;
-  background: linear-gradient(180deg, #161b22 0%, var(--bg-primary) 100%);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
   position: relative;
 }
 
 .tb-full-date {
   font-size: 14px;
-  color: var(--accent);
+  color: var(--accent-primary);
   letter-spacing: 2px;
   margin-bottom: 6px;
 }
@@ -427,7 +427,7 @@
   color: var(--text-secondary);
   letter-spacing: 2px;
   padding: 2px 6px;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: var(--accent-primary-muted);
   border-radius: 3px;
 }
 
@@ -443,7 +443,7 @@
   width: 24px;
   height: 24px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
   color: var(--text-secondary);
   font-size: 16px;
@@ -455,8 +455,8 @@
 }
 
 .tb-close-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .tb-full-content {
@@ -472,8 +472,8 @@
   align-items: center;
   padding: 6px 14px;
   background: var(--bg-surface);
-  border-top: 1px solid var(--border-color);
-  border-bottom: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
   font-size: 9px;
   color: var(--text-secondary);
   letter-spacing: 3px;

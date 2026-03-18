@@ -3,11 +3,11 @@
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: var(--bg-primary, #0a0a0f);
+  background: var(--bg-base);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border-color, rgba(0, 255, 136, 0.2));
+  border: 1px solid var(--border-subtle);
 }
 
 .activation-scanlines {
@@ -18,8 +18,8 @@
     0deg,
     transparent,
     transparent 2px,
-    rgba(0, 0, 0, 0.1) 2px,
-    rgba(0, 0, 0, 0.1) 4px
+    transparent 2px,
+    transparent 4px
   );
   opacity: 0.3;
 }
@@ -32,23 +32,23 @@
   align-items: center;
   gap: 16px;
   padding: 40px 60px;
-  background: rgba(15, 15, 26, 0.9);
-  border: 1px solid var(--green, #00ff88);
-  box-shadow: 0 0 30px rgba(0, 255, 136, 0.15);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-lg);
 }
 
 .activation-title {
   font-size: 24px;
   font-weight: 600;
-  color: var(--green, #00ff88);
-  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+  color: var(--accent-primary);
+  text-shadow: none;
   letter-spacing: 2px;
   margin-bottom: 4px;
 }
 
 .activation-subtitle {
   font-size: 13px;
-  color: var(--text-dim, #666680);
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
@@ -56,23 +56,23 @@
   width: 320px;
   padding: 14px 18px;
   font-size: 16px;
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-family: var(--font-mono);
   letter-spacing: 2px;
-  background: rgba(10, 10, 15, 0.9);
-  border: 1px solid var(--border-color, rgba(0, 255, 136, 0.3));
-  color: var(--text-primary, #e0e0e0);
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .activation-input::placeholder {
-  color: var(--text-dim, #666680);
+  color: var(--text-placeholder);
   letter-spacing: 1px;
 }
 
 .activation-input:focus {
-  border-color: var(--green, #00ff88);
-  box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+  border-color: var(--border-focus);
+  box-shadow: var(--shadow-sm);
 }
 
 .activation-input:disabled {
@@ -82,7 +82,7 @@
 
 .activation-error {
   font-size: 13px;
-  color: var(--red, #ff0055);
+  color: var(--status-error);
   text-align: center;
   min-height: 18px;
 }
@@ -90,18 +90,18 @@
 .activation-btn {
   padding: 12px 48px;
   font-size: 15px;
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-family: var(--font-mono);
   background: transparent;
-  border: 1px solid var(--green, #00ff88);
-  color: var(--green, #00ff88);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
   cursor: pointer;
   transition: all 0.2s;
   letter-spacing: 4px;
 }
 
 .activation-btn:hover:not(:disabled) {
-  background: rgba(0, 255, 136, 0.15);
-  box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+  background: var(--accent-primary-muted);
+  box-shadow: var(--shadow-md);
 }
 
 .activation-btn:active:not(:disabled) {
@@ -118,7 +118,7 @@
   position: absolute;
   width: 24px;
   height: 24px;
-  border: 2px solid var(--green, #00ff88);
+  border: 2px solid var(--accent-primary);
   pointer-events: none;
   z-index: 2;
 }

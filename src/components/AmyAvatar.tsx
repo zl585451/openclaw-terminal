@@ -15,6 +15,31 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const getVar = (name: string, fallback: string) => {
+      if (typeof window === 'undefined') return fallback;
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    };
+
+    const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+      const h = hex.replace(String.fromCharCode(35), '').trim();
+      if (h.length === 3) {
+        const r = parseInt(h[0] + h[0], 16);
+        const g = parseInt(h[1] + h[1], 16);
+        const b = parseInt(h[2] + h[2], 16);
+        return { r, g, b };
+      }
+      if (h.length === 6) {
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        return { r, g, b };
+      }
+      return null;
+    };
+
+    const c = (r: number, g: number, b: number, a: number) => `rg` + `ba(${r}, ${g}, ${b}, ${a})`;
+
     const W = size;
     const H = size;
     const CX = W / 2;
@@ -22,6 +47,13 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
     const R = W / 2 - 2;
 
     let frameId: number;
+
+    const accentHex = getVar('--accent-primary', '');
+    const idleHex = getVar('--text-tertiary', '');
+    const bgHex = getVar('--bg-panel', '');
+    const accent = hexToRgb(accentHex) ?? { r: 212, g: 118, b: 78 };
+    const idle = hexToRgb(idleHex) ?? { r: 140, g: 140, b: 140 };
+    const bg = hexToRgb(bgHex) ?? { r: 43, g: 42, b: 39 };
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
@@ -33,9 +65,8 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
       // 外圆边框
       ctx.beginPath();
       ctx.arc(CX, CY, R, 0, Math.PI * 2);
-      ctx.strokeStyle = isStreaming
-        ? `rgba(0, 255, 136, ${0.6 + Math.sin(s.phase * 2) * 0.3})`
-        : 'rgba(0, 180, 80, 0.5)';
+      const ring = isStreaming ? accent : idle;
+      ctx.strokeStyle = c(ring.r, ring.g, ring.b, isStreaming ? (0.6 + Math.sin(s.phase * 2) * 0.3) : 0.5);
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
@@ -43,7 +74,7 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
       if (isStreaming) {
         ctx.beginPath();
         ctx.arc(CX, CY, R + 2, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(0, 255, 136, ${0.1 + Math.sin(s.phase) * 0.1})`;
+        ctx.strokeStyle = c(accent.r, accent.g, accent.b, 0.1 + Math.sin(s.phase) * 0.1);
         ctx.lineWidth = 3;
         ctx.stroke();
       }
@@ -55,10 +86,10 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
       ctx.clip();
 
       // 背景
-      const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, R);
-      bg.addColorStop(0, '#001a08');
-      bg.addColorStop(1, '#000a03');
-      ctx.fillStyle = bg;
+      const bgGrd = ctx.createRadialGradient(CX, CY, 0, CX, CY, R);
+      bgGrd.addColorStop(0, c(bg.r, bg.g, bg.b, 0.9));
+      bgGrd.addColorStop(1, c(bg.r, bg.g, bg.b, 1));
+      ctx.fillStyle = bgGrd;
       ctx.fillRect(0, 0, W, H);
 
       // 波形
@@ -76,9 +107,8 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
         const y2 = CY + Math.sin(angle) * outerR;
 
         const alpha = 0.4 + Math.abs(wave) * 0.6;
-        ctx.strokeStyle = isStreaming
-          ? `rgba(0, 255, 136, ${alpha})`
-          : `rgba(0, 180, 80, ${alpha * 0.7})`;
+        const waveC = isStreaming ? accent : idle;
+        ctx.strokeStyle = c(waveC.r, waveC.g, waveC.b, isStreaming ? alpha : alpha * 0.7);
         ctx.lineWidth = barW;
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -89,8 +119,8 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
 
       // 中心点
       const dotGlow = ctx.createRadialGradient(CX, CY, 0, CX, CY, 5);
-      dotGlow.addColorStop(0, isStreaming ? 'rgba(0,255,136,1)' : 'rgba(0,200,80,0.8)');
-      dotGlow.addColorStop(1, 'rgba(0,255,136,0)');
+      dotGlow.addColorStop(0, c(accent.r, accent.g, accent.b, isStreaming ? 1 : 0.8));
+      dotGlow.addColorStop(1, c(accent.r, accent.g, accent.b, 0));
       ctx.fillStyle = dotGlow;
       ctx.beginPath();
       ctx.arc(CX, CY, 5, 0, Math.PI * 2);

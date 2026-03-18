@@ -1,7 +1,7 @@
 .socratic-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--bg-overlay);
   z-index: 200;
   display: flex;
   align-items: center;
@@ -15,15 +15,15 @@
 }
 
 .socratic-panel {
-  background: #0d1117;
-  border: 1px solid #1e3a3a;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   width: 420px;
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.8), 0 0 24px rgba(78, 201, 176, 0.06);
+  box-shadow: var(--shadow-lg);
   animation: socratic-slide-in 0.18s ease;
   overflow: hidden;
 }
@@ -39,7 +39,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px 10px;
-  border-bottom: 1px solid #1e3a3a;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -53,21 +53,21 @@
   font-family: 'Share Tech Mono', 'JetBrains Mono', Consolas, monospace;
   font-size: 11px;
   letter-spacing: 3px;
-  color: #4ec9b0;
+  color: var(--accent-primary);
   text-transform: uppercase;
 }
 
 .socratic-subtitle {
   font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 11px;
-  color: #8b949e;
+  color: var(--text-tertiary);
   letter-spacing: 1px;
 }
 
 .socratic-close-btn {
   background: transparent;
-  border: 1px solid #1e3a3a;
-  color: #8b949e;
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
   font-size: 14px;
   width: 26px;
   height: 26px;
@@ -81,9 +81,9 @@
 }
 
 .socratic-close-btn:hover {
-  border-color: #f85149;
-  color: #f85149;
-  background: rgba(248, 81, 73, 0.08);
+  border-color: var(--status-error);
+  color: var(--status-error);
+  background: var(--status-error-bg);
 }
 
 /* ── 进度条 ── */
@@ -97,17 +97,17 @@
 .socratic-progress-dot {
   height: 2px;
   flex: 1;
-  background: #1e3a3a;
+  background: var(--border-subtle);
   border-radius: 1px;
   transition: background 0.3s;
 }
 
 .socratic-progress-dot.active {
-  background: #4ec9b0;
+  background: var(--accent-primary);
 }
 
 .socratic-progress-dot.done {
-  background: #2a7a6a;
+  background: var(--status-success);
 }
 
 /* ── 内容区 ── */
@@ -127,15 +127,15 @@
   background: transparent;
 }
 .socratic-body::-webkit-scrollbar-thumb {
-  background: #1e3a3a;
+  background: var(--border-subtle);
   border-radius: 2px;
 }
 
 /* ── 问题文字 ── */
 .socratic-question {
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
-  color: #e6edf3;
+  color: var(--text-primary);
   line-height: 1.6;
   padding-bottom: 4px;
 }
@@ -153,8 +153,8 @@
   gap: 10px;
   padding: 9px 12px;
   background: transparent;
-  color: #e6edf3;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
   border-radius: 4px;
@@ -164,11 +164,11 @@
 }
 
 .socratic-option-row:hover {
-  background: rgba(78, 201, 176, 0.06);
+  background: var(--bg-hover);
 }
 
 .socratic-option-row.selected {
-  background: rgba(78, 201, 176, 0.1);
+  background: var(--accent-primary-muted);
 }
 
 .socratic-option-icon {
@@ -185,19 +185,33 @@
   display: block;
   width: 16px;
   height: 16px;
-  border: 1.5px solid #4ec9b0;
+  border: 1.5px solid var(--accent-primary);
   border-radius: 2px;
   background: transparent;
   transition: all 0.15s;
 }
 
 .socratic-option-row.selected .socratic-option-icon::before {
-  background: rgba(78, 201, 176, 0.2);
-  border-color: #4ec9b0;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%234ec9b0' stroke-width='2'%3E%3Cpath d='M2 6l3 3 5-6'/%3E%3C/svg%3E");
-  background-size: 12px 12px;
-  background-repeat: no-repeat;
-  background-position: center;
+  background: var(--accent-primary-muted);
+  border-color: var(--accent-primary);
+}
+
+/* 纯 CSS 画勾：避免 data-uri 硬编码颜色 */
+.socratic-option-icon::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid var(--accent-primary);
+  border-bottom: 2px solid var(--accent-primary);
+  transform: rotate(-45deg);
+  opacity: 0;
+  left: 6px;
+  top: 8px;
+}
+
+.socratic-option-row.selected .socratic-option-icon::after {
+  opacity: 1;
 }
 
 /* single-select 用圆形 radio */
@@ -206,10 +220,10 @@
 }
 
 .socratic-option-row.radio.selected .socratic-option-icon::before {
-  background: rgba(78, 201, 176, 0.2);
-  border-color: #4ec9b0;
+  background: var(--accent-primary-muted);
+  border-color: var(--accent-primary);
   background-image: none;
-  box-shadow: inset 0 0 0 3px rgba(78, 201, 176, 0.6);
+  box-shadow: inset 0 0 0 3px var(--accent-primary);
 }
 
 .socratic-option-label {
@@ -218,12 +232,12 @@
 }
 
 .socratic-option-other {
-  color: #8b949e;
+  color: var(--text-tertiary);
   font-style: italic;
 }
 
 .socratic-option-row.selected .socratic-option-other {
-  color: #e6edf3;
+  color: var(--text-primary);
   font-style: normal;
 }
 
@@ -232,9 +246,9 @@
   flex: 1;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(78, 201, 176, 0.5);
-  color: #e6edf3;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 12px;
   padding: 2px 4px;
   outline: none;
@@ -242,11 +256,11 @@
 }
 
 .socratic-other-input:focus {
-  border-bottom-color: #4ec9b0;
+  border-bottom-color: var(--accent-primary);
 }
 
 .socratic-other-input::placeholder {
-  color: rgba(139, 148, 158, 0.5);
+  color: var(--text-placeholder);
 }
 
 /* ── 模板选择器 ── */
@@ -262,7 +276,7 @@
   gap: 12px;
   padding: 10px 14px;
   background: transparent;
-  border: 1px solid #1e3a3a;
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s;
@@ -270,13 +284,13 @@
 }
 
 .socratic-template-card:hover {
-  border-color: #4ec9b0;
-  background: rgba(78, 201, 176, 0.04);
+  border-color: var(--accent-primary);
+  background: var(--bg-hover);
 }
 
 .socratic-template-icon {
   font-size: 16px;
-  color: #4ec9b0;
+  color: var(--accent-primary);
   font-family: 'Share Tech Mono', monospace;
   width: 20px;
   text-align: center;
@@ -284,15 +298,15 @@
 }
 
 .socratic-template-name {
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: #e6edf3;
+  color: var(--text-primary);
 }
 
 /* ── 底部操作栏 ── */
 .socratic-footer {
   padding: 10px 16px 14px;
-  border-top: 1px solid #1e3a3a;
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -300,17 +314,17 @@
 }
 
 .socratic-count {
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #8b949e;
+  color: var(--text-tertiary);
 }
 
 .socratic-next-btn {
   padding: 7px 18px;
-  background: rgba(78, 201, 176, 0.1);
-  border: 1px solid #4ec9b0;
-  color: #4ec9b0;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  background: var(--accent-primary-muted);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 1px;
   cursor: pointer;
@@ -319,8 +333,8 @@
 }
 
 .socratic-next-btn:hover:not(:disabled) {
-  background: rgba(78, 201, 176, 0.2);
-  box-shadow: 0 0 8px rgba(78, 201, 176, 0.2);
+  background: var(--accent-primary-muted);
+  box-shadow: var(--shadow-sm);
 }
 
 .socratic-next-btn:disabled {
@@ -335,18 +349,18 @@
   gap: 4px;
   padding: 5px 10px;
   background: transparent;
-  border: 1px solid #1e3a3a;
+  border: 1px solid var(--border-subtle);
   border-radius: 3px;
-  color: #8b949e;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .socratic-back-btn:hover {
-  border-color: #4ec9b0;
-  color: #4ec9b0;
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 /* ── 内联模式：嵌入对话流的卡片 ── */
@@ -365,7 +379,7 @@
   max-width: 560px;
   max-height: 360px;
   border-radius: 6px;
-  border-left: 3px solid #4ec9b0;
+  border-left: 3px solid var(--accent-primary);
 }
 
 /* ── 触发按钮（消息末尾） ── */
@@ -376,9 +390,9 @@
   margin-top: 10px;
   padding: 5px 12px;
   background: transparent;
-  border: 1px solid #1e3a3a;
+  border: 1px solid var(--border-subtle);
   border-radius: 3px;
-  color: #8b949e;
+  color: var(--text-tertiary);
   font-family: 'Share Tech Mono', 'JetBrains Mono', Consolas, monospace;
   font-size: 11px;
   letter-spacing: 1px;
@@ -387,8 +401,8 @@
 }
 
 .socratic-trigger-btn:hover {
-  border-color: #4ec9b0;
-  color: #4ec9b0;
-  background: rgba(78, 201, 176, 0.06);
-  box-shadow: 0 0 10px rgba(78, 201, 176, 0.12);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+  box-shadow: var(--shadow-sm);
 }
