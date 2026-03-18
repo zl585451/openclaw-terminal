@@ -216,9 +216,9 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
     if (!isBlock) {
       return (
         <code style={{
-          background: 'var(--bg-primary)', color: 'var(--accent)',
+          background: 'var(--bg-code)', color: 'var(--text-code)',
           padding: '1px 5px', borderRadius: '3px',
-          fontSize: '12px', fontFamily: 'Share Tech Mono',
+          fontSize: '12px', fontFamily: 'var(--font-mono)',
         }}>{children}</code>
       );
     }
@@ -239,13 +239,13 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
         <div style={{ position: 'relative', margin: '8px 0' }}>
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            background: 'var(--bg-panel)',
-            border: '1px solid var(--border-color)',
+            background: 'var(--bg-code-header)',
+            border: '1px solid var(--border-subtle)',
             borderBottom: 'none',
             borderRadius: '4px 4px 0 0',
             padding: '4px 12px',
           }}>
-            <span style={{ fontSize: '10px', color: 'var(--accent)', fontFamily: 'Share Tech Mono', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'Share Tech Mono', letterSpacing: '1px' }}>
               {(className?.replace('language-', '') || 'code').toUpperCase()} · {lines} lines
             </span>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -254,7 +254,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
                   onClick={() => setExpanded(!expanded)}
                   style={{
                     background: 'transparent',
-                    border: '1px solid var(--border-color)',
+                    border: '1px solid var(--border-light)',
                     borderRadius: '3px',
                     color: 'var(--text-secondary)',
                     fontSize: '10px', fontFamily: 'Share Tech Mono',
@@ -268,11 +268,11 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
               <button
                 onClick={handleCopy}
                 style={{
-                  background: copied ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent',
+                  background: copied ? 'var(--accent-primary-muted)' : 'transparent',
                   border: '1px solid',
-                  borderColor: copied ? 'var(--accent)' : 'var(--border-color)',
+                  borderColor: copied ? 'var(--accent-primary)' : 'var(--border-light)',
                   borderRadius: '3px',
-                  color: copied ? 'var(--accent)' : 'var(--text-secondary)',
+                  color: copied ? 'var(--accent-primary)' : 'var(--text-secondary)',
                   fontSize: '10px', fontFamily: 'Share Tech Mono',
                   padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
                   transition: 'all 0.2s',
@@ -283,8 +283,8 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
             </div>
           </div>
           <pre style={{
-            background: 'rgba(0,0,0,0.25)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--bg-code)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: '0 0 4px 4px',
             padding: '12px',
             overflow: 'auto',
@@ -293,14 +293,14 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
             transition: 'max-height 0.3s ease',
             position: 'relative',
           }}>
-            <code style={{ color: 'var(--text-primary)', fontSize: '12px', fontFamily: 'Share Tech Mono' }}>
+            <code style={{ color: 'var(--text-code)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
               {code}
             </code>
             {isLong && !expanded && (
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
                 height: '40px',
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.25))',
+                background: 'linear-gradient(transparent, var(--bg-code))',
                 pointerEvents: 'none',
               }} />
             )}
@@ -406,8 +406,8 @@ const SystemMessage = ({ text }: { text: string }) => {
 
   return (
     <div style={{
-      background: '#001a00',
-      borderLeft: '3px solid #ffaa00',
+      background: 'var(--bg-panel)',
+      borderLeft: '3px solid var(--status-warning)',
       borderRadius: '4px',
       padding: '10px 14px',
       maxWidth: '70%',
@@ -418,25 +418,25 @@ const SystemMessage = ({ text }: { text: string }) => {
         marginBottom: collapsed && isLong ? 0 : '8px',
         cursor: isLong ? 'pointer' : 'default',
       }} onClick={() => isLong && setCollapsed(!collapsed)}>
-        <span style={{ color: '#ffaa00', fontSize: '10px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>
+        <span style={{ color: 'var(--status-warning)', fontSize: '10px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>
           [ SYSTEM ]
         </span>
         {isLong && (
-          <span style={{ color: '#ffaa00', fontSize: '10px', fontFamily: 'Share Tech Mono', opacity: 0.7 }}>
+          <span style={{ color: 'var(--status-warning)', fontSize: '10px', fontFamily: 'Share Tech Mono', opacity: 0.7 }}>
             {collapsed ? '展开' : '收起'}
           </span>
         )}
       </div>
       {collapsed && isLong ? (
-        <div style={{ color: '#00cc66', fontSize: '13px', opacity: 0.8 }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: '13px', opacity: 0.8 }}>
           {preview}
-          <span style={{ color: '#ffaa00', opacity: 0.5 }}> ···</span>
+          <span style={{ color: 'var(--status-warning)', opacity: 0.5 }}> ···</span>
         </div>
       ) : (
         <div>
           {lines.map((line, i) => (
             <div key={i} style={{
-              color: '#00cc66', fontSize: '13px',
+              color: 'var(--text-primary)', fontSize: '13px',
               marginBottom: '4px', lineHeight: 1.5,
             }}>{line}</div>
           ))}
@@ -898,8 +898,8 @@ const ChatInputArea = memo(function ChatInputArea({
               key={i}
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
-                background: '#0a1a0a',
-                border: '1px solid #1a4d2a',
+                background: 'var(--bg-panel)',
+                border: '1px solid var(--border-light)',
                 borderRadius: '8px',
                 padding: '8px 10px',
                 maxWidth: '200px',
@@ -908,7 +908,7 @@ const ChatInputArea = memo(function ChatInputArea({
             >
               <div style={{
                 width: '36px', height: '36px',
-                background: '#0d2d0d',
+                background: 'var(--bg-surface)',
                 borderRadius: '6px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '18px', flexShrink: 0,
@@ -927,13 +927,13 @@ const ChatInputArea = memo(function ChatInputArea({
               </div>
               <div style={{ overflow: 'hidden' }}>
                 <div style={{
-                  fontSize: '12px', color: '#00ff88',
+                  fontSize: '12px', color: 'var(--text-primary)',
                   fontFamily: 'Share Tech Mono, monospace',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   maxWidth: '120px',
                 }}>{file.name}</div>
                 <div style={{
-                  fontSize: '10px', color: '#006620',
+                  fontSize: '10px', color: 'var(--text-tertiary)',
                   fontFamily: 'Share Tech Mono, monospace',
                 }}>{formatFileSize(file.size)}</div>
               </div>
@@ -943,8 +943,8 @@ const ChatInputArea = memo(function ChatInputArea({
                 style={{
                   position: 'absolute', top: '-6px', right: '-6px',
                   width: '16px', height: '16px',
-                  background: '#1a0000', border: '1px solid #440000',
-                  borderRadius: '50%', color: '#ff4444',
+                  background: 'var(--status-error-bg)', border: '1px solid var(--status-error)',
+                  borderRadius: '50%', color: 'var(--status-error)',
                   fontSize: '10px', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   lineHeight: 1, padding: 0,
@@ -2007,11 +2007,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               left: contextMenu.x,
               top: contextMenu.y,
               zIndex: 100,
-              background: '#060f06',
-              border: '1px solid #1a4d2a',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-light)',
               borderRadius: '6px',
               overflow: 'hidden',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.6), 0 0 12px rgba(0,255,65,0.1)',
+              boxShadow: 'var(--shadow-lg)',
               minWidth: '160px',
             }}
           >
@@ -2026,11 +2026,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '9px 16px', cursor: 'pointer',
-                  color: item.danger ? '#ff4444' : '#00cc66',
+                  color: item.danger ? 'var(--status-error)' : 'var(--text-primary)',
                   fontSize: '12px', fontFamily: 'Share Tech Mono',
                   transition: 'background 0.15s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = item.danger ? 'rgba(255,68,68,0.08)' : 'rgba(0,255,65,0.06)'; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = item.danger ? 'var(--status-error-bg)' : 'var(--bg-hover)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ fontSize: '14px' }}>{item.icon}</span>
@@ -2056,8 +2056,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         {isDragging && (
           <div style={{
             position: 'absolute', inset: 0,
-            background: 'rgba(0, 255, 65, 0.05)',
-            border: '2px dashed #00ff41',
+            background: 'var(--accent-primary-muted)',
+            border: '2px dashed var(--accent-primary)',
             borderRadius: '4px',
             display: 'flex',
             alignItems: 'center',
@@ -2066,11 +2066,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             pointerEvents: 'none',
           }}>
             <span style={{
-              color: '#00ff41',
+              color: 'var(--accent-primary)',
               fontSize: '16px',
               fontFamily: 'Share Tech Mono, monospace',
               letterSpacing: '3px',
-              textShadow: '0 0 10px rgba(0,255,65,0.8)',
+              textShadow: '0 0 10px var(--glow-color)',
             }}>⬇ DROP FILES HERE</span>
           </div>
         )}
@@ -2170,12 +2170,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 display: 'block',
                 animation: 'chevronGlow 1.4s ease-in-out infinite',
                 animationDelay: `${i * 0.2}s`,
-                filter: `drop-shadow(0 0 ${4 + i * 2}px rgba(0,255,65,${0.4 + i * 0.2}))`,
+                filter: `drop-shadow(0 0 ${4 + i * 2}px var(--glow-color))`,
               }}>
                 <polyline
                   points="2,2 14,13 26,2"
                   fill="none"
-                  stroke="#00ff41"
+                  stroke="var(--accent-primary)"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -2242,7 +2242,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             alignItems: 'center',
             gap: '10px',
             padding: '8px 12px',
-            borderBottom: '1px solid #1e3a3a',
+              borderBottom: '1px solid var(--border-subtle)',
             flexShrink: 0,
           }}
         >
@@ -2253,14 +2253,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                background: wsConnected ? '#00ff41' : '#ff4444',
+                background: wsConnected ? 'var(--status-success)' : 'var(--status-error)',
                 animation: wsConnected ? 'pulse-green 2s infinite' : 'pulse-red 1s infinite',
               }}
             />
             <span
               style={{
                 fontSize: '9px',
-                color: '#8b949e',
+                color: 'var(--text-tertiary)',
                 fontFamily: 'Share Tech Mono',
               }}
             >
@@ -2275,14 +2275,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                background: nocturneOnline ? '#4ec9b0' : '#ff4444',
+                background: nocturneOnline ? 'var(--status-info)' : 'var(--status-error)',
                 animation: nocturneOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite',
               }}
             />
             <span
               style={{
                 fontSize: '9px',
-                color: '#8b949e',
+                color: 'var(--text-tertiary)',
                 fontFamily: 'Share Tech Mono',
               }}
             >
@@ -2303,7 +2303,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             <div
               style={{
                 fontSize: '20px',
-                color: '#e0e0e0',
+                color: 'var(--text-primary)',
                 fontFamily: 'Share Tech Mono',
                 fontWeight: 500,
                 letterSpacing: '1px',
@@ -2316,13 +2316,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               style={{
                 width: '1px',
                 height: '16px',
-                background: '#2a2a2a',
+                background: 'var(--border-subtle)',
               }}
             />
             <div
               style={{
                 fontSize: '12px',
-                color: '#888888',
+                color: 'var(--text-secondary)',
                 fontFamily: 'Share Tech Mono',
                 letterSpacing: '0.5px',
                 lineHeight: 1,
@@ -2335,7 +2335,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
         {/* 2. 心跳- 完整显示 65px */}
         <div style={{ 
-          borderBottom: '1px solid #0d2d0d', 
+          borderBottom: '1px solid var(--border-subtle)', 
           height: '65px',
           padding: '8px 0',
           overflow: 'visible',
@@ -2349,30 +2349,30 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           display: 'flex',
           flexWrap: 'wrap',
           padding: '4px 12px',
-          borderBottom: '1px solid #0d2d0d',
+          borderBottom: '1px solid var(--border-subtle)',
           gap: '8px',
           fontSize: '10px',
           fontFamily: 'Share Tech Mono',
         }}>
           <div style={{ display: 'flex', gap: '4px' }}>
-            <span style={{ color: '#004d1a' }}>MODEL</span>
-            <span style={{ color: '#00cc66' }}>{modelName || '--'}</span>
+            <span style={{ color: 'var(--text-tertiary)' }}>MODEL</span>
+            <span style={{ color: 'var(--accent-primary)' }}>{modelName || '--'}</span>
           </div>
           <div style={{ display: 'flex', gap: '4px' }}>
-            <span style={{ color: '#004d1a' }}>TOK</span>
-            <span style={{ color: '#00cc66' }}>
+            <span style={{ color: 'var(--text-tertiary)' }}>TOK</span>
+            <span style={{ color: 'var(--accent-primary)' }}>
               {tokenIn != null ? `${(tokenIn/1000).toFixed(1)}k` : '0'}/{ctxMax != null ? `${(ctxMax/1000).toFixed(0)}k` : '--'}
             </span>
           </div>
           <div style={{ display: 'flex', gap: '4px' }}>
-            <span style={{ color: '#004d1a' }}>CTX</span>
-            <span style={{ color: ctxUsed != null && ctxMax != null && ctxMax > 0 && (ctxUsed / ctxMax) > 0.8 ? '#ff6666' : '#00cc66' }}>
+            <span style={{ color: 'var(--text-tertiary)' }}>CTX</span>
+            <span style={{ color: ctxUsed != null && ctxMax != null && ctxMax > 0 && (ctxUsed / ctxMax) > 0.8 ? 'var(--status-error)' : 'var(--accent-primary)' }}>
               {ctxUsed != null && ctxMax != null && ctxMax > 0 ? `${(ctxUsed / 1000).toFixed(1)}k (${Math.round((ctxUsed / ctxMax) * 100)}%)` : '0%'}
             </span>
           </div>
           {streak > 0 && (
             <div style={{ display: 'flex', gap: '4px' }}>
-              <span style={{ color: '#ffaa0099' }}>🔥 STREAK {streak}</span>
+              <span style={{ color: 'var(--status-warning)' }}>🔥 STREAK {streak}</span>
             </div>
           )}
         </div>
@@ -2382,7 +2382,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           display: 'flex',
           gap: '4px',
           padding: '6px 12px',
-          borderBottom: '1px solid #0d2d0d',
+          borderBottom: '1px solid var(--border-subtle)',
         }}>
           <button
             type="button"
@@ -2416,8 +2416,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               cursor: 'pointer',
               letterSpacing: '1px',
               transition: 'all 0.15s',
-              border: `1px solid ${gatewayRunning ? '#ff444444' : '#00ff4144'}`,
-              color: gatewayRunning ? '#ff6666' : '#00cc66',
+              border: `1px solid ${gatewayRunning ? 'var(--status-error)' : 'var(--status-success)'}`,
+              color: gatewayRunning ? 'var(--status-error)' : 'var(--status-success)',
             }}
           >
             {gatewayRunning ? '■ 停止' : '▶ 启动'}
@@ -2443,8 +2443,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               cursor: 'pointer',
               letterSpacing: '1px',
               transition: 'all 0.15s',
-              border: '1px solid #ffaa0033',
-              color: '#ffaa0099',
+              border: '1px solid var(--status-warning)',
+              color: 'var(--status-warning)',
             }}
           >
             ↺ 重启
@@ -2462,8 +2462,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               cursor: 'pointer',
               letterSpacing: '1px',
               transition: 'all 0.15s',
-              border: '1px solid #00ff4144',
-              color: '#00cc66',
+              border: '1px solid var(--border-light)',
+              color: 'var(--text-secondary)',
             }}
           >
             &gt; 终端
@@ -2485,8 +2485,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               cursor: 'pointer',
               letterSpacing: '1px',
               transition: 'all 0.15s',
-              border: '1px solid #00ff4144',
-              color: '#00cc66',
+              border: '1px solid var(--border-light)',
+              color: 'var(--text-secondary)',
             }}
           >
             ◎ 悬浮
@@ -2500,8 +2500,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
         {/* 6. Gateway 日志 - 固定高度 */}
           <div className="gateway-log-section">
-          <div className="section-header gw-log-title-row" style={{ borderTop: '1px solid #0d2d0d' }}>
-            <span className="section-title" style={{ color: '#00aa55' }}>
+          <div className="section-header gw-log-title-row">
+            <span className="section-title">
               Gateway 日志
             </span>
             <div className="gw-controls gw-controls-log">

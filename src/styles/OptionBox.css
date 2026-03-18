@@ -24,8 +24,8 @@
   gap: 10px;
   padding: 8px 12px;
   background: transparent;
-  color: #a8ffcf;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
   text-align: left;
@@ -35,11 +35,11 @@
 }
 
 .option-checkbox-row:hover {
-  background: rgba(0, 255, 159, 0.06);
+  background: var(--bg-hover);
 }
 
 .option-checkbox-row.checked {
-  background: #00ff9f11;
+  background: var(--accent-primary-muted);
 }
 
 .option-checkbox-input {
@@ -59,7 +59,7 @@
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  color: #00ff9f;
+  color: var(--accent-primary);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -70,18 +70,32 @@
   display: block;
   width: 16px;
   height: 16px;
-  border: 1.5px solid #00ff9f;
+  border: 1.5px solid var(--accent-primary);
   border-radius: 2px;
   background: transparent;
 }
 
 .option-checkbox-row.checked .option-checkbox-icon::before {
-  background: rgba(0, 255, 159, 0.2);
-  border-color: #00ff9f;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2300ff9f' stroke-width='2'%3E%3Cpath d='M2 6l3 3 5-6'/%3E%3C/svg%3E");
-  background-size: 12px 12px;
-  background-repeat: no-repeat;
-  background-position: center;
+  background: var(--accent-primary-muted);
+  border-color: var(--accent-primary);
+}
+
+/* 纯 CSS 画勾：避免 data-uri 中硬编码颜色 */
+.option-checkbox-icon::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid var(--accent-primary);
+  border-bottom: 2px solid var(--accent-primary);
+  transform: rotate(-45deg);
+  opacity: 0;
+  left: 6px;
+  top: 8px;
+}
+
+.option-checkbox-row.checked .option-checkbox-icon::after {
+  opacity: 1;
 }
 
 
@@ -101,16 +115,16 @@
   padding: 4px 8px;
   min-width: 28px;
   background: transparent;
-  border: 1px solid rgba(0, 255, 159, 0.4);
-  color: #a8ffcf;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
 }
 
 .option-page-btn:hover:not(:disabled) {
-  background: rgba(0, 255, 159, 0.1);
-  border-color: #00ff9f;
+  background: var(--accent-primary-muted);
+  border-color: var(--accent-primary);
 }
 
 .option-page-btn:disabled {
@@ -119,7 +133,7 @@
 }
 
 .option-page-info {
-  color: #00ff9f;
+  color: var(--accent-primary);
   font-size: 12px;
   min-width: 2.5em;
   text-align: center;
@@ -130,28 +144,28 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 0 0;
-  border-top: 1px solid rgba(0, 255, 159, 0.2);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .option-selected-count {
-  color: #00ff9f99;
+  color: var(--text-tertiary);
   font-size: 11px;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .option-confirm-btn {
   padding: 6px 14px;
-  background: rgba(0, 255, 159, 0.12);
-  border: 1px solid #00ff9f;
-  color: #00ff9f;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  background: var(--accent-primary-muted);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .option-confirm-btn:hover:not(:disabled) {
-  background: rgba(0, 255, 159, 0.2);
+  background: var(--accent-primary-muted);
 }
 
 .option-confirm-btn:disabled {
