@@ -124,8 +124,8 @@
 .voice-toggle {
   font-size: 10px;
   padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   color: var(--text-secondary);
   border-radius: 9999px;
   font-family: var(--font-sans);
@@ -135,7 +135,7 @@
 }
 
 .voice-toggle.on {
-  border-color: rgba(255, 255, 255, 0.20);
+  border-color: var(--border-focus);
   background: var(--accent-primary-muted);
   color: var(--accent-primary);
 }
@@ -222,12 +222,12 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #8b949e;
+  color: var(--text-tertiary);
 }
 
 .empty-icon {
   font-size: 24px;
-  color: #8b949e;
+  color: var(--text-tertiary);
 }
 
 .chat-message {
@@ -250,8 +250,8 @@
 
 .chat-message.user {
   align-self: flex-end;
-  background: var(--user-msg-bg, var(--bg-surface));
-  border: 1px solid var(--user-msg-border, var(--border-color));
+  background: var(--bg-user-msg);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px 12px 2px 12px;
   padding: 10px 14px;
   margin: 4px 0;
@@ -276,17 +276,17 @@
 .msg-copy-btn {
   font-size: 10px;
   padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(78, 201, 176, 0.5);
-  color: #4ec9b0;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .msg-copy-btn:hover {
-  background: rgba(78, 201, 176, 0.2);
-  border-color: #4ec9b0;
+  background: var(--accent-primary-muted);
+  border-color: var(--accent-primary);
 }
 
 .chat-message.assistant {
@@ -324,7 +324,7 @@
   max-width: 200px;
   max-height: 150px;
   border-radius: 4px;
-  border: 1px solid rgba(78, 201, 176, 0.3);
+  border: 1px solid var(--border-subtle);
 }
 
 .msg-user-text {
@@ -336,7 +336,7 @@
 
 .msg-wave {
   font-size: 12px;
-  color: #4ec9b0;
+  color: var(--accent-primary);
   animation: wave-pulse 0.6s ease-in-out infinite;
   margin-right: 6px;
 }
@@ -371,12 +371,12 @@
 }
 
 .chat-message.user .msg-label {
-  background: rgba(78, 201, 176, 0.15);
-  color: #4ec9b0;
+  background: var(--accent-primary-muted);
+  color: var(--accent-primary);
 }
 
 .chat-message.assistant .msg-label {
-  background: rgba(78, 201, 176, 0.15);
+  background: var(--accent-primary-muted);
   color: var(--accent);
   animation: label-scanline 3s ease-in-out infinite;
 }
@@ -411,13 +411,13 @@
   font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   font-size: 14px;
   line-height: 1.75;
-  background: rgba(255,255,255,0.02);
+  background: transparent;
   border: none;
   border-radius: 8px;
   padding: 12px 16px;
   margin: 4px 0 16px 0;
   width: 100%;
-  color: var(--text-primary, #e0e0e0);
+  color: var(--text-primary);
 }
 
 .msg-content {
@@ -427,13 +427,13 @@
   height: auto;
   min-height: auto;
   overflow: visible;
-  color: var(--text-primary, #e0e0e0);
+  color: var(--text-primary);
 }
 
 /* Markdown 渲染样式 - OCT 双色调护眼风格 */
 .msg-content.markdown-body {
   white-space: normal;
-  color: var(--text-primary, #e0e0e0);
+  color: var(--text-primary);
   font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   font-size: 14px;
   line-height: 1.75;
@@ -452,14 +452,14 @@
 /* 流式输出时表格以纯文本展示，避免反复重排导致跳动；样式与最终表格接近以减小结束时的高度差 */
 .msg-content-streaming-root {
   display: block;
-  color: var(--text-primary, #e0e0e0);
+  color: var(--text-primary);
 }
 
 .msg-streaming-raw-table {
   display: block;
   white-space: pre-wrap;
   word-break: break-word;
-  color: #4ec9b0;
+  color: var(--accent-primary);
   font-size: 13px;
   line-height: 1.5;
   margin: 8px 0;
@@ -470,7 +470,7 @@
 .msg-content.markdown-body p {
   margin: 0 0 10px;
   line-height: 1.6;
-  color: var(--text-primary, #e0e0e0) !important;
+  color: var(--text-primary) !important;
 }
 
 .msg-content.markdown-body p:last-child {
@@ -483,7 +483,7 @@
 .msg-content.markdown-body h4 {
   margin: 14px 0 8px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-primary);
 }
 
 .msg-content.markdown-body h1 { font-size: 1.35em; }
@@ -497,7 +497,7 @@
 }
 
 .msg-content.markdown-body em {
-  color: #8b949e;
+  color: var(--text-secondary);
 }
 
 .msg-content.markdown-body ul,
@@ -581,7 +581,7 @@
   margin: 8px 0;
   font-size: 13px;
   font-family: 'Share Tech Mono', 'Courier New', monospace;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--border-subtle);
   display: table;
   background: var(--bg-surface);
 }
@@ -616,22 +616,22 @@
   text-align: left;
   white-space: normal;
   word-break: break-word;
-  color: var(--text-primary, #e0e0e0);
+  color: var(--text-primary);
   display: table-cell;
   vertical-align: top;
 }
 
 .msg-content.markdown-body th {
   background: var(--bg-surface);
-  color: var(--accent, #00ff88);
+  color: var(--accent-primary);
   font-weight: 500;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .msg-content.markdown-body td {
-  color: var(--text-primary, #e0e0e0);
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .msg-content.markdown-body tr:nth-child(even) {
@@ -659,7 +659,7 @@
 /* 时间戳 */
 .msg-timestamp {
   font-size: 10px;
-  color: #8b949e;
+  color: var(--text-tertiary);
   text-align: right;
   margin-top: 4px;
 }
@@ -679,11 +679,11 @@
 }
 
 .chat-thinking .processing-blocks .block {
-  background: #4ec9b0;
+  background: var(--accent-primary);
 }
 
 .chat-thinking .processing-text {
-  color: rgba(78, 201, 176, 0.8);
+  color: var(--text-secondary);
 }
 
 /* 打字中 processing 动画 */
@@ -707,7 +707,7 @@
   display: inline-block;
   width: 8px;
   height: 14px;
-  background: #4ec9b0;
+  background: var(--accent-primary);
   animation: block-blink 0.6s ease-in-out infinite;
   border-radius: 2px;
 }
@@ -729,7 +729,7 @@
 
 .processing-text {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--text-tertiary);
   letter-spacing: 1px;
 }
 
@@ -738,7 +738,7 @@
 }
 
 .chat-message.assistant .msg-content {
-  color: var(--text-primary, #e0e0e0);
+  color: var(--text-primary);
 }
 
 /* AMY 气泡内 markdown 文字提升对比度 */
@@ -754,11 +754,11 @@
 .chat-message.assistant .msg-content.markdown-body td,
 .chat-message.assistant .msg-content.markdown-body th,
 .chat-message.assistant .msg-content.markdown-body blockquote {
-  color: var(--text-primary, #e0e0e0) !important;
+  color: var(--text-primary) !important;
 }
 
 .chat-message.assistant .cursor-blink {
-  color: #4ec9b0;
+  color: var(--accent-primary);
   animation: blink 1s step-end infinite;
 }
 
@@ -784,8 +784,8 @@
   height: 28px;
   padding: 0;
   background: transparent;
-  border: 1px solid rgba(78, 201, 176, 0.4);
-  color: #4ec9b0;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   font-size: 14px;
   cursor: pointer;
   display: flex;
@@ -796,13 +796,13 @@
 }
 
 .mic-btn-icon:hover:not(:disabled) {
-  border-color: #4ec9b0;
-  background: rgba(78, 201, 176, 0.1);
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-muted);
 }
 
 .mic-btn-icon.recording {
-  border-color: #ff3c6e;
-  color: #ff3c6e;
+  border-color: var(--status-error);
+  color: var(--status-error);
   font-size: 12px;
   animation: rec-blink 1s ease-in-out infinite;
 }
@@ -811,25 +811,25 @@
 .mic-btn-icon.mic-btn-disabled {
   opacity: 0.4;
   cursor: not-allowed;
-  border-color: #555 !important;
-  color: #666 !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-tertiary) !important;
 }
 
 .mic-btn-icon.mic-btn-disabled:hover {
-  border-color: #555 !important;
+  border-color: var(--border-subtle) !important;
   background: transparent !important;
 }
 
 .chat-section.drag-over {
-  border: 2px dashed #4ec9b0;
-  background: rgba(78, 201, 176, 0.03);
+  border: 2px dashed var(--accent-primary);
+  background: var(--accent-primary-muted);
 }
 
 .image-preview-wrap {
   position: relative;
   padding: 8px 10px;
-  background: #161b22;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;  /* 防止被挤压变形 */
   /* 居中显示 */
   max-width: 800px;
@@ -843,7 +843,7 @@
   max-width: 200px;
   max-height: 120px;
   border-radius: 4px;
-  border: 1px solid rgba(78, 201, 176, 0.3);
+  border: 1px solid var(--border-light);
 }
 
 .image-remove {
@@ -852,9 +852,9 @@
   left: 12px;
   width: 24px;
   height: 24px;
-  background: rgba(255, 60, 110, 0.8);
+  background: var(--status-error);
   border: none;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 16px;
   cursor: pointer;
   border-radius: 50%;
@@ -867,8 +867,8 @@
 /* 文件预览区域 */
 .file-preview-wrap {
   padding: 8px 10px;
-  background: #161b22;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -881,11 +881,11 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: rgba(78, 201, 176, 0.05);
-  border: 1px solid rgba(78, 201, 176, 0.2);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
   font-size: 12px;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .file-icon {
@@ -893,7 +893,7 @@
 }
 
 .file-name {
-  color: #4ec9b0;
+  color: var(--accent-primary);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -901,16 +901,16 @@
 }
 
 .file-size {
-  color: #8b949e;
+  color: var(--text-tertiary);
   font-size: 10px;
 }
 
 .file-remove {
   width: 18px;
   height: 18px;
-  background: rgba(255, 60, 110, 0.6);
+  background: var(--status-error-bg);
   border: none;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 12px;
   cursor: pointer;
   border-radius: 50%;
@@ -921,7 +921,7 @@
 }
 
 .file-remove:hover {
-  background: rgba(255, 60, 110, 0.9);
+  background: var(--status-error);
 }
 
 /* 文件菜单 */
@@ -933,16 +933,16 @@
   font-size: 14px;
   padding: 4px 8px;
   background: transparent;
-  border: 1px solid rgba(78, 201, 176, 0.4);
-  color: #4ec9b0;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .file-menu-btn:hover {
-  border-color: #4ec9b0;
-  background: rgba(78, 201, 176, 0.1);
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-muted);
 }
 
 .file-menu-dropdown {
@@ -950,8 +950,8 @@
   bottom: 100%;
   left: 0;
   margin-bottom: 4px;
-  background: #161b22;
-  border: 1px solid rgba(78, 201, 176, 0.4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
   padding: 4px;
   min-width: 140px;
@@ -964,8 +964,8 @@
   padding: 6px 10px;
   background: transparent;
   border: none;
-  color: #e6edf3;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 12px;
   text-align: left;
   cursor: pointer;
@@ -973,35 +973,35 @@
 }
 
 .file-menu-dropdown button:hover {
-  background: rgba(78, 201, 176, 0.1);
-  color: #4ec9b0;
+  background: var(--bg-hover);
+  color: var(--accent-primary);
 }
 
 .attach-btn {
   font-size: 14px;
   padding: 4px 8px;
   background: transparent;
-  border: 1px solid rgba(78, 201, 176, 0.4);
-  color: #4ec9b0;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .attach-btn:hover {
-  border-color: #4ec9b0;
-  background: rgba(78, 201, 176, 0.1);
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-muted);
 }
 
 @keyframes rec-blink {
-  0%, 100% { box-shadow: 0 0 4px #ff3c6e66; }
-  50% { box-shadow: 0 0 12px #ff3c6e99; }
+  0%, 100% { box-shadow: 0 0 4px var(--status-error); }
+  50% { box-shadow: 0 0 12px var(--status-error); }
 }
 
 .quick-menu-btn {
   background: transparent;
-  border: 1px solid rgba(78, 201, 176, 0.4);
-  color: #4ec9b0;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   font-size: 16px;
   padding: 6px 10px;
   cursor: pointer;
@@ -1009,21 +1009,21 @@
 }
 
 .quick-menu-btn:hover {
-  background: rgba(78, 201, 176, 0.1);
-  box-shadow: 0 0 8px rgba(78, 201, 176, 0.3);
+  background: var(--accent-primary-muted);
+  box-shadow: none;
 }
 
 .input-prompt {
-  color: #4ec9b0;
+  color: var(--accent-primary);
   font-size: 14px;
   font-weight: bold;
-  text-shadow: 0 0 8px rgba(78, 201, 176, 0.5);
+  text-shadow: none;
 }
 
 .chat-input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   border-radius: 12px;
   color: var(--text-primary);
   padding: 12px 16px;
@@ -1042,8 +1042,8 @@
 }
 
 .chat-input.focused {
-  border-color: rgba(255, 255, 255, 0.20);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-primary-muted);
 }
 
 .chat-input.flash {
@@ -1060,8 +1060,8 @@
 
 @keyframes screenshot-flash-border {
   0%, 100% { border-color: transparent; opacity: 0; }
-  15% { border-color: #4ec9b0; opacity: 1; }
-  85% { border-color: #4ec9b0; opacity: 1; }
+  15% { border-color: var(--accent-primary); opacity: 1; }
+  85% { border-color: var(--accent-primary); opacity: 1; }
 }
 
 @keyframes screenshot-flash-text {
@@ -1084,7 +1084,7 @@
   content: '';
   position: absolute;
   inset: 8px;
-  border: 4px solid #4ec9b0;
+  border: 4px solid var(--accent-primary);
   animation: screenshot-flash-border 1.5s ease-out forwards;
 }
 
@@ -1092,10 +1092,10 @@
   position: relative;
   z-index: 1;
   padding: 10px 20px;
-  background: rgba(13, 17, 23, 0.9);
-  border: 2px solid #4ec9b0;
-  color: #4ec9b0;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  background: var(--bg-overlay);
+  border: 2px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
   font-size: 14px;
   letter-spacing: 2px;
   animation: screenshot-flash-text 1.5s ease-out forwards;
@@ -1108,7 +1108,7 @@
   background: var(--accent-primary);
   border: 0;
   border-radius: 10px;
-  color: #fff;
+  color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 600;
@@ -1496,8 +1496,8 @@
 .amy-tag {
   font-size: 10px;
   padding: 2px 6px;
-  background: rgba(78, 201, 176, 0.15);
-  color: #4ec9b0;
+  background: var(--accent-primary-muted);
+  color: var(--accent-primary);
   border-radius: 3px;
 }
 
@@ -1551,44 +1551,44 @@
   margin-bottom: 2px;
   word-break: break-all;
   white-space: pre-wrap;
-  color: #e0e0e0; /* 默认色 */
+  color: var(--text-primary); /* 默认色 */
 }
 
 /* 日志颜色区分 - 根据关键词（提高优先级） */
 /* 记忆相关：蓝色 */
 .log-line.log-memory {
-  color: #00aaff !important;
-  border-left-color: #00aaff !important;
+  color: var(--status-info) !important;
+  border-left-color: var(--status-info) !important;
 }
 
 /* 错误：红色 */
 .log-line.log-error {
-  color: #ff4444 !important;
-  border-left-color: #ff4444 !important;
-  background: rgba(255, 68, 68, 0.06) !important;
+  color: var(--status-error) !important;
+  border-left-color: var(--status-error) !important;
+  background: var(--status-error-bg) !important;
 }
 
 /* 调试：灰色（降低视觉权重） */
 .log-line.log-debug {
-  color: #888888 !important;
+  color: var(--text-tertiary) !important;
   border-left-color: transparent !important;
 }
 
 /* 普通日志级别颜色 */
 .log-line.log-INFO {
-  color: #888888;
+  color: var(--text-tertiary);
 }
 .log-line.log-WARN {
-  color: #ffaa00;
-  border-left-color: #ffaa00;
+  color: var(--status-warning);
+  border-left-color: var(--status-warning);
 }
 .log-line.log-LOG {
-  color: #00aaff;
-  border-left-color: #00aaff;
+  color: var(--status-info);
+  border-left-color: var(--status-info);
 }
 .log-line.log-AGENT {
-  color: var(--accent);
-  border-left-color: var(--accent);
+  color: var(--accent-primary);
+  border-left-color: var(--accent-primary);
 }
 
 .log-line strong {
@@ -1602,7 +1602,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #888888;
+  color: var(--text-tertiary);
   font-style: italic;
   animation: matrix-flicker 2s ease-in-out infinite;
 }
@@ -1614,7 +1614,7 @@
 
 .log-terminal-xterm .xterm-viewport,
 .log-terminal-xterm .xterm-screen {
-  background: #161b22 !important;
+  background: var(--bg-surface) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1624,7 +1624,7 @@
 .right-panel-tabs {
   display: flex;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-surface);
 }
 
@@ -1643,14 +1643,14 @@
 }
 
 .right-panel-tab:hover {
-  color: var(--accent);
-  background: rgba(78, 201, 176, 0.03);
+  color: var(--accent-primary);
+  background: var(--bg-hover);
 }
 
 .right-panel-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  background: rgba(78, 201, 176, 0.05);
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  background: var(--bg-hover);
 }
 
 .right-panel-task-board {
