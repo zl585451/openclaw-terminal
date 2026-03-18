@@ -24,7 +24,7 @@ E:\windows-window\OpenClaw-Terminal\docs\01_系统提示词/
 #### 2. 核心文件编写
 
 **OCT_PROTOCOL.md**（完整编写）
-- 思维引导系统（SocraticPanel）触发规则
+- 自适应澄清（自然追问）规范
 - 选项框渲染协议（OptionBox / Pill）
 - 任务清单协议（TaskList）
 - 表格使用规范

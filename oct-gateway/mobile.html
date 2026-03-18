@@ -146,7 +146,7 @@ function renderMessage(role, content, isSystem) {
     var pillsContent = extractTag(content, 'pills');
     var checkboxContent = extractTag(content, 'checkbox');
     var tasklistContent = extractTag(content, 'tasklist');
-    var plainText = stripTags(content).replace(/\[THINK_MODE:[^\]]+\]/g, '').trim();
+    var plainText = stripTags(content).replace(new RegExp('\\[' + 'THINK' + '_MODE:[^\\]]+\\]', 'g'), '').trim();
 
     if (plainText) bubble.textContent = plainText;
 

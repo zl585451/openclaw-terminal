@@ -9,7 +9,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  font-family: 'Share Tech Mono', monospace;
+  font-family: var(--font-mono);
   background: var(--bg-sidebar);
 }
 
@@ -24,13 +24,13 @@
 }
 
 .tb-title {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--accent-primary);
   letter-spacing: 1px;
 }
 
 .tb-count {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   margin-left: auto;
 }
@@ -39,7 +39,7 @@
   background: transparent;
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--text-xs);
   padding: 2px 6px;
   border-radius: 2px;
   cursor: pointer;
@@ -53,7 +53,7 @@
 
 /* 今日意图 */
 .tb-intention {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   padding: 4px 12px;
   background: var(--bg-hover);
@@ -75,7 +75,7 @@
   justify-content: center;
   height: 60px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 /* 任务条目 */
@@ -115,7 +115,7 @@
 /* 任务内容 */
 .tb-task-content {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--text-code);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -144,7 +144,7 @@
   background: transparent;
   border: 1px solid var(--border-light);
   border-radius: 3px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -180,7 +180,7 @@
   background: var(--status-error-bg);
   border: 1px solid var(--status-error);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--status-error);
 }
 
@@ -189,7 +189,7 @@
   background: transparent;
   border: 1px solid currentColor;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -218,7 +218,7 @@
   gap: 12px;
   padding: 8px 12px;
   border-top: 1px solid var(--border-subtle);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
@@ -228,7 +228,7 @@
   border: 1px solid var(--border-light);
   border-radius: 3px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -259,7 +259,7 @@
 }
 
 .tb-parking-header {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   margin-bottom: 8px;
 }
@@ -280,13 +280,13 @@
   padding: 2px 6px;
   background: var(--border-color);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--text-xs);
   border-radius: 3px;
 }
 
 .tb-parking-content {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -311,7 +311,7 @@
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: 3px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -336,7 +336,7 @@
 }
 
 .tb-parking-empty {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   text-align: center;
   padding: 20px 0;
@@ -358,8 +358,8 @@
   border: 1px solid var(--border-light);
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: 12px;
-  font-family: 'Share Tech Mono', monospace;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
   outline: none;
   transition: border-color 0.15s;
 }
@@ -378,7 +378,7 @@
   border: 1px solid var(--accent-primary);
   border-radius: 4px;
   color: var(--accent-primary);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -398,7 +398,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
   overflow: hidden;
-  font-family: 'Share Tech Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .tb-full-header {
@@ -409,7 +409,7 @@
 }
 
 .tb-full-date {
-  font-size: 14px;
+  font-size: var(--text-base);
   color: var(--accent-primary);
   letter-spacing: 2px;
   margin-bottom: 6px;
@@ -423,7 +423,7 @@
 }
 
 .tb-intention-label {
-  font-size: 9px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   letter-spacing: 2px;
   padding: 2px 6px;
@@ -432,7 +432,7 @@
 }
 
 .tb-intention-text {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-primary);
 }
 
@@ -446,7 +446,7 @@
   border: 1px solid var(--border-light);
   border-radius: 4px;
   color: var(--text-secondary);
-  font-size: 16px;
+  font-size: var(--text-lg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -474,7 +474,7 @@
   background: var(--bg-surface);
   border-top: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 9px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   letter-spacing: 3px;
   text-transform: uppercase;

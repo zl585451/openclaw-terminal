@@ -55,7 +55,7 @@ docs/01_系统提示词/
 ### OCT_PROTOCOL.md - 交互协议
 
 **内容**：
-- 思维引导系统（SocraticPanel）触发规则
+- 自适应澄清（自然追问）规范
 - 选项框渲染协议（OptionBox / Pill）
 - 任务清单协议（TaskList）
 - 表格使用规范
@@ -126,19 +126,7 @@ await chat.send(sessionKey, message, {
 
 ### 步骤 4：前端组件联动
 
-确保前端组件能正确识别协议标记：
-
-**SocraticPanel**：
-```typescript
-// 检测消息末尾的 [THINK_MODE:xxx] 标记
-const thinkModeMatch = message.match(/\[THINK_MODE:(\w+)\]$/);
-if (thinkModeMatch) {
-  const mode = thinkModeMatch[1];
-  // 弹出 SocraticPanel 组件
-  setShowSocraticPanel(true);
-  setThinkMode(mode);
-}
-```
+确保前端组件能正确识别协议标签（成对标签优先）：
 
 **OptionBox / Pill**：
 ```typescript
@@ -171,9 +159,8 @@ if (message.includes('任务清单：')) {
 ```
 
 **预期输出**：
-- AMY 回复包含思维引导建议
-- 消息末尾有 `[THINK_MODE:decision]` 标记
-- 前端自动弹出 SocraticPanel 组件
+- AMY 回复包含自适应澄清（自然追问）
+- 回复中嵌入 `[pills]` 或 `[question]` 标签供少爷一键回复/填充
 
 ### 测试 2：选项框渲染
 
@@ -346,7 +333,7 @@ tail -f ~/.openclaw/logs/gateway.log
 ```typescript
 // 调试代码
 console.log('Message:', message);
-console.log('Think mode match:', message.match(/\[THINK_MODE:(\w+)\]$/));
+console.log('Clarification tags:', { pills: message.includes('[pills]'), question: message.includes('[question]') });
 ```
 
 ### 问题 3：表格渲染异常

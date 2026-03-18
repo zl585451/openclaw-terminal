@@ -21,16 +21,16 @@
 }
 
 .task-list-title {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 9px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   letter-spacing: 3px;
   color: var(--text-tertiary);
   text-transform: uppercase;
 }
 
 .task-list-count {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   color: var(--accent-primary);
 }
 
@@ -110,7 +110,7 @@
 
 .task-label {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-primary);
   line-height: 1.4;
   flex: 1;
@@ -139,15 +139,15 @@
 }
 
 .task-celebration-text {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   letter-spacing: 3px;
   color: var(--accent-primary);
   text-shadow: none;
 }
 
 .task-celebration-sparkle {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--accent-primary);
   animation: sparkle-spin 1.5s ease-in-out infinite;
   display: inline-block;

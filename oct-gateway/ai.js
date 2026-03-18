@@ -14,6 +14,7 @@ async function loadSystemPrompt(promptsDir) {
       'core://my_user/profile',
       'core://agent/my_user',
       'core://my_user/communication',
+      'core://agent/rules/conversation_style',
       'core://agent/rules/output_format',
       'core://agent/rules/dispatch',
       'core://agent/rules/emotion',
@@ -95,12 +96,20 @@ ${bootMemory}
         console.warn('[AI] MEMORY.md 同步写入失败:', e.message);
       }
 
-      return buildSystemPrompt(bootMemory, 'nocturne');
+      return buildSystemPrompt(bootMemory, 'nocturne', promptsDir);
     }
   }
 
   console.warn('[AI] Nocturne 不可用，回退到本地 MD 文件');
-  const files = ['SOUL.md', 'AGENTS.md', 'USER.md', 'MEMORY.md'];
+  const files = [
+    'SOUL.md',
+    'AGENTS.md',
+    'USER.md',
+    'OCT_PROTOCOL.md',
+    'CLARIFICATION_PROTOCOL.md',
+    'adaptive-questioning-system.md',
+    'MEMORY.md',
+  ];
   const parts = [];
   for (const f of files) {
     const p = path.join(promptsDir, f);
@@ -110,10 +119,37 @@ ${bootMemory}
       } catch {}
     }
   }
-  return buildSystemPrompt(parts.join('\n\n---\n\n'), 'local');
+  return buildSystemPrompt(parts.join('\n\n---\n\n'), 'local', promptsDir);
 }
 
-function buildSystemPrompt(memoryContent, source) {
+function readTextIfExists(p) {
+  try {
+    if (!p || !fs.existsSync(p)) return '';
+    return fs.readFileSync(p, 'utf-8');
+  } catch {
+    return '';
+  }
+}
+
+function clampPromptBlock(title, text, maxChars) {
+  const raw = (text || '').trim();
+  if (!raw) return '';
+  const clamped = raw.length > maxChars ? raw.slice(0, maxChars) + '\n\n（已截断）' : raw;
+  return `## ${title}\n\n${clamped}\n`;
+}
+
+function buildSystemPrompt(memoryContent, source, promptsDir) {
+  const clarification = clampPromptBlock(
+    '自适应澄清协议（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'CLARIFICATION_PROTOCOL.md') : ''),
+    8000
+  );
+  const adaptiveSystem = clampPromptBlock(
+    '自适应澄清·核心逻辑（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'adaptive-questioning-system.md') : ''),
+    8000
+  );
+
   const nocturneInstructions = `
 ## 🧠 记忆系统（Nocturne Memory）
 
@@ -184,7 +220,13 @@ AMY · Cursor · Claude 三角协作：
 【已知】[已尝试的方案]
 【期望】[想要的结果]
 `;
-  return memoryContent + '\n\n---\n\n' + nocturneInstructions;
+  return [
+    memoryContent,
+    '\n\n---\n\n',
+    clarification ? clarification + '\n\n---\n\n' : '',
+    adaptiveSystem ? adaptiveSystem + '\n\n---\n\n' : '',
+    nocturneInstructions,
+  ].join('');
 }
 
 async function streamChat({ messages, onDelta, onDone, onError }) {

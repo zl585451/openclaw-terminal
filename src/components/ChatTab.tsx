@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 // xterm 已完全移除以修复闪退问题
@@ -8,15 +8,7 @@ import OptionBox from './OptionBox';
 import TaskList from './TaskList';
 import TaskBoard from './TaskBoard';
 import QuestionCards from './QuestionCards';
-import ThinkModeMenu from './ThinkModeMenu';
 import SettingsPanel from './SettingsPanel';
-import SocraticPanel from './SocraticPanel';
-import {
-  detectThinkModeMarker,
-  stripThinkModeMarker,
-  parseSocraticSections,
-  type SocraticRound,
-} from '../utils/socraticTemplates';
 import CodeBlock from './CodeBlock';
 import QuickCommandMenu from './QuickCommandMenu';
 import HeartbeatWave from './HeartbeatWave';
@@ -216,9 +208,9 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
     if (!isBlock) {
       return (
         <code style={{
-          background: 'var(--bg-code)', color: 'var(--text-code)',
+          background: 'var(--bg-code)', color: 'var(--text-code-color)',
           padding: '1px 5px', borderRadius: '3px',
-          fontSize: '12px', fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--text-code)', fontFamily: 'var(--font-mono)',
         }}>{children}</code>
       );
     }
@@ -245,7 +237,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
             borderRadius: '4px 4px 0 0',
             padding: '4px 12px',
           }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'Share Tech Mono', letterSpacing: '1px' }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', letterSpacing: '1px' }}>
               {(className?.replace('language-', '') || 'code').toUpperCase()} · {lines} lines
             </span>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -257,7 +249,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
                     border: '1px solid var(--border-light)',
                     borderRadius: '3px',
                     color: 'var(--text-secondary)',
-                    fontSize: '10px', fontFamily: 'Share Tech Mono',
+                    fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
                     padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
                     transition: 'all 0.15s',
                   }}
@@ -273,7 +265,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
                   borderColor: copied ? 'var(--accent-primary)' : 'var(--border-light)',
                   borderRadius: '3px',
                   color: copied ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                  fontSize: '10px', fontFamily: 'Share Tech Mono',
+                  fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
                   padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
                   transition: 'all 0.2s',
                 }}
@@ -293,7 +285,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
             transition: 'max-height 0.3s ease',
             position: 'relative',
           }}>
-            <code style={{ color: 'var(--text-code)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+            <code style={{ color: 'var(--text-code-color)', fontSize: 'var(--text-code)', fontFamily: 'var(--font-mono)' }}>
               {code}
             </code>
             {isLong && !expanded && (
@@ -360,7 +352,7 @@ const MarkdownContent = memo(
             <span style={{
               display: 'block',
               fontFamily: 'var(--font-mono)',
-              fontSize: '13px',
+              fontSize: 'var(--text-code)',
               color: 'var(--accent-primary)',
               whiteSpace: 'pre',
               lineHeight: 1.6,
@@ -418,17 +410,17 @@ const SystemMessage = ({ text }: { text: string }) => {
         marginBottom: collapsed && isLong ? 0 : '8px',
         cursor: isLong ? 'pointer' : 'default',
       }} onClick={() => isLong && setCollapsed(!collapsed)}>
-        <span style={{ color: 'var(--status-warning)', fontSize: '10px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>
+        <span style={{ color: 'var(--status-warning)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', letterSpacing: '2px' }}>
           [ SYSTEM ]
         </span>
         {isLong && (
-          <span style={{ color: 'var(--status-warning)', fontSize: '10px', fontFamily: 'Share Tech Mono', opacity: 0.7 }}>
+          <span style={{ color: 'var(--status-warning)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', opacity: 0.7 }}>
             {collapsed ? '展开' : '收起'}
           </span>
         )}
       </div>
       {collapsed && isLong ? (
-        <div style={{ color: 'var(--text-primary)', fontSize: '13px', opacity: 0.8 }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 'var(--text-code)', opacity: 0.8 }}>
           {preview}
           <span style={{ color: 'var(--status-warning)', opacity: 0.5 }}> ···</span>
         </div>
@@ -436,7 +428,7 @@ const SystemMessage = ({ text }: { text: string }) => {
         <div>
           {lines.map((line, i) => (
             <div key={i} style={{
-              color: 'var(--text-primary)', fontSize: '13px',
+              color: 'var(--text-primary)', fontSize: 'var(--text-code)',
               marginBottom: '4px', lineHeight: 1.5,
             }}>{line}</div>
           ))}
@@ -463,12 +455,8 @@ interface ChatMessageItemProps {
   wsConnected: boolean;
   quickSend: (text: string) => void;
   onContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
-  /** templateId 可选：指定打开哪种思维模式 */
-  onOpenSocratic: (templateId?: string) => void;
   /** 点击反思问引用到输入框 */
   onQuoteQuestion: (text: string) => void;
-  /** 是否是最后一条助手消息（只有最后一条才显示思维模式按钮*/
-  isLastAssistantMsg: boolean;
   /** 成对标签解析出的渲染段（存在时优先渲染） */
   segments?: RenderSegment[];
 }
@@ -490,14 +478,10 @@ const ChatMessageItem = memo(function ChatMessageItem({
   wsConnected,
   quickSend,
   onContextMenu,
-  onOpenSocratic,
   onQuoteQuestion,
-  isLastAssistantMsg,
   segments,
 }: ChatMessageItemProps) {
   const [hoverTime, setHoverTime] = React.useState(false);
-  const [thinkMenuOpen, setThinkMenuOpen] = React.useState(false);
-  const thinkBtnRef = React.useRef<HTMLButtonElement>(null);
   
   const msgRef = React.useRef<HTMLDivElement>(null);
   const bodyRef = React.useRef<HTMLDivElement>(null);
@@ -524,7 +508,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
-            <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>AMY</span>
+            <span style={{ color: 'var(--accent)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', letterSpacing: '2px' }}>AMY</span>
             {isStreamingMsg && agentPhase !== 'idle' && (
               <span className="agent-status-badge">
                 {agentPhase === 'thinking' ? '思考中' : '打字中'}
@@ -654,28 +638,6 @@ const ChatMessageItem = memo(function ChatMessageItem({
                 )}
               </>
             )}
-            {!isStreamingMsg && !msg.isSystemReply && isLastAssistantMsg && (
-              <>
-                <button
-                  ref={thinkBtnRef}
-                  type="button"
-                  className="socratic-trigger-btn"
-                  onClick={() => setThinkMenuOpen((v) => !v)}
-                  title="思维模式：帮你理清思路、做决定、拆解目标"
-                >
-                  ◈ 思维模式
-                </button>
-                <ThinkModeMenu
-                  anchorRef={thinkBtnRef}
-                  visible={thinkMenuOpen}
-                  onClose={() => setThinkMenuOpen(false)}
-                  onSelect={(templateId) => {
-                    setThinkMenuOpen(false);
-                    onOpenSocratic(templateId);
-                  }}
-                />
-              </>
-            )}
           </div>
           )
         ) : (
@@ -691,8 +653,8 @@ const ChatMessageItem = memo(function ChatMessageItem({
         onMouseLeave={() => setHoverTime(false)}
         style={{
           color: hoverTime ? 'var(--accent)' : 'var(--text-secondary)',
-          fontSize: '10px',
-          fontFamily: 'Share Tech Mono',
+          fontSize: 'var(--text-xs)',
+          fontFamily: 'var(--font-mono)',
           cursor: 'default',
           transition: 'color 0.2s',
           letterSpacing: '0.5px',
@@ -927,14 +889,14 @@ const ChatInputArea = memo(function ChatInputArea({
               </div>
               <div style={{ overflow: 'hidden' }}>
                 <div style={{
-                  fontSize: '12px', color: 'var(--text-primary)',
-                  fontFamily: 'Share Tech Mono, monospace',
+                  fontSize: 'var(--text-sm)', color: 'var(--text-primary)',
+                  fontFamily: 'var(--font-mono)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   maxWidth: '120px',
                 }}>{file.name}</div>
                 <div style={{
-                  fontSize: '10px', color: 'var(--text-tertiary)',
-                  fontFamily: 'Share Tech Mono, monospace',
+                  fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)',
+                  fontFamily: 'var(--font-mono)',
                 }}>{formatFileSize(file.size)}</div>
               </div>
               <button
@@ -1057,7 +1019,6 @@ interface ChatMessageListProps {
   bottomRef: React.RefObject<HTMLDivElement | null>;
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
   onMessageContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
-  onOpenSocratic: (templateId?: string) => void;
   onQuoteQuestion: (text: string) => void;
 }
 
@@ -1075,21 +1036,10 @@ const ChatMessageList = function ChatMessageList({
   bottomRef,
   onScroll,
   onMessageContextMenu,
-  onOpenSocratic,
   onQuoteQuestion,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-
-  const lastAssistantMsgId = useMemo(() => {
-    for (let i = displayMessages.length - 1; i >= 0; i--) {
-      const m = displayMessages[i];
-      if (m.role === 'assistant' && !m.isStreaming && !m.isSystemReply) {
-        return m.id;
-      }
-    }
-    return null;
-  }, [displayMessages]);
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
@@ -1168,9 +1118,7 @@ const ChatMessageList = function ChatMessageList({
             wsConnected={wsConnected}
             quickSend={quickSend}
             onContextMenu={onMessageContextMenu}
-            onOpenSocratic={onOpenSocratic}
             onQuoteQuestion={onQuoteQuestion}
-            isLastAssistantMsg={msg.id === lastAssistantMsgId}
           />
         );
       })}
@@ -1221,15 +1169,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: number; text: string } | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
-  const [showSocratic, setShowSocratic] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
   const [displayedLength, setDisplayedLength] = useState(0);
-  // AI 自动触发的思维引导数据：customRounds（自然格式）templateId（THINK_MODE 标记）
-  const [activeSocratic, setActiveSocratic] = useState<{
-    rounds?: SocraticRound[];
-    templateId?: string;
-  } | null>(null);
   // 任务看板显示状态
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // ===== 所有 useRef 集中声明 =====
@@ -1529,29 +1471,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // 不立刻清空，让打字机跑完
       const systemReply = pendingSystemReply.current;
       pendingSystemReply.current = false;
-
-      // ── 思维引导自动触发检──────────────────────────────────
-      if (!systemReply && finalStreamContent) {
-        const thinkModeId = detectThinkModeMarker(finalStreamContent);
-        if (thinkModeId) {
-          // [THINK_MODE:xxx] 标记：剥离标记后显示，延迟弹出面板
-          finalStreamContent = stripThinkModeMarker(finalStreamContent);
-          setTimeout(() => {
-            setActiveSocratic({ templateId: thinkModeId });
-            setShowSocratic(true);
-          }, 400);
-        } else {
-          // 检测自然多轮 checkbox 格式（3组及以上）
-          const sections = parseSocraticSections(finalStreamContent);
-          if (sections) {
-            setTimeout(() => {
-              setActiveSocratic({ rounds: sections });
-              setShowSocratic(true);
-            }, 400);
-          }
-        }
-      }
-      // ──────────────────────────────────────────────────────────
 
       // 解析 /status 系统回复，更新状态栏
       const isSystem = systemReply;
@@ -1988,13 +1907,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
   }, []);
 
-  const socraticContextText = useMemo(() => {
-    const recent = messages.slice(-6);
-    const lastUser = [...recent].reverse().find((m) => m.role === 'user');
-    const lastAI   = [...recent].reverse().find((m) => m.role === 'assistant');
-    return [lastUser?.content, lastAI?.content].filter(Boolean).join(' ');
-  }, [messages]);
-
   return (
     <>
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
@@ -2027,7 +1939,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '9px 16px', cursor: 'pointer',
                   color: item.danger ? 'var(--status-error)' : 'var(--text-primary)',
-                  fontSize: '12px', fontFamily: 'Share Tech Mono',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
                   transition: 'background 0.15s',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = item.danger ? 'var(--status-error-bg)' : 'var(--bg-hover)'; }}
@@ -2067,8 +1979,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           }}>
             <span style={{
               color: 'var(--accent-primary)',
-              fontSize: '16px',
-              fontFamily: 'Share Tech Mono, monospace',
+              fontSize: 'var(--text-lg)',
+              fontFamily: 'var(--font-mono)',
               letterSpacing: '3px',
               textShadow: '0 0 10px var(--glow-color)',
             }}>⬇ DROP FILES HERE</span>
@@ -2129,29 +2041,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           bottomRef={bottomRef}
           onScroll={handleChatScroll}
           onMessageContextMenu={(e, msg, raw) => setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id, text: raw })}
-          onOpenSocratic={(templateId?: string) => {
-            if (templateId) setActiveSocratic({ templateId });
-            setShowSocratic(true);
-          }}
           onQuoteQuestion={(text: string) => setInjectInputText(text)}
         />
-        {showSocratic && (
-          <SocraticPanel
-            inline
-            contextText={socraticContextText}
-            customRounds={activeSocratic?.rounds}
-            suggestedTemplateId={activeSocratic?.templateId}
-            onComplete={(text) => {
-              setInjectInputText(text);
-              setShowSocratic(false);
-              setActiveSocratic(null);
-            }}
-            onClose={() => {
-              setShowSocratic(false);
-              setActiveSocratic(null);
-            }}
-          />
-        )}
         {showScrollBtn && (
           <div
             onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
@@ -2220,7 +2111,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             borderRadius: '4px',
             color: 'var(--text-secondary)',
             cursor: 'pointer',
-            fontSize: '12px',
+            fontSize: 'var(--text-sm)',
             zIndex: 10,
             display: 'flex',
             alignItems: 'center',
@@ -2259,9 +2150,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             />
             <span
               style={{
-                fontSize: '9px',
+                fontSize: 'var(--text-xs)',
                 color: 'var(--text-tertiary)',
-                fontFamily: 'Share Tech Mono',
+                fontFamily: 'var(--font-mono)',
               }}
             >
               GW
@@ -2281,9 +2172,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             />
             <span
               style={{
-                fontSize: '9px',
+                fontSize: 'var(--text-xs)',
                 color: 'var(--text-tertiary)',
-                fontFamily: 'Share Tech Mono',
+                fontFamily: 'var(--font-mono)',
               }}
             >
               MEM
@@ -2302,9 +2193,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           >
             <div
               style={{
-                fontSize: '20px',
+                fontSize: 'var(--text-3xl)',
                 color: 'var(--text-primary)',
-                fontFamily: 'Share Tech Mono',
+                fontFamily: 'var(--font-mono)',
                 fontWeight: 500,
                 letterSpacing: '1px',
                 lineHeight: 1,
@@ -2321,9 +2212,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             />
             <div
               style={{
-                fontSize: '12px',
+                fontSize: 'var(--text-xs)',
                 color: 'var(--text-secondary)',
-                fontFamily: 'Share Tech Mono',
+                fontFamily: 'var(--font-mono)',
                 letterSpacing: '0.5px',
                 lineHeight: 1,
               }}
@@ -2344,15 +2235,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           <HeartbeatWave connected={wsConnected} pulse={heartbeatPulse} />
         </div>
 
-        {/* 3. 系统信息 */}
+        {/* 3. 系统信息 MODEL/TOK/CTX */}
         <div style={{
           display: 'flex',
           flexWrap: 'wrap',
           padding: '4px 12px',
           borderBottom: '1px solid var(--border-subtle)',
           gap: '8px',
-          fontSize: '10px',
-          fontFamily: 'Share Tech Mono',
+          fontSize: 'var(--text-sm)',
+          fontFamily: 'var(--font-mono)',
         }}>
           <div style={{ display: 'flex', gap: '4px' }}>
             <span style={{ color: 'var(--text-tertiary)' }}>MODEL</span>
@@ -2409,8 +2300,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             style={{
               flex: 1,
               padding: '4px 0',
-              fontSize: '10px',
-              fontFamily: 'Share Tech Mono',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-mono)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -2436,8 +2327,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             style={{
               flex: 1,
               padding: '4px 0',
-              fontSize: '10px',
-              fontFamily: 'Share Tech Mono',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-mono)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -2455,8 +2346,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             style={{
               flex: 1,
               padding: '4px 0',
-              fontSize: '10px',
-              fontFamily: 'Share Tech Mono',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-mono)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -2478,8 +2369,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             style={{
               flex: 1,
               padding: '4px 0',
-              fontSize: '10px',
-              fontFamily: 'Share Tech Mono',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-mono)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',

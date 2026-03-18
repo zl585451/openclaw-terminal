@@ -46,7 +46,7 @@
 - ❌ 纯文本查看时有冗余信息
 
 ### 是否适合 OCT
-**非常适合** — 与 OCT 现有前端组件（OptionBox/TaskList/SocraticPanel）天然匹配
+**非常适合** — 与 OCT 现有前端组件（OptionBox/TaskList/QuestionCards 等）天然匹配
 
 ### 推荐指数
 ⭐⭐⭐⭐⭐
@@ -348,7 +348,7 @@ oct:
 2. 解析简单（正则即可），性能高
 3. 支持属性和嵌套，扩展性强
 4. 降级友好，未知标签可原样显示
-5. 与 OCT 现有组件（OptionBox/TaskList/SocraticPanel）完美对应
+5. 与 OCT 现有组件（OptionBox/TaskList/QuestionCards）完美对应
 
 ### 备选方案：**Markdown Directives（方案一）**
 
@@ -398,7 +398,7 @@ function parseRenderBlocks(markdown: string): RenderBlock[] {
 |------|---------|---------|
 | `[pills]` | `<OptionBox>` | ≤4 项横排胶囊，>4 项 checkbox 列表 |
 | `[task-list]` | `<TaskList>` | 可勾选清单，全勾完庆祝动画 |
-| `[think mode="xxx"]` | `<SocraticPanel>` | 根据 mode 加载对应引导模板 |
+| （已废弃）`think mode` | （已删除） | v0.1.3 起改为自适应澄清（嵌入式追问 + 标签渲染） |
 | `[text]` | `<Markdown>` | 标准 Markdown 渲染 |
 
 ### 4. AMY 输出规范更新

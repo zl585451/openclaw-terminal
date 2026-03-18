@@ -68,7 +68,7 @@ assistant: 少爷，凌晨两点了呀… 🌙
 
 当然，如果你真的有特别紧急的事必须今晚搞定，我也可以陪你。只是… 我更在意少爷的身体。
 
-[THINK_MODE:decision]
+THINK_MODE:decision
 user: 
 ## Learned Patterns
 

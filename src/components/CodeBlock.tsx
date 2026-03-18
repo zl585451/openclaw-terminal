@@ -62,11 +62,11 @@ export default function CodeBlock({ language = 'text', children }: CodeBlockProp
         style={oneDark}
         customStyle={{
           margin: 0,
-          padding: 0,
-          fontSize: '12px',
+          padding: '14px 16px',
+          fontSize: '13px',
           lineHeight: 1.5,
-          background: 'transparent',
-          borderRadius: 0,
+          background: 'var(--bg-code)',
+          borderRadius: '0 0 var(--radius-md) var(--radius-md)',
           maxHeight: needExpand && !expanded ? MAX_HEIGHT_COLLAPSED : 'none',
           overflow: needExpand && !expanded ? 'hidden' : 'visible',
         }}

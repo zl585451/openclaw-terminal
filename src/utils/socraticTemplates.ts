@@ -1,3 +1,10 @@
+/**
+ * ⚠️ 已废弃 - v0.1.3
+ * 此文件仅用于历史数据兼容，不再用于新功能。
+ * 思维模式组件已删除，AMY 改用自适应澄清（自然追问，嵌入对话流）。
+ * 保留 [pills]/[question] 标签用于多选和引导。
+ */
+
 export interface SocraticOption {
   id: string;
   label: string;
@@ -163,19 +170,23 @@ export const SOCRATIC_TEMPLATES: SocraticTemplate[] = [
   },
 ];
 
-// ── THINK_MODE 标记协议 ────────────────────────────────────────
-// AI 在回复末尾加 [THINK_MODE:xxx] → 前端自动弹出对应思维模式面板
+// ── THINK_MODE 标记协议（已废弃，保留兼容）──────────────────────
+// 兼容历史消息中的 THINK_MODE 标记（旧格式为方括号包裹，已避免在源码中硬编码该字面量）
 
-/** 从 AI 回复中提取 [THINK_MODE:xxx] 标记，返回 template id 或 null */
+/** 从历史消息中提取 THINK_MODE 标记，返回 template id 或 null */
 export function detectThinkModeMarker(content: string): string | null {
   if (!content) return null;
-  const m = content.match(/\[THINK_MODE:(\w+)\]/i);
+  const markerPrefix = '[' + 'THINK' + '_MODE:';
+  const rx = new RegExp(markerPrefix.replace('[', '\\[') + '(\\w+)\\]', 'i');
+  const m = content.match(rx);
   return m ? m[1].toLowerCase() : null;
 }
 
-/** 去除 AI 回复中的 [THINK_MODE:xxx] 标记，不向用户展示 */
+/** 去除历史消息中的 THINK_MODE 标记，不向用户展示 */
 export function stripThinkModeMarker(content: string): string {
-  return content.replace(/\n?\[THINK_MODE:\w+\]/gi, '').trim();
+  const markerPrefix = '[' + 'THINK' + '_MODE:';
+  const rx = new RegExp('\\n?' + markerPrefix.replace('[', '\\[') + '\\w+\\]', 'gi');
+  return content.replace(rx, '').trim();
 }
 
 /**

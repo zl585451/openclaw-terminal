@@ -40,7 +40,7 @@ export const terminalTheme: ThemeDefinition = {
     "--text-secondary":   "#8BA68A",
     "--text-tertiary":    "#5E7A5C",
     "--text-inverse":     "#0B0F14",
-    "--text-code":        "#B8D4B0",
+    "--text-code-color":  "#B8D4B0",
     "--text-link":        "#00E676",
     "--text-placeholder": "#4A6648",
 
@@ -84,20 +84,30 @@ export const terminalTheme: ThemeDefinition = {
     "--shadow-lg":   "0 4px 20px rgba(0, 0, 0, 0.5)",
     "--shadow-glow": "0 0 20px rgba(0, 230, 118, 0.15)",
 
-    // 字体
-    "--font-sans":    "'JetBrains Mono', 'Fira Code', 'Noto Sans SC', monospace",
+    // 字体: Terminal 主题使用等宽字体保持黑客风
+    "--font-sans":    "'JetBrains Mono', 'Noto Sans SC', monospace",
     "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
     "--font-display": "'JetBrains Mono', monospace",
 
-    // 字号
-    "--text-xs":  "11px",
-    "--text-sm":  "12px",
-    "--text-base": "13px",
-    "--text-md":  "14px",
-    "--text-lg":  "15px",
-    "--text-xl":  "18px",
-    "--text-2xl": "22px",
-    "--text-3xl": "26px",
+    // 字号（优化后的分级）
+    "--text-xs":   "11px",   // 时间戳、极小标注
+    "--text-sm":   "12px",   // 状态标签、代码块头、辅助信息
+    "--text-base": "13px",   // 代码块内容、等宽场景
+    "--text-md":   "15px",   // ★ 正文/对话消息（核心阅读尺寸）
+    "--text-lg":   "17px",   // 区块标题、侧边栏标题
+    "--text-xl":   "20px",   // 页面标题
+    "--text-2xl":  "24px",   // 大标题
+    "--text-3xl":  "30px",   // 特大标题
+
+    // 代码专用字号
+    "--text-code":    "13px",  // 代码块内容
+    "--text-code-sm": "12px",  // 代码块头部语言标签
+
+    // 行高
+    "--leading-tight":   "1.4",  // 代码、紧凑场景
+    "--leading-normal":  "1.7",  // 正文（英文为主）
+    "--leading-relaxed": "1.8",  // 正文（中文混排）
+    "--leading-loose":   "2.0",  // 大标题
 
     // 滚动条
     "--scrollbar-track":       "#0B0F14",
@@ -139,7 +149,7 @@ export const deepspaceTheme: ThemeDefinition = {
     "--text-secondary":   "#8890B8",
     "--text-tertiary":    "#5C6490",
     "--text-inverse":     "#0C0E1A",
-    "--text-code":        "#B8BEE0",
+    "--text-code-color":  "#B8BEE0",
     "--text-link":        "#7C8AFF",
     "--text-placeholder": "#484E78",
 
@@ -177,18 +187,30 @@ export const deepspaceTheme: ThemeDefinition = {
     "--shadow-lg":   "0 6px 24px rgba(0, 0, 0, 0.5)",
     "--shadow-glow": "0 0 24px rgba(124, 138, 255, 0.12)",
 
-    "--font-sans":    "'IBM Plex Sans', 'Noto Sans SC', -apple-system, sans-serif",
-    "--font-mono":    "'IBM Plex Mono', 'JetBrains Mono', monospace",
-    "--font-display": "'IBM Plex Sans', sans-serif",
+    // 字体: Inter (英文) + Noto Sans SC (中文) + JetBrains Mono (代码)
+    "--font-sans":    "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
+    "--font-display": "'Inter', 'Noto Sans SC', -apple-system, sans-serif",
 
-    "--text-xs":  "11px",
-    "--text-sm":  "12px",
-    "--text-base": "13px",
-    "--text-md":  "14px",
-    "--text-lg":  "15px",
-    "--text-xl":  "18px",
-    "--text-2xl": "22px",
-    "--text-3xl": "26px",
+    // 字号（优化后的分级）
+    "--text-xs":   "11px",   // 时间戳、极小标注
+    "--text-sm":   "12px",   // 状态标签、代码块头、辅助信息
+    "--text-base": "13px",   // 代码块内容、等宽场景
+    "--text-md":   "15px",   // ★ 正文/对话消息（核心阅读尺寸）
+    "--text-lg":   "17px",   // 区块标题、侧边栏标题
+    "--text-xl":   "20px",   // 页面标题
+    "--text-2xl":  "24px",   // 大标题
+    "--text-3xl":  "30px",   // 特大标题
+
+    // 代码专用字号
+    "--text-code":    "13px",  // 代码块内容
+    "--text-code-sm": "12px",  // 代码块头部语言标签
+
+    // 行高
+    "--leading-tight":   "1.4",  // 代码、紧凑场景
+    "--leading-normal":  "1.7",  // 正文（英文为主）
+    "--leading-relaxed": "1.8",  // 正文（中文混排）
+    "--leading-loose":   "2.0",  // 大标题
 
     "--scrollbar-track":       "#0C0E1A",
     "--scrollbar-thumb":       "#22274A",
@@ -229,7 +251,7 @@ export const claudeDarkTheme: ThemeDefinition = {
     "--text-secondary":   "#A9A49C",
     "--text-tertiary":    "#7A7670",
     "--text-inverse":     "#2B2A27",
-    "--text-code":        "#D4D0C8",
+    "--text-code-color":  "#D4D0C8",
     "--text-link":        "#E8956A",
     "--text-placeholder": "#6A6660",
 
@@ -267,18 +289,30 @@ export const claudeDarkTheme: ThemeDefinition = {
     "--shadow-lg":   "0 4px 16px rgba(0, 0, 0, 0.3)",
     "--shadow-glow": "none",
 
-    "--font-sans":    "-apple-system, BlinkMacSystemFont, 'Noto Sans SC', 'Segoe UI', sans-serif",
+    // 字体: Inter (英文) + Noto Sans SC (中文) + SF Mono/JetBrains Mono (代码)
+    "--font-sans":    "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     "--font-mono":    "'SF Mono', 'JetBrains Mono', 'Fira Code', monospace",
-    "--font-display": "-apple-system, BlinkMacSystemFont, sans-serif",
+    "--font-display": "'Inter', 'Noto Sans SC', -apple-system, sans-serif",
 
-    "--text-xs":  "11px",
-    "--text-sm":  "12px",
-    "--text-base": "13px",
-    "--text-md":  "14px",
-    "--text-lg":  "15px",
-    "--text-xl":  "18px",
-    "--text-2xl": "24px",
-    "--text-3xl": "28px",
+    // 字号（优化后的分级）
+    "--text-xs":   "11px",   // 时间戳、极小标注
+    "--text-sm":   "12px",   // 状态标签、代码块头、辅助信息
+    "--text-base": "13px",   // 代码块内容、等宽场景
+    "--text-md":   "15px",   // ★ 正文/对话消息（核心阅读尺寸）
+    "--text-lg":   "17px",   // 区块标题、侧边栏标题
+    "--text-xl":   "20px",   // 页面标题
+    "--text-2xl":  "24px",   // 大标题
+    "--text-3xl":  "30px",   // 特大标题
+
+    // 代码专用字号
+    "--text-code":    "13px",  // 代码块内容
+    "--text-code-sm": "12px",  // 代码块头部语言标签
+
+    // 行高
+    "--leading-tight":   "1.4",  // 代码、紧凑场景
+    "--leading-normal":  "1.7",  // 正文（英文为主）
+    "--leading-relaxed": "1.8",  // 正文（中文混排）
+    "--leading-loose":   "2.0",  // 大标题
 
     "--scrollbar-track":       "#2B2A27",
     "--scrollbar-thumb":       "#4A4944",

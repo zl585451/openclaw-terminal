@@ -16,12 +16,14 @@
   padding: 6px 10px;
   background: var(--bg-code-header);
   border-bottom: 1px solid var(--border-subtle);
-  font-family: var(--font-sans);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--text-code-sm);  /* 12px */
 }
 
 .code-block-lang {
   color: var(--text-tertiary);
+  font-size: var(--text-code-sm);  /* 12px */
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
@@ -31,12 +33,16 @@
   gap: 6px;
 }
 
+.code-block-expand,
+.code-block-copy {
+  font-size: var(--text-xs);  /* 11px */
+}
+
 .code-block-expand {
   background: transparent;
   border: 1px solid var(--border-light);
   color: var(--accent-primary);
   cursor: pointer;
-  font-size: 11px;
   padding: 2px 6px;
   font-family: inherit;
 }
@@ -50,7 +56,6 @@
   border: none;
   color: var(--accent-primary);
   cursor: pointer;
-  font-size: 14px;
   padding: 2px 4px;
   opacity: 0.8;
 }

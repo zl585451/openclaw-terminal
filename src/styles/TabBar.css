@@ -17,7 +17,7 @@
   border: 1px solid transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   gap: 4px;

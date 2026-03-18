@@ -93,23 +93,23 @@ Expected: AMY follows up with next question based on answer
 
 **目标效果**：
 - 用户说"纠结/迷茫/不知道"时自动触发
-- 前端弹出 SocraticPanel 组件
-- 根据类型加载不同模板
+- 前端不弹面板，追问嵌入回复正文
+- 使用 `[pills]` / `[question]` / `[checkbox]` 作为交互承载
 
 **修改位置**：
-- `OCT_PROTOCOL.md` - 思维引导系统
-- `src/components/SocraticPanel.tsx`（如需调整）
+- `OCT_PROTOCOL.md` - 自适应澄清章节
+- `CLARIFICATION_PROTOCOL.md`（Prompt 层规则）
 
 **测试用例**：
 ```
 测试 1：用户说"我有点迷茫"
-预期：触发 [THINK_MODE:confusion]
+预期：触发自适应澄清追问（例如输出 [pills] 或 [question]）
 
 测试 2：用户说"不知道选哪个"
-预期：触发 [THINK_MODE:decision]
+预期：触发自适应澄清追问（例如输出 [pills] 或 [question]）
 
 测试 3：用户说"事情太多"
-预期：触发 [THINK_MODE:priority]
+预期：触发自适应澄清追问（例如输出 [pills] 或 [question]）
 ```
 
 **当前状态**：⚪ 未开始 → 🔴 测试中 → 🟢 测试通过

@@ -75,60 +75,18 @@ OPENCLAW_SYSTEM_PROMPT_DIR=E:\windows-window\OpenClaw-Terminal\docs\01_系统提
 
 根据代码审查，OCT 前端已包含以下组件：
 
-- ✅ `src/components/SocraticPanel.tsx` - 思维引导面板
 - ✅ `src/components/OptionBox.tsx` - 选项框组件
 - ✅ `src/components/TaskList.tsx` - 任务清单组件
 
 ### 需要添加的检测逻辑
 
-在 `src/components/ChatTab.tsx` 中添加协议标记检测：
-
-```typescript
-// 检测 [THINK_MODE:xxx] 标记
-function detectThinkMode(message: string): string | null {
-  const match = message.match(/\[THINK_MODE:(\w+)\]$/);
-  return match ? match[1] : null;
-}
-
-// 检测任务清单
-function detectTaskList(message: string): boolean {
-  return message.includes('任务清单：');
-}
-
-// 检测选项列表
-function detectOptions(message: string): string[] {
-  const lines = message.split('\n');
-  return lines
-    .filter(line => line.startsWith('- [ ] '))
-    .map(line => line.substring(6));
-}
-
-// 在渲染消息时处理
-const thinkMode = detectThinkMode(message);
-if (thinkMode) {
-  // 弹出 SocraticPanel
-  setSocraticPanel({ mode: thinkMode, visible: true });
-  // 从消息中移除标记
-  message = message.replace(/\[THINK_MODE:\w+\]$/, '');
-}
-```
-
-### 清理消息中的协议标记
-
-```typescript
-// 在显示前清理协议标记
-function cleanMessage(message: string): string {
-  return message
-    .replace(/\[THINK_MODE:\w+\]$/gm, '')
-    .trim();
-}
-```
+自适应澄清不需要额外前端状态管理。前端只需按 `OCT_PROTOCOL.md` 的渲染协议解析成对标签（`[pills]` / `[question]` / `[checkbox]` / `[tasklist]`）。
 
 ---
 
 ## 🧪 测试验证清单
 
-### 1. 思维引导触发
+### 1. 自适应澄清触发
 
 **测试输入**：
 ```
@@ -136,10 +94,8 @@ function cleanMessage(message: string): string {
 ```
 
 **预期结果**：
-- [ ] AMY 回复包含思维引导
-- [ ] 消息末尾有 `[THINK_MODE:decision]` 标记
-- [ ] 前端弹出 SocraticPanel 组件
-- [ ] 用户勾选后生成针对性建议
+- [ ] AMY 回复包含自然追问（自适应澄清）
+- [ ] 回复中嵌入 `[pills]` 或 `[question]` 标签供少爷一键回复/填充
 
 ### 2. 选项框渲染
 
