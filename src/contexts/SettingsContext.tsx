@@ -148,6 +148,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings]);
 
   useEffect(() => {
+    // 新主题系统启用后（ThemeProvider 使用 oct-theme 持久化），避免旧主题注入覆盖 :root 变量
+    try {
+      if (localStorage.getItem('oct-theme')) return;
+    } catch {}
     applyThemeVars(getActiveThemeVars(settings));
   }, [settings.theme, settings.customTheme]);
 

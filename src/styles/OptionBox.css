@@ -175,13 +175,13 @@
 }
 
 .option-pill {
-  padding: 7px 16px;
-  background: transparent;
-  border: 1px solid #1a6633;
-  border-radius: 20px;
-  color: #00cc66;
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 12px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.18s;
   line-height: 1.4;
@@ -189,18 +189,14 @@
 }
 
 .option-pill:hover:not(:disabled) {
-  border-color: #00ff88;
-  color: #00ff88;
-  background: rgba(0, 255, 136, 0.08);
-  box-shadow: 0 0 10px rgba(0, 255, 136, 0.15);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.20);
 }
 
 .option-pill.sent {
-  border-color: #00ff88;
-  color: #00ff88;
-  background: rgba(0, 255, 136, 0.12);
-  box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
+  border-color: var(--border-focus);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
 }
 
 .option-pill.faded {

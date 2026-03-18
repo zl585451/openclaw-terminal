@@ -5,7 +5,7 @@ import ChatTab, { ChatMessage } from './components/ChatTab';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
 import ActivationWindow from './components/ActivationWindow';
-import { loadSavedTheme } from './styles/themes';
+import { ThemeProvider } from './themes/ThemeProvider';
 import './styles/App.css';
 
 
@@ -19,9 +19,6 @@ const App: React.FC = () => {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // 加载已保存的主题
-    loadSavedTheme();
-    
     window.electronAPI?.licenseCheck?.().then((result: unknown) => {
       setIsActivated(!!result);
     }).catch(() => {
@@ -67,44 +64,48 @@ const App: React.FC = () => {
 
   if (isActivated !== true) {
     return (
-      <ActivationWindow onActivated={() => setIsActivated(true)} />
+      <ThemeProvider>
+        <ActivationWindow onActivated={() => setIsActivated(true)} />
+      </ThemeProvider>
     );
   }
 
   return (
-    <div className="app-container">
-      {/* 扫描线效果 */}
-      <div className="scanlines" />
-      
-      {/* 边角装饰 */}
-      <div className="corner corner-tl" />
-      <div className="corner corner-tr" />
-      <div className="corner corner-bl" />
-      <div className="corner corner-br" />
-      
-      {/* 标题栏 */}
-      <TitleBar />
-      
-      {/* 标签栏 */}
-      <TabBar 
-        activeTab={activeTab} 
-        onTabChange={setActiveTab} 
-      />
-      
-      {/* 内容区域 */}
-      <div className="content-area">
-        {activeTab === 'chat' && (
-          <ChatTab
-            messages={messages}
-            setMessages={setMessages}
-            getNextMessageId={getNextMessageId}
-            onStatusChange={() => {}}
-          />
-        )}
-        {activeTab === 'sound' && <SoundTab />}
-        {activeTab === 'reaper' && <ReaperTab />}
+    <ThemeProvider>
+      <div className="app-container">
+        {/* 扫描线效果 */}
+        <div className="scanlines" />
+        
+        {/* 边角装饰 */}
+        <div className="corner corner-tl" />
+        <div className="corner corner-tr" />
+        <div className="corner corner-bl" />
+        <div className="corner corner-br" />
+        
+        {/* 标题栏 */}
+        <TitleBar />
+        
+        {/* 标签栏 */}
+        <TabBar 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab} 
+        />
+        
+        {/* 内容区域 */}
+        <div className="content-area">
+          {activeTab === 'chat' && (
+            <ChatTab
+              messages={messages}
+              setMessages={setMessages}
+              getNextMessageId={getNextMessageId}
+              onStatusChange={() => {}}
+            />
+          )}
+          {activeTab === 'sound' && <SoundTab />}
+          {activeTab === 'reaper' && <ReaperTab />}
+        </div>
       </div>
-    </div>
+    </ThemeProvider>
   );
 };
 

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useSettings, type StreamSpeed } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import type { PermissionConfig } from '../utils/permissionCheck';
-import { THEMES, applyTheme, getCurrentTheme, type ThemeKey } from '../styles/themes';
+import { useTheme } from '../themes/ThemeProvider';
+import { allThemes, type ThemeId } from '../themes/themes';
 import '../styles/SettingsPanel.css';
 
 const SCREENSHOT_SHORTCUT_OPTIONS = [
@@ -73,7 +74,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [memoryReadLoading, setMemoryReadLoading] = useState(false);
   const [restartingBackend, setRestartingBackend] = useState(false);
   const [amyWorkModeWriting, setAmyWorkModeWriting] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState<ThemeKey>(() => getCurrentTheme());
+  const { themeId, setTheme } = useTheme();
 
   useEffect(() => {
     const api = (window as any).electronAPI;
@@ -361,30 +362,46 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               <section className="settings-section">
                 <h3>界面主题</h3>
                 <div className="settings-desc" style={{ marginBottom: 12 }}>选择你喜欢的配色方案</div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {Object.entries(THEMES).map(([key, theme]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => {
-                        applyTheme(key as ThemeKey);
-                        setCurrentTheme(key as ThemeKey);
-                      }}
-                      style={{
-                        padding: '8px 16px',
-                        background: currentTheme === key ? 'var(--accent)' : 'transparent',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: currentTheme === key ? '#000' : 'var(--text-secondary)',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      {theme.name}
-                    </button>
-                  ))}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {(Object.keys(allThemes) as ThemeId[]).map((key) => {
+                    const theme = allThemes[key];
+                    const active = themeId === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setTheme(key)}
+                        aria-pressed={active}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 14px',
+                          borderRadius: 9999,
+                          border: active ? '1px solid var(--border-focus)' : '1px solid var(--border-light)',
+                          background: active ? 'var(--accent-primary-muted)' : 'transparent',
+                          color: 'var(--text-primary)',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                          fontFamily: 'inherit',
+                          boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: theme.preview.accent,
+                            boxShadow: theme.isDark ? '0 0 10px var(--accent-primary-glow)' : 'none',
+                          }}
+                        />
+                        <span style={{ opacity: active ? 1 : 0.9 }}>{theme.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
               <section className="settings-section">

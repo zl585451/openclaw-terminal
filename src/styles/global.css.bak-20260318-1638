@@ -25,8 +25,30 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Selection（修复：确保选择器有效） */
+:::selection {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+}
+
+/* 滚动条（修复：确保选择器有效） */
+:::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+:::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+:::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+:::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
 /* Selection */
-::selection {
+:::selection {
   background: var(--selection-bg);
   color: var(--selection-text);
 }
@@ -34,18 +56,18 @@ body {
 /* ========================================
    滚动条
    ======================================== */
-::-webkit-scrollbar {
+:::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
+:::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
 }
-::-webkit-scrollbar-thumb {
+:::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
+:::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
 

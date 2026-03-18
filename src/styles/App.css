@@ -13,9 +13,9 @@ html, body, #root {
 }
 
 body {
-  background: var(--bg-primary);
+  background: var(--bg-base);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .app-container {
@@ -26,6 +26,15 @@ body {
   border: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;
+}
+
+/* 关键布局：保证内容区拿到可用高度，否则 ChatTab 输入框/右侧日志区会被挤没 */
+.content-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px;
+  padding-top: 5px;
 }
 
 /* 保证标题栏、标签栏、内容区在扫描线之上 */

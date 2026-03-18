@@ -103,7 +103,7 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #4ec9b0, transparent);
+  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
   animation: scanline 3s linear infinite;
 }
 
@@ -124,18 +124,20 @@
 .voice-toggle {
   font-size: 10px;
   padding: 4px 8px;
-  background: transparent;
-  border: 1px solid rgba(78, 201, 176, 0.4);
-  color: #4ec9b0;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: var(--text-secondary);
+  border-radius: 9999px;
+  font-family: var(--font-sans);
   cursor: pointer;
   letter-spacing: 1px;
   transition: all 0.2s;
 }
 
 .voice-toggle.on {
-  border-color: #4ec9b0;
-  color: #4ec9b0;
+  border-color: rgba(255, 255, 255, 0.20);
+  background: var(--accent-primary-muted);
+  color: var(--accent-primary);
 }
 
 .voice-toggle.off {
@@ -143,7 +145,9 @@
 }
 
 .voice-toggle:hover {
-  background: rgba(78, 201, 176, 0.1);
+  background: var(--accent-primary-muted);
+  border-color: var(--border-focus);
+  color: var(--accent-primary);
 }
 
 .ws-status {
@@ -156,7 +160,7 @@
 }
 
 .ws-status.connected {
-  color: #00ff41;
+  color: var(--status-success);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -166,14 +170,14 @@
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: #00ff41;
+  background: var(--status-success);
   border-radius: 50%;
   animation: pulse-dot 1.2s ease-in-out infinite;
-  box-shadow: 0 0 6px #00ff41;
+  box-shadow: none;
 }
 
 .ws-status.disconnected {
-  color: #8b949e;
+  color: var(--text-tertiary);
 }
 
 /* 聊天消息区 - 整体滚动，气泡高度随内容撑开 */
@@ -184,7 +188,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  background: var(--bg-primary);
+  background: var(--bg-base);
   font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   min-height: 0;
   height: 100%;
@@ -203,12 +207,12 @@
   background: transparent;
 }
 .chat-messages::-webkit-scrollbar-thumb {
-  background: #1e3a3a;
+  background: var(--border-subtle);
   border-radius: 2px;
 }
 .chat-messages::-webkit-scrollbar-thumb:hover {
-  background: var(--accent);
-  box-shadow: 0 0 6px rgba(78, 201, 176, 0.5);
+  background: var(--accent-primary);
+  box-shadow: 0 0 6px var(--accent-primary-glow);
 }
 
 .chat-empty {
@@ -525,26 +529,30 @@
 }
 
 .msg-content.markdown-body code {
-  background: rgba(0,0,0,0.25) !important;
+  background: var(--bg-code) !important;
   padding: 2px 6px;
-  border-radius: 2px;
+  border-radius: 6px;
   font-size: 13px;
-  font-family: 'Share Tech Mono', 'Courier New', monospace;
-  color: #79c0ff !important;
-  border: 1px solid rgba(255,255,255,0.08);
+  font-family: var(--font-mono);
+  color: var(--text-code) !important;
+  border: 1px solid var(--border-subtle);
 }
 
 .msg-content.markdown-body pre {
   margin: 0;
   padding: 0;
-  background: rgba(0,0,0,0.25) !important;
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--bg-code) !important;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .msg-content.markdown-body pre code {
-  color: #79c0ff !important;
+  color: var(--text-code) !important;
   background: transparent !important;
   border: none;
+  display: block;
+  padding: 14px;
 }
 
 .msg-content.markdown-body a {
@@ -553,7 +561,7 @@
 }
 
 .msg-content.markdown-body a:hover {
-  color: #79c0ff;
+  color: var(--accent-primary);
 }
 
 .msg-content.markdown-body blockquote {
@@ -759,9 +767,9 @@
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  background: var(--bg-primary);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  background: transparent;
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-sans);
   flex-shrink: 0;  /* 防止被挤压变形 */
   min-height: fit-content;  /* 保持内容高度 */
   /* 居中显示 */
@@ -1014,28 +1022,28 @@
 
 .chat-input {
   flex: 1;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-left: 2px solid var(--accent);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
   color: var(--text-primary);
-  padding: 8px 12px;
-  font-family: var(--font-mono);
-  font-size: 15px;
+  padding: 12px 16px;
+  font-family: var(--font-sans);
+  font-size: 14px;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
 .chat-input-textarea {
   resize: none;
-  min-height: 36px;
-  max-height: 120px;
+  min-height: 48px;
+  max-height: 160px;
   overflow-y: auto;
-  line-height: 1.4;
+  line-height: 1.6;
 }
 
 .chat-input.focused {
-  border-color: var(--accent);
-  box-shadow: 0 0 12px rgba(78, 201, 176, 0.3);
+  border-color: rgba(255, 255, 255, 0.20);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 .chat-input.flash {
@@ -1043,7 +1051,7 @@
 }
 
 .chat-input::placeholder {
-  color: #8b949e;
+  color: var(--text-placeholder);
 }
 
 .chat-input:disabled {
@@ -1094,20 +1102,27 @@
 }
 
 .send-btn {
-  padding: 8px 16px;
-  background: transparent;
-  border: 1px solid #4ec9b0;
-  color: #4ec9b0;
-  font-family: var(--font-mono);
+  width: 92px;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--accent-primary);
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  font-family: var(--font-sans);
   font-size: 13px;
+  font-weight: 600;
   transition: all 0.2s ease;
 }
 
 .send-btn:hover:not(:disabled) {
-  background: rgba(78, 201, 176, 0.15);
-  color: #4ec9b0;
-  box-shadow: 0 0 16px rgba(78, 201, 176, 0.3);
-  letter-spacing: 2px;
+  filter: brightness(1.1);
+}
+
+.send-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: none;
 }
 
 /* 右侧面板 - 三区域 4:1:3 */
@@ -1117,8 +1132,8 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
   min-height: 0;
 }
 
@@ -1127,7 +1142,7 @@
   flex: 1;
   overflow-y: auto;
   min-height: 150px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 /* Gateway 日志区域 - 固定高度 */
@@ -1137,15 +1152,21 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  background: var(--bg-surface);
+  min-height: 0;
 }
 
 .gateway-log-section .section-header {
   flex-shrink: 0;
+  background: var(--bg-surface);
+  border-top: 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .gateway-log-section .log-terminal-dom {
   flex: 1;
   overflow-y: auto;
+  background: var(--bg-surface);
 }
 
 .right-panel-upper {
@@ -1153,7 +1174,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .right-panel-middle {
@@ -1161,8 +1182,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-primary);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-subtle);
   overflow: hidden;
 }
 
@@ -1200,17 +1221,18 @@
   font-size: 11px;
   padding: 4px 10px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-light);
   color: var(--text-secondary);
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  border-radius: 8px;
+  font-family: var(--font-sans);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .right-panel-quick-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: rgba(78, 201, 176, 0.1);
+  border-color: var(--border-focus);
+  color: var(--accent-primary);
+  background: var(--accent-primary-muted);
 }
 
 .right-panel-quick-btn:disabled {
@@ -1219,9 +1241,9 @@
 }
 
 .right-panel-quick-btn.active {
-  border-color: var(--accent);
-  background: rgba(78, 201, 176, 0.15);
-  color: var(--accent);
+  border-color: var(--border-focus);
+  background: var(--accent-primary-muted);
+  color: var(--accent-primary);
 }
 
 .right-panel-terminal {
@@ -1234,23 +1256,24 @@
 
 .right-panel-terminal .section-header {
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .terminal-test-btn {
   font-size: 9px;
   padding: 2px 6px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-light);
   color: var(--text-secondary);
+  border-radius: 8px;
   cursor: pointer;
   font-family: inherit;
 }
 
 .terminal-test-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: rgba(78, 201, 176, 0.1);
+  border-color: var(--border-focus);
+  color: var(--accent-primary);
+  background: var(--accent-primary-muted);
 }
 
 .terminal-test-btn:disabled {
@@ -1275,7 +1298,7 @@
   flex-shrink: 0;
   padding: 8px 12px;
   background: var(--bg-surface);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
   margin-top: 0;
   min-height: 36px;
   align-items: center;
@@ -1287,7 +1310,7 @@
 
 .gw-control-label {
   font-size: 11px;
-  color: #8b949e;
+  color: var(--text-tertiary);
   letter-spacing: 1px;
   margin-right: 10px;
   font-weight: 600;
@@ -1320,56 +1343,56 @@
 }
 
 .gw-dot.running {
-  background: #00ff41;
-  box-shadow: 0 0 4px #00ff41;
+  background: var(--status-success);
+  box-shadow: 0 0 4px var(--status-success);
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
 .gw-dot.stopped {
-  background: #555;
+  background: var(--text-tertiary);
 }
 
 .amy-status-dot.reconnecting {
-  background: #d29922;
-  box-shadow: 0 0 4px #d29922;
+  background: var(--status-warning);
+  box-shadow: 0 0 4px var(--status-warning);
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
 .gw-btn-start {
-  border-color: #4ec9b088;
-  color: #4ec9b0;
+  border-color: var(--status-success);
+  color: var(--status-success);
 }
 
 .gw-btn-stop {
-  border-color: #f8514966;
-  color: #f85149;
+  border-color: var(--status-error);
+  color: var(--status-error);
 }
 
 .gw-btn-restart {
-  border-color: #79c0ff66;
-  color: #79c0ff;
+  border-color: var(--status-info);
+  color: var(--status-info);
 }
 
 .gw-btn-external {
-  border-color: #4ec9b066;
-  color: #4ec9b0;
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
   cursor: default;
   opacity: 0.9;
 }
 
 .gw-btn-clear-port {
-  border-color: #d2992266;
-  color: #d29922;
+  border-color: var(--status-warning);
+  color: var(--status-warning);
 }
 
 .amy-status-bar {
   flex-shrink: 0;
   padding: 6px 10px;
-  background: #0d1117;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
   font-size: 10px;
   font-family: 'JetBrains Mono', Consolas, monospace;
-  color: #8b949e;
+  color: var(--text-tertiary);
   overflow: hidden;
   position: relative;
   z-index: 1;
@@ -1402,14 +1425,14 @@
 }
 
 .amy-status-dot.online {
-  background: #00ff9f;
-  box-shadow: 0 0 4px #00ff9f;
+  background: var(--status-success);
+  box-shadow: 0 0 4px var(--status-success);
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
 .amy-status-dot.offline {
-  background: #ff3c6e;
-  box-shadow: 0 0 4px #ff3c6e;
+  background: var(--status-error);
+  box-shadow: 0 0 4px var(--status-error);
 }
 
 .amy-status-dim {
@@ -1424,22 +1447,22 @@
 
 .amy-status-icon,
 .amy-status-label {
-  color: #8b949e;
+  color: var(--text-tertiary);
 }
 
 .amy-status-val {
-  color: #e6edf3;
+  color: var(--text-primary);
 }
 
 .amy-status-sep {
-  color: #1e3a3a;
+  color: var(--border-light);
   user-select: none;
 }
 
 .amy-status-refresh-btn {
   background: transparent;
-  border: 1px solid #1e3a3a;
-  color: #8b949e;
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
   font-size: 12px;
   cursor: pointer;
   padding: 2px 6px;
@@ -1448,14 +1471,14 @@
   transition: all 0.15s;
 }
 .amy-status-refresh-btn:hover {
-  border-color: #4ec9b0;
-  color: #4ec9b0;
-  box-shadow: 0 0 6px rgba(78, 201, 176, 0.3);
+  border-color: var(--border-focus);
+  color: var(--accent-primary);
+  box-shadow: 0 0 6px var(--accent-primary-muted);
 }
 
 .amy-status-clock {
   font-size: 11px !important;
-  color: #4ec9b0 !important;
+  color: var(--accent-primary) !important;
   letter-spacing: 1px;
 }
 
@@ -1463,7 +1486,7 @@
   width: 100%;
   height: 40px;
   display: block;
-  background: #0d1117;
+  background: var(--bg-surface);
   border-radius: 2px;
   flex: 1;
   min-width: 80px;
@@ -1512,12 +1535,12 @@
 }
 
 .log-terminal-dom::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--border-subtle);
   border-radius: 3px;
 }
 
 .log-terminal-dom::-webkit-scrollbar-thumb:hover {
-  background: var(--accent);
+  background: var(--border-focus);
 }
 
 /* 日志行样式 - 基础 */

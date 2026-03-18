@@ -62,15 +62,15 @@ export default function CodeBlock({ language = 'text', children }: CodeBlockProp
         style={oneDark}
         customStyle={{
           margin: 0,
-          padding: '12px 14px',
+          padding: 0,
           fontSize: '12px',
           lineHeight: 1.5,
-          background: '#0d1117',
-          borderRadius: '0 0 4px 4px',
+          background: 'transparent',
+          borderRadius: 0,
           maxHeight: needExpand && !expanded ? MAX_HEIGHT_COLLAPSED : 'none',
           overflow: needExpand && !expanded ? 'hidden' : 'visible',
         }}
-        codeTagProps={{ style: { fontFamily: 'JetBrains Mono, Consolas, monospace' } }}
+        codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
         showLineNumbers={false}
         PreTag="div"
       >
