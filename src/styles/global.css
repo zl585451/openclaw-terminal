@@ -236,9 +236,40 @@ button:disabled {
 }
 
 .msg-user-body { border-radius: 12px 12px 2px 12px !important; }
-.msg-assistant-body { border-radius: 8px !important; }
+.msg-assistant-body { border-radius: 8px !important; height: auto !important; min-height: auto !important; overflow: visible !important; }
 pre, .code-block, .code-wrapper { border-radius: 6px !important; }
 .tb-task-item { border-radius: 6px !important; }
 .tb-parking-item { border-radius: 6px !important; }
 .tb-quick-input input { border-radius: 6px !important; }
 .log-terminal-dom { border-radius: 6px !important; }
+
+/* 消息容器高度修复 */
+.msg-body { height: auto !important; min-height: auto !important; overflow: visible !important; }
+.msg-content { height: auto !important; min-height: auto !important; overflow: visible !important; }
+.chat-message { height: auto !important; min-height: auto !important; overflow: visible !important; }
+
+/* Pills 和 OptionBox 确保可见 */
+.option-pills { position: relative !important; z-index: auto !important; margin-bottom: 10px !important; overflow: visible !important; }
+.option-box { position: relative !important; z-index: auto !important; margin-bottom: 10px !important; overflow: visible !important; }
+
+/* 表格显示修复 */
+.msg-content.markdown-body table,
+.msg-content.markdown-body table.md-table,
+.msg-content table {
+  display: table !important;
+  border-collapse: collapse !important;
+}
+
+.msg-content.markdown-body thead,
+.msg-content.markdown-body tbody {
+  display: table-row-group !important;
+}
+
+.msg-content.markdown-body tr {
+  display: table-row !important;
+}
+
+.msg-content.markdown-body th,
+.msg-content.markdown-body td {
+  display: table-cell !important;
+}

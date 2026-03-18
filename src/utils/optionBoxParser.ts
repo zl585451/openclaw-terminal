@@ -167,12 +167,61 @@ const UI_TEXT_PATTERNS = [
 
 function filterExpectedEffect(text: string): string {
   if (!text) return text;
-  return text
-    .split('\n')
-    .filter((line) => {
-      if (line.includes('预期效果')) return false;
-      return !UI_TEXT_PATTERNS.some((p) => p.test(line.trim()));
-    })
+  
+  const lines = text.split('\n');
+  const result: string[] = [];
+  let inCodeBlock = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    
+    // 检测代码块开始/结束
+    if (/^```/.test(trimmed)) {
+      inCodeBlock = !inCodeBlock;
+      result.push(line);
+      continue;
+    }
+    
+    // 在代码块内，保留所有内容
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+    
+    // 保留表格行（包含 | 的行）
+    if (/^\s*\|/.test(line)) {
+      result.push(line);
+      continue;
+    }
+    
+    // 保留列表项（- * + 或数字. 开头）
+    if (/^\s*[-*+]\s/.test(line) || /^\s*\d+[.)、]\s/.test(line)) {
+      result.push(line);
+      continue;
+    }
+    
+    // 保留空行
+    if (trimmed === '') {
+      result.push(line);
+      continue;
+    }
+    
+    // 过滤"预期效果"行
+    if (line.includes('预期效果')) {
+      continue;
+    }
+    
+    // 过滤 UI 控件描述行
+    if (UI_TEXT_PATTERNS.some((p) => p.test(trimmed))) {
+      continue;
+    }
+    
+    // 其他内容保留
+    result.push(line);
+  }
+  
+  return result
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -302,6 +351,7 @@ function isInsideCodeBlock(pos: number, ranges: Array<[number, number]>): boolea
 function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
   PAIRED_TAG_RX.lastIndex = 0;
   const allMatches = [...content.matchAll(PAIRED_TAG_RX)];
+  
   if (allMatches.length === 0) return { segments: [], found: false };
 
   const codeRanges = getCodeBlockRanges(content);
@@ -318,9 +368,11 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
     const matchStart = m.index!;
     const matchEnd = matchStart + m[0].length;
 
-    const textBefore = content.slice(lastIndex, matchStart).trim();
-    if (textBefore) {
-      segments.push({ type: 'text', content: filterExpectedEffect(textBefore), options: [] });
+    const textBefore = content.slice(lastIndex, matchStart);
+    
+    if (textBefore.trim()) {
+      const filtered = filterExpectedEffect(textBefore);
+      segments.push({ type: 'text', content: filtered, options: [] });
     }
 
     const tagType = m[1].toLowerCase() as SegmentType;
@@ -331,9 +383,54 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
         if (inner) segments.push({ type: 'text', content: filterExpectedEffect(inner), options: [] });
         break;
       case 'pills': {
+        // 1. 提取选项按钮
         let opts = parseSymbolOptions(inner);
         if (opts.length === 0) opts = parsePlainLines(inner);
-        segments.push({ type: 'pills', content: '', options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
+        
+        // 2. 保留pills标签内的其他Markdown内容（表格、代码块等）
+        // 移除已识别的选项行，保留其他内容
+        const optionLines = new Set<string>();
+        for (const opt of opts) {
+          // 记录选项的原始行，用于后续过滤
+          const lines = inner.split('\n');
+          for (const line of lines) {
+            if (line.includes(opt.label) || line.includes(opt.value)) {
+              optionLines.add(line.trim());
+            }
+          }
+        }
+        
+        // 过滤掉选项行，保留其他内容
+        const lines = inner.split('\n');
+        const remainingLines: string[] = [];
+        for (const line of lines) {
+          const trimmed = line.trim();
+          // 检查是否是选项行（以符号开头）
+          const isOptionLine = /^[\s]*(?:[-*+]\s*)?[■●◆○◉▪▸•·]/.test(line);
+          // 检查是否匹配已知的选项
+          const isKnownOption = opts.some(o => trimmed.includes(o.label) || trimmed.includes(o.value));
+          
+          if (!isOptionLine && !isKnownOption && trimmed !== '') {
+            remainingLines.push(line);
+          } else if (trimmed === '') {
+            remainingLines.push(line); // 保留空行
+          }
+        }
+        
+        const remainingContent = remainingLines.join('\n').trim();
+        
+        // 3. 先添加pills选项segment
+        if (opts.length > 0) {
+          segments.push({ type: 'pills', content: '', options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
+        }
+        
+        // 4. 再添加剩余的Markdown内容作为text segment
+        if (remainingContent.length > 0) {
+          const filtered = filterExpectedEffect(remainingContent);
+          if (filtered.length > 0) {
+            segments.push({ type: 'text', content: filtered, options: [] });
+          }
+        }
         break;
       }
       case 'checkbox': {
@@ -362,9 +459,11 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
     lastIndex = matchEnd;
   }
 
-  const textAfter = content.slice(lastIndex).trim();
-  if (textAfter) {
-    segments.push({ type: 'text', content: filterExpectedEffect(textAfter), options: [] });
+  const textAfter = content.slice(lastIndex);
+  
+  if (textAfter.trim()) {
+    const filtered = filterExpectedEffect(textAfter);
+    segments.push({ type: 'text', content: filtered, options: [] });
   }
 
   return { segments, found: true };

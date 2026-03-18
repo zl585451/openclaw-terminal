@@ -1,0 +1,43 @@
+项目路径：E:\windows-window\OpenClaw-Terminal
+
+【对话框布局优化】参考 Claude 网页版样式
+
+在 src/styles/ChatTab.css 做以下修改：
+
+1. 聊天内容区最大宽度限制
+找到消息列表容器（.chat-messages 或 .messages-container）
+添加：
+max-width: 800px;
+margin: 0 auto;
+width: 100%;
+padding: 0 24px;
+
+2. AMY 回复改为无气泡全宽
+找到 .msg-assistant-body 或 AMY 消息的容器样式
+修改为：
+background: transparent;
+border: none;
+border-left: 2px solid var(--accent);
+border-radius: 0;
+padding: 2px 0 2px 14px;
+margin: 8px 0;
+width: 100%;
+max-width: 100%;
+box-shadow: none;
+
+3. 用户消息保持气泡但靠右
+找到 .msg-user-body 或用户消息容器
+修改为：
+background: var(--user-msg-bg, #1a3a1a);
+border: 1px solid var(--user-msg-border, #2a4a2a);
+border-radius: 12px 12px 2px 12px;
+padding: 10px 14px;
+max-width: 72%;
+margin-left: auto;
+margin-right: 0;
+
+4. 消息之间间距
+.msg-item 或每条消息的容器：
+margin-bottom: 20px;
+
+完成后重启 OCT 截图发给我验收。

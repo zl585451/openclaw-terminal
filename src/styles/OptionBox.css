@@ -1,8 +1,15 @@
 .option-box {
   margin-top: 12px;
+  margin-bottom: 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex-shrink: 0;
+  height: auto;
+  min-height: auto;
+  overflow: visible;
+  position: relative;
+  z-index: auto;
 }
 
 .option-checkbox-list {
@@ -158,6 +165,13 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+  height: auto;
+  min-height: auto;
+  overflow: visible;
+  position: relative;
+  z-index: auto;
 }
 
 .option-pill {

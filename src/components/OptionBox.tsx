@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import type { OptionItem } from '../utils/optionBoxParser';
 import '../styles/OptionBox.css';
 
@@ -13,11 +13,18 @@ interface OptionBoxProps {
   onPageChange: (page: number) => void;
   onSelect: (value: string) => void;
   forcePills?: boolean;
+  /** 调试用：pills在消息中的位置（第几个segment） */
+  segmentIndex?: number;
+  /** 调试用：pills前有多少内容（字符数） */
+  contentBefore?: number;
+  /** 调试用：pills后有多少内容（字符数） */
+  contentAfter?: number;
 }
 
 /** ≤4个选项：Pill模式，单击直接发送 */
 function PillOptionBox({ options, onSelect }: { options: OptionItem[]; onSelect: (v: string) => void }) {
   const [sent, setSent] = useState<string | null>(null);
+  const pillsRef = useRef<HTMLDivElement>(null);
 
   const handleClick = (value: string) => {
     if (sent) return;
@@ -26,7 +33,7 @@ function PillOptionBox({ options, onSelect }: { options: OptionItem[]; onSelect:
   };
 
   return (
-    <div className="option-pills">
+    <div className="option-pills" ref={pillsRef}>
       {options.map((opt) => (
         <button
           key={`${opt.num}-${opt.label}`}

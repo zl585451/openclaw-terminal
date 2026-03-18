@@ -204,16 +204,15 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
     if (type === 'checkbox') return null;
     return <input type={type} {...props} />;
   },
-  table: ({ children }) => (
-    <table className="md-table">{children}</table>
-  ),
+  table: ({ children }) => <table className="md-table">{children}</table>,
   thead: ({ children }) => <thead>{children}</thead>,
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ children }) => <tr>{children}</tr>,
   th: ({ children }) => <th>{children}</th>,
   td: ({ children }) => <td>{children}</td>,
-  code: ({ children, className }) => {
-    const isBlock = className?.includes('language-') || String(children).includes('\n');
+  code: ({ children, className, inline }: { children?: React.ReactNode; className?: string; inline?: boolean }) => {
+    // react-markdown v10 提供 inline prop，优先使用它判断
+    const isBlock = !inline && (className?.includes('language-') || String(children).includes('\n'));
     if (!isBlock) {
       return (
         <code style={{
@@ -344,13 +343,15 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
 const MarkdownContent = memo(
   function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
     const text = content || '';
+    const contentRef = React.useRef<HTMLSpanElement>(null);
+    
 
     if (isStreaming) {
       // 流式期间：检测是否有表格
       const tableBlock = splitTableBlockForStreaming(text);
       if (tableBlock) {
         return (
-          <span className="msg-content markdown-body msg-content-streaming-root">
+          <span className="msg-content markdown-body msg-content-streaming-root" ref={contentRef}>
             {tableBlock.before && (
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {tableBlock.before}
@@ -374,7 +375,7 @@ const MarkdownContent = memo(
 
       // 流式期间无表格：正常 ReactMarkdown 渲染
       return (
-        <span className="msg-content markdown-body msg-content-streaming-root">
+        <span className="msg-content markdown-body msg-content-streaming-root" ref={contentRef}>
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {text}
           </ReactMarkdown>
@@ -384,7 +385,7 @@ const MarkdownContent = memo(
 
     // 完成后：完整 ReactMarkdown 渲染
     return (
-      <span className="msg-content markdown-body">
+      <span className="msg-content markdown-body" ref={contentRef}>
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
           {text}
         </ReactMarkdown>
@@ -497,8 +498,15 @@ const ChatMessageItem = memo(function ChatMessageItem({
   const [hoverTime, setHoverTime] = React.useState(false);
   const [thinkMenuOpen, setThinkMenuOpen] = React.useState(false);
   const thinkBtnRef = React.useRef<HTMLButtonElement>(null);
+  
+  const msgRef = React.useRef<HTMLDivElement>(null);
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const assistantBodyRef = React.useRef<HTMLDivElement>(null);
+  
+  
   return (
     <div
+      ref={msgRef}
       className={`chat-message ${msg.role} ${msg.isSystemReply ? 'system-reply' : ''} ${speakingMessageId === msg.id ? 'speaking' : ''} ${isStreamingMsg ? 'streaming' : ''}`}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -525,15 +533,19 @@ const ChatMessageItem = memo(function ChatMessageItem({
           </div>
         )}
       </div>
-      <div className="msg-body">
+      <div className="msg-body" ref={bodyRef}>
         {msg.role === 'assistant' ? (
           msg.isSystemReply ? (
             <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />
           ) : (
-          <div className="msg-assistant-body">
+          <div className="msg-assistant-body" ref={assistantBodyRef}>
             {segments && segments.length > 0 ? (
               <>
                 {segments.map((seg, idx) => {
+                // 计算 pills 前后的内容长度
+                const contentBefore = idx > 0 ? segments.slice(0, idx).reduce((sum, s) => sum + (s.content?.length || 0), 0) : 0;
+                const contentAfter = idx < segments.length - 1 ? segments.slice(idx + 1).reduce((sum, s) => sum + (s.content?.length || 0), 0) : 0;
+                
                 switch (seg.type) {
                   case 'text':
                     return <MarkdownContent key={idx} content={seg.content} isStreaming={isStreamingMsg} />;
@@ -548,6 +560,9 @@ const ChatMessageItem = memo(function ChatMessageItem({
                         onPageChange={(page) => onPageChange(msg.id, page)}
                         onSelect={(value) => { if (value && wsConnected) quickSend(value); }}
                         forcePills={true}
+                        segmentIndex={idx}
+                        contentBefore={contentBefore}
+                        contentAfter={contentAfter}
                       />
                     ) : null;
                   case 'checkbox':
@@ -1064,6 +1079,7 @@ const ChatMessageList = function ChatMessageList({
   onQuoteQuestion,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const lastAssistantMsgId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -1082,7 +1098,7 @@ const ChatMessageList = function ChatMessageList({
   const showTypingIndicator = (awaitingResponse || isStreaming) && (messages.length === 0 || messages[messages.length - 1]?.role === 'user');
 
   return (
-    <div className="chat-messages" onScroll={onScroll}>
+    <div className="chat-messages" onScroll={onScroll} ref={messagesContainerRef}>
       {messages.length === 0 && (
         <div className="chat-empty">
           <span className="empty-icon">✦</span>
@@ -1118,12 +1134,13 @@ const ChatMessageList = function ChatMessageList({
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
         // 流式消息：用 displayedLength 控制显示进度，实现打字机效果
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
-        const display = isStreamingMsg ? fullContent.slice(0, displayedLength) : fullContent;
+        // 如果 displayedLength 为 0 但有内容，显示完整内容（避免空白）
+        const display = isStreamingMsg && displayedLength > 0 ? fullContent.slice(0, displayedLength) : fullContent;
         const parsed = (msg.role === 'assistant' && !isStreamingMsg)
           ? parseOptionBox(raw)
           : { text: display, options: [] as OptionItem[], totalPages: undefined, isTaskList: false, isReflectiveQuestions: false, forcePills: undefined, segments: undefined };
         const textToShow = msg.role === 'assistant'
-          ? (isStreamingMsg ? display : (parsed.text?.trim() ? parsed.text : raw))
+          ? (isStreamingMsg && displayedLength > 0 ? display : (parsed.text?.trim() ? parsed.text : raw))
           : display;
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;
