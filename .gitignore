@@ -33,3 +33,4 @@ logs/
 .env.example
 .cursorignore
 scripts/clear-cursor-cache.bat
+node_modules
