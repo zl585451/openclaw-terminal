@@ -15,6 +15,9 @@ const crypto = require('crypto');
 const selfEval = require('./self_eval');
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
+const { createLogger } = require('./logger');
+const log = createLogger('gateway');
+const memLog = createLogger('mem');
 
 const PORT = config.PORT;
 let SYSTEM_PROMPT = '';
@@ -37,7 +40,7 @@ function getModelContextLimit(modelId) {
 
 const systemPromptReady = (async () => {
   SYSTEM_PROMPT = await loadSystemPrompt(config.PROMPTS_DIR);
-  console.log('[AI] System prompt 加载完成，长度:', SYSTEM_PROMPT.length);
+  log.info('System prompt loaded', { len: SYSTEM_PROMPT.length });
   memoryHistory.cleanupOldHistory().catch(() => {});
   memorySearch.warmGlossaryCache().catch(() => {});
   return SYSTEM_PROMPT;
@@ -48,7 +51,7 @@ async function checkMemoryHealth() {
   try {
     const alive = await memory.isAlive();
     if (!alive) {
-      console.warn('[Memory] ⚠️ Nocturne 离线，记忆功能不可用');
+      log.warn('Nocturne offline, memory disabled');
       return;
     }
 
@@ -68,13 +71,12 @@ async function checkMemoryHealth() {
     }
 
     if (missing.length === 0) {
-      console.log('[Memory] ✅ 核心记忆健康检查通过，全部', CORE_URIS.length, '条就绪');
+      log.info('Core memory health ok', { total: CORE_URIS.length });
     } else {
-      console.warn('[Memory] ⚠️ 以下核心记忆缺失，请运行迁移脚本：');
-      missing.forEach(uri => console.warn('  缺失:', uri));
+      log.warn('Core memory missing', { missing });
     }
   } catch (e) {
-    console.warn('[Memory] 健康检查失败:', e.message);
+    log.warn('Memory health check failed', { error: e?.message || String(e) });
   }
 }
 
@@ -82,14 +84,40 @@ async function checkMemoryHealth() {
 setTimeout(checkMemoryHealth, 3000);
 
 const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
+
+// ═══════════════════════════════════════════════════════════════
+// 全局内存监控（每 5 分钟打印一次）
+// ═══════════════════════════════════════════════════════════════
+const MEM_MON_INTERVAL_MS = Number(process.env.OCT_MEM_MON_INTERVAL_MS || 5 * 60 * 1000);
+const MEM_WARN_RSS_MB = Number(process.env.OCT_MEM_WARN_RSS_MB || 500);
+setInterval(() => {
+  const usage = process.memoryUsage();
+  const rss = (usage.rss / 1024 / 1024).toFixed(1);
+  const heap = (usage.heapUsed / 1024 / 1024).toFixed(1);
+  const heapTotal = (usage.heapTotal / 1024 / 1024).toFixed(1);
+
+  memLog.info(`RSS=${rss}MB | Heap=${heap}/${heapTotal}MB`, {
+    rssMb: Number(rss),
+    heapUsedMb: Number(heap),
+    heapTotalMb: Number(heapTotal),
+    externalMb: Number((usage.external / 1024 / 1024).toFixed(1)),
+    arrayBuffersMb: Number(((usage.arrayBuffers || 0) / 1024 / 1024).toFixed(1)),
+    uptimeSec: Math.round(process.uptime()),
+  });
+
+  // 超过阈值时告警（默认 500MB，可通过环境变量覆盖）
+  if (usage.rss > MEM_WARN_RSS_MB * 1024 * 1024) {
+    memLog.warn(`Memory over ${MEM_WARN_RSS_MB}MB`, { rssMb: Number(rss) });
+  }
+}, MEM_MON_INTERVAL_MS);
 wss.on('error', (err) => {
-  console.error('[Gateway] Server error:', err.message);
+  log.error('Server error', { error: err?.message || String(err), code: err?.code || '' });
   if (err.code === 'EADDRINUSE') {
-    console.error('[Gateway] 端口', PORT, '已被占用，请关闭占用进程或使用「清理端口并启动」');
+    log.error('Port in use', { port: PORT });
   }
   process.exit(1);
 });
-console.log('[OCT Gateway] 启动在 ws://0.0.0.0:' + PORT);
+log.info('WebSocket listening', { url: 'ws://0.0.0.0:' + PORT });
 
 // 任务看板工具执行成功后，广播刷新事件给所有连接的前端
 if (tools.setOnTaskBoardUpdate) {
@@ -120,19 +148,19 @@ const httpServer = http.createServer((req, res) => {
   }
 });
 httpServer.listen(HTTP_PORT, '0.0.0.0', () => {
-  console.log('[OCT Mobile] HTTP 服务在 http://0.0.0.0:' + HTTP_PORT);
-  console.log('[OCT Mobile] 手机访问: http://localhost:' + HTTP_PORT);
+  log.info('Mobile HTTP listening', { url: 'http://0.0.0.0:' + HTTP_PORT });
+  log.info('Mobile HTTP local', { url: 'http://localhost:' + HTTP_PORT });
 });
 
 httpServer.on('error', (err) => {
-  console.error('[OCT Mobile] HTTP 服务启动失败:', err.message);
+  log.error('Mobile HTTP start failed', { error: err?.message || String(err) });
 });
 
 const authenticatedClients = new Set();
 
 wss.on('connection', (ws) => {
   const clientId = crypto.randomUUID();
-  console.log(`[Gateway] 新连接 ${clientId}`);
+  log.info('client connected', { clientId });
 
   try {
     const nonce = crypto.randomBytes(16).toString('hex');
@@ -145,7 +173,7 @@ wss.on('connection', (ws) => {
       payload: { nonce },
     }));
   } catch (e) {
-    console.error('[Gateway] 发送 challenge 失败:', e && e.message);
+    log.error('send challenge failed', { clientId, error: e?.message || String(e) });
     try { ws.close(1011, 'Server error'); } catch (_) {}
     return;
   }
@@ -178,7 +206,7 @@ wss.on('connection', (ws) => {
           agent: { model: config.DASHSCOPE_MODEL },
         },
       }));
-      console.log(`[Gateway] 客户端认证成功 ${clientId}`);
+      log.info('client authenticated', { clientId });
       return;
     }
 
@@ -375,7 +403,7 @@ wss.on('connection', (ws) => {
             setImmediate(() => {
               detectAndSaveParking(userMessage, sessionKey).catch(() => {});
               memoryHistory.saveHistorySummary(userMessage, fullReply)
-                .catch(e => console.error('[MemHistory] 写入失败:', e.message));
+                .catch(e => log.warn('MemHistory write failed', { error: e?.message || String(e) }));
               selfEval.evaluateReply(userMessage, fullReply)
                 .then(() => selfEval.maybeDistill())
                 .catch(() => {});
@@ -405,10 +433,10 @@ wss.on('connection', (ws) => {
               type: 'event', event: 'agent-phase', phase: 'idle'
             }));
           }
-          console.log('[Gateway] Stream done, total length:', fullReply.length);
+          log.info('stream done', { len: fullReply.length });
         },
         onError: (err) => {
-          console.log('[Gateway] AI error:', err.message);
+          log.error('AI error', { error: err?.message || String(err) });
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({
               type: 'event',
@@ -440,11 +468,11 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     authenticatedClients.delete(ws);
-    console.log(`[Gateway] 连接断开 ${clientId}`);
+    log.info('client disconnected', { clientId });
   });
 
   ws.on('error', (err) => {
-    console.error(`[Gateway] 连接错误 ${clientId}:`, err.message);
+    log.error('client connection error', { clientId, error: err?.message || String(err) });
   });
 });
 
@@ -491,7 +519,7 @@ async function detectAndSaveParking(userMsg, sessionKey) {
     session: sessionKey,
   }), 1, '停车场待办，下次会话开始时检查');
 
-  console.log('[Parking] 已停车:', content);
+  log.info('parking saved', { content });
 }
 
 async function extractAndSaveMemory(userMsg, assistantReply) {
@@ -535,11 +563,11 @@ async function extractAndSaveMemory(userMsg, assistantReply) {
           const blockedPaths = ['taskboard', 'tasks', 'parking', 'parking_lot'];
           const isBlocked = blockedPaths.some(p => uri.toLowerCase().includes(p));
           if (isBlocked) {
-            console.log('[Memory] 跳过任务路径写入:', uri);
+            log.debug('memory extract skip blocked path', { uri });
             return;
           }
           await memory.writeMemory(uri, content, priority, disclosure);
-          console.log(`[Memory] 自动提炼写入: ${uri}`);
+          log.info('memory extracted write ok', { uri, contentLen: content.length, priority });
         }
       },
       onError: () => {},
@@ -836,14 +864,14 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
         );
 
         // 从 Nocturne 拉取历史对话
-        console.log('[Export] 开始读取历史根节点...');
+        log.info('export training-data: read history root');
         const testAlive = await memory.isAlive();
-        console.log('[Export] Nocturne 状态:', testAlive);
+        log.info('export training-data: nocturne alive', { alive: !!testAlive });
 
         const historyRoot = await memory.readMemory(
           'core://my_user/daily'
         );
-        console.log('[Export] 历史根节点结果:', JSON.stringify(historyRoot).slice(0, 300));
+        log.debug('export training-data: history root result', { preview: JSON.stringify(historyRoot).slice(0, 300) });
 
         if (!historyRoot.ok) {
           // 检查是否是路径不存在
@@ -1387,11 +1415,11 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
 }
 
 wss.on('error', (err) => {
-  console.error('[Gateway] Server error:', err.message);
+  log.error('WebSocket server error', { error: err?.message || String(err) });
 });
 
 process.on('SIGINT', () => {
-  console.log('[Gateway] 正在关闭...');
+  log.info('shutting down');
   httpServer.close();
   wss.close(() => process.exit(0));
 });

@@ -1,5 +1,7 @@
 const config = require('./config');
 const memory = require('./memory');
+const { createLogger } = require('./logger');
+const log = createLogger('self_eval');
 
 // 自我评估一条回复
 async function evaluateReply(userMsg, amyReply) {
@@ -65,7 +67,7 @@ async function evaluateReply(userMsg, amyReply) {
       reply_snippet: amyReply.slice(0, 80),
     }), 2, '');
 
-    console.log(`[SelfEval] 评分: ${parsed.score}/5 | ${parsed.bad || '无问题'}`);
+    log.info(`评分: ${parsed.score}/5 | ${parsed.bad || '无问题'}`);
     return parsed;
   } catch (e) {
     // 静默失败
@@ -171,8 +173,7 @@ async function distillPatterns() {
       '每次新会话开始时加载'
     );
 
-    console.log('[SelfEval] 模式提炼完成:',
-      result.rules?.join(' | '));
+    log.info('模式提炼完成', { rules: result.rules || [] });
 
     // 自动更新 SOUL.md 里的学习规则段落
     await updateLearnedRulesInSoul(result.rules,
@@ -216,7 +217,7 @@ ${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
       content += '\n\n' + newSection;
     }
     fs.writeFileSync(soulPath, content, 'utf-8');
-    console.log('[SelfEval] SOUL.md 已更新学习规则');
+    log.info('SOUL.md 已更新学习规则', { path: soulPath });
   } catch {}
 }
 
@@ -238,7 +239,7 @@ async function maybeDistill() {
         || dr.data?.children || []).length;
     }
     if (total > 0 && total % 20 === 0) {
-      console.log('[SelfEval] 触发模式提炼，已积累:', total, '条');
+      log.info('触发模式提炼', { total });
       distillPatterns().catch(() => {});
     }
   } catch {}

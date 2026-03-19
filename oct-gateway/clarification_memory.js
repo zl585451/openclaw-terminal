@@ -13,6 +13,8 @@
  */
 
 const memory = require('./memory');
+const { createLogger } = require('./logger');
+const log = createLogger('clarification');
 
 // ── 追问检测 ────────────────────────────────────────────────
 
@@ -194,9 +196,9 @@ async function saveClarificationPreference(topic, choice) {
       `当少爷遇到${pref.label}相关问题时参考`
     );
 
-    console.log(`[Clarification] 偏好已记录: ${pref.path} → ${choice}`);
+    log.info('preference saved', { path: pref.path, choice });
   } catch (e) {
-    console.warn('[Clarification] 偏好写入失败:', e.message);
+    log.warn('preference save failed', { error: e?.message || String(e) });
   }
 }
 
@@ -253,7 +255,7 @@ async function loadPreferencesForBoot() {
 
     return `\n\n## 📌 少爷的已知偏好（追问学习积累）\n\n${lines.join('\n')}\n\n> 遇到相关场景时，可以直接参考这些偏好，减少追问。\n`;
   } catch (e) {
-    console.warn('[Clarification] 偏好加载失败:', e.message);
+    log.warn('preferences load failed', { error: e?.message || String(e) });
     return '';
   }
 }
@@ -279,7 +281,7 @@ async function detectAndSaveClarification(userMsg, assistantReply, prevAssistant
     }
   } catch (e) {
     // 静默失败，不影响主流程
-    console.warn('[Clarification] 检测失败:', e.message);
+    log.warn('detect failed', { error: e?.message || String(e) });
   }
 }
 

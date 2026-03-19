@@ -5,6 +5,8 @@
 
 const config = require('./config');
 const memory = require('./memory');
+const { createLogger } = require('./logger');
+const log = createLogger('memory_history');
 
 const DOMAIN = 'core';
 const HISTORY_BASE = 'my_user/daily';
@@ -61,11 +63,10 @@ async function ensureParentPath(domain, fullPath) {
  * @param {string} [type] - 'chat' | 'task' | 'query'，不传则自动推断
  */
 async function saveHistorySummary(userMsg, amyReply, type) {
-  console.log('[MemHistory] saveHistorySummary 被调用, config.memory:', 
-    JSON.stringify(config.memory));
+  log.debug('saveHistorySummary called', { memoryConfig: config.memory || null });
 
   if (!config.memory || config.memory.auto_save_history !== true) {
-    console.log('[MemHistory] auto_save_history 未开启，跳过');
+    log.debug('auto_save_history disabled, skip');
     return;
   }
 
@@ -90,16 +91,16 @@ async function saveHistorySummary(userMsg, amyReply, type) {
   const content = JSON.stringify(payload, null, 0);
 
   try {
-    console.log('[MemHistory] 准备写入路径:', uri);
+    log.debug('write history summary', { uri, type: t });
     await ensureParentPath(DOMAIN, `${HISTORY_BASE}/${datePath}`);
     const r = await memory.createMemory(uri, content, 2, '');
     if (r.ok) {
-      console.log('[Memory] 对话摘要已写入:', uri);
+      log.info('history summary written', { uri });
     } else {
-      console.error('[MemHistory] 写入失败:', r.error);
+      log.error('history summary write failed', { uri, error: r.error });
     }
   } catch (e) {
-    console.error('[MemHistory] 写入异常:', e.message);
+    log.error('history summary exception', { uri, error: e?.message || String(e) });
     // 写入失败不阻塞，静默
   }
 }
@@ -128,7 +129,7 @@ async function cleanupOldHistory() {
       const name = (ch.path || ch.name || '').split('/').pop() || '';
       if (name < cutoffStr) {
         // 可选：调用 delete 接口删除 core://my_user/history/YYYY-MM-DD
-        console.log('[Memory] 可清理过期历史:', name, '(需 Nocturne delete 接口)');
+        log.debug('history cleanup candidate', { date: name, note: 'needs Nocturne delete api' });
       }
     }
   } catch (e) {

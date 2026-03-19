@@ -1,4 +1,6 @@
 const config = require('./config');
+const { createLogger } = require('./logger');
+const log = createLogger('hypothesis');
 
 // 对复杂问题生成备选思路并选最优
 async function selectBestApproach(userMsg, systemPrompt, history) {
@@ -44,9 +46,9 @@ async function selectBestApproach(userMsg, systemPrompt, history) {
     const jsonMatch = result.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
     const parsed = JSON.parse(jsonMatch[0]);
-    console.log(`[Hypothesis] 选择思路${parsed.chosen.toUpperCase()}: ${parsed.reason}`);
+    log.info(`选择思路${String(parsed.chosen || '').toUpperCase()}: ${parsed.reason || ''}`);
     if (parsed.should_challenge) {
-      console.log(`[Hypothesis] 建议质疑: ${parsed.challenge_point}`);
+      log.info(`建议质疑: ${parsed.challenge_point || ''}`);
     }
     return parsed;
   } catch {

@@ -1,13 +1,34 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { createLogger } = require('./logger');
+const log = createLogger('session');
 
-const MAX_HISTORY = 50;
+// ═══════════════════════════════════════════════════════════════
+// 会话数据瘦身优化
+// ═══════════════════════════════════════════════════════════════
+const MAX_HISTORY = 30; // 从 50 降到 30，减少内存占用
+const SESSION_EXPIRE_DAYS = 3; // 从 7 天缩短到 3 天
 const CACHE_DIR = process.env.OCT_CACHE_DIR || path.join(os.homedir(), '.oct-gateway');
 const SESSIONS_FILE = path.join(CACHE_DIR, 'sessions.json');
 
+// 限制单个会话的消息条数
+const MAX_MESSAGES_PER_SESSION = 30;
+
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
+
+// 会话消息裁剪：保留系统消息 + 最近 N 条
+function trimSession(messages) {
+  if (!messages || messages.length <= MAX_MESSAGES_PER_SESSION) return messages;
+  
+  const systemMsgs = messages.filter(m => m.role === 'system');
+  const recentMsgs = messages
+    .filter(m => m.role !== 'system')
+    .slice(-MAX_MESSAGES_PER_SESSION);
+  
+  return [...systemMsgs, ...recentMsgs];
 }
 
 function loadSessions() {
@@ -17,7 +38,7 @@ function loadSessions() {
       return new Map(Object.entries(data));
     }
   } catch (e) {
-    console.warn('[Session] 加载缓存失败:', e.message);
+    log.warn('load cache failed', { error: e?.message || String(e) });
   }
   return new Map();
 }
@@ -30,14 +51,14 @@ function saveSessions() {
       const obj = Object.fromEntries(sessions);
       fs.writeFileSync(SESSIONS_FILE, JSON.stringify(obj, null, 2), 'utf-8');
     } catch (e) {
-      console.warn('[Session] 保存缓存失败:', e.message);
+      log.warn('save cache failed', { error: e?.message || String(e) });
     }
     saveTimer = null;
   }, 500);
 }
 
 const sessions = loadSessions();
-console.log('[Session] 已加载 ' + sessions.size + ' 个历史会话');
+log.info('loaded sessions', { count: sessions.size });
 
 // 思考模式存储（每个会话独立）
 const thinkModes = new Map();
@@ -56,9 +77,19 @@ function getHistory(sessionKey) {
 function addMessage(sessionKey, role, content) {
   const history = getSession(sessionKey);
   history.push({ role, content, timestamp: Date.now() });
+  
+  // 应用裁剪：保留最近消息
   if (history.length > MAX_HISTORY) {
     history.splice(0, history.length - MAX_HISTORY);
   }
+  
+  // 额外裁剪：确保单个会话不超过限制
+  const trimmed = trimSession(history);
+  if (trimmed.length !== history.length) {
+    history.length = 0;
+    history.push(...trimmed);
+  }
+  
   saveSessions();
 }
 
@@ -91,17 +122,17 @@ function clearThinkMode(sessionKey) {
 }
 
 function cleanOldSessions() {
-  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const expireThreshold = Date.now() - SESSION_EXPIRE_DAYS * 24 * 60 * 60 * 1000;
   let cleaned = 0;
   for (const [key, messages] of sessions.entries()) {
     const lastMsg = messages[messages.length - 1];
-    if (lastMsg && lastMsg.timestamp && lastMsg.timestamp < sevenDaysAgo) {
+    if (lastMsg && lastMsg.timestamp && lastMsg.timestamp < expireThreshold) {
       sessions.delete(key);
       cleaned++;
     }
   }
   if (cleaned > 0) {
-    console.log('[Session] 清理了 ' + cleaned + ' 个过期会话');
+    log.info('cleaned old sessions', { cleaned, expireDays: SESSION_EXPIRE_DAYS });
     saveSessions();
   }
 }

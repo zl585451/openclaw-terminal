@@ -5,6 +5,8 @@ const memory = require('./memory');
 const memoryHistory = require('./memory_history');
 const memorySearch = require('./memory_search');
 const os = require('os');
+const { createLogger } = require('./logger');
+const log = createLogger('tools');
 
 // ============================================================
 // 本地任务存储路径（与 Electron userData 保持一致）
@@ -18,7 +20,7 @@ function getTasksFilePath() {
   return tasksFilePath;
 }
 const TASKS_FILE_PATH = getTasksFilePath();
-console.log('[TasksLocal] TASKS_FILE_PATH =', TASKS_FILE_PATH);
+log.info('TASKS_FILE_PATH', { path: TASKS_FILE_PATH });
 
 let onTaskBoardUpdate = null;
 function setOnTaskBoardUpdate(fn) {
@@ -38,7 +40,7 @@ function loadTasksData() {
       };
     }
   } catch (e) {
-    console.error('[TasksLocal] 加载失败:', e);
+    log.error('tasks load failed', { error: e?.message || String(e) });
   }
   return { tasks: [], parking: [], intention: '', updatedAt: '' };
 }
@@ -53,7 +55,7 @@ function saveTasksData(data) {
     fs.writeFileSync(TASKS_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
     return true;
   } catch (e) {
-    console.error('[TasksLocal] 保存失败:', e);
+    log.error('tasks save failed', { error: e?.message || String(e) });
     return false;
   }
 }
@@ -77,7 +79,7 @@ const WRITE_DELAY_MS = 200;
 async function writeWithTimeout(uri, content, priority, disclosure) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
-      console.error(`[MemoryWrite] 超时 (${WRITE_TIMEOUT_MS}ms): ${uri}`);
+      log.error('memory_write timeout', { uri, timeoutMs: WRITE_TIMEOUT_MS });
       resolve({ ok: false, error: `写入超时 (${WRITE_TIMEOUT_MS}ms)` });
     }, WRITE_TIMEOUT_MS);
 
@@ -105,7 +107,7 @@ async function writeWithTimeout(uri, content, priority, disclosure) {
         }
       } catch (e) {
         clearTimeout(timer);
-        console.error(`[MemoryWrite] 写入异常: ${uri}`, e?.message || e);
+        log.error('memory_write exception', { uri, error: e?.message || String(e) });
         resolve({ ok: false, error: e?.message || String(e) });
       }
     })();
@@ -121,7 +123,7 @@ async function processQueue() {
 
   while (WRITE_QUEUE.length > 0) {
     const task = WRITE_QUEUE.shift();
-    console.log(`[MemoryWrite] 执行队列任务: ${task.uri}, 剩余 ${WRITE_QUEUE.length} 条`);
+    log.debug('memory_write process', { uri: task.uri, remaining: WRITE_QUEUE.length });
 
     try {
       const result = await writeWithTimeout(task.uri, task.content, task.priority, task.disclosure);
@@ -129,11 +131,11 @@ async function processQueue() {
         memorySearch.invalidateGlossaryCache();
         task.resolve({ success: true, created: result.created, updated: result.updated });
       } else {
-        console.error(`[MemoryWrite] 任务失败: ${task.uri}, ${result.error}`);
+        log.error('memory_write failed', { uri: task.uri, error: result.error });
         task.resolve({ success: false, error: result.error });
       }
     } catch (e) {
-      console.error(`[MemoryWrite] 任务异常: ${task.uri}`, e?.message || e);
+      log.error('memory_write task exception', { uri: task.uri, error: e?.message || String(e) });
       task.resolve({ success: false, error: e?.message || String(e) });
     }
 
@@ -157,7 +159,7 @@ async function processQueue() {
 function enqueueWrite(uri, content, priority, disclosure) {
   return new Promise((resolve) => {
     WRITE_QUEUE.push({ uri, content, priority, disclosure, resolve });
-    console.log(`[MemoryWrite] 任务入队: ${uri}, 队列长度 ${WRITE_QUEUE.length}`);
+    log.debug('memory_write enqueue', { uri, queueLen: WRITE_QUEUE.length });
     processQueue();
   });
 }
@@ -169,9 +171,9 @@ if (proxyUrl) {
   try {
     const { ProxyAgent } = require('undici');
     proxyDispatcher = new ProxyAgent(proxyUrl);
-    console.log('[Tools] proxy enabled: ' + proxyUrl);
+    log.info('proxy enabled', { proxyUrl });
   } catch (e) {
-    console.log('[Tools] undici ProxyAgent not available, fetch will not use proxy');
+    log.warn('ProxyAgent not available, proxy disabled', { error: e?.message || String(e) });
   }
 }
 
@@ -184,8 +186,35 @@ function proxyFetch(url, options = {}) {
 
 // web_fetch 结果缓存（5 分钟 TTL，最多 100 条）
 const fetchCache = new Map();
-const FETCH_CACHE_TTL = 5 * 60 * 1000;
-const FETCH_CACHE_MAX = 100;
+const FETCH_CACHE_TTL = Number(process.env.OCT_FETCH_CACHE_TTL_MS || 5 * 60 * 1000);
+const FETCH_CACHE_MAX = Number(process.env.OCT_FETCH_CACHE_MAX || 100);
+const MAX_CACHED_CONTENT_SIZE = Number(process.env.OCT_FETCH_CACHE_MAX_CHARS || 4000); // 从 8000 降到 4000，减少内存占用
+
+// ═══════════════════════════════════════════════════════════════
+// fetch 缓存主动清理优化
+// ═══════════════════════════════════════════════════════════════
+let lastCleanup = Date.now();
+const CLEANUP_INTERVAL = Number(process.env.OCT_FETCH_CACHE_CLEANUP_INTERVAL_MS || 60_000); // 每分钟清理一次
+
+function cleanupFetchCache() {
+  const now = Date.now();
+  if (now - lastCleanup < CLEANUP_INTERVAL) return;
+  lastCleanup = now;
+
+  let cleaned = 0;
+  for (const [key, val] of fetchCache) {
+    if (now - val.timestamp > FETCH_CACHE_TTL) {
+      fetchCache.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    log.debug('fetch cache cleaned', { cleaned });
+  }
+}
+
+// 兜底：即使短期没有 web_fetch 也会按间隔清理一次
+setInterval(() => cleanupFetchCache(), Math.max(5_000, CLEANUP_INTERVAL)).unref?.();
 
 const TOOL_DEFINITIONS = [
   {
@@ -537,23 +566,29 @@ async function executeTool(name, args) {
         }
       }
       case 'web_fetch': {
+        cleanupFetchCache(); // 每次调用时顺便清理
         const url = args.url;
+        log.debug('web_fetch start', { url });
         const cached = fetchCache.get(url);
         if (cached && Date.now() - cached.timestamp < FETCH_CACHE_TTL) {
+          log.debug('web_fetch cache hit', { url, status: cached.status });
           return { success: true, content: cached.content, status: cached.status, cached: true };
         }
         const res = await proxyFetch(url, { signal: AbortSignal.timeout(10000) });
         const text = await res.text();
-        const stripped = text.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').slice(0, 8000);
+        const stripped = text.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').slice(0, MAX_CACHED_CONTENT_SIZE);
         fetchCache.set(url, { content: stripped, status: res.status, timestamp: Date.now() });
         if (fetchCache.size > FETCH_CACHE_MAX) {
           const firstKey = fetchCache.keys().next().value;
           if (firstKey !== undefined) fetchCache.delete(firstKey);
         }
+        log.info('web_fetch done', { url, status: res.status, bytes: stripped.length });
         return { success: true, content: stripped, status: res.status, cached: false };
       }
       case 'memory_read': {
-        const r = await memory.readMemory(args.uri);
+        const uri = args.uri;
+        log.debug('memory_read', { uri });
+        const r = await memory.readMemory(uri);
         return r.ok ? { success: true, data: r.data } : { success: false, error: r.error };
       }
       case 'memory_write': {
@@ -564,16 +599,20 @@ async function executeTool(name, args) {
         const m = uri.match(/^([^:]+):\/\/(.+)$/);
         if (!m) return { success: false, error: `无效 URI: ${uri}` };
         // 使用队列机制执行写入
+        log.info('memory_write enqueue', { uri, contentLen: String(content || '').length, priority });
         const result = await enqueueWrite(uri, content, priority, disclosure);
+        if (!result?.success) log.error('memory_write failed', { uri, error: result?.error || 'unknown' });
         return result;
       }
       case 'memory_search': {
+        log.debug('memory_search', { query: args.query, domain: args.domain || 'core', limit: args.limit || 10 });
         const r = await memorySearch.searchMemory(args.query, {
           domain: args.domain || 'core',
           limit: args.limit || 10,
           include_content: true,
         });
         if (!r.ok) return { success: false, error: r.error };
+        log.info('memory_search done', { query: args.query, results: (r.data || []).length });
         return { success: true, results: r.data || [] };
       }
       // ── 本地任务存储工具 ──
@@ -594,7 +633,7 @@ async function executeTool(name, args) {
         data.tasks.push(newTask);
         if (saveTasksData(data)) {
           const icon = newTask.priority === 'p0' ? '🔴' : newTask.priority === 'p1' ? '🟡' : '🟢';
-          console.log(`[TasksLocal] 添加任务: ${icon} ${newTask.content}`);
+          log.info('tasks_add', { icon, taskId: newTask.id, content: newTask.content });
           return { success: true, taskId: newTask.id, message: `任务已添加: ${icon} ${newTask.content}` };
         }
         return { success: false, error: '保存失败' };
@@ -611,7 +650,7 @@ async function executeTool(name, args) {
         
         data.tasks[idx] = { ...data.tasks[idx], ...updates };
         if (saveTasksData(data)) {
-          console.log(`[TasksLocal] 更新任务: ${args.taskId}`, updates);
+          log.info('tasks_update', { taskId: args.taskId, updates });
           return { success: true, message: '任务已更新' };
         }
         return { success: false, error: '保存失败' };
@@ -624,7 +663,7 @@ async function executeTool(name, args) {
           return { success: false, error: '任务不存在' };
         }
         if (saveTasksData(data)) {
-          console.log(`[TasksLocal] 删除任务: ${args.taskId}`);
+          log.info('tasks_delete', { taskId: args.taskId });
           return { success: true, message: '任务已删除' };
         }
         return { success: false, error: '保存失败' };
@@ -638,8 +677,8 @@ async function executeTool(name, args) {
         };
         data.parking.push(newItem);
         if (saveTasksData(data)) {
-          console.log(`[TasksLocal] 添加停车场项目: ${newItem.content}`);
-          console.log('[TasksLocal] parking_add saved. counts=', { tasks: data.tasks?.length || 0, parking: data.parking?.length || 0 });
+          log.info('parking_add', { itemId: newItem.id, content: newItem.content });
+          log.debug('parking_add saved counts', { tasks: data.tasks?.length || 0, parking: data.parking?.length || 0 });
           if (onTaskBoardUpdate) onTaskBoardUpdate();
           return { success: true, itemId: newItem.id, message: `已添加到停车场: ${newItem.content}` };
         }
@@ -661,7 +700,7 @@ async function executeTool(name, args) {
         };
         data.tasks.push(newTask);
         if (saveTasksData(data)) {
-          console.log('[TasksLocal] task_add saved. counts=', { tasks: data.tasks?.length || 0, parking: data.parking?.length || 0 });
+          log.debug('task_add saved counts', { tasks: data.tasks?.length || 0, parking: data.parking?.length || 0 });
           if (onTaskBoardUpdate) onTaskBoardUpdate();
           return { success: true, taskId: newTask.id, message: `任务已添加: ${title}` };
         }

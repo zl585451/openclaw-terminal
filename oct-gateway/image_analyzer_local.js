@@ -9,6 +9,8 @@ const fs = require('fs');
 const os = require('os');
 
 const config = require('./config');
+const { createLogger } = require('./logger');
+const logger = createLogger('image_analyzer_local');
 
 const BLIP_MODEL_ID = 'Xenova/blip-image-captioning-base';
 let pipe = null;
@@ -29,7 +31,7 @@ async function loadModel() {
 
     if (!firstLoadLogged) {
       firstLoadLogged = true;
-      console.log('[ImageAnalyzerLocal] 首次使用本地图片分析，正在下载模型（~100MB）…');
+      logger.info('[ImageAnalyzerLocal] 首次使用本地图片分析，正在下载模型（~100MB）…');
     }
 
     const { pipeline, env } = await import('@xenova/transformers');
@@ -80,7 +82,7 @@ async function analyzeImageLocal(dataUrl, timeoutMs) {
   try {
     pipeline = await loadModel();
   } catch (e) {
-    console.warn('[ImageAnalyzerLocal] 模型加载失败:', e?.message || e);
+    logger.warn('[ImageAnalyzerLocal] 模型加载失败:', e?.message || e);
     return null;
   }
 
@@ -97,9 +99,9 @@ async function analyzeImageLocal(dataUrl, timeoutMs) {
     return null;
   } catch (e) {
     if (e?.message === 'timeout') {
-      console.warn('[ImageAnalyzerLocal] 本地分析超时');
+      logger.warn('[ImageAnalyzerLocal] 本地分析超时');
     } else {
-      console.warn('[ImageAnalyzerLocal]', e?.message || e);
+      logger.warn('[ImageAnalyzerLocal]', e?.message || e);
     }
     return null;
   } finally {

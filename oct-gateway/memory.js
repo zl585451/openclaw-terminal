@@ -1,4 +1,6 @@
 const { NOCTURNE_BASE_URL } = require('./config');
+const { createLogger } = require('./logger');
+const log = createLogger('memory');
 
 async function nocturneRequest(method, apiPath, params, body) {
   try {
@@ -32,26 +34,35 @@ function splitUri(uri) {
 async function readMemory(uri) {
   const parts = splitUri(uri);
   if (!parts) return { ok: false, error: `无效URI: ${uri}` };
-  return nocturneRequest('GET', '/browse/node', { path: parts.path, domain: parts.domain });
+  const r = await nocturneRequest('GET', '/browse/node', { path: parts.path, domain: parts.domain });
+  if (r.ok) log.debug('read ok', { uri });
+  else log.warn('read failed', { uri, error: r.error });
+  return r;
 }
 
 async function writeMemory(uri, content, priority = 2, disclosure = '') {
   const parts = splitUri(uri);
   if (!parts) return { ok: false, error: `无效URI: ${uri}` };
-  return nocturneRequest('PUT', '/browse/node',
+  const r = await nocturneRequest('PUT', '/browse/node',
     { path: parts.path, domain: parts.domain },
     { content, priority, disclosure }
   );
+  if (r.ok) log.info('write ok', { uri, contentLen: String(content || '').length, priority });
+  else log.error('write failed', { uri, contentLen: String(content || '').length, error: r.error });
+  return r;
 }
 
 /** 创建新节点（父路径须已存在），用于 history 等新 path */
 async function createMemory(uri, content, priority = 2, disclosure = '') {
   const parts = splitUri(uri);
   if (!parts) return { ok: false, error: `无效URI: ${uri}` };
-  return nocturneRequest('POST', '/browse/node',
+  const r = await nocturneRequest('POST', '/browse/node',
     { path: parts.path, domain: parts.domain },
     { content, priority, disclosure }
   );
+  if (r.ok) log.info('create ok', { uri, contentLen: String(content || '').length, priority });
+  else log.error('create failed', { uri, contentLen: String(content || '').length, error: r.error });
+  return r;
 }
 
 async function searchMemory(query, domain) {
@@ -73,6 +84,7 @@ async function searchMemory(query, domain) {
       }
     }
   }
+  log.debug('search', { query: String(query || ''), domain: domain || '', results: matches.length });
   return { ok: true, data: matches };
 }
 
@@ -82,8 +94,12 @@ async function loadBootMemory(coreUris) {
   for (const uri of coreUris) {
     try {
       const r = await readMemory(uri);
-      console.log('[Memory] 读取', uri, '结果:', r.ok,
-        r.ok ? (r.data?.node?.content || '').slice(0, 50) : r.error);
+      log.debug('boot read', {
+        uri,
+        ok: r.ok,
+        preview: r.ok ? (r.data?.node?.content || '').slice(0, 50) : '',
+        error: r.ok ? '' : r.error,
+      });
       if (r.ok && r.data) {
         const node = r.data?.node || r.data;
         const priority = node?.priority;
@@ -99,7 +115,7 @@ async function loadBootMemory(coreUris) {
         }
       }
     } catch (e) {
-      console.error('[Memory] 读取失败', uri, e.message);
+      log.error('boot read exception', { uri, error: e?.message || String(e) });
     }
   }
   return results.join('\n\n---\n\n');

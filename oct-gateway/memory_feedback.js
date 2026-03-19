@@ -5,6 +5,8 @@
 const config = require('./config');
 const memory = require('./memory');
 const memoryHistory = require('./memory_history');
+const { createLogger } = require('./logger');
+const log = createLogger('memory_feedback');
 
 const DOMAIN = 'core';
 const FEEDBACK_POSITIVE = 'agent/feedback/positive';
@@ -99,7 +101,7 @@ async function detectAndSaveFeedback(userMsg, amyReply) {
     await memoryHistory.ensurePathExists(DOMAIN, pathSeg);
     const r = await memory.createMemory(uri, content, 2, '');
     if (r.ok) {
-      console.log('[Memory] 反馈已写入:', uri);
+      log.info('feedback saved', { uri, type: detected.type, reason: detected.reason });
     }
   } catch (e) {
     // 静默

@@ -145,9 +145,13 @@ Object.defineProperty(config, 'DASHSCOPE_MODEL', {
   enumerable: true,
 });
 
-console.log('[Config] API Key: ' + (config.DASHSCOPE_API_KEY ? config.DASHSCOPE_API_KEY.slice(0, 8) + '***' : 'EMPTY'));
-console.log('[Config] Base URL: ' + config.DASHSCOPE_BASE_URL);
-console.log('[Config] Model: ' + config.DASHSCOPE_MODEL);
-console.log('[Config] Available models: ' + config.availableModels.map(m => m.id).join(', '));
+try {
+  const { createLogger } = require('./logger');
+  const log = createLogger('config');
+  log.info('API Key', { prefix: config.DASHSCOPE_API_KEY ? config.DASHSCOPE_API_KEY.slice(0, 8) + '***' : 'EMPTY' });
+  log.info('Base URL', { url: config.DASHSCOPE_BASE_URL });
+  log.info('Model', { model: config.DASHSCOPE_MODEL });
+  log.debug('Available models', { models: config.availableModels.map(m => m.id) });
+} catch {}
 
 module.exports = config;
