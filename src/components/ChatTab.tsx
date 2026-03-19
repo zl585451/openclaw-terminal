@@ -324,25 +324,100 @@ function escapeTableBrackets(text: string): string {
   );
 }
 
+/**
+ * 修复模型偶发输出的“表格分隔符行重复插入”问题。
+ *
+ * 现象：模型把表头分隔符（|---|---|）重复输出到每条数据行之间，导致 remark-gfm 将其视为新的表头分隔符，
+ * 进而破坏整张表格渲染。
+ *
+ * 规则：
+ * - 一个表格块（连续以 `|` 开头的行）中，只允许表头后出现一次分隔符行
+ * - 该表格块内后续出现的分隔符行一律删除
+ */
+function normalizeMarkdownTables(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  const lines = text.split('\n');
+  const out: string[] = [];
+
+  const isTableRow = (l: string) => /^\s*\|/.test(l);
+  const isSeparator = (l: string) => {
+    const trimmed = String(l || '').trim();
+    if (!/^\|/.test(trimmed)) return false;
+    const content = trimmed.replace(/^\|/, '').replace(/\|\s*$/, '');
+    // 仅允许由 | - : 和空白组成，且包含 -
+    return /^[\s\-:|]+$/.test(content) && /-/.test(content);
+  };
+
+  let i = 0;
+  while (i < lines.length) {
+    if (!isTableRow(lines[i] || '')) {
+      out.push(lines[i] || '');
+      i++;
+      continue;
+    }
+
+    const block: string[] = [];
+    while (i < lines.length && isTableRow(lines[i] || '')) {
+      block.push(lines[i] || '');
+      i++;
+    }
+
+    // 只有满足“至少两行且第二行是分隔符”才认为是真表格
+    if (block.length >= 2 && isSeparator(block[1] || '')) {
+      const cleaned = [block[0], block[1]];
+      for (let k = 2; k < block.length; k++) {
+        if (isSeparator(block[k] || '')) continue;
+        cleaned.push(block[k]);
+      }
+      out.push(...cleaned);
+    } else {
+      out.push(...block);
+    }
+  }
+
+  return out.join('\n');
+}
+
 function normalizeTableSeparators(text: string): string {
   const lines = text.split('\n');
   const out: string[] = [];
+  // 每个表格块只需要一条分隔符（紧跟表头之后）
+  // separatorDone 标记当前表格块是否已经有分隔符
+  let separatorDone = false;
+
   for (let i = 0; i < lines.length; i++) {
     const cur = lines[i] ?? '';
-    const next = lines[i + 1] ?? '';
-    out.push(cur);
-
     const curTrim = cur.trim();
-    const nextTrim = next.trim();
     const curIsTableRow = /^\|.+\|$/.test(curTrim);
-    const nextIsSep = /^\|[\s:|-]+\|$/.test(nextTrim);
     const curIsSep = /^\|[\s:|-]+\|$/.test(curTrim);
 
-    // 若检测到疑似表头行（table row）且下一行不是分隔行，则自动插入分隔行
-    if (curIsTableRow && !curIsSep && !nextIsSep) {
-      const colCount = Math.max(1, curTrim.split('|').length - 2);
-      const sep = '|' + ' --- |'.repeat(colCount);
-      out.push(sep);
+    // 非表格行 → 重置状态
+    if (!curIsTableRow) {
+      separatorDone = false;
+      out.push(cur);
+      continue;
+    }
+
+    // 当前行是分隔符行 → 标记已有分隔符
+    if (curIsSep) {
+      separatorDone = true;
+      out.push(cur);
+      continue;
+    }
+
+    // 当前行是普通表格行
+    out.push(cur);
+
+    // 仅在尚未添加/遇到分隔符时，检查下一行是否是分隔符
+    if (!separatorDone) {
+      const next = lines[i + 1] ?? '';
+      const nextIsSep = /^\|[\s:|-]+\|$/.test(next.trim());
+      if (!nextIsSep) {
+        // 表头后缺少分隔符 → 自动补一条
+        const colCount = Math.max(1, curTrim.split('|').length - 2);
+        out.push('|' + ' --- |'.repeat(colCount));
+      }
+      separatorDone = true; // 无论是否插入，都标记为 done，后续数据行不再插入
     }
   }
   return out.join('\n');
@@ -351,6 +426,8 @@ function normalizeTableSeparators(text: string): string {
 function preprocessMarkdown(text: string): string {
   if (!shouldPreprocessMarkdownTables(text)) return text;
   let processed = text;
+  // 修复模型偶发输出的“表格分隔符行重复插入”问题：同一表格块内只保留表头后的第一条分隔符行
+  processed = normalizeMarkdownTables(processed);
   processed = fillEmptyCellsInTables(processed);
   processed = escapeTableBrackets(processed);
   processed = normalizeTableSeparators(processed);
@@ -589,7 +666,9 @@ const ChatMessageItem = memo(function ChatMessageItem({
                 
                 switch (seg.type) {
                   case 'text':
-                    return <MarkdownContent key={idx} content={seg.content} isStreaming={isStreamingMsg} />;
+                    // 已解析出 segments 时，文本段始终走非流式路径
+                    // 避免 splitTableBlockForStreaming 对已提取的内容二次分割
+                    return <MarkdownContent key={idx} content={seg.content} isStreaming={false} />;
                   case 'pills':
                     return seg.options.length > 0 ? (
                       <OptionBox
@@ -732,7 +811,8 @@ const ChatMessageItem = memo(function ChatMessageItem({
     prev.speakingMessageId === next.speakingMessageId &&
     prev.agentPhase === next.agentPhase &&
     prev.wsConnected === next.wsConnected &&
-    prev.currentPage === next.currentPage
+    prev.currentPage === next.currentPage &&
+    prev.segments === next.segments
   );
 });
 
@@ -1158,14 +1238,13 @@ const ChatMessageList = function ChatMessageList({
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
         // 如果 displayedLength 为 0 但有内容，显示完整内容（避免空白）
         const display = isStreamingMsg && displayedLength > 0 ? fullContent.slice(0, displayedLength) : fullContent;
-        // 流式期间：不要解析交互标签/选项框（标签可能未闭合，会导致源码闪现/泄露）
+        // 流式期间不解析交互标签（标签可能未闭合，且会绕过打字机切片）
+        // 流式结束后才调用 parseOptionBox 解析 pills/question 等
         const parsed = (msg.role === 'assistant' && !isStreamingMsg)
           ? parseOptionBox(raw)
           : { text: display, options: [] as OptionItem[], totalPages: undefined, isTaskList: false, isReflectiveQuestions: false, forcePills: undefined, segments: undefined };
         const textToShow = msg.role === 'assistant'
-          ? (isStreamingMsg && displayedLength > 0 && !parsed.segments
-              ? display
-              : (parsed.text?.trim() ? parsed.text : raw))
+          ? (isStreamingMsg ? display : (parsed.text?.trim() ? parsed.text : raw))
           : display;
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;
@@ -1584,17 +1663,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // 优先streamingMessageRef 里的完整流式内容
       // 只有在流式内容为空时才用 done 消息里的 content
       let finalStreamContent = streamingMessageRef.current || content;
-      // 将最终内容刷新到 UI（避免节流导致最后一段没显示）
-      if (finalStreamContent) {
-        streamingMessageRef.current = finalStreamContent;
-        scheduleStreamUiUpdate();
-      }
       // 不立刻清空，让打字机跑完
       const systemReply = pendingSystemReply.current;
       pendingSystemReply.current = false;
       // 兼容旧消息：如果包含 [THINK_MODE:xxx] 标记，静默剥离
       if (!systemReply && finalStreamContent) {
         finalStreamContent = stripThinkModeMarker(finalStreamContent);
+      }
+      // 将最终（已清理）内容刷新到 UI（避免节流导致最后一段没显示）
+      if (finalStreamContent) {
+        streamingMessageRef.current = finalStreamContent;
+        scheduleStreamUiUpdate();
       }
 
       // 解析 /status 系统回复，更新状态栏
