@@ -320,23 +320,13 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
 };
 
 /** 流式输出时：从第一个表格行开始到结尾都当作纯文本，避免表格在逐字更新时反复重排导致跳*/
-function splitTableBlockForStreaming(text: string): { before: string; tableBlock: string; after: string } | null {
+function splitTableBlockForStreaming(text: string): { before: string; tableAndRest: string } | null {
   const lines = text.split('\n');
   const idx = lines.findIndex((line) => /^\|.+\|/.test(line.trim()));
   if (idx < 0) return null;
-  // 只隔离连续的表格行，不吞掉表格后面的内容（pills/列表等）
-  let endIdx = idx;
-  while (endIdx < lines.length && /^\|.+\|/.test(lines[endIdx].trim())) {
-    endIdx++;
-  }
-  // 包含分隔符行（|---|---|）
-  if (endIdx < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[endIdx])) {
-    endIdx++;
-  }
   return {
     before: lines.slice(0, idx).join('\n'),
-    tableBlock: lines.slice(idx, endIdx).join('\n'),
-    after: lines.slice(endIdx).join('\n'),
+    tableAndRest: lines.slice(idx).join('\n'),
   };
 }
 
@@ -373,13 +363,8 @@ const MarkdownContent = memo(
               marginTop: '4px',
               opacity: 0.8,
             }}>
-              {tableBlock.tableBlock}
+              {tableBlock.tableAndRest}
             </span>
-            {tableBlock.after && (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {tableBlock.after}
-              </ReactMarkdown>
-            )}
           </span>
         );
       }
@@ -1105,13 +1090,11 @@ const ChatMessageList = function ChatMessageList({
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
         // 如果 displayedLength 为 0 但有内容，显示完整内容（避免空白）
         const display = isStreamingMsg && displayedLength > 0 ? fullContent.slice(0, displayedLength) : fullContent;
-        const parsed = (msg.role === 'assistant')
+        const parsed = (msg.role === 'assistant' && !isStreamingMsg)
           ? parseOptionBox(raw)
           : { text: display, options: [] as OptionItem[], totalPages: undefined, isTaskList: false, isReflectiveQuestions: false, forcePills: undefined, segments: undefined };
         const textToShow = msg.role === 'assistant'
-          ? (isStreamingMsg && displayedLength > 0 && !parsed.segments
-              ? display
-              : (parsed.text?.trim() ? parsed.text : raw))
+          ? (isStreamingMsg && displayedLength > 0 ? display : (parsed.text?.trim() ? parsed.text : raw))
           : display;
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;

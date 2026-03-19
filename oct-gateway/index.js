@@ -14,6 +14,7 @@ const tools = require('./tools');
 const crypto = require('crypto');
 const selfEval = require('./self_eval');
 const hypothesis = require('./hypothesis');
+const clarificationMemory = require('./clarification_memory');
 
 const PORT = config.PORT;
 let SYSTEM_PROMPT = '';
@@ -379,6 +380,18 @@ wss.on('connection', (ws) => {
                 .then(() => selfEval.maybeDistill())
                 .catch(() => {});
               extractAndSaveMemory(userMessage, fullReply).catch(() => {});
+
+              // 追问偏好检测
+              const history = session.getHistory(sessionKey) || [];
+              const prevAssistantMsgs = history
+                .filter(m => m.role === 'assistant')
+                .slice(-2);
+              const prevAssistantReply = prevAssistantMsgs.length >= 2
+                ? prevAssistantMsgs[prevAssistantMsgs.length - 2]?.content || ''
+                : '';
+              clarificationMemory.detectAndSaveClarification(
+                userMessage, fullReply, prevAssistantReply
+              ).catch(() => {});
             });
           }
           
