@@ -5,6 +5,8 @@
 
 const config = require('./config');
 const imageAnalyzerLocal = require('./image_analyzer_local');
+const { createLogger } = require('./logger');
+const logger = createLogger('image_analyzer');
 
 const DEFAULT_VISION_MODEL = 'qwen-vl-max';
 const PROMPT = '请用一句话描述这张图片的内容。如果是截图，请说明截图中的关键信息（界面、文字、错误信息等）。直接输出描述，不要加引号或前缀。';
@@ -53,7 +55,7 @@ async function analyzeImageCloud(url, timeoutMs) {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      console.warn('[ImageAnalyzer] 云端 API 错误:', res.status, errText.slice(0, 200));
+      logger.warn('[ImageAnalyzer] 云端 API 错误:', res.status, errText.slice(0, 200));
       return null;
     }
 
@@ -62,7 +64,7 @@ async function analyzeImageCloud(url, timeoutMs) {
     if (text) return `[图片分析] ${text}`;
     return null;
   } catch (e) {
-    console.warn('[ImageAnalyzer] 云端失败:', e?.message || e);
+    logger.warn('[ImageAnalyzer] 云端失败:', e?.message || e);
     return null;
   }
 }

@@ -14,10 +14,12 @@ import QuickCommandMenu from './QuickCommandMenu';
 import HeartbeatWave from './HeartbeatWave';
 import AmyAvatar from './AmyAvatar';
 import SetupGuide from './SetupGuide';
+import LogPanel from './LogPanel';
 import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import { playClickSound } from '../utils/clickSound';
+import { stripThinkModeMarker } from '../utils/socraticTemplates';
 
 const ipcRenderer =
   typeof window !== 'undefined' && typeof (window as any).require === 'function'
@@ -35,48 +37,6 @@ const ipcRenderer =
 //   if (/\[LOG\]/i.test(line)) return '\x1b[38;2;0;204;204m';
 //   return '\x1b[32m';
 // }
-
-// DOM 日志级别判断 - 优先解析原始 JSON level 字段
-function getLogLevel(rawLine: string): string {
-  try {
-    const parsed = JSON.parse(rawLine) as { _meta?: { logLevelName?: string }; level?: string };
-    const level = (parsed?._meta?.logLevelName ?? parsed?.level)?.toUpperCase?.();
-    if (level === 'ERROR') return 'ERROR';
-    if (level === 'WARN') return 'WARN';
-    if (level === 'INFO') return 'INFO';
-    if (level === 'LOG') return 'LOG';
-    if (level === 'AGENT') return 'AGENT';
-  } catch {}
-  // fallback：文本匹配（适配已格式化的日志行）
-  if (/error|failed|exception/i.test(rawLine)) return 'ERROR';
-  if (/warn|invalid|missing/i.test(rawLine)) return 'WARN';
-  if (/\[LOG\]/.test(rawLine)) return 'LOG';
-  if (/\[AGENT\]|\[OpenClaw\]/i.test(rawLine)) return 'AGENT';
-  return 'INFO';
-}
-
-// 日志颜色分类 - 根据关键词判断
-function getLogColorClass(rawLine: string): string {
-  const lower = rawLine.toLowerCase();
-  
-  // 记忆相关：蓝色
-  if (lower.includes('memory') || lower.includes('记忆') || /\[memory\]/i.test(rawLine)) {
-    return 'log-memory';
-  }
-  
-  // 错误：红色
-  if (/error|错误|failed|exception/i.test(rawLine)) {
-    return 'log-error';
-  }
-  
-  // 调试：灰色
-  if (/debug|调试/i.test(rawLine)) {
-    return 'log-debug';
-  }
-  
-  // 默认
-  return '';
-}
 
 // const LOG_NOISE_PATTERNS = [
 //   'typing indicator',
@@ -215,11 +175,12 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
       );
     }
     const code = String(children);
-    const CodeBlockWithCopy = () => {
+    const CodeBlockWithCopy = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
       const [copied, setCopied] = React.useState(false);
-      const [expanded, setExpanded] = React.useState(false);
       const lines = code.split('\n').length;
       const isLong = lines > 12;
+      // 长代码块默认不折叠，避免“看起来被截断”
+      const [expanded, setExpanded] = React.useState(() => isLong);
 
       const handleCopy = () => {
         navigator.clipboard.writeText(code);
@@ -228,7 +189,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
       };
 
       return (
-        <div style={{ position: 'relative', margin: '8px 0' }}>
+        <div style={{ position: 'relative', margin: '8px 0' }} data-oct-block-code={__octBlockCode ? '1' : undefined}>
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             background: 'var(--bg-code-header)',
@@ -274,7 +235,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
               </button>
             </div>
           </div>
-          <pre style={{
+          <div className="md-codeblock-pre" style={{
             background: 'var(--bg-code)',
             border: '1px solid var(--border-subtle)',
             borderRadius: '0 0 4px 4px',
@@ -296,14 +257,16 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
                 pointerEvents: 'none',
               }} />
             )}
-          </pre>
+          </div>
         </div>
       );
     };
-    return <CodeBlockWithCopy />;
+    return <CodeBlockWithCopy __octBlockCode />;
   },
   pre: ({ children }) => {
     const child = React.Children.toArray(children)[0] as React.ReactElement | undefined;
+    // 若 code 渲染器返回了自定义代码块（带 data-oct-block-code），剥离外层 <pre>，避免双层边框/断裂
+    if (child?.props?.['data-oct-block-code'] === '1') return <>{children}</>;
     if (child?.type === 'div') return <>{children}</>;
     if (child?.type === 'code') {
       const { className, children: codeChildren } = child.props as { className?: string; children?: React.ReactNode };
@@ -316,14 +279,93 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
 };
 
 /** 流式输出时：从第一个表格行开始到结尾都当作纯文本，避免表格在逐字更新时反复重排导致跳*/
-function splitTableBlockForStreaming(text: string): { before: string; tableAndRest: string } | null {
+function splitTableBlockForStreaming(text: string): { before: string; tableBlock: string; after: string } | null {
   const lines = text.split('\n');
   const idx = lines.findIndex((line) => /^\|.+\|/.test(line.trim()));
   if (idx < 0) return null;
+  // 只隔离连续的表格行，不吞掉表格后面的内容（pills/列表等）
+  let endIdx = idx;
+  while (endIdx < lines.length && /^\|.+\|/.test(lines[endIdx].trim())) {
+    endIdx++;
+  }
+  // 包含分隔符行（|---|---|）
+  if (endIdx < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[endIdx])) {
+    endIdx++;
+  }
   return {
     before: lines.slice(0, idx).join('\n'),
-    tableAndRest: lines.slice(idx).join('\n'),
+    tableBlock: lines.slice(idx, endIdx).join('\n'),
+    after: lines.slice(endIdx).join('\n'),
   };
+}
+
+function shouldPreprocessMarkdownTables(text: string): boolean {
+  if (!text) return false;
+  // 简单判定：包含至少两行“|...|”样式的行，才启用表格预处理，避免误伤普通文本
+  const lines = text.split('\n');
+  let tableLike = 0;
+  for (const l of lines) {
+    if (/^\s*\|.+\|\s*$/.test(l)) tableLike++;
+    if (tableLike >= 2) return true;
+  }
+  return false;
+}
+
+function fillEmptyCellsInTables(text: string): string {
+  // 将表格行里的空单元格填充为 &nbsp;，避免 remark-gfm 对 `| |` 的不稳定解析
+  // 仅在表格行内处理
+  return text.replace(/^\s*\|.*\|\s*$/gm, (line) => line.replace(/\|\s*\|/g, '| &nbsp; |'));
+}
+
+function escapeTableBrackets(text: string): string {
+  // 转义表格行里的 [xxx]，避免被当成链接语法破坏表格解析
+  return text.replace(/^\s*\|.*\|\s*$/gm, (line) =>
+    line.replace(/\[([^\]]*)\]/g, '\\[$1\\]')
+  );
+}
+
+function normalizeTableSeparators(text: string): string {
+  const lines = text.split('\n');
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const cur = lines[i] ?? '';
+    const next = lines[i + 1] ?? '';
+    out.push(cur);
+
+    const curTrim = cur.trim();
+    const nextTrim = next.trim();
+    const curIsTableRow = /^\|.+\|$/.test(curTrim);
+    const nextIsSep = /^\|[\s:|-]+\|$/.test(nextTrim);
+    const curIsSep = /^\|[\s:|-]+\|$/.test(curTrim);
+
+    // 若检测到疑似表头行（table row）且下一行不是分隔行，则自动插入分隔行
+    if (curIsTableRow && !curIsSep && !nextIsSep) {
+      const colCount = Math.max(1, curTrim.split('|').length - 2);
+      const sep = '|' + ' --- |'.repeat(colCount);
+      out.push(sep);
+    }
+  }
+  return out.join('\n');
+}
+
+function preprocessMarkdown(text: string): string {
+  if (!shouldPreprocessMarkdownTables(text)) return text;
+  let processed = text;
+  processed = fillEmptyCellsInTables(processed);
+  processed = escapeTableBrackets(processed);
+  processed = normalizeTableSeparators(processed);
+  return processed;
+}
+
+const MAX_MARKDOWN_TABLE_ROWS = 20;
+const MAX_MARKDOWN_TABLE_COLS = 8;
+function shouldFallbackTableRendering(text: string): boolean {
+  if (!text) return false;
+  const tableLines = text.split('\n').filter((l) => /^\s*\|.+\|\s*$/.test(l));
+  if (tableLines.length === 0) return false;
+  const rows = tableLines.length;
+  const cols = Math.max(0, (tableLines[0].match(/\|/g)?.length || 0) - 1);
+  return rows > MAX_MARKDOWN_TABLE_ROWS || cols > MAX_MARKDOWN_TABLE_COLS;
 }
 
 /** 打字机光标：单独组件避免随内容重渲染导致闪烁 */
@@ -335,6 +377,7 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
 const MarkdownContent = memo(
   function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
     const text = content || '';
+    const processedText = React.useMemo(() => preprocessMarkdown(text), [text]);
     const contentRef = React.useRef<HTMLSpanElement>(null);
     
 
@@ -359,8 +402,13 @@ const MarkdownContent = memo(
               marginTop: '4px',
               opacity: 0.8,
             }}>
-              {tableBlock.tableAndRest}
+              {tableBlock.tableBlock}
             </span>
+            {tableBlock.after && (
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {tableBlock.after}
+              </ReactMarkdown>
+            )}
           </span>
         );
       }
@@ -376,10 +424,19 @@ const MarkdownContent = memo(
     }
 
     // 完成后：完整 ReactMarkdown 渲染
+    if (shouldFallbackTableRendering(processedText)) {
+      return (
+        <span className="msg-content markdown-body" ref={contentRef}>
+          <span className="msg-streaming-raw-table">
+            {processedText}
+          </span>
+        </span>
+      );
+    }
     return (
       <span className="msg-content markdown-body" ref={contentRef}>
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {text}
+          {processedText}
         </ReactMarkdown>
       </span>
     );
@@ -664,6 +721,19 @@ const ChatMessageItem = memo(function ChatMessageItem({
       </span>
     </div>
   );
+}, (prev, next) => {
+  // 精细比较：只有真正变化的属性才触发重渲染
+  return (
+    prev.msg.id === next.msg.id &&
+    prev.msg.content === next.msg.content &&
+    prev.msg.isStreaming === next.msg.isStreaming &&
+    prev.textToShow === next.textToShow &&
+    prev.isStreamingMsg === next.isStreamingMsg &&
+    prev.speakingMessageId === next.speakingMessageId &&
+    prev.agentPhase === next.agentPhase &&
+    prev.wsConnected === next.wsConnected &&
+    prev.currentPage === next.currentPage
+  );
 });
 
 function filterExpectedEffect(text: string): string {
@@ -702,6 +772,7 @@ interface ChatTabProps {
 }
 
 const MAX_VISIBLE_MESSAGES = 50;
+const VISIBLE_MESSAGES_STEP = 30;
 
 // ── STREAK 工具函数 ──────────────────────────────────────────────────────
 function getTodayStr(): string {
@@ -1048,25 +1119,26 @@ const ChatMessageList = function ChatMessageList({
   const showTypingIndicator = (awaitingResponse || isStreaming) && (messages.length === 0 || messages[messages.length - 1]?.role === 'user');
 
   return (
-    <div className="chat-messages" onScroll={onScroll} ref={messagesContainerRef}>
-      {messages.length === 0 && (
-        <div className="chat-empty">
-          <span className="empty-icon">✦</span>
-          <span>输入消息开始对..</span>
-        </div>
-      )}
-      {showTypingIndicator && (
-        <div className="chat-thinking">
-          <span className="msg-label">◆ AMY</span>
-          {agentPhase === 'thinking' && <span className="agent-status-badge">思考中</span>}
-          <span className="processing-blocks typing-dots">
-            <span className="block" />
-            <span className="block" />
-            <span className="block" />
-          </span>
-        </div>
-      )}
-      {displayMessages.map((msg) => {
+    <div className="chat-messages-wrap" onScroll={onScroll} ref={messagesContainerRef}>
+      <div className="chat-messages">
+        {messages.length === 0 && (
+          <div className="chat-empty">
+            <span className="empty-icon">✦</span>
+            <span>输入消息开始对..</span>
+          </div>
+        )}
+        {showTypingIndicator && (
+          <div className="chat-thinking">
+            <span className="msg-label">◆ AMY</span>
+            {agentPhase === 'thinking' && <span className="agent-status-badge">思考中</span>}
+            <span className="processing-blocks typing-dots">
+              <span className="block" />
+              <span className="block" />
+              <span className="block" />
+            </span>
+          </div>
+        )}
+        {displayMessages.map((msg) => {
         const raw = typeof msg.content === 'string'
           ? msg.content
           : String((msg.content as any)?.text ?? (msg.content as any)?.content ?? msg.content ?? '');
@@ -1086,11 +1158,14 @@ const ChatMessageList = function ChatMessageList({
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
         // 如果 displayedLength 为 0 但有内容，显示完整内容（避免空白）
         const display = isStreamingMsg && displayedLength > 0 ? fullContent.slice(0, displayedLength) : fullContent;
+        // 流式期间：不要解析交互标签/选项框（标签可能未闭合，会导致源码闪现/泄露）
         const parsed = (msg.role === 'assistant' && !isStreamingMsg)
           ? parseOptionBox(raw)
           : { text: display, options: [] as OptionItem[], totalPages: undefined, isTaskList: false, isReflectiveQuestions: false, forcePills: undefined, segments: undefined };
         const textToShow = msg.role === 'assistant'
-          ? (isStreamingMsg && displayedLength > 0 ? display : (parsed.text?.trim() ? parsed.text : raw))
+          ? (isStreamingMsg && displayedLength > 0 && !parsed.segments
+              ? display
+              : (parsed.text?.trim() ? parsed.text : raw))
           : display;
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;
@@ -1121,8 +1196,9 @@ const ChatMessageList = function ChatMessageList({
             onQuoteQuestion={onQuoteQuestion}
           />
         );
-      })}
-      <div ref={bottomRef as React.Ref<HTMLDivElement>} />
+        })}
+        <div ref={bottomRef as React.Ref<HTMLDivElement>} />
+      </div>
     </div>
   );
 }
@@ -1172,6 +1248,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
   const [displayedLength, setDisplayedLength] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE_MESSAGES);
   // 任务看板显示状态
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // ===== 所有 useRef 集中声明 =====
@@ -1186,12 +1263,51 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const userScrolledUp = useRef<boolean>(false);
   const pendingSystemReply = useRef<boolean>(false);
   const streamDoneReceived = useRef<boolean>(false);
+  const streamUiRafRef = useRef<number | null>(null);
+
+  const scheduleStreamUiUpdate = useCallback(() => {
+    if (streamUiRafRef.current != null) return;
+    streamUiRafRef.current = requestAnimationFrame(() => {
+      streamUiRafRef.current = null;
+      const buf = streamingMessageRef.current;
+      setStreamingDisplayContent(buf);
+      if (!buf) return;
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant' && last?.isStreaming) {
+          return prev.map((m, idx) => (idx === prev.length - 1 ? { ...m, content: buf } : m));
+        }
+        if (last?.role === 'assistant' && !last.isStreaming && (last.content ?? '').trim() === buf.trim()) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: getNextMessageId(),
+            role: 'assistant' as const,
+            content: buf,
+            isStreaming: true,
+            timestamp: Date.now(),
+          },
+        ];
+      });
+    });
+  }, [getNextMessageId, setMessages]);
 
   // ===== 所有 useEffect 放在 useState/useRef 之后 =====
   // 通知父组件状态变化
   useEffect(() => {
     onStatusChange?.(wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
   }, [wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
+
+  useEffect(() => {
+    return () => {
+      if (streamUiRafRef.current != null) {
+        cancelAnimationFrame(streamUiRafRef.current);
+        streamUiRafRef.current = null;
+      }
+    };
+  }, []);
 
 
   const handleScreenshot = useCallback(async () => {
@@ -1468,9 +1584,18 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // 优先streamingMessageRef 里的完整流式内容
       // 只有在流式内容为空时才用 done 消息里的 content
       let finalStreamContent = streamingMessageRef.current || content;
+      // 将最终内容刷新到 UI（避免节流导致最后一段没显示）
+      if (finalStreamContent) {
+        streamingMessageRef.current = finalStreamContent;
+        scheduleStreamUiUpdate();
+      }
       // 不立刻清空，让打字机跑完
       const systemReply = pendingSystemReply.current;
       pendingSystemReply.current = false;
+      // 兼容旧消息：如果包含 [THINK_MODE:xxx] 标记，静默剥离
+      if (!systemReply && finalStreamContent) {
+        finalStreamContent = stripThinkModeMarker(finalStreamContent);
+      }
 
       // 解析 /status 系统回复，更新状态栏
       const isSystem = systemReply;
@@ -1568,32 +1693,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         streamingMessageRef.current = content;
       }
       
-      const buf = streamingMessageRef.current;
-      setStreamingDisplayContent(buf);
-      
-      if (!buf) return;
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          return prev.map((msg, idx) =>
-            idx === prev.length - 1 ? { ...msg, content: buf } : msg
-          );
-        }
-        if (last?.role === 'assistant' && !last.isStreaming && 
-            (last.content ?? '').trim() === buf.trim()) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            id: getNextMessageId(),
-            role: 'assistant' as const,
-            content: buf,
-            isStreaming: true,
-            timestamp: Date.now(),
-          },
-        ];
-      });
+      scheduleStreamUiUpdate();
       setIsStreaming(true);
       if (!userScrolledUp.current) 
         bottomRef.current?.scrollIntoView({ behavior: 'instant' });
@@ -1625,6 +1725,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       return () => clearTimeout(t);
     }
   }, [messages]);
+
+  useEffect(() => {
+    // 新消息到来时，确保可见窗口至少覆盖最新的 MAX_VISIBLE_MESSAGES
+    setVisibleCount((prev) => Math.max(prev, Math.min(messages.length, MAX_VISIBLE_MESSAGES)));
+  }, [messages.length]);
 
   const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
     if (!settings.typingSound || !msg.content) return;
@@ -1821,7 +1926,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     setShowScrollBtn(distFromBottom > 100);
     userScrolledUp.current = distFromBottom > 200;
-  }, []);
+
+    // 向上滚动接近顶部时，逐步加载更早消息（轻量“虚拟滚动”）
+    if (el.scrollTop < 120 && messages.length > visibleCount) {
+      setVisibleCount((prev) => Math.min(prev + VISIBLE_MESSAGES_STEP, messages.length));
+    }
+  }, [messages.length, visibleCount]);
 
   useEffect(() => {
     const lastMsg = messages[messages.length - 1];
@@ -2029,7 +2139,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
         <ChatMessageList
           messages={messages}
-          displayMessages={messages.length > MAX_VISIBLE_MESSAGES ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages}
+          displayMessages={messages.length > visibleCount ? messages.slice(-visibleCount) : messages}
           isStreaming={isStreaming}
           awaitingResponse={awaitingResponse}
           streamingContent={streamingDisplayContent}
@@ -2390,67 +2500,25 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         </div>
 
         {/* 6. Gateway 日志 - 固定高度 */}
-          <div className="gateway-log-section">
-          <div className="section-header gw-log-title-row">
-            <span className="section-title">
-              Gateway 日志
-            </span>
-            <div className="gw-controls gw-controls-log">
-              <button
-                type="button"
-                className="terminal-test-btn gw-btn-export"
-                onClick={async () => {
-                  if (logLines.length === 0) return;
-                  const content = logLines.join('\n');
-                  const blob = new Blob([content], { type: 'text/plain' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `gateway-log-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.txt`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                title="导出日志"
-              >
-                导出
-              </button>
-              <button
-                type="button"
-                className="terminal-test-btn gw-btn-clear"
-                onClick={() => {
-                  setLogLines([]);
-                }}
-                title="清空日志"
-              >
-                清空
-              </button>
-            </div>
-          </div>
-          <div ref={logContainerRef} className="log-terminal-dom" tabIndex={-1}>
-            {logLines.length === 0 ? (
-              <div className="log-empty">[LOG] 等待 Gateway 日志...</div>
-            ) : (
-              logLines.map((line, i) => {
-                const match = line.match(/^(\[[^\]]+\])(.*)/);
-                const colorClass = getLogColorClass(line);
-                const levelClass = `log-${getLogLevel(line)}`;
-                const combinedClass = `log-line ${levelClass} ${colorClass}`.trim();
-                if (match) {
-                  return (
-                    <div key={i} className={combinedClass}>
-                      <strong style={{ color: 'inherit', fontWeight: 900, textShadow: '0 0 8px currentColor' }}>{match[1]}</strong>
-                      {match[2]}
-                    </div>
-                  );
-                }
-                return (
-                  <div key={i} className={combinedClass}>
-                    {line}
-                  </div>
-                );
-              })
-            )}
-          </div>
+        <div className="gateway-log-section">
+          <LogPanel
+            title="Gateway 日志"
+            lines={logLines}
+            bodyRef={logContainerRef}
+            emptyText="[LOG] 等待 Gateway 日志..."
+            onExport={async () => {
+              if (logLines.length === 0) return;
+              const content = logLines.join('\n');
+              const blob = new Blob([content], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `gateway-log-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.txt`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            onClear={() => setLogLines([])}
+          />
         </div>
         {/* 内容区域结束 */}
       </div>

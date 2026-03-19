@@ -4,6 +4,67 @@ const memory = require('./memory');
 const memoryFeedback = require('./memory_feedback');
 const fs = require('fs');
 const path = require('path');
+const { createLogger } = require('./logger');
+const log = createLogger('ai');
+
+// ═══════════════════════════════════════════════════════════════
+// AI 上下文截断优化
+// ═══════════════════════════════════════════════════════════════
+const MAX_HISTORY_ROUNDS = 12; // 最多保留最近 12 轮对话
+const MAX_CONTEXT_CHARS = 60000; // 上下文字符上限（约 15k tokens）
+
+function truncateHistory(messages) {
+  if (!messages || messages.length === 0) return messages;
+
+  // 分离系统消息和对话消息
+  const systemMsgs = messages.filter(m => m.role === 'system');
+  const chatMsgs = messages.filter(m => m.role !== 'system');
+
+  // 只保留最近 N 轮
+  const recentChat = chatMsgs.slice(-MAX_HISTORY_ROUNDS * 2);
+
+  // 检查总字符数，超限时从最早的开始裁剪
+  let combined = [...systemMsgs, ...recentChat];
+  let totalChars = combined.reduce((sum, m) =>
+    sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+
+  while (totalChars > MAX_CONTEXT_CHARS && recentChat.length > 2) {
+    const removed = recentChat.shift();
+    totalChars -= (typeof removed.content === 'string' ? removed.content.length : 0);
+    combined = [...systemMsgs, ...recentChat];
+  }
+
+  return combined;
+}
+
+function getContextUsageRatio(messages, modelId) {
+  const limit = getModelContextLimit(modelId);
+  // 粗估 token 数 ≈ 字符数 / 2（中文）或 / 4（英文）
+  const totalChars = messages.reduce((sum, m) =>
+    sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+  const estimatedTokens = totalChars / 2; // 偏保守（中文为主）
+  const ratio = estimatedTokens / limit;
+
+  if (ratio > 0.8) {
+    log.warn(`上下文使用率 ${(ratio * 100).toFixed(0)}%，建议截断`, { modelId });
+  }
+  return ratio;
+}
+
+function getModelContextLimit(modelId) {
+  const MODEL_CONTEXT_LIMITS = {
+    'qwen-plus': 128000,
+    'qwen3.5-plus': 128000,
+    'qwen3-max-2026-01-23': 128000,
+    'qwen-vl-max': 32768,
+    'qwen2-vl-7b': 32768,
+    'deepseek-chat': 64000,
+    'deepseek-reasoner': 64000,
+  };
+  if (!modelId || typeof modelId !== 'string') return 128000;
+  const id = modelId.toLowerCase().replace(/\s/g, '');
+  return MODEL_CONTEXT_LIMITS[id] || MODEL_CONTEXT_LIMITS[modelId.split('/').pop()] || 128000;
+}
 
 async function loadSystemPrompt(promptsDir) {
   const nocturneAlive = await memory.isAlive();
@@ -27,14 +88,25 @@ async function loadSystemPrompt(promptsDir) {
     } catch {}
 
     let bootMemory = await memory.loadBootMemory(coreUris);
-    console.log('[AI] bootMemory 长度:', bootMemory?.length || 0);
-    console.log('[AI] bootMemory 前100字:', (bootMemory || '').slice(0, 100));
+    log.debug('bootMemory loaded', {
+      len: bootMemory?.length || 0,
+      preview: (bootMemory || '').slice(0, 100),
+    });
     if (config.memory && config.memory.load_feedback_on_boot) {
       const feedbackBlock = await memoryFeedback.loadFeedbackForBoot();
       if (feedbackBlock) bootMemory = bootMemory + feedbackBlock;
     }
+
+    // 加载追问偏好
+    try {
+      const clarificationMemory = require('./clarification_memory');
+      const prefsBlock = await clarificationMemory.loadPreferencesForBoot();
+      if (prefsBlock) bootMemory = bootMemory + prefsBlock;
+    } catch (e) {
+      log.warn('clarification prefs load failed', { error: e?.message || String(e) });
+    }
     if (bootMemory && bootMemory.length > 100) {
-      console.log('[AI] System prompt 从 Nocturne 加载成功');
+      log.info('System prompt loaded from Nocturne');
 
       // 加载今天的停车场待办
       try {
@@ -73,7 +145,7 @@ async function loadSystemPrompt(promptsDir) {
             }\n\n请在少爷第一条消息后，用一句话提醒他还有这些待处理的事。`;
 
             bootMemory = parkingNotice + '\n\n---\n\n' + bootMemory;
-            console.log('[Parking] 加载到', undoneItems.length, '条待处理事项');
+            log.info('parking loaded', { count: undoneItems.length });
           }
         }
       } catch {}
@@ -91,16 +163,16 @@ ${bootMemory}
 `;
       try {
         fs.writeFileSync(memoryMdPath, memoryMdContent, 'utf-8');
-        console.log('[AI] MEMORY.md 已同步更新');
+        log.info('MEMORY.md synced', { path: memoryMdPath });
       } catch (e) {
-        console.warn('[AI] MEMORY.md 同步写入失败:', e.message);
+        log.warn('MEMORY.md sync failed', { path: memoryMdPath, error: e?.message || String(e) });
       }
 
       return buildSystemPrompt(bootMemory, 'nocturne', promptsDir);
     }
   }
 
-  console.warn('[AI] Nocturne 不可用，回退到本地 MD 文件');
+  log.warn('Nocturne unavailable, fallback to local prompt files');
   const files = [
     'SOUL.md',
     'AGENTS.md',
@@ -236,6 +308,10 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
   const baseUrl = config.DASHSCOPE_BASE_URL;
   const model = config.DASHSCOPE_MODEL;
 
+  // 上下文截断优化：防止消息过长
+  const truncatedMessages = truncateHistory(messages);
+  getContextUsageRatio(truncatedMessages, model);
+
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
   // 只有在 DEEPSEEK_API_KEY 存在且 baseUrl 不是 deepseek 时才 fallback
   const canFallbackToDeepseek = !!(config.DEEPSEEK_API_KEY)
@@ -254,7 +330,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     return 'custom';
   })();
 
-  console.log('[AI] provider=' + providerName + ' model=' + model);
+  log.info('request start', { provider: providerName, model, messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0 });
 
   if (!apiKey) {
     onError(new Error('API Key 未配置'));
@@ -262,7 +338,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
   }
 
   try {
-    const hasImage = messages.some(m =>
+    const hasImage = truncatedMessages.some(m =>
       Array.isArray(m.content) &&
       m.content.some(c => c.type === 'image_url')
     );
@@ -274,7 +350,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
       },
       body: JSON.stringify({
         model,
-        messages,
+        messages: truncatedMessages,
         stream: true,
         stream_options: { include_usage: true },
         tools: hasImage ? undefined : TOOL_DEFINITIONS,
@@ -285,10 +361,11 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
       signal: AbortSignal.timeout(120000),
     });
 
-    console.log('[AI] response status: ' + res.status);
+    log.info('response', { status: res.status });
 
     if (!res.ok) {
       const errText = await res.text();
+      log.error('request failed', { status: res.status, error: String(errText).slice(0, 500) });
       throw new Error(`API Error ${res.status}: ${errText}`);
     }
 
@@ -298,7 +375,9 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     let fullText = '';
     let toolCalls = [];
     let totalUsage = null;
+    let sawDone = false;
 
+    log.debug('stream start');
     for await (const chunk of reader) {
       const raw = decoder.decode(chunk, { stream: true });
       buf += raw;
@@ -307,7 +386,11 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed) continue;
+        if (trimmed === 'data: [DONE]') {
+          sawDone = true;
+          continue;
+        }
         if (!trimmed.startsWith('data: ')) continue;
 
         let parsed;
@@ -315,9 +398,6 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
           parsed = JSON.parse(trimmed.slice(6));
         } catch { continue; }
 
-        if (parsed?.usage || parsed?.choices?.[0]?.finish_reason === 'stop') {
-          console.log('[Debug] Final chunk: ' + JSON.stringify(parsed).slice(0, 300));
-        }
         if (parsed?.usage) {
           totalUsage = parsed.usage;
         }
@@ -345,12 +425,14 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
         }
 
         const finishReason = parsed?.choices?.[0]?.finish_reason;
+        if (finishReason === 'stop') sawDone = true;
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
+          log.info('tool_calls', { count: toolCalls.filter(Boolean).length });
           const toolResults = [];
           for (const tc of toolCalls.filter(Boolean)) {
             let args = {};
             try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
-            console.log(`[Tool] Calling ${tc.function.name}`, args);
+            log.info('tool call', { name: tc.function.name, args });
             const result = await executeTool(tc.function.name, args);
             toolResults.push({
               tool_call_id: tc.id,
@@ -360,7 +442,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
           }
 
           const continuedMessages = [
-            ...messages,
+            ...truncatedMessages,
             { role: 'assistant', content: fullText || null, tool_calls: toolCalls.filter(Boolean) },
             ...toolResults,
           ];
@@ -370,11 +452,17 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
       }
     }
 
+    if (!sawDone) {
+      log.warn('stream interrupted', { outputLen: (fullText || '').length });
+    } else {
+      log.debug('stream end');
+    }
+    log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null });
     onDone(fullText, totalUsage);
   } catch (e) {
     // 只有在百炼失败且有 DeepSeek Key 时才 fallback
     if (canFallbackToDeepseek) {
-      console.warn('[AI] 主服务商失败，尝试 DeepSeek: ' + e.message);
+      log.warn('primary provider failed, fallback to deepseek', { error: e?.message || String(e) });
       const prevBaseUrl = config.DASHSCOPE_BASE_URL;
       const prevModel = config.DASHSCOPE_MODEL;
       const prevKey = config.DASHSCOPE_API_KEY;
@@ -382,16 +470,17 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
       config.DASHSCOPE_API_KEY = config.DEEPSEEK_API_KEY;
       config.DASHSCOPE_MODEL = 'deepseek-chat';
       try {
-        await streamChat({ messages, onDelta, onDone, onError });
+        await streamChat({ messages: truncatedMessages, onDelta, onDone, onError });
       } finally {
         config.DASHSCOPE_BASE_URL = prevBaseUrl;
         config.DASHSCOPE_API_KEY = prevKey;
         config.DASHSCOPE_MODEL = prevModel;
       }
     } else {
+      log.error('streamChat error', { error: e?.message || String(e) });
       onError(e);
     }
   }
 }
 
-module.exports = { streamChat, loadSystemPrompt };
+module.exports = { streamChat, loadSystemPrompt, truncateHistory, getContextUsageRatio };

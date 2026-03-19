@@ -181,7 +181,7 @@
 }
 
 /* 聊天消息区 - 整体滚动，气泡高度随内容撑开 */
-.chat-messages {
+.chat-messages-wrap {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -192,6 +192,14 @@
   font-family: var(--font-sans);
   min-height: 0;
   height: 100%;
+  width: 100%;
+}
+
+/* 内容容器：负责居中排版，不负责滚动 */
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   /* 居中显示 */
   max-width: 860px;
   margin: 0 auto;
@@ -200,17 +208,17 @@
 }
 
 /* 聊天区滚动条 */
-.chat-messages::-webkit-scrollbar {
+.chat-messages-wrap::-webkit-scrollbar {
   width: 4px;
 }
-.chat-messages::-webkit-scrollbar-track {
+.chat-messages-wrap::-webkit-scrollbar-track {
   background: transparent;
 }
-.chat-messages::-webkit-scrollbar-thumb {
+.chat-messages-wrap::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
   border-radius: 2px;
 }
-.chat-messages::-webkit-scrollbar-thumb:hover {
+.chat-messages-wrap::-webkit-scrollbar-thumb:hover {
   background: var(--accent-primary);
   box-shadow: 0 0 6px var(--accent-primary-glow);
 }
