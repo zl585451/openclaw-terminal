@@ -7,6 +7,7 @@ build/
 # 环境配置（永不提交）
 .env
 .env.local
+backups/
 .env.production
 .env.*
 
@@ -33,3 +34,4 @@ logs/
 .env.example
 .cursorignore
 scripts/clear-cursor-cache.bat
+node_modules
