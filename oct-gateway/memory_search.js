@@ -185,7 +185,7 @@ async function searchMemory(query, options = {}) {
   if (includeContent && top.length > 0) {
     const results = [];
     for (const c of top) {
-      const r = await memory.readMemory(c.uri);
+      const r = await memory.readMemory(c.uri, { treat404AsDebug: true });
       let content = c.content_snippet;
       let priority = 2;
       if (r.ok && r.data) {
@@ -209,7 +209,7 @@ async function searchMemory(query, options = {}) {
       data: includeContent
         ? await Promise.all(
             top.map(async (c) => {
-              const r = await memory.readMemory(c.uri);
+              const r = await memory.readMemory(c.uri, { treat404AsDebug: true });
               let content = c.content_snippet;
               let priority = 2;
               if (r.ok && r.data) {
@@ -239,7 +239,7 @@ async function searchMemory(query, options = {}) {
   }));
   if (includeContent) {
     for (let i = 0; i < out.length; i++) {
-      const r = await memory.readMemory(out[i].uri);
+      const r = await memory.readMemory(out[i].uri, { treat404AsDebug: true });
       if (r.ok && r.data) {
         const node = r.data?.node || r.data;
         out[i].content = (node?.content ?? '').slice(0, 500);

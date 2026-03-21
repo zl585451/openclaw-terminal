@@ -8,17 +8,13 @@ interface CodeBlockProps {
   children: string;
 }
 
-const LINE_HEIGHT = 18; // 12px font * 1.5
 const LINES_COLLAPSED = 5;
-const PADDING_V = 24;
-const MAX_HEIGHT_COLLAPSED = LINES_COLLAPSED * LINE_HEIGHT + PADDING_V;
 
 export default function CodeBlock({ language = 'text', children }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const code = String(children).replace(/\n$/, '');
   const lines = code.split('\n');
   const needExpand = lines.length > LINES_COLLAPSED;
-  // 长代码块默认不折叠，避免“看起来被截断”
   const [expanded, setExpanded] = useState(() => needExpand);
 
   const handleCopy = async () => {
@@ -34,8 +30,10 @@ export default function CodeBlock({ language = 'text', children }: CodeBlockProp
   const langLabel = language && language !== 'text' ? language : 'code';
 
   return (
-    <div className={`code-block-wrap ${expanded ? 'code-block-expanded' : ''}`}>
-      <div className="code-block-header">
+    <div
+      className={`code-block-wrap ${expanded ? 'code-block-expanded' : ''} ${needExpand ? 'code-block-collapsible' : ''}`}
+    >
+      <header className="code-block-header">
         <span className="code-block-lang">{langLabel}</span>
         <div className="code-block-actions">
           {needExpand && (
@@ -50,33 +48,37 @@ export default function CodeBlock({ language = 'text', children }: CodeBlockProp
           )}
           <button
             type="button"
-            className="code-block-copy"
+            className={`code-block-copy ${copied ? 'copied' : ''}`}
             onClick={handleCopy}
             title={copied ? '已复制' : '复制'}
           >
-            {copied ? '✓' : '⎘'}
+            {copied ? 'Copied!' : '⎘'}
           </button>
         </div>
+      </header>
+      <div className="code-block-body">
+        <SyntaxHighlighter
+          language={language}
+          style={oneDark}
+          customStyle={{
+            margin: 0,
+            padding: '14px 16px',
+            fontSize: '13px',
+            lineHeight: 1.5,
+            background: 'var(--bg-code)',
+            borderRadius: 0,
+            border: 'none',
+          }}
+          codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
+          showLineNumbers={false}
+          PreTag="div"
+        >
+          {code}
+        </SyntaxHighlighter>
+        {needExpand && !expanded && (
+          <div className="code-block-fade" aria-hidden />
+        )}
       </div>
-      <SyntaxHighlighter
-        language={language}
-        style={oneDark}
-        customStyle={{
-          margin: 0,
-          padding: '14px 16px',
-          fontSize: '13px',
-          lineHeight: 1.5,
-          background: 'var(--bg-code)',
-          borderRadius: '0 0 var(--radius-md) var(--radius-md)',
-          maxHeight: needExpand && !expanded ? MAX_HEIGHT_COLLAPSED : 'none',
-          overflow: needExpand && !expanded ? 'hidden' : 'visible',
-        }}
-        codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
-        showLineNumbers={false}
-        PreTag="div"
-      >
-        {code}
-      </SyntaxHighlighter>
     </div>
   );
 }

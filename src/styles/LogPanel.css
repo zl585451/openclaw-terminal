@@ -87,6 +87,11 @@
   color: var(--text-primary);
 }
 
+.log-panel-expand-btn {
+  margin-left: 4px;
+  color: var(--primary, #60a5fa);
+}
+
 .log-panel-body {
   flex: 1;
   min-height: 0;
@@ -110,16 +115,50 @@
   padding: 1px 0;
 }
 
-.log-ts, .log-lv, .log-mod {
+.log-ts, .log-lv, .log-mod, .log-tag {
   margin-right: 8px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
-/* 四级颜色：ERROR红 / WARN黄 / INFO绿 / DEBUG灰 */
+.log-tag {
+  display: inline-block;
+}
+
+/* 五级颜色：ERROR红 / WARN黄 / INFO绿 / OK青 / DEBUG灰 */
 .log-ERROR { color: #ff4d4f; }
 .log-WARN  { color: #fadb14; }
 .log-INFO  { color: #52c41a; }
+.log-OK    { color: #36d399; }
 .log-DEBUG { color: #9aa0a6; }
 
 .log-msg { color: inherit; }
+
+/* 状态栏样式 */
+.log-panel-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 6px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-surface);
+}
+
+.log-status-indicator {
+  font-weight: 500;
+}
+
+.log-status-indicator.online {
+  color: #86efac;
+}
+
+.log-status-indicator.offline {
+  color: #fca5a5;
+}
+
+.log-model-name {
+  color: #93c5fd;
+  font-family: var(--font-mono);
+}
 

@@ -1,0 +1,52 @@
+# Provider 系统 — AI 服务商市场化
+
+> **最后更新**：2026-03-20 | **状态**：✅ 正常
+
+---
+
+## 做什么
+抽象 AI 服务商为统一的 Provider 概念，让用户在 GUI 中选择服务商、填 Key、选模型，无需编辑 .env。
+
+## 文件
+- `oct-gateway/providers.js` — 服务商预设注册表
+- `oct-gateway/config.js` — getProviderConfig、currentProvider
+- `oct-gateway/ai.js` — 按 provider 能力组装请求
+- `oct-gateway/index.js` — `/model`、`/provider` 命令
+- `src/components/SettingsPanel.tsx` — 服务商选择器 UI
+
+## 预设服务商
+| ID | 名称 | Base URL |
+|----|------|----------|
+| bailian | 阿里云百炼 | dashscope.aliyuncs.com |
+| bailian-coding | 阿里云百炼 Coding Plan | coding.dashscope.aliyuncs.com |
+| deepseek | DeepSeek | api.deepseek.com |
+| siliconflow | 硅基流动 | api.siliconflow.cn |
+| moonshot | Moonshot (Kimi) | api.moonshot.cn |
+| groq | Groq | api.groq.com |
+| openai | OpenAI | api.openai.com |
+| ollama | Ollama 本地 | localhost:11434 |
+| custom | 自定义 | 用户填写 |
+
+## 数据流
+```
+用户在 Settings 选择服务商/模型
+    → save-api-keys 写入 config.json (OCT_PROVIDER, OCT_MODEL, DASHSCOPE_BASE_URL, ...)
+    → 重启 Gateway
+    → config.loadConfigFile() 读取
+    → getProviderConfig() 返回 apiKey/baseUrl/models
+    → ai.js streamChat 按 provider 能力组装请求
+```
+
+## Slash 命令
+- `/model` — 展示当前 provider 的模型列表（🔧 工具 🧠 思考），切换模型
+- `/provider` — 展示可用服务商，切换服务商
+
+## 能力声明
+每个 provider 的 models 声明 `tools`、`thinking`。仅 `tools: true` 的模型才会传 `tools`/`tool_choice`，避免 deepseek-v3 等报错。
+
+---
+
+## 更新日志
+| 日期 | 内容 |
+|------|------|
+| 2026-03-20 | Phase 1 后端抽象、Phase 2 Settings UI |

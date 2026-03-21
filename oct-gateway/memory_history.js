@@ -9,7 +9,13 @@ const { createLogger } = require('./logger');
 const log = createLogger('memory_history');
 
 const DOMAIN = 'core';
-const HISTORY_BASE = 'my_user/daily';
+const HISTORY_BASE = 'my_user/history';
+
+function extractHttpStatusFromError(errText) {
+  const s = String(errText || '');
+  const m = s.match(/HTTP\s+(\d{3})\b/);
+  return m ? (m[1] | 0) : null;
+}
 
 function inferType(userMsg) {
   const s = (userMsg || '').trim();
@@ -33,26 +39,48 @@ function nowFragments() {
   };
 }
 
-/** 确保父路径存在（逐级 POST 创建，已存在则忽略）。不包含 fullPath 自身，仅其父级。 */
+/**
+ * 确保父路径存在（逐级"先读后写"）。
+ * 规则：读成功跳过；404 则写入占位内容；其它错误抛出。
+ * 不包含 fullPath 自身，仅其父级。
+ * 
+ * 注意：使用 writeMemory 而非 createMemory，因为 Nocturne 对空节点返回 404。
+ */
 async function ensurePathExists(domain, fullPath) {
   const parts = fullPath.split('/').filter(Boolean);
   if (parts.length <= 1) return;
+
   for (let i = 1; i < parts.length; i++) {
     const path = parts.slice(0, i).join('/');
-    const r = await memory.createMemory(`${domain}://${path}`, `${parts[i - 1]} 节点`, 2, '');
-    if (!r.ok && !(r.error && r.error.includes('already exists'))) {
-      // 已存在或其它可忽略错误
-    }
-  }
-}
+    const uri = `${domain}://${path}`;
 
-/** 确保父路径存在（含 fullPath 自身），供 saveHistorySummary 内部用 */
-async function ensureParentPath(domain, fullPath) {
-  const parts = fullPath.split('/').filter(Boolean);
-  for (let i = 1; i <= parts.length; i++) {
-    const path = parts.slice(0, i).join('/');
-    const r = await memory.createMemory(`${domain}://${path}`, `${parts[i - 1]} 节点`, 2, '');
-    if (!r.ok && !(r.error && r.error.includes('already exists'))) {}
+    // 先检查是否已存在
+    const rr = await memory.readMemory(uri, { treat404AsDebug: true });
+    if (rr.ok) {
+      log.debug('ensurePathExists: path exists', { uri });
+      continue;
+    }
+
+    const status = extractHttpStatusFromError(rr.error);
+    if (status !== 404) {
+      log.warn('ensurePathExists: read failed (non-404)', { uri, error: rr.error });
+      throw new Error(rr.error || 'read failed');
+    }
+
+    // 404：路径不存在，用 writeMemory 创建并写入占位内容
+    const placeholderContent = JSON.stringify({ type: 'directory', label: parts[i - 1] });
+    const wr = await memory.writeMemory(uri, placeholderContent, 2, '', { ensureParent: true });
+    if (wr.ok) {
+      log.info('ensurePathExists: created', { uri });
+    } else {
+      const wStatus = extractHttpStatusFromError(wr.error);
+      if (wStatus === 422) {
+        log.debug('ensurePathExists: path already exists (422)', { uri });
+      } else {
+        log.error('ensurePathExists: write failed', { uri, error: wr.error });
+        throw new Error(wr.error || 'write failed');
+      }
+    }
   }
 }
 
@@ -92,16 +120,17 @@ async function saveHistorySummary(userMsg, amyReply, type) {
 
   try {
     log.debug('write history summary', { uri, type: t });
-    await ensureParentPath(DOMAIN, `${HISTORY_BASE}/${datePath}`);
+    await ensurePathExists(DOMAIN, pathSeg);
     const r = await memory.createMemory(uri, content, 2, '');
     if (r.ok) {
       log.info('history summary written', { uri });
-    } else {
-      log.error('history summary write failed', { uri, error: r.error });
+    } else if (!r.error?.includes('already exists')) {
+      const wr = await memory.writeMemory(uri, content, 2, '');
+      if (wr.ok) log.info('history summary written', { uri });
+      else log.error('history summary write failed', { uri, error: wr.error });
     }
   } catch (e) {
     log.error('history summary exception', { uri, error: e?.message || String(e) });
-    // 写入失败不阻塞，静默
   }
 }
 
@@ -122,7 +151,7 @@ async function cleanupOldHistory() {
   const cutoffStr = cutoff.toISOString().slice(0, 10); // YYYY-MM-DD
 
   try {
-    const r = await memory.readMemory(`core://${HISTORY_BASE}`);
+    const r = await memory.readMemory(`core://${HISTORY_BASE}`, { treat404AsDebug: true });
     if (!r.ok || !r.data) return;
     const children = r.data?.node?.children || r.data?.children || [];
     for (const ch of children) {

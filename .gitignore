@@ -22,6 +22,12 @@ scripts/license_keys.txt
 # 数据库文件
 *.db
 *.sqlite
+nocturne_memory.db
+
+# 用户个人配置（发布版不包含）
+docs/01_system_prompts/USER.md
+userData/tasks.json
+tasks.json
 
 # 日志
 *.log
@@ -33,4 +39,6 @@ logs/
 .env.example
 .cursorignore
 scripts/clear-cursor-cache.bat
+node_modules
+node_modules
 node_modules

@@ -18,10 +18,10 @@ async function selectBestApproach(userMsg, systemPrompt, history) {
       messages: [
         {
           role: 'system',
-          content: `你是 AMY 的前置思考模块。
-分析少爷的问题，生成2个不同的回复思路，选出最优的一个。
+          content: `你是 AI 的前置思考模块。
+分析用户的问题，生成2个不同的回复思路，选出最优的一个。
 
-少爷的偏好：简洁直接、有温度、具体建议、适时质疑而非一味附和。
+用户的偏好：简洁直接、有温度、具体建议、适时质疑而非一味附和。
 
 输出格式（严格JSON）：
 {

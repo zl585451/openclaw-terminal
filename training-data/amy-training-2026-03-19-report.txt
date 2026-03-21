@@ -1,0 +1,15 @@
+导出时间：2026/3/19 22:09:40
+总对话数：464 条
+导出数量：443 条（3分以上）
+过滤数量：21 条（低分或太短）
+文件路径：E:\windows-window\OpenClaw-Terminal\training-data\amy-training-2026-03-19.jsonl
+
+下一步：
+1. 打开 https://bailian.console.aliyun.com
+2. 进入「模型调优」→「数据集管理」
+3. 上传 amy-training-2026-03-19.jsonl
+4. 选择 qwen-turbo 或 qwen-plus 作为基础模型
+5. 开始 SFT 微调训练
+
+当前进度：443 / 1000 条
+距离可微调还需：557 条

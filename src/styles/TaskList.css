@@ -66,6 +66,7 @@
 
 /* 自定义 checkbox */
 .task-checkbox {
+  position: relative;
   flex-shrink: 0;
   width: 16px;
   height: 16px;

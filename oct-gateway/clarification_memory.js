@@ -13,6 +13,7 @@
  */
 
 const memory = require('./memory');
+const memoryHistory = require('./memory_history');
 const { createLogger } = require('./logger');
 const log = createLogger('clarification');
 
@@ -89,7 +90,7 @@ function extractLastQuestion(text) {
   for (let i = sentences.length - 1; i >= 0; i--) {
     const s = sentences[i].trim();
     if (s.endsWith('？') || s.endsWith('?')) {
-      return s.replace(/^[少爷，]*/, '').trim();
+      return s.replace(/^[用户，]*/, '').trim();
     }
   }
   return null;
@@ -140,6 +141,11 @@ function classifyPreference(topic, choice) {
 
 /**
  * 保存追问偏好到 Nocturne
+ * 
+ * 标准三层 fallback 写入：
+ * 1. ensurePathExists + createMemory
+ * 2. writeMemory
+ * 3. 最外层静默兜底
  *
  * @param {string} topic - 追问的主题
  * @param {string} choice - 用户的选择
@@ -152,10 +158,10 @@ async function saveClarificationPreference(topic, choice) {
     const pref = classifyPreference(topic, choice);
     const uri = `core://my_user/preferences/${pref.path}`;
 
-    // 读取现有偏好（如果存在则追加历史）
+    // 读取现有偏好（如果存在则追加历史），404 静默返回空
     let existing = null;
     try {
-      const r = await memory.readMemory(uri);
+      const r = await memory.readMemory(uri, { treat404AsDebug: true });
       if (r.ok && r.data) {
         const node = r.data?.node || r.data;
         const raw = node?.content || '';
@@ -189,16 +195,35 @@ async function saveClarificationPreference(topic, choice) {
       };
     }
 
-    await memory.writeMemory(
-      uri,
-      JSON.stringify(content),
-      2,
-      `当少爷遇到${pref.label}相关问题时参考`
-    );
+    const contentStr = JSON.stringify(content);
+    const disclosure = `当用户遇到${pref.label}相关问题时参考`;
 
-    log.info('preference saved', { path: pref.path, choice });
-  } catch (e) {
-    log.warn('preference save failed', { error: e?.message || String(e) });
+    // ── 第一层：ensurePathExists + createMemory ──
+    try {
+      await memoryHistory.ensurePathExists('core', `my_user/preferences/${pref.path}`);
+      const result = await memory.createMemory(uri, contentStr, 2, disclosure, { treat422AsDebug: true });
+      if (result.ok) {
+        log.info('saved', { path: pref.path, choice, layer: 'createMemory' });
+        return;
+      }
+      throw new Error(result?.error || 'createMemory failed');
+    } catch (e1) {
+      log.warn('layer1 failed, trying writeMemory', { path: pref.path, error: e1?.message || String(e1) });
+    }
+
+    // ── 第二层：fallback 到 writeMemory ──
+    try {
+      const result = await memory.writeMemory(uri, contentStr, 2, disclosure);
+      if (result.ok) {
+        log.info('saved', { path: pref.path, choice, layer: 'writeMemory' });
+        return;
+      }
+      throw new Error(result?.error || 'writeMemory failed');
+    } catch (e2) {
+      log.warn('layer2 failed', { path: pref.path, error: e2?.message || String(e2) });
+    }
+  } catch (error) {
+    log.warn('all layers failed', { path: pref?.path, error: error?.message || String(error) });
   }
 }
 
@@ -253,7 +278,7 @@ async function loadPreferencesForBoot() {
 
     if (lines.length === 0) return '';
 
-    return `\n\n## 📌 少爷的已知偏好（追问学习积累）\n\n${lines.join('\n')}\n\n> 遇到相关场景时，可以直接参考这些偏好，减少追问。\n`;
+    return `\n\n## 📌 用户的已知偏好（追问学习积累）\n\n${lines.join('\n')}\n\n> 遇到相关场景时，可以直接参考这些偏好，减少追问。\n`;
   } catch (e) {
     log.warn('preferences load failed', { error: e?.message || String(e) });
     return '';

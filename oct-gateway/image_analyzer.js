@@ -11,7 +11,7 @@ const logger = createLogger('image_analyzer');
 const DEFAULT_VISION_MODEL = 'qwen-vl-max';
 const PROMPT = '请用一句话描述这张图片的内容。如果是截图，请说明截图中的关键信息（界面、文字、错误信息等）。直接输出描述，不要加引号或前缀。';
 
-const FALLBACK_MSG = '[图片分析] 图片分析失败，请少爷描述图片内容。';
+const FALLBACK_MSG = '[图片分析] 图片分析失败，请用户描述图片内容。';
 
 /**
  * 云端分析单张图片，成功返回 "[图片分析] ..."，失败返回 null（不抛错，仅打日志）
@@ -78,7 +78,7 @@ async function analyzeImageCloud(url, timeoutMs) {
 async function analyzeImage(dataUrl, mimeType) {
   const cfg = config.image_analysis || {};
   if (cfg.enabled === false) {
-    return '[图片分析] 未启用，请少爷描述图片内容。';
+    return '[图片分析] 未启用，请用户描述图片内容。';
   }
 
   let url = dataUrl;
@@ -98,7 +98,7 @@ async function analyzeImage(dataUrl, mimeType) {
     if (cloudResult) return cloudResult;
   }
 
-  // 2) 备选本地（无感切换，不告知少爷）
+  // 2) 备选本地（无感切换，不告知用户）
   if (useLocal) {
     const localResult = await imageAnalyzerLocal.analyzeImageLocal(url, timeoutMs);
     if (localResult) return localResult;

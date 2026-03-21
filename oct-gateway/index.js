@@ -15,6 +15,8 @@ const crypto = require('crypto');
 const selfEval = require('./self_eval');
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
+const nocturneQueue = require('./nocturne_task_queue');
+const aiLibrary = require('./tools/ai_library');
 const { createLogger } = require('./logger');
 const log = createLogger('gateway');
 const memLog = createLogger('mem');
@@ -65,7 +67,7 @@ async function checkMemoryHealth() {
 
     const missing = [];
     for (const uri of CORE_URIS) {
-      const r = await memory.readMemory(uri);
+      const r = await memory.readMemory(uri, { treat404AsDebug: true });
       const content = r.data?.node?.content || r.data?.content || '';
       if (!r.ok || !content) missing.push(uri);
     }
@@ -82,6 +84,64 @@ async function checkMemoryHealth() {
 
 // 启动 3 秒后运行健康检查（等 Nocturne 完全就绪）
 setTimeout(checkMemoryHealth, 3000);
+
+// ═══════════════════════════════════════════════════════════════
+// Nocturne 心跳检查（可配置，默认 5 分钟）
+// ═══════════════════════════════════════════════════════════════
+const heartbeatIntervalMs = (config.nocturne?.heartbeat_interval_seconds ?? 300) * 1000;
+setInterval(async () => {
+  try {
+    const alive = await memory.isAlive();
+    if (alive) {
+      nocturneQueue.invalidateHealthCache();
+      log.info('Nocturne 心跳正常');
+    } else {
+      log.warn('Nocturne 心跳检查：离线，记忆操作降级');
+    }
+  } catch (e) {
+    log.warn('Nocturne 心跳检查失败', { error: e?.message || String(e) });
+  }
+}, heartbeatIntervalMs);
+
+/** 流式合并：按 min/max chars 或 idle 批量发送，减少 Nocturne 侧连接压力 */
+function createStreamMergeDelta(cfg, onChunk) {
+  const minChars = (cfg?.min_chars ?? 200);
+  const maxChars = (cfg?.max_chars ?? 2000);
+  const idleMs = (cfg?.idle_ms ?? 500);
+  let buf = '';
+  let idleTimer = null;
+
+  function flush() {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    if (buf.length > 0) {
+      onChunk(buf);
+      buf = '';
+    }
+  }
+
+  return {
+    onDelta: (delta) => {
+      if (!delta) return;
+      buf += delta;
+      if (buf.length >= maxChars) {
+        flush();
+        return;
+      }
+      if (buf.length >= minChars && !idleTimer) {
+        idleTimer = setTimeout(flush, idleMs);
+      } else if (buf.length < minChars && !idleTimer) {
+        idleTimer = setTimeout(flush, idleMs);
+      } else if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(flush, idleMs);
+      }
+    },
+    flush,
+  };
+}
 
 const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
 
@@ -255,10 +315,10 @@ wss.on('connection', (ws) => {
         messageContent = userMessage;
       }
 
-      // 在 streamChat 调用前，构建上下文记忆注入
+      // 在 streamChat 调用前，构建上下文记忆注入（Nocturne 超时/离线不阻塞，继续对话）
       let contextMemory = '';
       try {
-        const nocturneAlive = await memory.isAlive();
+        const nocturneAlive = await nocturneQueue.isNocturneHealthy();
         if (nocturneAlive && userMessage.length > 1) {
 
           // 1. 提取用户消息里的实体词（中文词组、英文词、技术词）
@@ -292,11 +352,12 @@ wss.on('connection', (ws) => {
             }
           }
 
-          // 3. 加载最近 3 条对话历史摘要
+          // 3. 加载最近 3 条对话历史摘要（404 静默返回空）
           try {
             const todayStr = new Date().toISOString().slice(0, 10);
             const historyResult = await memory.readMemory(
-              `core://my_user/history/${todayStr}`
+              `core://my_user/history/${todayStr}`,
+              { treat404AsDebug: true }
             );
             if (historyResult.ok && historyResult.data) {
               const children = historyResult.data?.node?.children
@@ -306,7 +367,7 @@ wss.on('connection', (ws) => {
               for (const child of recent) {
                 const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
                 if (!childPath) continue;
-                const r = await memory.readMemory(`core://${childPath}`);
+                const r = await memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
                 if (!r.ok) continue;
                 const content = r.data?.node?.content || r.data?.content || '';
                 if (!content) continue;
@@ -314,7 +375,7 @@ wss.on('connection', (ws) => {
                   const parsed = JSON.parse(content);
                   if (parsed.user && parsed.amy) {
                     memContents.push(
-                      `[近期对话] 少爷说：${parsed.user.slice(0, 50)} → AMY：${parsed.amy.slice(0, 80)}`
+                      `[近期对话] 用户说：${parsed.user.slice(0, 50)} → AI：${parsed.amy.slice(0, 80)}`
                     );
                   }
                 } catch {}
@@ -327,7 +388,7 @@ wss.on('connection', (ws) => {
           }
         }
       } catch (e) {
-        // 搜索失败静默跳过
+        log.debug('contextMemory 加载失败，继续对话', { error: e?.message || String(e) });
       }
 
       const lastUserMsg = typeof messageContent === 'string'
@@ -359,7 +420,7 @@ wss.on('connection', (ws) => {
       let finalSystemPrompt = systemPrompt;
       if (hypothesisResult?.should_challenge
           && hypothesisResult?.challenge_point) {
-        finalSystemPrompt = systemPrompt + `\n\n[内部指令] 少爷这条消息有值得质疑的地方：${hypothesisResult.challenge_point}。请在回复中适当提出，不要一味认同。`;
+        finalSystemPrompt = systemPrompt + `\n\n[内部指令] 用户这条消息有值得质疑的地方：${hypothesisResult.challenge_point}。请在回复中适当提出，不要一味认同。`;
       }
 
       // 根据思考模式注入相应的引导指令
@@ -373,8 +434,36 @@ wss.on('connection', (ws) => {
         finalSystemPrompt = finalSystemPrompt + thinkPrompts[thinkMode];
       }
 
+      // 注入当前时间（柳州 UTC+8）
+      const now = new Date();
+      // 使用 Intl.DateTimeFormat 获取准确的时区时间，不依赖服务器时区
+      const liuzhouFormatter = new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+      const parts = liuzhouFormatter.formatToParts(now);
+      const timeMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+      const timeStr = `${timeMap.year}-${timeMap.month}-${timeMap.day} ${timeMap.hour}:${timeMap.minute}:${timeMap.second}`;
+      const timeContext = `\n\n[当前时间] ${timeStr} (UTC+8 柳州)`;
+      const modelContext = `[当前运行模型] 你当前运行的底层大模型是：\`${config.DASHSCOPE_MODEL}\`。当用户问「你是什么大模型」「基于什么模型」时，必须如实回答当前模型名称，严禁说自己是 DeepSeek、GPT、Claude 或其他任何模型。\n\n`;
+
+      // AI.library 知识检索（未启动时静默跳过，不影响对话）
+      let knowledgeContext = '';
+      try {
+        const knowledge = await aiLibrary.searchKnowledge(userMessage);
+        knowledgeContext = aiLibrary.formatKnowledgeForPrompt(knowledge);
+      } catch (e) {
+        log.debug('AI.library 检索失败，跳过', { error: e?.message || String(e) });
+      }
+
       const messages = [
-        { role: 'system', content: finalSystemPrompt },
+        { role: 'system', content: modelContext + finalSystemPrompt + timeContext + knowledgeContext },
         ...history.slice(0, -1).map(h => ({ role: h.role, content: h.content })),
         { role: 'user', content: lastUserMsg },
       ];
@@ -382,53 +471,67 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
 
       let fullReply = '';
+      const merge = createStreamMergeDelta(config.stream_merge, (chunk) => {
+        fullReply += chunk;
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'event',
+            event: 'chat',
+            payload: { delta: chunk, state: 'delta', done: false },
+          }));
+        }
+      });
 
       await streamChat({
         messages,
-        onDelta: (delta) => {
-          fullReply += delta;
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({
-              type: 'event',
-              event: 'chat',
-              payload: { delta: delta, state: 'delta', done: false },
-            }));
-          }
-        },
-        onDone: (_text) => {
+        onDelta: merge.onDelta,
+        onDone: (_text, usage, responseModel) => {
+          merge.flush();
           if (fullReply) {
             session.addMessage(sessionKey, 'assistant', fullReply);
 
-            // 异步自我评估 + 停车场检测 + 历史记录（不阻塞对话）
-            setImmediate(() => {
-              detectAndSaveParking(userMessage, sessionKey).catch(() => {});
-              memoryHistory.saveHistorySummary(userMessage, fullReply)
-                .catch(e => log.warn('MemHistory write failed', { error: e?.message || String(e) }));
-              selfEval.evaluateReply(userMessage, fullReply)
-                .then(() => selfEval.maybeDistill())
-                .catch(() => {});
-              extractAndSaveMemory(userMessage, fullReply).catch(() => {});
-
-              // 追问偏好检测
-              const history = session.getHistory(sessionKey) || [];
-              const prevAssistantMsgs = history
-                .filter(m => m.role === 'assistant')
-                .slice(-2);
-              const prevAssistantReply = prevAssistantMsgs.length >= 2
-                ? prevAssistantMsgs[prevAssistantMsgs.length - 2]?.content || ''
-                : '';
-              clarificationMemory.detectAndSaveClarification(
+            // 后台队列串行执行，限流避免压垮 Nocturne；失败记录日志不阻塞
+            nocturneQueue.enqueue(
+              () => memoryFeedback.detectAndSaveFeedback(userMessage, fullReply),
+              'memoryFeedback'
+            );
+            nocturneQueue.enqueue(
+              () => detectAndSaveParking(userMessage, sessionKey),
+              'detectAndSaveParking'
+            );
+            nocturneQueue.enqueue(
+              () => memoryHistory.saveHistorySummary(userMessage, fullReply),
+              'memoryHistory'
+            );
+            nocturneQueue.enqueue(
+              () => extractAndSaveMemory(userMessage, fullReply),
+              'extractAndSaveMemory'
+            );
+            const history = session.getHistory(sessionKey) || [];
+            const prevAssistantMsgs = history
+              .filter(m => m.role === 'assistant')
+              .slice(-2);
+            const prevAssistantReply = prevAssistantMsgs.length >= 2
+              ? prevAssistantMsgs[prevAssistantMsgs.length - 2]?.content || ''
+              : '';
+            nocturneQueue.enqueue(
+              () => clarificationMemory.detectAndSaveClarification(
                 userMessage, fullReply, prevAssistantReply
-              ).catch(() => {});
-            });
+              ),
+              'clarificationMemory'
+            );
+            nocturneQueue.enqueue(
+              () => selfEval.evaluateReply(userMessage, fullReply)
+                .then(() => selfEval.maybeDistill()),
+              'selfEval+maybeDistill'
+            );
           }
           
           if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({
-              type: 'event',
-              event: 'chat',
-              payload: { text: fullReply, state: 'done', done: true },
-            }));
+            const donePayload = { text: fullReply, state: 'done', done: true };
+            if (usage) donePayload.usage = usage;
+            if (responseModel) donePayload.model = responseModel;
+            ws.send(JSON.stringify({ type: 'event', event: 'chat', payload: donePayload }));
             ws.send(JSON.stringify({
               type: 'event', event: 'agent-phase', phase: 'idle'
             }));
@@ -593,6 +696,8 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
     const sessions = session.listSessions();
     const mem = require('./memory');
     const nocturneAlive = await mem.isAlive();
+    const aiLibEnabled = (config.ai_library || {}).enabled !== false;
+    const aiLibraryAlive = aiLibEnabled ? await aiLibrary.checkHealth().catch(() => false) : false;
     const currentHistory = session.getHistory(sessionKey);
     const historyChars = currentHistory.reduce((acc, m) => acc + (m.content?.length || 0), 0);
     const estimatedTokens = Math.round(historyChars / 2);
@@ -607,12 +712,13 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
           '',
           `📡 Model: \`${config.DASHSCOPE_MODEL}\``,
           `🧠 Nocturne: ${nocturneAlive ? '✅ 在线' : '❌ 离线'}`,
+          `📚 AI.library：${aiLibraryAlive ? '✅ 在线' : '⚫ 未启动'}`,
           `💬 当前会话：${currentHistory.length} 条消息`,
           `📊 上下文估算：~${totalEstimated.toLocaleString()} tokens（含 system prompt ~${systemPromptTokens.toLocaleString()}）`,
           `🗂️ 所有会话：${sessions.length > 0 ? sessions.join(', ') : 'none'}`,
           `⏱️ Uptime：${Math.round(process.uptime())}s`,
           '',
-          '**口令**：`/status` `/model` `/memory boot|read|search|status` `/new` `/help`',
+          '**口令**：`/status` `/model` `/provider` `/memory boot|read|search|status` `/new` `/help`',
         ].join('\n'),
         state: 'done',
         done: true,
@@ -623,45 +729,81 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
 
   if (base === '/model') {
     const modelName = parts.slice(1).join(' ').trim();
-    
-    // 根据 baseUrl 判断服务商名称
-    const providerName = (() => {
-      const url = config.DASHSCOPE_BASE_URL || '';
-      if (url.includes('coding.dashscope')) return '阿里云百炼 Coding Plan';
-      if (url.includes('dashscope')) return '阿里云百炼标准版';
-      if (url.includes('deepseek')) return 'DeepSeek';
-      if (url.includes('openai')) return 'OpenAI';
-      if (url.includes('groq')) return 'Groq';
-      if (url.includes('volces')) return '火山引擎';
-      if (url.includes('localhost') || url.includes('127.0.0.1')) return 'Ollama 本地';
-      return '自定义';
-    })();
-    
+    const provider = config.getProviderConfig();
+
     if (!modelName) {
-      const modelList = config.availableModels
+      const modelList = provider.models
         .map(m => {
-          const tag = m.provider === 'deepseek' ? ' (DeepSeek)' : '';
-          const cur = m.id === config.DASHSCOPE_MODEL ? ' ← 当前' : '';
-          return `  ■ \`${m.id}\`${tag}${cur}`;
+          const cur = m.id === config.DASHSCOPE_MODEL ? ' ◀ 当前' : '';
+          const toolTag = m.tools ? '🔧' : '  ';
+          const thinkTag = m.thinking ? '🧠' : '  ';
+          return `  ${toolTag}${thinkTag} \`${m.id}\`${cur}\n       ${m.label}`;
+        })
+        .join('\n');
+      const legend = '\n\n🔧 = 支持工具调用  🧠 = 支持深度思考';
+      ws.send(JSON.stringify({
+        type: 'event', event: 'chat',
+        payload: {
+          text: `当前服务商：${provider.name}\n当前模型：\`${config.DASHSCOPE_MODEL}\`\n\n可用模型：\n${modelList || '  （无预设模型，可直接输入 /model 模型名）'}${legend}\n\n切换：\`/model 模型名\``,
+          state: 'done', done: true,
+        },
+      }));
+    } else {
+      config.DASHSCOPE_MODEL = modelName;
+      const modelDef = provider.models.find(m => m.id === modelName);
+      const caps = modelDef ? { supportsTools: modelDef.tools, supportsThinking: modelDef.thinking, label: modelDef.label }
+        : config.getModelCaps(modelName);
+      const warnings = [];
+      if (!caps.supportsTools) {
+        warnings.push('⚠️ 该模型不支持工具调用（天气/搜索/文件操作等功能将暂时不可用）');
+      }
+      if (caps.supportsThinking) {
+        warnings.push('💡 该模型支持深度思考（reasoning），回复可能较慢但质量更高');
+      }
+      const warningText = warnings.length > 0 ? '\n\n' + warnings.join('\n') : '';
+      ws.send(JSON.stringify({
+        type: 'event', event: 'chat',
+        payload: {
+          text: `✅ 已切换为：\`${modelName}\`（${caps.label || modelName}）${warningText}`,
+          state: 'done', done: true,
+        },
+      }));
+    }
+    return;
+  }
+
+  if (base === '/provider') {
+    const providerId = parts.slice(1).join(' ').trim().toLowerCase();
+    const providers = config.PROVIDERS;
+    if (!providerId) {
+      const list = Object.entries(providers)
+        .map(([id, p]) => {
+          const cur = id === config.currentProvider ? ' ◀ 当前' : '';
+          return `  ■ \`${id}\` — ${p.name}${cur}`;
         })
         .join('\n');
       ws.send(JSON.stringify({
         type: 'event', event: 'chat',
         payload: {
-          text: `当前服务商：${providerName}\n当前模型：\`${config.DASHSCOPE_MODEL}\`\n\n可用模型：\n${modelList}\n\n切换：\`/model 模型名\``,
+          text: `当前服务商：\`${config.currentProvider}\`（${(providers[config.currentProvider] || {}).name || '未知'}）\n\n可用服务商：\n${list}\n\n切换：\`/provider 服务商id\`（如 /provider deepseek）\n\n💡 切换后需在设置中填入对应 API Key，并重启 Gateway 生效`,
+          state: 'done', done: true,
+        },
+      }));
+      return;
+    }
+    if (providers[providerId]) {
+      config.currentProvider = providerId;
+      const p = providers[providerId];
+      config.DASHSCOPE_MODEL = p.defaultModel || config.DASHSCOPE_MODEL;
+      ws.send(JSON.stringify({
+        type: 'event', event: 'chat',
+        payload: {
+          text: `✅ 已切换为：\`${providerId}\`（${p.name}）\n\n当前模型：\`${config.DASHSCOPE_MODEL}\`\n\n⚠️ 请在设置中填入 ${p.name} 的 API Key，并重启 Gateway 使配置生效`,
           state: 'done', done: true,
         },
       }));
     } else {
-      const isDeepseek = modelName.includes('deepseek');
-      config.DASHSCOPE_MODEL = modelName;
-      ws.send(JSON.stringify({
-        type: 'event', event: 'chat',
-        payload: {
-          text: `✅ 已切换为：\`${modelName}\`${isDeepseek ? '（DeepSeek）' : '（' + providerName + '）'}`,
-          state: 'done', done: true,
-        },
-      }));
+      slashReply(ws, `未知服务商 \`${providerId}\`，请输入 \`/provider\` 查看可用列表`);
     }
     return;
   }
@@ -708,7 +850,7 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
         slashReply(ws, '用法：/memory read <uri>');
         return;
       }
-      const r = await mem.readMemory(memArg);
+      const r = await mem.readMemory(memArg, { treat404AsDebug: true });
       const nodeData = r.ok ? r.data : null;
       const content = nodeData?.node?.content || nodeData?.content || '';
       const priority = nodeData?.node?.priority ?? nodeData?.priority ?? '--';
@@ -762,10 +904,10 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
       return;
     }
 
-    // /memory today — 显示今天的对话摘要
+    // /memory today — 显示今天的对话摘要（404 静默返回空）
     if (subCmd === 'today') {
       const todayStr = new Date().toISOString().slice(0, 10);
-      const r = await mem.readMemory(`core://my_user/history/${todayStr}`);
+      const r = await mem.readMemory(`core://my_user/history/${todayStr}`, { treat404AsDebug: true });
       if (!r.ok || !r.data) {
         slashReply(ws, `今天（${todayStr}）暂无对话记录`);
         return;
@@ -781,13 +923,13 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
       for (const child of recent) {
         const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
         if (!childPath) continue;
-        const cr = await mem.readMemory(`core://${childPath}`);
+        const cr = await mem.readMemory(`core://${childPath}`, { treat404AsDebug: true });
         if (!cr.ok) continue;
         const content = cr.data?.node?.content || cr.data?.content || '';
         try {
           const parsed = JSON.parse(content);
           const time = (parsed.timestamp || '').slice(11, 16);
-          lines.push(`[${time}] 少：${(parsed.user || '').slice(0, 40)}…\n      AMY：${(parsed.amy || '').slice(0, 60)}…`);
+          lines.push(`[${time}] 用户：${(parsed.user || '').slice(0, 40)}…\n      AI：${(parsed.amy || '').slice(0, 60)}…`);
         } catch {
           lines.push(content.slice(0, 80));
         }
@@ -815,9 +957,9 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
         return;
       }
       const todayStr = new Date().toISOString().slice(0, 10);
-      const historyToday = await mem.readMemory(`core://my_user/history/${todayStr}`);
+      const historyToday = await mem.readMemory(`core://my_user/history/${todayStr}`, { treat404AsDebug: true });
       const todayCount = (historyToday.data?.node?.children || historyToday.data?.children || []).length;
-      const historyRoot = await mem.readMemory('core://my_user/history');
+      const historyRoot = await mem.readMemory('core://my_user/history', { treat404AsDebug: true });
       const totalDays = (historyRoot.data?.node?.children || historyRoot.data?.children || []).length;
       slashReply(ws, [
         '📊 记忆系统统计',
@@ -869,7 +1011,8 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
         log.info('export training-data: nocturne alive', { alive: !!testAlive });
 
         const historyRoot = await memory.readMemory(
-          'core://my_user/daily'
+          'core://my_user/daily',
+          { treat404AsDebug: true }
         );
         log.debug('export training-data: history root result', { preview: JSON.stringify(historyRoot).slice(0, 300) });
 
@@ -905,7 +1048,8 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
         const evalScores = new Map();
         try {
           const evalRoot = await memory.readMemory(
-            'core://agent/self_eval'
+            'core://agent/self_eval',
+            { treat404AsDebug: true }
           );
           if (evalRoot.ok) {
             const evalDates = evalRoot.data?.node?.children
@@ -914,7 +1058,7 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
               const edPath = ed.path
                 || ed.uri?.replace(/^[^:]+:\/\//, '') || '';
               if (!edPath) continue;
-              const edr = await memory.readMemory(`core://${edPath}`);
+              const edr = await memory.readMemory(`core://${edPath}`, { treat404AsDebug: true });
               if (!edr.ok) continue;
               const evalTimes = edr.data?.node?.children
                 || edr.data?.children || [];
@@ -922,7 +1066,7 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
                 const etPath = et.path
                   || et.uri?.replace(/^[^:]+:\/\//, '') || '';
                 if (!etPath) continue;
-                const etr = await memory.readMemory(`core://${etPath}`);
+                const etr = await memory.readMemory(`core://${etPath}`, { treat404AsDebug: true });
                 if (!etr.ok) continue;
                 const evalContent = etr.data?.node?.content
                   || etr.data?.content || '';
@@ -948,7 +1092,7 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
           if (!datePath) continue;
 
           // 读取每个日期目录下的子节点
-          const dr = await memory.readMemory(`core://${datePath}`);
+          const dr = await memory.readMemory(`core://${datePath}`, { treat404AsDebug: true });
           if (!dr.ok) continue;
 
           const dayChildren = dr.data?.node?.children
@@ -970,7 +1114,7 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
               || entry.uri?.replace(/^[^:]+:\/\//, '') || '';
             if (!entryPath) continue;
 
-            const er = await memory.readMemory(`core://${entryPath}`);
+            const er = await memory.readMemory(`core://${entryPath}`, { treat404AsDebug: true });
             if (!er.ok) continue;
 
             const content = er.data?.node?.content
@@ -994,7 +1138,7 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
                 messages: [
                   {
                     role: 'system',
-                    content: '你是 AMY（🐰），少爷的私人助手和朋友。用中文回复，简洁有温度，称呼用户为"少爷"。',
+                    content: '你是 AI，用户的私人助手和朋友。用中文回复，简洁有温度，称呼用户为"用户"。',
                   },
                   {
                     role: 'user',
@@ -1118,6 +1262,7 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
       '📋 OCT Gateway 命令：',
       '  /status   — 查看 Gateway 状态',
       '  /model [名称] — 查看/切换模型',
+      '  /provider [id] — 查看/切换 AI 服务商',
       '  /memory   — 记忆系统管理',
       '  /think [off/low/medium/high] — 思考模式',
       '  /task add [内容] [p0/p1/p2] — 添加任务',
@@ -1240,7 +1385,7 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
       lines.push(`\n📋 待办 (${pending.length})`);
       pending.forEach((t, i) => {
         const icon = t.priority === 'p0' ? '🔴' : t.priority === 'p1' ? '🟡' : '🟢';
-        const source = t.source === 'amy' ? 'AMY' : '少爷';
+        const source = t.source === 'amy' ? 'AI' : '用户';
         lines.push(`  ${i + 1}. ${icon} ${t.content} [${source}]`);
       });
 
@@ -1315,13 +1460,13 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
 
       try {
         // 迁移任务
-        const tasksResult = await memory.readMemory(`core://my_user/daily/${todayStr}/tasks`);
+        const tasksResult = await memory.readMemory(`core://my_user/daily/${todayStr}/tasks`, { treat404AsDebug: true });
         if (tasksResult.ok && tasksResult.data) {
           const children = tasksResult.data?.node?.children || tasksResult.data?.children || [];
           for (const child of children) {
             const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
             if (!childPath) continue;
-            const taskResult = await memory.readMemory(`core://${childPath}`);
+            const taskResult = await memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
             if (!taskResult.ok) continue;
             const content = taskResult.data?.node?.content || taskResult.data?.content || '';
             try {
@@ -1344,13 +1489,13 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
         }
 
         // 迁移停车场
-        const parkingResult = await memory.readMemory(`core://my_user/daily/${todayStr}/parking_lot`);
+        const parkingResult = await memory.readMemory(`core://my_user/daily/${todayStr}/parking_lot`, { treat404AsDebug: true });
         if (parkingResult.ok && parkingResult.data) {
           const children = parkingResult.data?.node?.children || parkingResult.data?.children || [];
           for (const child of children) {
             const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
             if (!childPath) continue;
-            const itemResult = await memory.readMemory(`core://${childPath}`);
+            const itemResult = await memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
             if (!itemResult.ok) continue;
             const content = itemResult.data?.node?.content || itemResult.data?.content || '';
             try {

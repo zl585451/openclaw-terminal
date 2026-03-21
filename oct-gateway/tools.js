@@ -7,6 +7,7 @@ const memorySearch = require('./memory_search');
 const os = require('os');
 const { createLogger } = require('./logger');
 const log = createLogger('tools');
+const aiLibrary = require('./tools/ai_library');
 
 // ============================================================
 // 本地任务存储路径（与 Electron userData 保持一致）
@@ -94,7 +95,7 @@ async function writeWithTimeout(uri, content, priority, disclosure) {
         const [, domain, pathPart] = m;
 
         // 检查是否存在
-        const exists = await memory.readMemory(uri);
+        const exists = await memory.readMemory(uri, { treat404AsDebug: true });
         if (exists.ok && exists.data) {
           const r = await memory.writeMemory(uri, content, priority, disclosure);
           clearTimeout(timer);
@@ -308,6 +309,22 @@ const TOOL_DEFINITIONS = [
   {
     type: 'function',
     function: {
+      name: 'time_inject',
+      description: '注入当前时间信息到指定记忆节点或任务中',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: { type: 'string', description: '目标 URI 或任务标题' },
+          format: { type: 'string', description: '时间格式，默认 ISO', enum: ['iso', 'locale', 'unix', 'custom'] },
+          customFormat: { type: 'string', description: '自定义格式（当 format 为 custom 时使用）' }
+        },
+        required: ['target']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'memory_write',
       description: '写入或更新 Nocturne 记忆节点',
       parameters: {
@@ -326,7 +343,7 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'memory_search',
-      description: '按关键词搜索 Nocturne 记忆（支持模糊匹配，少爷提到邮箱/项目/钱包等时可自动调用）',
+      description: '按关键词搜索 Nocturne 记忆（支持模糊匹配，用户提到邮箱/项目/钱包等时可自动调用）',
       parameters: {
         type: 'object',
         properties: {
@@ -343,7 +360,7 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'tasks_read',
-      description: '读取本地任务看板数据（tasks + parking + intention），AMY 通过此工具查看当前任务列表',
+      description: '读取本地任务看板数据（tasks + parking + intention），AI 通过此工具查看当前任务列表',
       parameters: {
         type: 'object',
         properties: {},
@@ -411,7 +428,7 @@ const TOOL_DEFINITIONS = [
       },
     },
   },
-  // ── AMY 任务看板工具（按 title 操作，直接读写 userData/tasks.json）──
+  // ── AI 任务看板工具（按 title 操作，直接读写 userData/tasks.json）──
   {
     type: 'function',
     function: {
@@ -467,6 +484,22 @@ const TOOL_DEFINITIONS = [
       },
     },
   },
+  // ── AI.library 知识库检索工具 ──
+  {
+    type: 'function',
+    function: {
+      name: 'search_knowledge',
+      description: '搜索音频专业知识库（AI.library），返回相关文档片段。当用户询问音频/声音/混音/母带/录音/声学等专业问题时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '搜索关键词或问题' },
+          top_k: { type: 'number', description: '返回结果数量，默认 3' },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ];
 
 async function executeTool(name, args) {
@@ -488,6 +521,7 @@ async function executeTool(name, args) {
           encoding: 'utf-8',
           timeout: 30000,
           windowsHide: true,
+          shell: true,
         });
         return { success: true, output: output.slice(0, 5000) };
       }
@@ -588,7 +622,7 @@ async function executeTool(name, args) {
       case 'memory_read': {
         const uri = args.uri;
         log.debug('memory_read', { uri });
-        const r = await memory.readMemory(uri);
+        const r = await memory.readMemory(uri, { treat404AsDebug: true });
         return r.ok ? { success: true, data: r.data } : { success: false, error: r.error };
       }
       case 'memory_write': {
@@ -734,6 +768,68 @@ async function executeTool(name, args) {
         const data = loadTasksData();
         return { success: true, data };
       }
+      case 'time_inject': {
+        const target = (args.target || '').trim();
+        if (!target) return { success: false, error: '目标不能为空' };
+        
+        const format = args.format || 'iso';
+        let timeStr;
+        
+        const now = new Date();
+        switch (format) {
+          case 'iso':
+            timeStr = now.toISOString();
+            break;
+          case 'locale':
+            timeStr = now.toLocaleString('zh-CN');
+            break;
+          case 'unix':
+            timeStr = String(Math.floor(now.getTime() / 1000));
+            break;
+          case 'custom':
+            const customFmt = args.customFormat || 'YYYY-MM-DD HH:mm:ss';
+            timeStr = customFmt
+              .replace('YYYY', now.getFullYear())
+              .replace('MM', String(now.getMonth() + 1).padStart(2, '0'))
+              .replace('DD', String(now.getDate()).padStart(2, '0'))
+              .replace('HH', String(now.getHours()).padStart(2, '0'))
+              .replace('mm', String(now.getMinutes()).padStart(2, '0'))
+              .replace('ss', String(now.getSeconds()).padStart(2, '0'));
+            break;
+          default:
+            timeStr = now.toISOString();
+        }
+        
+        // 判断是 URI 还是任务标题
+        if (target.includes('://')) {
+          // 记忆节点
+          const result = await enqueueWrite(target, timeStr, 0, '时间注入');
+          return { success: result.success, time: timeStr, target };
+        } else {
+          // 任务标题 - 在任务内容后追加时间
+          const data = loadTasksData();
+          const idx = data.tasks.findIndex(t => (t.content || '').trim() === target);
+          if (idx === -1) return { success: false, error: '未找到任务: ' + target };
+          
+          data.tasks[idx].content += ' [时间注入: ' + timeStr + ']';
+          if (saveTasksData(data)) {
+            if (onTaskBoardUpdate) onTaskBoardUpdate();
+            return { success: true, time: timeStr, target };
+          }
+          return { success: false, error: '保存失败' };
+        }
+      }
+      case 'search_knowledge': {
+        const query = (args.query || '').trim();
+        if (!query) return { success: false, error: '搜索关键词不能为空' };
+        const topK = args.top_k || 3;
+        log.info('search_knowledge', { query, topK });
+        const ret = await aiLibrary.searchKnowledge(query, topK);
+        const results = ret.results || [];
+        const errorMsg = ret.error;
+        const formatted = errorMsg || aiLibrary.formatKnowledgeForPrompt(results);
+        return { success: true, results, formatted, hint: errorMsg || undefined };
+      }
       default:
         return { success: false, error: `未知工具: ${name}` };
     }
@@ -743,3 +839,4 @@ async function executeTool(name, args) {
 }
 
 module.exports = { TOOL_DEFINITIONS, executeTool, setOnTaskBoardUpdate };
+ 

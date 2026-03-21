@@ -4,7 +4,6 @@ import TabBar from './components/TabBar';
 import ChatTab, { ChatMessage } from './components/ChatTab';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
-import ActivationWindow from './components/ActivationWindow';
 import { ThemeProvider } from './themes/ThemeProvider';
 import './styles/App.css';
 
@@ -12,19 +11,10 @@ import './styles/App.css';
 export type TabType = 'chat' | 'sound' | 'reaper';
 
 const App: React.FC = () => {
-  const [isActivated, setIsActivated] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messageIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    window.electronAPI?.licenseCheck?.().then((result: unknown) => {
-      setIsActivated(!!result);
-    }).catch(() => {
-      setIsActivated(false);
-    });
-  }, []);
 
   useEffect(() => {
     const load = window.electronAPI?.chatHistoryLoad;
@@ -61,14 +51,6 @@ const App: React.FC = () => {
   }, [messages]);
 
   const getNextMessageId = () => ++messageIdRef.current;
-
-  if (isActivated !== true) {
-    return (
-      <ThemeProvider>
-        <ActivationWindow onActivated={() => setIsActivated(true)} />
-      </ThemeProvider>
-    );
-  }
 
   return (
     <ThemeProvider>

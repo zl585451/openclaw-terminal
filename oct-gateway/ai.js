@@ -55,9 +55,15 @@ function getModelContextLimit(modelId) {
   const MODEL_CONTEXT_LIMITS = {
     'qwen-plus': 128000,
     'qwen3.5-plus': 128000,
-    'qwen3-max-2026-01-23': 128000,
+    'qwen3-max-2026-01-23': 262144,
+    'qwen3-coder-next': 262144,
+    'qwen3-coder-plus': 1000000,
     'qwen-vl-max': 32768,
     'qwen2-vl-7b': 32768,
+    'kimi-k2.5': 262144,
+    'minimax-m2.5': 196608,
+    'glm-5': 202752,
+    'glm-4.7': 202752,
     'deepseek-chat': 64000,
     'deepseek-reasoner': 64000,
   };
@@ -139,10 +145,10 @@ async function loadSystemPrompt(promptsDir) {
           }
 
           if (undoneItems.length > 0) {
-            // 注入到 bootMemory 开头，让 AMY 一启动就知道
+            // 注入到 bootMemory 开头，让 AI 一启动就知道
             const parkingNotice = `\n## ⚠️ 停车场提醒（上次会话未完成的事）\n${
               undoneItems.map((item, i) => `${i + 1}. ${item}`).join('\n')
-            }\n\n请在少爷第一条消息后，用一句话提醒他还有这些待处理的事。`;
+            }\n\n请在用户第一条消息后，用一句话提醒他还有这些待处理的事。`;
 
             bootMemory = parkingNotice + '\n\n---\n\n' + bootMemory;
             log.info('parking loaded', { count: undoneItems.length });
@@ -227,20 +233,20 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
 
 记忆已从${source === 'nocturne' ? ' Nocturne 服务器' : '本地文件'}加载。
 
-AMY 通过以下方式操作记忆，直接在回复中描述操作意图，
+AI 通过以下方式操作记忆，直接在回复中描述操作意图，
 Gateway 会自动处理实际的 API 调用：
 
 **写入记忆**（遇到以下情况自动触发）：
-- 少爷说「记住」「记下来」「停车」→ 立即写入
+- 用户说「记住」「记下来」「停车」→ 立即写入
 - 发现重要的工作习惯/偏好/决策 → 静默写入
-- 少爷纠正我 → 写入 core://agent/corrections
+- 用户纠正我 → 写入 core://agent/corrections
 
 写入格式：
 URI 路径：core://my_user/[分类]/[具体节点]
 内容：简洁的结构化文本或 JSON
 
 **读取记忆**（遇到以下情况触发）：
-- 少爷问「你还记得」「之前说的」→ 读取相关节点
+- 用户问「你还记得」「之前说的」→ 读取相关节点
 - /memory read core://xxx → 读取指定节点
 
 **搜索记忆**：
@@ -253,7 +259,7 @@ URI 路径：core://my_user/[分类]/[具体节点]
 
 ---
 
-## 🔧 工具（AMY 可以使用）
+## 🔧 工具（AI 可以使用）
 
 **搜索工具**：
 - web_search(query) — 搜索互联网（遇到需要最新信息时使用）
@@ -268,9 +274,9 @@ URI 路径：core://my_user/[分类]/[具体节点]
 
 ## 🏢 工作模式分工
 
-AMY · Cursor · Claude 三角协作：
+AI · Cursor · Claude 三角协作：
 
-**AMY 直接处理**：
+**AI 直接处理**：
 - 日常问答、情绪支持、信息解释
 - 记忆读写管理
 - 生成 Cursor 提示词
@@ -302,10 +308,9 @@ AMY · Cursor · Claude 三角协作：
 }
 
 async function streamChat({ messages, onDelta, onDone, onError }) {
-  // 统一用 DASHSCOPE_API_KEY 和 DASHSCOPE_BASE_URL
-  // 因为切换平台时直接改这两个变量就够了
-  const apiKey = config.DASHSCOPE_API_KEY || config.DEEPSEEK_API_KEY;
-  const baseUrl = config.DASHSCOPE_BASE_URL;
+  const provider = config.getProviderConfig();
+  const apiKey = provider.apiKey;
+  const baseUrl = provider.baseUrl;
   const model = config.DASHSCOPE_MODEL;
 
   // 上下文截断优化：防止消息过长
@@ -313,27 +318,13 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
   getContextUsageRatio(truncatedMessages, model);
 
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
-  // 只有在 DEEPSEEK_API_KEY 存在且 baseUrl 不是 deepseek 时才 fallback
   const canFallbackToDeepseek = !!(config.DEEPSEEK_API_KEY)
     && !baseUrl.includes('deepseek');
 
-  // 根据 baseUrl 判断服务商名称
-  const providerName = (() => {
-    const url = baseUrl || '';
-    if (url.includes('coding.dashscope')) return 'bailian-coding';
-    if (url.includes('dashscope')) return 'bailian';
-    if (url.includes('deepseek')) return 'deepseek';
-    if (url.includes('openai')) return 'openai';
-    if (url.includes('groq')) return 'groq';
-    if (url.includes('volces')) return 'volces';
-    if (url.includes('localhost') || url.includes('127.0.0.1')) return 'local';
-    return 'custom';
-  })();
-
-  log.info('request start', { provider: providerName, model, messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0 });
+  log.info('request start', { provider: provider.name, model, messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0 });
 
   if (!apiKey) {
-    onError(new Error('API Key 未配置'));
+    onError(new Error('API Key 未配置，请在设置中填入' + (provider.keyLink ? `（${provider.name}）` : '')));
     return;
   }
 
@@ -342,22 +333,36 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
       Array.isArray(m.content) &&
       m.content.some(c => c.type === 'image_url')
     );
+
+    // 从 provider 或 MODEL_REGISTRY 获取模型能力
+    const modelDef = provider.models.find(m => m.id === model);
+    const caps = modelDef
+      ? { supportsTools: modelDef.tools, supportsStreamOptions: provider.supportsStreamOptions, maxTokens: 4096 }
+      : config.getModelCaps(model);
+    log.info('model caps', { model, supportsTools: caps.supportsTools, supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions });
+
+    const requestBody = {
+      model,
+      messages: truncatedMessages,
+      stream: true,
+      max_tokens: caps.maxTokens || 4096,
+      temperature: 0.7,
+    };
+    if (provider.supportsStreamOptions) {
+      requestBody.stream_options = { include_usage: true };
+    }
+    if (caps.supportsTools && !hasImage) {
+      requestBody.tools = TOOL_DEFINITIONS;
+      requestBody.tool_choice = 'auto';
+    }
+
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        messages: truncatedMessages,
-        stream: true,
-        stream_options: { include_usage: true },
-        tools: hasImage ? undefined : TOOL_DEFINITIONS,
-        tool_choice: hasImage ? undefined : 'auto',
-        max_tokens: 4096,
-        temperature: 0.7,
-      }),
+      body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(120000),
     });
 
@@ -375,6 +380,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     let fullText = '';
     let toolCalls = [];
     let totalUsage = null;
+    let responseModel = null;  // API 返回的实际模型名（用于校验和展示）
     let sawDone = false;
 
     log.debug('stream start');
@@ -400,6 +406,9 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
 
         if (parsed?.usage) {
           totalUsage = parsed.usage;
+        }
+        if (parsed?.model && !responseModel) {
+          responseModel = parsed.model;
         }
 
         const delta = parsed?.choices?.[0]?.delta;
@@ -457,23 +466,20 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     } else {
       log.debug('stream end');
     }
-    log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null });
-    onDone(fullText, totalUsage);
+    log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
+    onDone(fullText, totalUsage, responseModel);
   } catch (e) {
-    // 只有在百炼失败且有 DeepSeek Key 时才 fallback
+    // 只有在百炼失败且有 DeepSeek Key 时才 fallback（切换 provider 才能生效）
     if (canFallbackToDeepseek) {
       log.warn('primary provider failed, fallback to deepseek', { error: e?.message || String(e) });
-      const prevBaseUrl = config.DASHSCOPE_BASE_URL;
+      const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;
-      const prevKey = config.DASHSCOPE_API_KEY;
-      config.DASHSCOPE_BASE_URL = config.DEEPSEEK_BASE_URL;
-      config.DASHSCOPE_API_KEY = config.DEEPSEEK_API_KEY;
+      config.currentProvider = 'deepseek';
       config.DASHSCOPE_MODEL = 'deepseek-chat';
       try {
         await streamChat({ messages: truncatedMessages, onDelta, onDone, onError });
       } finally {
-        config.DASHSCOPE_BASE_URL = prevBaseUrl;
-        config.DASHSCOPE_API_KEY = prevKey;
+        config.currentProvider = prevProvider;
         config.DASHSCOPE_MODEL = prevModel;
       }
     } else {

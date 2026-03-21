@@ -1,65 +1,166 @@
+/* ========== 容器（Claude 风格：无外框、克制定位）========== */
 .code-block-wrap {
   margin: 10px 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
+  height: fit-content;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-code);
 }
 
-.code-block-wrap.code-block-expanded .react-syntax-highlighter-line-number {
-  display: block;
-}
-
+/* ========== Header（与代码区统一背景，无分隔线）========== */
 .code-block-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 10px;
-  background: var(--bg-code-header);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 6px 14px;
+  background: var(--bg-code);
   font-family: var(--font-mono);
-  font-size: var(--text-code-sm);  /* 12px */
+  font-size: var(--text-code-sm);
+  flex-shrink: 0;
 }
 
 .code-block-lang {
   color: var(--text-tertiary);
-  font-size: var(--text-code-sm);  /* 12px */
-  letter-spacing: 0.05em;
+  opacity: 0.75;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .code-block-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
-.code-block-expand,
+/* Copy 按钮：无边框、极低对比，hover 时显示 */
 .code-block-copy {
-  font-size: var(--text-xs);  /* 11px */
-}
-
-.code-block-expand {
-  background: transparent;
-  border: 1px solid var(--border-light);
-  color: var(--accent-primary);
-  cursor: pointer;
-  padding: 2px 6px;
-  font-family: inherit;
-}
-
-.code-block-expand:hover {
-  background: var(--accent-primary-muted);
-}
-
-.code-block-copy {
+  opacity: 0;
   background: transparent;
   border: none;
-  color: var(--accent-primary);
+  color: var(--text-tertiary);
   cursor: pointer;
-  padding: 2px 4px;
-  opacity: 0.8;
+  padding: 3px 6px;
+  font-size: var(--text-xs);
+  font-family: inherit;
+  border-radius: 3px;
+  transition: opacity 0.2s ease, transform 0.1s ease, color 0.15s ease;
 }
 
-.code-block-copy:hover {
+.code-block-wrap:hover .code-block-copy,
+.code-block-copy.copied {
   opacity: 1;
+}
+
+.code-block-wrap:hover .code-block-copy:hover {
+  color: var(--text-secondary);
+}
+
+.code-block-copy:active {
+  transform: scale(0.96);
+}
+
+.code-block-copy.copied {
+  color: var(--text-secondary);
+}
+
+/* 展开按钮 */
+.code-block-expand {
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 3px 6px;
+  font-size: var(--text-xs);
+  font-family: inherit;
+  border-radius: 3px;
+  transition: opacity 0.2s ease, transform 0.1s ease, color 0.15s ease;
+}
+
+.code-block-wrap:hover .code-block-expand {
+  opacity: 1;
+}
+
+.code-block-wrap:hover .code-block-expand:hover {
+  color: var(--text-secondary);
+}
+
+.code-block-expand:active {
+  transform: scale(0.96);
+}
+
+/* ========== Body ========== */
+.code-block-body {
+  position: relative;
+  display: flow-root;
+  overflow: hidden;
+  background: var(--bg-code);
+  border-radius: 0 0 10px 10px;
+}
+
+/* 仅可折叠块有 transition */
+.code-block-collapsible .code-block-body {
+  max-height: 130px;
+  transition: max-height 0.35s ease;
+}
+
+.code-block-collapsible.code-block-expanded .code-block-body {
+  max-height: 9999px;
+}
+
+.code-block-wrap:not(.code-block-collapsible) .code-block-body {
+  max-height: none;
+}
+
+/* Claude 风格渐变遮罩：透明 → 背景色，折叠时显示 */
+.code-block-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(to top, var(--bg-code), transparent);
+  pointer-events: none;
+}
+
+/* ========== SyntaxHighlighter 强制覆盖（作用域限定 .code-block-wrap）========== */
+.code-block-wrap .code-block-body > div,
+.code-block-wrap .code-block-body pre,
+.code-block-wrap .code-block-body code {
+  margin: 0 !important;
+}
+
+.code-block-wrap .code-block-body > div[class*="syntax"],
+.code-block-wrap .code-block-body > div[class*="prism"],
+.code-block-wrap .code-block-body pre {
+  padding: 12px 14px !important;
+  background: var(--bg-code) !important;
+}
+
+.code-block-wrap .code-block-body code {
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* 行号（未来扩展：showLineNumbers 时可配合折叠隐藏） */
+.code-block-wrap.code-block-expanded .react-syntax-highlighter-line-number {
+  display: block;
+}
+
+/* ChatTab CodeBlockWithCopy：强制覆盖，避免污染 CodeBlock */
+[data-oct-block-code] .md-codeblock-pre,
+[data-oct-block-code] pre[class*="language-"] {
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  background: var(--bg-code) !important;
+}
+
+[data-oct-block-code] .md-codeblock-pre code,
+[data-oct-block-code] pre[class*="language-"] code {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
 }

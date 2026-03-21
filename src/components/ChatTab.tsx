@@ -82,18 +82,43 @@ export interface UploadedFile {
   mimeType: string;
   isText: boolean;
   content: string | null;
-  base64: string;
+  base64?: string;
+  /** 文件绝对路径，AMY 可用 read_file 读取；无 path 时（如拖入的非本地文件）不可用 */
+  path?: string;
 }
 
+/** 将浏览器 File 转为 UploadedFile。Electron 拖入本地文件时 file.path 存在，只存元数据；否则需读内容（大文件体验差） */
 async function fileToUploadedFile(file: File): Promise<UploadedFile> {
   const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const mimeType = file.type || 'application/octet-stream';
+  const isImage = mimeType.startsWith('image/');
+
+  // Electron 拖入本地文件时有 path，只传元数据，不读内容
+  const filePath = (file as File & { path?: string }).path;
+  if (filePath) {
+    return {
+      name: file.name,
+      size: file.size,
+      ext,
+      mimeType,
+      isText: false,
+      content: null,
+      base64: isImage ? await readFileAsBase64(file) : undefined,
+      path: filePath,
+    };
+  }
+
+  // 无 path（如 Web 或非本地拖入）：仍需读内容，大文件体验差
   const textExts = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'go', 'rs', 'html', 'css', 'sql', 'xml', 'yaml', 'yml'];
   const isText = textExts.includes(ext);
   let content: string | null = null;
-  if (isText) {
-    content = await file.text();
-  }
-  const base64 = await new Promise<string>((res, rej) => {
+  if (isText) content = await file.text();
+  const base64 = await readFileAsBase64(file);
+  return { name: file.name, size: file.size, ext, mimeType, isText, content, base64 };
+}
+
+async function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => {
       const dataUrl = r.result as string;
@@ -102,15 +127,6 @@ async function fileToUploadedFile(file: File): Promise<UploadedFile> {
     r.onerror = rej;
     r.readAsDataURL(file);
   });
-  return {
-    name: file.name,
-    size: file.size,
-    ext,
-    mimeType: file.type || 'application/octet-stream',
-    isText,
-    content,
-    base64,
-  };
 }
 
 /** 判断是否Gateway 直接处理的系统命令（不等AMY 回复*/
@@ -152,11 +168,17 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
       title={href}
     >{children}</a>
   ),
-  input: ({ type, ...props }) => {
-    if (type === 'checkbox') return null;
+  input: ({ type, checked, ...props }) => {
+    if (type === 'checkbox') {
+      return <span role="img" aria-hidden style={{ marginRight: '4px', color: 'var(--text-secondary)' }}>{checked ? '☑' : '☐'}</span>;
+    }
     return <input type={type} {...props} />;
   },
-  table: ({ children }) => <table className="md-table">{children}</table>,
+  table: ({ children }) => (
+    <div className="table-wrapper">
+      <table className="md-table">{children}</table>
+    </div>
+  ),
   thead: ({ children }) => <thead>{children}</thead>,
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ children }) => <tr>{children}</tr>,
@@ -189,14 +211,26 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
       };
 
       return (
-        <div style={{ position: 'relative', margin: '8px 0' }} data-oct-block-code={__octBlockCode ? '1' : undefined}>
+        <div
+          style={{
+            position: 'relative',
+            margin: '8px 0',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            background: 'var(--bg-code)',
+            height: 'fit-content',
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+          data-oct-block-code={__octBlockCode ? '1' : undefined}
+        >
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             background: 'var(--bg-code-header)',
-            border: '1px solid var(--border-subtle)',
-            borderBottom: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '4px 12px',
+            borderBottom: '1px solid var(--border-subtle)',
+            padding: '8px 16px',
           }}>
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', letterSpacing: '1px' }}>
               {(className?.replace('language-', '') || 'code').toUpperCase()} · {lines} lines
@@ -231,18 +265,16 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
                   transition: 'all 0.2s',
                 }}
               >
-      {copied ? '✓' : '⎘'}
+                {copied ? '✓' : '⎘'}
               </button>
             </div>
           </div>
           <div className="md-codeblock-pre" style={{
             background: 'var(--bg-code)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '0 0 4px 4px',
-            padding: '12px',
+            padding: '16px',
             overflow: 'auto',
             margin: 0,
-            maxHeight: expanded ? 'none' : '220px',
+            maxHeight: expanded ? 'none' : '240px',
             transition: 'max-height 0.3s ease',
             position: 'relative',
           }}>
@@ -278,50 +310,105 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
   },
 };
 
-/** 流式输出时：从第一个表格行开始到结尾都当作纯文本，避免表格在逐字更新时反复重排导致跳*/
-function splitTableBlockForStreaming(text: string): { before: string; tableBlock: string; after: string } | null {
-  const lines = text.split('\n');
-  const idx = lines.findIndex((line) => /^\|.+\|/.test(line.trim()));
-  if (idx < 0) return null;
-  // 只隔离连续的表格行，不吞掉表格后面的内容（pills/列表等）
-  let endIdx = idx;
-  while (endIdx < lines.length && /^\|.+\|/.test(lines[endIdx].trim())) {
-    endIdx++;
+/**
+ * 检测文本中所有代码块的位置范围（行号）。
+ * 返回一组 [startLine, endLine) 范围，用于排除代码块内的内容。
+ */
+function getCodeBlockLineRanges(lines: string[]): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  let inCodeBlock = false;
+  let startLine = -1;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (/^`{3,}/.test(trimmed)) {
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        startLine = i;
+      } else {
+        ranges.push([startLine, i + 1]);
+        inCodeBlock = false;
+      }
+    }
   }
-  // 包含分隔符行（|---|---|）
-  if (endIdx < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[endIdx])) {
-    endIdx++;
+  
+  // 未闭合的代码块，到末尾都算代码块内
+  if (inCodeBlock && startLine >= 0) {
+    ranges.push([startLine, lines.length]);
   }
-  return {
-    before: lines.slice(0, idx).join('\n'),
-    tableBlock: lines.slice(idx, endIdx).join('\n'),
-    after: lines.slice(endIdx).join('\n'),
-  };
+  
+  return ranges;
+}
+
+/**
+ * 检查某一行是否在代码块内部。
+ */
+function isLineInCodeBlock(lineIndex: number, ranges: Array<[number, number]>): boolean {
+  return ranges.some(([start, end]) => lineIndex >= start && lineIndex < end);
+}
+
+/**
+ * 检查一行是否是 Markdown 表格行。
+ * 支持两种格式：
+ * - 标准格式：| col1 | col2 | （以 | 开头，可以不以 | 结尾）
+ * - 紧凑格式：| col1 | col2 （行末没有 |）
+ */
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  // 必须以 | 开头
+  if (!trimmed.startsWith('|')) return false;
+  // 排除文件树结构（包含 ├── └── │ 等符号）
+  if (/[├└┌┐┘┼─│]/.test(line)) return false;
+  // 以 | 结尾，或行内有 | 分隔符
+  if (trimmed.endsWith('|')) return true;
+  // 行末没有 |，但中间有 | 分隔
+  return trimmed.includes('|');
 }
 
 function shouldPreprocessMarkdownTables(text: string): boolean {
   if (!text) return false;
   // 简单判定：包含至少两行“|...|”样式的行，才启用表格预处理，避免误伤普通文本
   const lines = text.split('\n');
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
   let tableLike = 0;
-  for (const l of lines) {
-    if (/^\s*\|.+\|\s*$/.test(l)) tableLike++;
+  for (let i = 0; i < lines.length; i++) {
+    // 跳过代码块内的行
+    if (isLineInCodeBlock(i, codeBlockRanges)) continue;
+    if (isTableRow(lines[i])) tableLike++;
     if (tableLike >= 2) return true;
   }
   return false;
 }
 
 function fillEmptyCellsInTables(text: string): string {
-  // 将表格行里的空单元格填充为 &nbsp;，避免 remark-gfm 对 `| |` 的不稳定解析
-  // 仅在表格行内处理
-  return text.replace(/^\s*\|.*\|\s*$/gm, (line) => line.replace(/\|\s*\|/g, '| &nbsp; |'));
+  // 将表格行里的空单元格填充为单个空格，避免 remark-gfm 对 `| |` 的不稳定解析；
+  // 使用空格而非 &nbsp;，防止某些解析路径下单元格内容异常
+  const lines = text.split('\n');
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
+
+  return lines.map((line, i) => {
+    if (isLineInCodeBlock(i, codeBlockRanges)) return line;
+    if (isTableRow(line)) {
+      return line.replace(/\|\s*\|/g, '| |');
+    }
+    return line;
+  }).join('\n');
 }
 
 function escapeTableBrackets(text: string): string {
-  // 转义表格行里的 [xxx]，避免被当成链接语法破坏表格解析
-  return text.replace(/^\s*\|.*\|\s*$/gm, (line) =>
-    line.replace(/\[([^\]]*)\]/g, '\\[$1\\]')
-  );
+  // 仅转义表格行里形如 [text](url) 的链接语法，避免破坏表格解析；
+  // 不转义纯 [xxx]（如 [AGENTS.md]），否则反斜杠会导致 remark-gfm 解析异常、单元格内容丢失
+  const lines = text.split('\n');
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
+
+  return lines.map((line, i) => {
+    if (isLineInCodeBlock(i, codeBlockRanges)) return line;
+    if (isTableRow(line)) {
+      // 只转义 [text](url) 形式，替换为 \[text](url) 使方括号不触发链接解析
+      return line.replace(/\[([^\]]*)\]\(([^)]*)\)/g, '\\[$1]($2)');
+    }
+    return line;
+  }).join('\n');
 }
 
 /**
@@ -388,8 +475,9 @@ function normalizeTableSeparators(text: string): string {
   for (let i = 0; i < lines.length; i++) {
     const cur = lines[i] ?? '';
     const curTrim = cur.trim();
-    const curIsTableRow = /^\|.+\|$/.test(curTrim);
-    const curIsSep = /^\|[\s:|-]+\|$/.test(curTrim);
+    // GFM 允许表格行末尾可选 |，与 isTableRow 逻辑一致
+    const curIsTableRow = curTrim.startsWith('|') && (curTrim.endsWith('|') || curTrim.includes('|'));
+    const curIsSep = /^\|[\s\-:|]+\|?\s*$/.test(curTrim) && /-/.test(curTrim);
 
     // 非表格行 → 重置状态
     if (!curIsTableRow) {
@@ -411,7 +499,8 @@ function normalizeTableSeparators(text: string): string {
     // 仅在尚未添加/遇到分隔符时，检查下一行是否是分隔符
     if (!separatorDone) {
       const next = lines[i + 1] ?? '';
-      const nextIsSep = /^\|[\s:|-]+\|$/.test(next.trim());
+      const nextTrim = next.trim();
+      const nextIsSep = /^\|[\s\-:|]+\|?\s*$/.test(nextTrim) && /-/.test(nextTrim);
       if (!nextIsSep) {
         // 表头后缺少分隔符 → 自动补一条
         const colCount = Math.max(1, curTrim.split('|').length - 2);
@@ -423,9 +512,34 @@ function normalizeTableSeparators(text: string): string {
   return out.join('\n');
 }
 
+/** 确保表格块前有空行，便于 remark-gfm 识别块级表格 */
+function ensureBlankLineBeforeTables(text: string): string {
+  const lines = text.split('\n');
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
+  const result: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (isLineInCodeBlock(i, codeBlockRanges)) {
+      result.push(lines[i]!);
+      continue;
+    }
+    // 当前行是表格行，且上一行非空
+    if (isTableRow(lines[i]!)) {
+      const prev = result[result.length - 1];
+      if (prev !== undefined && prev.trim() !== '' && !isTableRow(prev)) {
+        result.push('');
+      }
+    }
+    result.push(lines[i]!);
+  }
+  return result.join('\n');
+}
+
 function preprocessMarkdown(text: string): string {
   if (!shouldPreprocessMarkdownTables(text)) return text;
   let processed = text;
+  // 确保表格前有空行，便于 GFM 解析
+  processed = ensureBlankLineBeforeTables(processed);
   // 修复模型偶发输出的“表格分隔符行重复插入”问题：同一表格块内只保留表头后的第一条分隔符行
   processed = normalizeMarkdownTables(processed);
   processed = fillEmptyCellsInTables(processed);
@@ -438,7 +552,9 @@ const MAX_MARKDOWN_TABLE_ROWS = 20;
 const MAX_MARKDOWN_TABLE_COLS = 8;
 function shouldFallbackTableRendering(text: string): boolean {
   if (!text) return false;
-  const tableLines = text.split('\n').filter((l) => /^\s*\|.+\|\s*$/.test(l));
+  const lines = text.split('\n');
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
+  const tableLines = lines.filter((l, i) => !isLineInCodeBlock(i, codeBlockRanges) && isTableRow(l));
   if (tableLines.length === 0) return false;
   const rows = tableLines.length;
   const cols = Math.max(0, (tableLines[0].match(/\|/g)?.length || 0) - 1);
@@ -456,62 +572,18 @@ const MarkdownContent = memo(
     const text = content || '';
     const processedText = React.useMemo(() => preprocessMarkdown(text), [text]);
     const contentRef = React.useRef<HTMLSpanElement>(null);
-    
 
-    if (isStreaming) {
-      // 流式期间：检测是否有表格
-      const tableBlock = splitTableBlockForStreaming(text);
-      if (tableBlock) {
-        return (
-          <span className="msg-content markdown-body msg-content-streaming-root" ref={contentRef}>
-            {tableBlock.before && (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {tableBlock.before}
-              </ReactMarkdown>
-            )}
-            <span style={{
-              display: 'block',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-code)',
-              color: 'var(--accent-primary)',
-              whiteSpace: 'pre',
-              lineHeight: 1.6,
-              marginTop: '4px',
-              opacity: 0.8,
-            }}>
-              {tableBlock.tableBlock}
-            </span>
-            {tableBlock.after && (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {tableBlock.after}
-              </ReactMarkdown>
-            )}
-          </span>
-        );
-      }
-
-      // 流式期间无表格：正常 ReactMarkdown 渲染
-      return (
-        <span className="msg-content markdown-body msg-content-streaming-root" ref={contentRef}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {text}
-          </ReactMarkdown>
-        </span>
-      );
-    }
-
-    // 完成后：完整 ReactMarkdown 渲染
+    // 统一使用 ReactMarkdown 渲染，流式/非流式均走同一路径，确保表格稳定显示为 HTML
+    // 之前流式期间将表格当纯文本显示，导致同一消息有时表格有时纯文本的不稳定现象
     if (shouldFallbackTableRendering(processedText)) {
       return (
-        <span className="msg-content markdown-body" ref={contentRef}>
-          <span className="msg-streaming-raw-table">
-            {processedText}
-          </span>
+        <span className={`msg-content markdown-body ${isStreaming ? 'msg-content-streaming-root' : ''}`} ref={contentRef}>
+          <span className="msg-streaming-raw-table">{processedText}</span>
         </span>
       );
     }
     return (
-      <span className="msg-content markdown-body" ref={contentRef}>
+      <span className={`msg-content markdown-body ${isStreaming ? 'msg-content-streaming-root' : ''}`} ref={contentRef}>
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
           {processedText}
         </ReactMarkdown>
@@ -666,8 +738,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
                 
                 switch (seg.type) {
                   case 'text':
-                    // 已解析出 segments 时，文本段始终走非流式路径
-                    // 避免 splitTableBlockForStreaming 对已提取的内容二次分割
+                    // 已解析出 segments 时，文本段始终走非流式路径，表格等统一由 ReactMarkdown 渲染
                     return <MarkdownContent key={idx} content={seg.content} isStreaming={false} />;
                   case 'pills':
                     return seg.options.length > 0 ? (
@@ -1027,7 +1098,7 @@ const ChatInputArea = memo(function ChatInputArea({
                 fontSize: '18px', flexShrink: 0,
                 overflow: 'hidden',
               }}>
-                {file.mimeType.startsWith('image/') ? (
+                {file.mimeType.startsWith('image/') && file.base64 ? (
                   <img
                     src={`data:${file.mimeType};base64,${file.base64}`}
                     alt=""
@@ -1851,34 +1922,34 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const sendMessage = useCallback(async (text: string, imageDataUrl: string | null, files?: UploadedFile[]) => {
     if (!text.trim() && !imageDataUrl && !files?.length) return;
 
-    // 构建消息内容
+    // 构建消息内容：只传文件路径/元数据，不自动填充内容，AMY 用 read_file 按需读取
     let contentToSend = text;
-    let fileContent = '';
+    let fileRefs = '';
 
     if (files && files.length > 0) {
-      fileContent = '\n\n[上传的文件]\n' + files.map((f, i) => {
+      fileRefs = '\n\n[附件]' + files.map((f) => {
         const size = f.size < 1024 ? `${f.size}B` : f.size < 1024 * 1024 ? `${(f.size / 1024).toFixed(1)}KB` : `${(f.size / (1024 * 1024)).toFixed(1)}MB`;
-        if (f.isText && f.content) {
-          return `\`\`\`${f.ext}\n${f.content}\n\`\`\``;
-        } else {
-          return `[${i + 1}] ${f.name} (${size}) - 二进制文件`;
-        }
-      }).join('\n---\n');
+        if (f.path) return `\n- ${f.name} (${size}): ${f.path}`;
+        if (f.isText && f.content) return `\n\`\`\`${f.ext}\n${f.content}\n\`\`\``;
+        return `\n- ${f.name} (${size}) [无路径]`;
+      }).join('');
     }
 
     if (imageDataUrl) {
       contentToSend = (text ? `${text}\n` : '') + '[用户发送了一张图片，请根据上下文回复]';
     }
 
-    const fullContent = contentToSend + fileContent;
+    const fullContentForAMY = contentToSend + fileRefs;
+    // 对话框只显示文件名，不显示内容/路径
+    const displayContent = contentToSend + (files && files.length > 0 ? '\n\n📎 ' + files.map((f) => f.name).join(', ') : '');
 
     // 权限检查与危险命令拦截
-    const permCheck = checkPermission(fullContent, permissions);
+    const permCheck = checkPermission(fullContentForAMY, permissions);
     if (!permCheck.allowed) {
       window.alert(permCheck.reason || '此操作已被权限设置拦截');
       return;
     }
-    const dangerMatch = getDangerMatch(fullContent);
+    const dangerMatch = getDangerMatch(fullContentForAMY);
     if (dangerMatch) {
       const ok = window.confirm(
         `危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`
@@ -1886,7 +1957,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (!ok) return;
     }
 
-    pendingSystemReply.current = !imageDataUrl && !files?.length && isSystemCommand(fullContent);
+    pendingSystemReply.current = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
     const cmdIsSystem = pendingSystemReply.current;
     streamingMessageRef.current = '';
     if (!cmdIsSystem) {
@@ -1900,7 +1971,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       {
         id: getNextMessageId(),
         role: 'user' as const,
-        content: fullContent,
+        content: displayContent,
         timestamp: Date.now(),
         imageDataUrl: imageDataUrl || undefined,
         files: files,
@@ -1908,9 +1979,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     ]);
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 30);
 
-    // 发送到 OpenClaw，包含图片和文件
+    // 发送到 OpenClaw，包含图片和文件（content 含路径引用，AMY 用 read_file 读取）
     const result = await ipcRenderer.invoke('openclaw-send', {
-      content: fullContent,
+      content: fullContentForAMY,
       imageDataUrl: imageDataUrl,
       files: files,
     });
@@ -1985,7 +2056,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const onLogLines = (_: any, lines: string[]) => {
       setLogLines((prev) => {
         const updated = [...prev, ...lines];
-        return updated.slice(-50); // 只保留最新50条
+        return updated.slice(-100); // 只保留最新100条
       });
       // 自动滚动到底部
       if (logContainerRef.current) {
@@ -2236,6 +2307,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           <div
             onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
             style={{
+              position: 'absolute',
+              bottom: '80px',
+              left: '50%',
+              transform: 'translateX(-50%)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -2243,6 +2318,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               padding: '6px 0',
               cursor: 'pointer',
               gap: '2px',
+              zIndex: 10,
+              pointerEvents: 'auto',
             }}
           >
             {[0, 1, 2].map((i) => (
@@ -2585,6 +2662,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             lines={logLines}
             bodyRef={logContainerRef}
             emptyText="[LOG] 等待 Gateway 日志..."
+            nocturneOnline={nocturneOnline}
+            modelName={modelName}
             onExport={async () => {
               if (logLines.length === 0) return;
               const content = logLines.join('\n');

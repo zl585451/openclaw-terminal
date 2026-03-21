@@ -33,11 +33,10 @@ const electronAPI = {
     ipcRenderer.invoke('open-file-dialog', options),
   // API Key 配置
   getApiKeys: () => ipcRenderer.invoke('get-api-keys'),
-  saveApiKeys: (keys: { DASHSCOPE_API_KEY?: string; DEEPSEEK_API_KEY?: string; OPENCLAW_WS_URL?: string; OPENCLAW_TOKEN?: string }) =>
+  saveApiKeys: (keys: { DASHSCOPE_API_KEY?: string; DEEPSEEK_API_KEY?: string; OPENCLAW_WS_URL?: string; OPENCLAW_TOKEN?: string; OCT_PROVIDER?: string; OCT_MODEL?: string; DASHSCOPE_BASE_URL?: string; DEEPSEEK_BASE_URL?: string }) =>
     ipcRenderer.invoke('save-api-keys', keys),
-  // License 授权
-  licenseCheck: () => ipcRenderer.invoke('license-check'),
-  licenseVerify: (code: string) => ipcRenderer.invoke('license-verify', code),
+  getProviderList: () => ipcRenderer.invoke('get-provider-list'),
+  testAIConnection: (formConfig?: Record<string, string>) => ipcRenderer.invoke('test-ai-connection', formConfig),
   // Nocturne 记忆系统
   getNocturneStatus: () => ipcRenderer.invoke('get-nocturne-status'),
   setupNocturneMemory: () => ipcRenderer.invoke('setup-nocturne-memory'),
@@ -47,6 +46,12 @@ const electronAPI = {
   getNocturneDashboardStatus: () => ipcRenderer.invoke('nocturne-dashboard-status'),
   openNocturneManagement: () => ipcRenderer.invoke('open-nocturne-management'),
   restartNocturneBackend: () => ipcRenderer.invoke('restart-nocturne-backend'),
+  getAiLibraryPlugin: () => ipcRenderer.invoke('get-ai-library-plugin'),
+  saveAiLibraryPlugin: (payload: {
+    OCT_AI_LIBRARY_AUTO_START?: boolean;
+    OCT_AI_LIBRARY_PATH?: string;
+    OCT_AI_LIBRARY_PORT?: number;
+  }) => ipcRenderer.invoke('save-ai-library-plugin', payload),
   // Nocturne Memory — 完整 6 工具直接访问
   nocturneHealth: () => ipcRenderer.invoke('nocturne-health'),
   nocturneRead: (uri: string) => ipcRenderer.invoke('nocturne-read', { uri }),

@@ -13,8 +13,6 @@ interface ElectronAPI {
   chatHistoryLoad: () => Promise<Array<{ role: string; content: string; timestamp: string }>>;
   chatHistorySave: (items: Array<{ role: string; content: string; timestamp: string; isSystemReply?: boolean }>) => Promise<void>;
   enterFloatingMode?: () => void;
-  licenseCheck: () => Promise<boolean>;
-  licenseVerify: (code: string) => Promise<{ valid: boolean; error?: string }>;
   [key: string]: unknown;
 }
 
