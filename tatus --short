@@ -1,0 +1,119 @@
+warning: in the working copy of 'electron/main.ts', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/electron/main.ts b/electron/main.ts[m
+[1mindex fa5ae445..d059ef63 100644[m
+[1m--- a/electron/main.ts[m
+[1m+++ b/electron/main.ts[m
+[36m@@ -2331,30 +2331,40 @@[m [mipcMain.handle('gateway-status', async () => {[m
+ [m
+ ipcMain.handle('get-env', (_, key: string) => process.env[key] || '');[m
+ [m
+[31m-// API Key 配置管理：优先从 userData/config.json 读取 OPENCLAW_*（打包后 .env 不存在）[m
+[32m+[m[32m// API Key 配置管理：config.json 优先（与 save-api-keys 写入一致，保证回填）[m
+ ipcMain.handle('get-api-keys', async () => {[m
+   try {[m
+[31m-    const envFilePath = path.join(__dirname, '..', '.env');[m
+     const keys: Record<string, string> = {};[m
+[32m+[m[32m    const envObj: Record<string, string> = {};[m
+[32m+[m[32m    const envFilePath = path.join(__dirname, '..', '.env');[m
+     if (fs.existsSync(envFilePath)) {[m
+       const envContent = fs.readFileSync(envFilePath, 'utf-8');[m
+       for (const line of envContent.split('\n')) {[m
+         const trimmed = line.trim();[m
+         if (trimmed && !trimmed.startsWith('#')) {[m
+[31m-          const [key, ...valueParts] = trimmed.split('=');[m
+[31m-          if (key) keys[key.trim()] = valueParts.join('=').trim();[m
+[32m+[m[32m          const [k, ...vParts] = trimmed.split('=');[m
+[32m+[m[32m          if (k) envObj[k.trim()] = vParts.join('=').trim();[m
+         }[m
+       }[m
+     }[m
+[31m-    if (fs.existsSync(CONFIG_FILE)) {[m
+[31m-      const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));[m
+[31m-      keys.OPENCLAW_WS_URL = cfg.OPENCLAW_WS_URL ?? keys.OPENCLAW_WS_URL ?? 'ws://127.0.0.1:18789';[m
+[31m-      keys.OPENCLAW_TOKEN = cfg.OPENCLAW_TOKEN ?? keys.OPENCLAW_TOKEN ?? '';[m
+[31m-      keys.OCT_PROVIDER = cfg.OCT_PROVIDER ?? keys.OCT_PROVIDER ?? '';[m
+[31m-      keys.OCT_MODEL = cfg.OCT_MODEL ?? keys.OCT_MODEL ?? '';[m
+[31m-      keys.DASHSCOPE_BASE_URL = cfg.DASHSCOPE_BASE_URL ?? keys.DASHSCOPE_BASE_URL ?? '';[m
+[31m-      keys.DEEPSEEK_BASE_URL = cfg.DEEPSEEK_BASE_URL ?? keys.DEEPSEEK_BASE_URL ?? '';[m
+[31m-    }[m
+[32m+[m[32m    // config.json 优先（设置面板保存目标），空则用 .env[m
+[32m+[m[32m    const cfg: Record<string, unknown> = fs.existsSync(CONFIG_FILE)[m
+[32m+[m[32m      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()[m
+[32m+[m[32m      : {};[m
+[32m+[m[32m    const pick = (k: string, cfgVal: unknown, def = '') => {[m
+[32m+[m[32m      const c = (cfgVal ?? '').toString().trim();[m
+[32m+[m[32m      return c || (envObj[k] ?? '').toString().trim() || def;[m
+[32m+[m[32m    };[m
+[32m+[m[32m    keys.OPENCLAW_WS_URL = pick('OPENCLAW_WS_URL', cfg.OPENCLAW_WS_URL, 'ws://127.0.0.1:18789');[m
+[32m+[m[32m    keys.OPENCLAW_TOKEN = pick('OPENCLAW_TOKEN', cfg.OPENCLAW_TOKEN);[m
+[32m+[m[32m    keys.OCT_PROVIDER = pick('OCT_PROVIDER', cfg.OCT_PROVIDER);[m
+[32m+[m[32m    keys.OCT_MODEL = pick('OCT_MODEL', cfg.OCT_MODEL);[m
+[32m+[m[32m    keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);[m
+[32m+[m[32m    keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);[m
+[32m+[m[32m    keys.DASHSCOPE_BASE_URL = pick('DASHSCOPE_BASE_URL', cfg.DASHSCOPE_BASE_URL);[m
+[32m+[m[32m    keys.DEEPSEEK_BASE_URL = pick('DEEPSEEK_BASE_URL', cfg.DEEPSEEK_BASE_URL);[m
+[32m+[m[32m    keys.BRAVE_SEARCH_API_KEY = pick('BRAVE_SEARCH_API_KEY', cfg.BRAVE_SEARCH_API_KEY);[m
+[32m+[m[32m    keys.TAVILY_API_KEY = pick('TAVILY_API_KEY', cfg.TAVILY_API_KEY);[m
+     return { [m
+       success: true, [m
+       data: { [m
+[36m@@ -2366,6 +2376,8 @@[m [mipcMain.handle('get-api-keys', async () => {[m
+         OCT_MODEL: keys.OCT_MODEL || '',[m
+         DASHSCOPE_BASE_URL: keys.DASHSCOPE_BASE_URL || '',[m
+         DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',[m
+[32m+[m[32m        BRAVE_SEARCH_API_KEY: keys.BRAVE_SEARCH_API_KEY || '',[m
+[32m+[m[32m        TAVILY_API_KEY: keys.TAVILY_API_KEY || '',[m
+       } [m
+     };[m
+   } catch (e: any) {[m
+[36m@@ -2374,7 +2386,18 @@[m [mipcMain.handle('get-api-keys', async () => {[m
+   }[m
+ });[m
+ [m
+[31m-ipcMain.handle('save-api-keys', async (_, keys: { DASHSCOPE_API_KEY?: string; DEEPSEEK_API_KEY?: string; OPENCLAW_WS_URL?: string; OPENCLAW_TOKEN?: string; OCT_PROVIDER?: string; OCT_MODEL?: string; DASHSCOPE_BASE_URL?: string; DEEPSEEK_BASE_URL?: string }) => {[m
+[32m+[m[32mipcMain.handle('save-api-keys', async (_, keys: {[m
+[32m+[m[32m    DASHSCOPE_API_KEY?: string;[m
+[32m+[m[32m    DEEPSEEK_API_KEY?: string;[m
+[32m+[m[32m    OPENCLAW_WS_URL?: string;[m
+[32m+[m[32m    OPENCLAW_TOKEN?: string;[m
+[32m+[m[32m    OCT_PROVIDER?: string;[m
+[32m+[m[32m    OCT_MODEL?: string;[m
+[32m+[m[32m    DASHSCOPE_BASE_URL?: string;[m
+[32m+[m[32m    DEEPSEEK_BASE_URL?: string;[m
+[32m+[m[32m    BRAVE_SEARCH_API_KEY?: string;[m
+[32m+[m[32m    TAVILY_API_KEY?: string;[m
+[32m+[m[32m  }) => {[m
+   try {[m
+     const envFilePath = path.join(__dirname, '..', '.env');[m
+     if (!app.isPackaged) {[m
+[36m@@ -2437,12 +2460,29 @@[m [mOPENCLAW_LOG_PATH=[m
+     if (keys.OCT_MODEL !== undefined) cfg.OCT_MODEL = keys.OCT_MODEL || '';[m
+     if (keys.DASHSCOPE_BASE_URL !== undefined) cfg.DASHSCOPE_BASE_URL = keys.DASHSCOPE_BASE_URL || '';[m
+     if (keys.DEEPSEEK_BASE_URL !== undefined) cfg.DEEPSEEK_BASE_URL = keys.DEEPSEEK_BASE_URL || '';[m
+[32m+[m[32m    if (keys.BRAVE_SEARCH_API_KEY !== undefined) cfg.BRAVE_SEARCH_API_KEY = keys.BRAVE_SEARCH_API_KEY || '';[m
+[32m+[m[32m    if (keys.TAVILY_API_KEY !== undefined) cfg.TAVILY_API_KEY = keys.TAVILY_API_KEY || '';[m
+     Object.assign(cfg, {[m
+       OPENCLAW_WS_URL: cfg.OPENCLAW_WS_URL ?? DEFAULT_CONFIG.OPENCLAW_WS_URL,[m
+       OPENCLAW_TOKEN: cfg.OPENCLAW_TOKEN ?? '',[m
+     });[m
+     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');[m
+[31m-    console.log('[API Keys] Saved to .env and config.json');[m
+[32m+[m
+[32m+[m[32m    // 验证回读：若意图写入非空值，回读必须非空[m
+[32m+[m[32m    let verified: Record<string, string> = {};[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      verified = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));[m
+[32m+[m[32m    } catch {}[m
+[32m+[m[32m    const expectBrave = (keys.BRAVE_SEARCH_API_KEY || '').trim();[m
+[32m+[m[32m    const expectTavily = (keys.TAVILY_API_KEY || '').trim();[m
+[32m+[m[32m    if (expectBrave && !(verified.BRAVE_SEARCH_API_KEY || '').trim()) {[m
+[32m+[m[32m      console.error('[API Keys] 验证失败: BRAVE_SEARCH_API_KEY 写入后回读为空');[m
+[32m+[m[32m      return { success: false, error: 'Brave Search API Key 保存验证失败，请重试' };[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (expectTavily && !(verified.TAVILY_API_KEY || '').trim()) {[m
+[32m+[m[32m      console.error('[API Keys] 验证失败: TAVILY_API_KEY 写入后回读为空');[m
+[32m+[m[32m      return { success: false, error: 'Tavily API Key 保存验证失败，请重试' };[m
+[32m+[m[32m    }[m
+     [m
+     loadOpenClawConfig();[m
+     if (openclawWs) {[m

@@ -470,6 +470,21 @@ wss.on('connection', (ws) => {
 
       ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
 
+      // 思考心跳：每 8 秒向前端发送 thinking 事件，防止假断开
+      let thinkingPulseInterval = null;
+      let thinkingSeconds = 0;
+      thinkingPulseInterval = setInterval(() => {
+        thinkingSeconds += 8;
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'event',
+            event: 'agent-phase',
+            phase: 'thinking',
+            elapsed: thinkingSeconds,
+          }));
+        }
+      }, 8000);
+
       let fullReply = '';
       const merge = createStreamMergeDelta(config.stream_merge, (chunk) => {
         fullReply += chunk;
@@ -486,6 +501,7 @@ wss.on('connection', (ws) => {
         messages,
         onDelta: merge.onDelta,
         onDone: (_text, usage, responseModel) => {
+          if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
           merge.flush();
           if (fullReply) {
             session.addMessage(sessionKey, 'assistant', fullReply);
@@ -539,6 +555,7 @@ wss.on('connection', (ws) => {
           log.info('stream done', { len: fullReply.length });
         },
         onError: (err) => {
+          if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
           log.error('AI error', { error: err?.message || String(err) });
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({

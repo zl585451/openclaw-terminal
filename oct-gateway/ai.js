@@ -363,7 +363,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(600000),   // 10 分钟
     });
 
     log.info('response', { status: res.status });

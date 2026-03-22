@@ -342,6 +342,10 @@ const config = {
   DEEPSEEK_API_KEY: pickKey(process.env.DEEPSEEK_API_KEY, fileConfig.DEEPSEEK_API_KEY, legacyConfig.DEEPSEEK_API_KEY),
   DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL || legacyConfig.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
 
+  // 搜索引擎 API Key（优先从 config.json 读取，与主进程保存一致）
+  BRAVE_SEARCH_API_KEY: fileConfig.BRAVE_SEARCH_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '',
+  TAVILY_API_KEY: fileConfig.TAVILY_API_KEY || process.env.TAVILY_API_KEY || '',
+
   NOCTURNE_BASE_URL: process.env.NOCTURNE_BASE_URL || fileConfig.NOCTURNE_BASE_URL || 'http://127.0.0.1:8000',
 
   AI_LIBRARY_URL: process.env.AI_LIBRARY_URL || fileConfig.AI_LIBRARY_URL || 'http://127.0.0.1:8001',

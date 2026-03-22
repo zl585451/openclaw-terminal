@@ -2331,30 +2331,40 @@ ipcMain.handle('gateway-status', async () => {
 
 ipcMain.handle('get-env', (_, key: string) => process.env[key] || '');
 
-// API Key 配置管理：优先从 userData/config.json 读取 OPENCLAW_*（打包后 .env 不存在）
+// API Key 配置管理：config.json 优先（与 save-api-keys 写入一致，保证回填）
 ipcMain.handle('get-api-keys', async () => {
   try {
-    const envFilePath = path.join(__dirname, '..', '.env');
     const keys: Record<string, string> = {};
+    const envObj: Record<string, string> = {};
+    const envFilePath = path.join(__dirname, '..', '.env');
     if (fs.existsSync(envFilePath)) {
       const envContent = fs.readFileSync(envFilePath, 'utf-8');
       for (const line of envContent.split('\n')) {
         const trimmed = line.trim();
         if (trimmed && !trimmed.startsWith('#')) {
-          const [key, ...valueParts] = trimmed.split('=');
-          if (key) keys[key.trim()] = valueParts.join('=').trim();
+          const [k, ...vParts] = trimmed.split('=');
+          if (k) envObj[k.trim()] = vParts.join('=').trim();
         }
       }
     }
-    if (fs.existsSync(CONFIG_FILE)) {
-      const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      keys.OPENCLAW_WS_URL = cfg.OPENCLAW_WS_URL ?? keys.OPENCLAW_WS_URL ?? 'ws://127.0.0.1:18789';
-      keys.OPENCLAW_TOKEN = cfg.OPENCLAW_TOKEN ?? keys.OPENCLAW_TOKEN ?? '';
-      keys.OCT_PROVIDER = cfg.OCT_PROVIDER ?? keys.OCT_PROVIDER ?? '';
-      keys.OCT_MODEL = cfg.OCT_MODEL ?? keys.OCT_MODEL ?? '';
-      keys.DASHSCOPE_BASE_URL = cfg.DASHSCOPE_BASE_URL ?? keys.DASHSCOPE_BASE_URL ?? '';
-      keys.DEEPSEEK_BASE_URL = cfg.DEEPSEEK_BASE_URL ?? keys.DEEPSEEK_BASE_URL ?? '';
-    }
+    // config.json 优先（设置面板保存目标），空则用 .env
+    const cfg: Record<string, unknown> = fs.existsSync(CONFIG_FILE)
+      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
+      : {};
+    const pick = (k: string, cfgVal: unknown, def = '') => {
+      const c = (cfgVal ?? '').toString().trim();
+      return c || (envObj[k] ?? '').toString().trim() || def;
+    };
+    keys.OPENCLAW_WS_URL = pick('OPENCLAW_WS_URL', cfg.OPENCLAW_WS_URL, 'ws://127.0.0.1:18789');
+    keys.OPENCLAW_TOKEN = pick('OPENCLAW_TOKEN', cfg.OPENCLAW_TOKEN);
+    keys.OCT_PROVIDER = pick('OCT_PROVIDER', cfg.OCT_PROVIDER);
+    keys.OCT_MODEL = pick('OCT_MODEL', cfg.OCT_MODEL);
+    keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);
+    keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
+    keys.DASHSCOPE_BASE_URL = pick('DASHSCOPE_BASE_URL', cfg.DASHSCOPE_BASE_URL);
+    keys.DEEPSEEK_BASE_URL = pick('DEEPSEEK_BASE_URL', cfg.DEEPSEEK_BASE_URL);
+    keys.BRAVE_SEARCH_API_KEY = pick('BRAVE_SEARCH_API_KEY', cfg.BRAVE_SEARCH_API_KEY);
+    keys.TAVILY_API_KEY = pick('TAVILY_API_KEY', cfg.TAVILY_API_KEY);
     return { 
       success: true, 
       data: { 
@@ -2366,6 +2376,8 @@ ipcMain.handle('get-api-keys', async () => {
         OCT_MODEL: keys.OCT_MODEL || '',
         DASHSCOPE_BASE_URL: keys.DASHSCOPE_BASE_URL || '',
         DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
+        BRAVE_SEARCH_API_KEY: keys.BRAVE_SEARCH_API_KEY || '',
+        TAVILY_API_KEY: keys.TAVILY_API_KEY || '',
       } 
     };
   } catch (e: any) {
@@ -2374,7 +2386,18 @@ ipcMain.handle('get-api-keys', async () => {
   }
 });
 
-ipcMain.handle('save-api-keys', async (_, keys: { DASHSCOPE_API_KEY?: string; DEEPSEEK_API_KEY?: string; OPENCLAW_WS_URL?: string; OPENCLAW_TOKEN?: string; OCT_PROVIDER?: string; OCT_MODEL?: string; DASHSCOPE_BASE_URL?: string; DEEPSEEK_BASE_URL?: string }) => {
+ipcMain.handle('save-api-keys', async (_, keys: {
+    DASHSCOPE_API_KEY?: string;
+    DEEPSEEK_API_KEY?: string;
+    OPENCLAW_WS_URL?: string;
+    OPENCLAW_TOKEN?: string;
+    OCT_PROVIDER?: string;
+    OCT_MODEL?: string;
+    DASHSCOPE_BASE_URL?: string;
+    DEEPSEEK_BASE_URL?: string;
+    BRAVE_SEARCH_API_KEY?: string;
+    TAVILY_API_KEY?: string;
+  }) => {
   try {
     const envFilePath = path.join(__dirname, '..', '.env');
     if (!app.isPackaged) {
@@ -2437,12 +2460,29 @@ OPENCLAW_LOG_PATH=
     if (keys.OCT_MODEL !== undefined) cfg.OCT_MODEL = keys.OCT_MODEL || '';
     if (keys.DASHSCOPE_BASE_URL !== undefined) cfg.DASHSCOPE_BASE_URL = keys.DASHSCOPE_BASE_URL || '';
     if (keys.DEEPSEEK_BASE_URL !== undefined) cfg.DEEPSEEK_BASE_URL = keys.DEEPSEEK_BASE_URL || '';
+    if (keys.BRAVE_SEARCH_API_KEY !== undefined) cfg.BRAVE_SEARCH_API_KEY = keys.BRAVE_SEARCH_API_KEY || '';
+    if (keys.TAVILY_API_KEY !== undefined) cfg.TAVILY_API_KEY = keys.TAVILY_API_KEY || '';
     Object.assign(cfg, {
       OPENCLAW_WS_URL: cfg.OPENCLAW_WS_URL ?? DEFAULT_CONFIG.OPENCLAW_WS_URL,
       OPENCLAW_TOKEN: cfg.OPENCLAW_TOKEN ?? '',
     });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
-    console.log('[API Keys] Saved to .env and config.json');
+
+    // 验证回读：若意图写入非空值，回读必须非空
+    let verified: Record<string, string> = {};
+    try {
+      verified = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    } catch {}
+    const expectBrave = (keys.BRAVE_SEARCH_API_KEY || '').trim();
+    const expectTavily = (keys.TAVILY_API_KEY || '').trim();
+    if (expectBrave && !(verified.BRAVE_SEARCH_API_KEY || '').trim()) {
+      console.error('[API Keys] 验证失败: BRAVE_SEARCH_API_KEY 写入后回读为空');
+      return { success: false, error: 'Brave Search API Key 保存验证失败，请重试' };
+    }
+    if (expectTavily && !(verified.TAVILY_API_KEY || '').trim()) {
+      console.error('[API Keys] 验证失败: TAVILY_API_KEY 写入后回读为空');
+      return { success: false, error: 'Tavily API Key 保存验证失败，请重试' };
+    }
     
     loadOpenClawConfig();
     if (openclawWs) {

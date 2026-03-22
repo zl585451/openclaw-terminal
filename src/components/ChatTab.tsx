@@ -895,6 +895,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
     prev.isStreamingMsg === next.isStreamingMsg &&
     prev.speakingMessageId === next.speakingMessageId &&
     prev.agentPhase === next.agentPhase &&
+    prev.thinkingElapsed === next.thinkingElapsed &&
     prev.wsConnected === next.wsConnected &&
     prev.currentPage === next.currentPage &&
     prev.segments === next.segments
@@ -1250,6 +1251,7 @@ interface ChatMessageListProps {
   displayedLength: number;
   speakingMessageId: number | null;
   agentPhase: 'idle' | 'thinking' | 'typing';
+  thinkingElapsed: number;
   wsConnected: boolean;
   quickSend: (text: string) => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
@@ -1267,6 +1269,7 @@ const ChatMessageList = function ChatMessageList({
   displayedLength,
   speakingMessageId,
   agentPhase,
+  thinkingElapsed,
   wsConnected,
   quickSend,
   bottomRef,
@@ -1295,7 +1298,15 @@ const ChatMessageList = function ChatMessageList({
         {showTypingIndicator && (
           <div className="chat-thinking">
             <span className="msg-label">◆ AMY</span>
-            {agentPhase === 'thinking' && <span className="agent-status-badge">思考中</span>}
+            {agentPhase === 'thinking' && (
+              <>
+                <span className="agent-status-badge">深度思考中</span>
+                {thinkingElapsed > 0 && (
+                  <span className="thinking-elapsed">{thinkingElapsed}s</span>
+                )}
+              </>
+            )}
+            {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
             <span className="processing-blocks typing-dots">
               <span className="block" />
               <span className="block" />
@@ -1410,6 +1421,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: number; text: string } | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
+  const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
   const [displayedLength, setDisplayedLength] = useState(0);
   const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE_MESSAGES);
@@ -1697,6 +1709,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     if (data.type === 'agent-phase') {
       const phase = data.phase;
       if (phase === 'thinking' || phase === 'typing' || phase === 'idle') setAgentPhase(phase);
+      if (phase === 'thinking' && data.elapsed != null) setThinkingElapsed(data.elapsed);
+      if (phase === 'idle' || phase === 'typing') setThinkingElapsed(0);
       return;
     }
     // 新格式：{type: 'event', event: 'chat', payload: {...}}
@@ -2310,6 +2324,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           displayedLength={displayedLength}
           speakingMessageId={speakingMessageId}
           agentPhase={agentPhase}
+          thinkingElapsed={thinkingElapsed}
           wsConnected={wsConnected}
           quickSend={quickSend}
           bottomRef={bottomRef}

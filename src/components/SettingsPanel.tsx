@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSettings, type StreamSpeed } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import type { PermissionConfig } from '../utils/permissionCheck';
@@ -70,13 +70,19 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     OCT_MODEL: '',
     DASHSCOPE_BASE_URL: '',
     DEEPSEEK_BASE_URL: '',
+    BRAVE_SEARCH_API_KEY: '',
+    TAVILY_API_KEY: '',
   });
+  const searchKeysRef = useRef({ BRAVE_SEARCH_API_KEY: '', TAVILY_API_KEY: '' });
   const [apiKeysLoaded, setApiKeysLoaded] = useState(false);
   const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
   const [providers, setProviders] = useState<Record<string, { id: string; name: string; baseUrl: string; keyLink: string; keyPlaceholder: string; defaultModel: string; models: Array<{ id: string; label: string; tools: boolean; thinking: boolean }> }>>({});
   const [testConnectionStatus, setTestConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testConnectionError, setTestConnectionError] = useState<string>('');
   const [gatewaySaveStatus, setGatewaySaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
+  const [applyStatus, setApplyStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [applyError, setApplyError] = useState<string>('');
+  const [apiKeysRefreshing, setApiKeysRefreshing] = useState(false);
   const [nocturneStatus, setNocturneStatus] = useState<{ available: boolean; path: string } | null>(null);
   const [nocturneDetail, setNocturneDetail] = useState<{
     available: boolean;
@@ -135,10 +141,21 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     if (api?.getApiKeys) {
       api.getApiKeys().then((result: any) => {
         if (result.success && result.data) {
-          setApiKeys((prev) => ({ ...prev, ...result.data }));
+          const data = result.data;
+          searchKeysRef.current = {
+            BRAVE_SEARCH_API_KEY: data.BRAVE_SEARCH_API_KEY ?? '',
+            TAVILY_API_KEY: data.TAVILY_API_KEY ?? '',
+          };
+          setApiKeys((prev) => {
+            const merged = { ...prev, ...data };
+            return merged;
+          });
         }
         setApiKeysLoaded(true);
-      }).catch(() => setApiKeysLoaded(true));
+      }).catch((err: any) => {
+        console.error('[Settings] getApiKeys 错误:', err);
+        setApiKeysLoaded(true);
+      });
     } else {
       setApiKeysLoaded(true);
     }
@@ -179,6 +196,22 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     }
   }, []);
 
+  const refetchApiKeys = () => {
+    const api = (window as any).electronAPI;
+    if (!api?.getApiKeys) return;
+    setApiKeysRefreshing(true);
+    api.getApiKeys().then((result: any) => {
+      if (result.success && result.data) {
+        const data = result.data;
+        searchKeysRef.current = {
+          BRAVE_SEARCH_API_KEY: data.BRAVE_SEARCH_API_KEY ?? '',
+          TAVILY_API_KEY: data.TAVILY_API_KEY ?? '',
+        };
+        setApiKeys((prev) => ({ ...prev, ...data }));
+      }
+    }).finally(() => setApiKeysRefreshing(false));
+  };
+
   // 记忆系统 Tab：每 5 秒刷新状态
   useEffect(() => {
     if (activeTab !== 'memory') return;
@@ -218,7 +251,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalPerm(permissions);
   }, [permissions]);
 
-  const apply = () => {
+  const apply = async () => {
     setSettings(local);
     setPermissions(localPerm);
     const api = (window as any).electronAPI;
@@ -230,12 +263,36 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     document.documentElement.style.setProperty('--text-base', `${fontSize}px`);
     document.documentElement.style.setProperty('--text-md', `${fontSize}px`);
 
+    setApplyError('');
     if (api?.saveApiKeys) {
-      api.saveApiKeys(apiKeys).then((result: any) => {
-        if (result.success) console.log('[Settings] API Keys saved');
-      }).catch(() => {});
+      setApplyStatus('saving');
+      const keysToSave = {
+        ...apiKeys,
+        BRAVE_SEARCH_API_KEY: searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
+        TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
+      };
+      try {
+        const result = await api.saveApiKeys(keysToSave);
+        if (result.success) {
+          setApplyStatus('success');
+          setTimeout(() => {
+            onClose();
+          }, 1200);
+        } else {
+          setApplyStatus('error');
+          setApplyError(result.error || '保存失败，请重试');
+        }
+      } catch (err: any) {
+        setApplyStatus('error');
+        setApplyError(err?.message || '保存异常，请重试');
+      }
+    } else {
+      setApplyStatus('error');
+      setApplyError('保存功能不可用');
     }
-    onClose();
+    if (!api?.saveApiKeys) {
+      onClose();
+    }
   };
 
   const clearData = () => {
@@ -262,6 +319,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       OCT_MODEL: apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus',
       DASHSCOPE_BASE_URL: currentProviderId === 'deepseek' ? '' : (baseUrl || currentProvider?.baseUrl || ''),
       DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+      BRAVE_SEARCH_API_KEY: searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
+      TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
     }).then((result: any) => {
       setGatewaySaveStatus(result.success ? 'success' : 'idle');
       if (result.success) setTimeout(() => setGatewaySaveStatus('idle'), 2000);
@@ -505,6 +564,79 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                       {testConnectionStatus === 'error' && testConnectionError && (
                         <span style={{ fontSize: 12, color: 'var(--status-error)' }}>{testConnectionError}</span>
                       )}
+                    </div>
+                  </>
+                )}
+              </section>
+
+              <section className="settings-section">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0 }}>3. 搜索引擎 API</h3>
+                  <button
+                    type="button"
+                    className="settings-link-btn"
+                    onClick={refetchApiKeys}
+                    disabled={apiKeysRefreshing}
+                    title="重新从配置文件加载"
+                  >
+                    {apiKeysRefreshing ? '加载中...' : '↻ 刷新'}
+                  </button>
+                </div>
+                <p className="settings-desc">配置搜索引擎 API Key，用于 AI 联网搜索。优先级：Brave → Tavily → DuckDuckGo（无需 Key）</p>
+                {!apiKeysLoaded ? null : (
+                  <>
+                    <div className="settings-field">
+                      <label>Brave Search API Key</label>
+                      <div className="settings-input-row">
+                        <input
+                          type={showApiKey.BRAVE_SEARCH_API_KEY ? 'text' : 'password'}
+                          value={apiKeys.BRAVE_SEARCH_API_KEY || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            searchKeysRef.current.BRAVE_SEARCH_API_KEY = val;
+                            setApiKeys((k) => ({ ...k, BRAVE_SEARCH_API_KEY: val }));
+                          }}
+                          placeholder="BSA..."
+                          className="settings-input settings-input-focusable"
+                          autoComplete="off"
+                        />
+                        <button
+                          type="button"
+                          className="settings-eye-btn"
+                          onClick={() => setShowApiKey((s) => ({ ...s, BRAVE_SEARCH_API_KEY: !s.BRAVE_SEARCH_API_KEY }))}
+                        >
+                          {showApiKey.BRAVE_SEARCH_API_KEY ? '🙈' : '👁'}
+                        </button>
+                      </div>
+                      <a href="https://api.search.brave.com/app/keys" target="_blank" rel="noopener noreferrer" className="settings-link">获取 Brave Search API Key →</a>
+                    </div>
+                    <div className="settings-field">
+                      <label>Tavily API Key</label>
+                      <div className="settings-input-row">
+                        <input
+                          type={showApiKey.TAVILY_API_KEY ? 'text' : 'password'}
+                          value={apiKeys.TAVILY_API_KEY || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            searchKeysRef.current.TAVILY_API_KEY = val;
+                            setApiKeys((k) => ({ ...k, TAVILY_API_KEY: val }));
+                          }}
+                          placeholder="tvly-..."
+                          className="settings-input settings-input-focusable"
+                          autoComplete="off"
+                        />
+                        <button
+                          type="button"
+                          className="settings-eye-btn"
+                          onClick={() => setShowApiKey((s) => ({ ...s, TAVILY_API_KEY: !s.TAVILY_API_KEY }))}
+                        >
+                          {showApiKey.TAVILY_API_KEY ? '🙈' : '👁'}
+                        </button>
+                      </div>
+                      <a href="https://tavily.com/" target="_blank" rel="noopener noreferrer" className="settings-link">获取 Tavily API Key →</a>
+                    </div>
+                    <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                      💡 <strong>DuckDuckGo</strong> 无需 API Key，作为免费降级方案自动启用
                     </div>
                   </>
                 )}
@@ -1003,8 +1135,13 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
           )}
         </div>
         <div className="settings-footer">
-          <button type="button" className="settings-cancel" onClick={onClose}>取消</button>
-          <button type="button" className="settings-apply" onClick={apply}>应用</button>
+          {applyError && (
+            <span className="settings-apply-error" role="alert">{applyError}</span>
+          )}
+          <button type="button" className="settings-cancel" onClick={onClose} disabled={applyStatus === 'saving'}>取消</button>
+          <button type="button" className="settings-apply" onClick={apply} disabled={applyStatus === 'saving'}>
+            {applyStatus === 'saving' ? '保存中...' : applyStatus === 'success' ? '已保存 ✓' : '应用'}
+          </button>
         </div>
       </div>
     </div>

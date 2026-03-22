@@ -8,6 +8,7 @@ const os = require('os');
 const { createLogger } = require('./logger');
 const log = createLogger('tools');
 const aiLibrary = require('./tools/ai_library');
+const config = require('./config');
 
 // ============================================================
 // 本地任务存储路径（与 Electron userData 保持一致）
@@ -271,8 +272,9 @@ const TOOL_DEFINITIONS = [
         type: 'object',
         properties: {
           query: { type: 'string', description: '搜索关键词' },
-          engine: { type: 'string', description: '搜索引擎：auto/brave/duckduckgo/tavily，默认 auto', enum: ['auto', 'brave', 'duckduckgo', 'tavily'] },
+          engine: { type: 'string', description: '搜索引擎：auto/brave/duckduckgo/tavily，默认 auto（自动降级）', enum: ['auto', 'brave', 'duckduckgo', 'tavily'] },
           count: { type: 'number', description: '返回结果数量，默认 5' },
+          freshness: { type: 'string', description: '时间范围（仅 Brave）：pd(过去一天)/pw(过去一周)/pm(过去一月)' },
         },
         required: ['query'],
       },
@@ -516,7 +518,12 @@ async function executeTool(name, args) {
         return { success: true, message: `已写入 ${args.path}` };
       }
       case 'exec_command': {
-        const output = execSync(args.command, {
+        // 在 Windows 上，先设置控制台编码为 UTF-8，解决中文路径问题
+        const isWindows = process.platform === 'win32';
+        const command = isWindows
+          ? `chcp 65001 >nul && ${args.command}`
+          : args.command;
+        const output = execSync(command, {
           cwd: args.cwd || process.cwd(),
           encoding: 'utf-8',
           timeout: 30000,
@@ -529,72 +536,116 @@ async function executeTool(name, args) {
         const query = args.query;
         const engine = args.engine || 'auto';
         const count = args.count || 5;
-        const braveKey = process.env.BRAVE_API_KEY || '';
-        const tavilyKey = process.env.TAVILY_API_KEY || '';
+        const freshness = args.freshness;
+        // 从 config 读取搜索引擎 Key（config.json 优先，与主进程保存一致）
+        const braveKey = config.BRAVE_SEARCH_API_KEY || '';
+        const tavilyKey = config.TAVILY_API_KEY || '';
 
-        // auto 优先级：Tavily（国内可用）→ Brave → DuckDuckGo（国内不通）
-        const useEngine = engine === 'auto'
-          ? (tavilyKey ? 'tavily' : (braveKey ? 'brave' : 'duckduckgo'))
-          : engine;
-
-        // 显式指定引擎但没有 Key 时，直接报错而不尝试请求
-        if (useEngine === 'brave' && !braveKey) {
-          return { success: false, error: 'BRAVE_API_KEY 未配置，请在 .env 中填入或使用 /model tavily' };
-        }
-        if (useEngine === 'tavily' && !tavilyKey) {
-          return { success: false, error: 'TAVILY_API_KEY 未配置，请在 .env 中填入' };
-        }
-
-        if (useEngine === 'brave') {
+        // 辅助函数：执行 DuckDuckGo 搜索
+        const doDuckDuckGo = async (q, cnt) => {
           const res = await proxyFetch(
-            `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`,
-            {
-              headers: { 'Accept': 'application/json', 'X-Subscription-Token': braveKey },
-              signal: AbortSignal.timeout(10000),
-            }
-          );
-          if (!res.ok) throw new Error(`Brave API ${res.status}`);
-          const data = await res.json();
-          const results = (data.web?.results || []).slice(0, count).map(r => ({
-            title: r.title, url: r.url, snippet: r.description || '',
-          }));
-          return { success: true, engine: 'brave', query, results };
-
-        } else if (useEngine === 'tavily') {
-          const res = await proxyFetch('https://api.tavily.com/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              api_key: tavilyKey, query, max_results: count,
-              search_depth: 'basic', include_answer: true,
-            }),
-            signal: AbortSignal.timeout(10000),
-          });
-          if (!res.ok) throw new Error(`Tavily API ${res.status}`);
-          const data = await res.json();
-          const results = (data.results || []).slice(0, count).map(r => ({
-            title: r.title, url: r.url, snippet: r.content || '',
-          }));
-          return { success: true, engine: 'tavily', query, answer: data.answer || '', results };
-
-        } else {
-          const res = await proxyFetch(
-            `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
+            `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`,
             { signal: AbortSignal.timeout(8000) }
           );
           if (!res.ok) throw new Error(`DDG API ${res.status}`);
           const data = await res.json();
           const results = [];
           if (data.AbstractText) {
-            results.push({ title: data.Heading || query, url: data.AbstractURL || '', snippet: data.AbstractText });
+            results.push({ title: data.Heading || q, url: data.AbstractURL || '', snippet: data.AbstractText });
           }
-          for (const t of (data.RelatedTopics || []).slice(0, count - 1)) {
+          for (const t of (data.RelatedTopics || []).slice(0, cnt - 1)) {
             if (t.Text && t.FirstURL) {
               results.push({ title: t.Text.slice(0, 60), url: t.FirstURL, snippet: t.Text });
             }
           }
+          return results;
+        };
+
+        // auto 优先级：Brave (首选) → Tavily → DuckDuckGo (降级)
+        const useEngine = engine === 'auto'
+          ? (braveKey ? 'brave' : (tavilyKey ? 'tavily' : 'duckduckgo'))
+          : engine;
+
+        // 显式指定引擎但没有 Key 时，直接报错
+        if (useEngine === 'brave' && !braveKey) {
+          return { success: false, error: 'BRAVE_SEARCH_API_KEY 未配置，请在 .env 中填入' };
+        }
+        if (useEngine === 'tavily' && !tavilyKey) {
+          return { success: false, error: 'TAVILY_API_KEY 未配置，请在 .env 中填入' };
+        }
+
+        if (useEngine === 'brave') {
+          try {
+            const params = new URLSearchParams({ q: query, count: String(count) });
+            if (freshness) params.set('freshness', freshness);
+            const res = await proxyFetch(
+              `https://api.search.brave.com/res/v1/web/search?${params.toString()}`,
+              {
+                headers: { 'Accept': 'application/json', 'X-Subscription-Token': braveKey },
+                signal: AbortSignal.timeout(10000),
+              }
+            );
+            if (!res.ok) throw new Error(`Brave API ${res.status}`);
+            const data = await res.json();
+            const results = (data.web?.results || []).slice(0, count).map(r => ({
+              title: r.title, url: r.url, snippet: r.description || '',
+            }));
+            return { success: true, engine: 'brave', query, results };
+          } catch (braveErr) {
+            // 自动降级到 DuckDuckGo
+            if (engine === 'auto') {
+              log.warn('Brave search failed, falling back to DuckDuckGo', { query, error: braveErr?.message });
+              try {
+                const results = await doDuckDuckGo(query, count);
+                if (results.length === 0) {
+                  return { success: true, engine: 'duckduckgo', query, results: [], fallback: true, hint: 'DuckDuckGo 无即时结果（国内可能无法访问），建议配置 Brave 或 Tavily' };
+                }
+                return { success: true, engine: 'duckduckgo', query, results, fallback: true };
+              } catch (ddgErr) {
+                return { success: false, error: `Brave 失败: ${braveErr?.message}，降级 DuckDuckGo 也失败: ${ddgErr?.message}` };
+              }
+            }
+            throw braveErr;
+          }
+
+        } else if (useEngine === 'tavily') {
+          try {
+            const res = await proxyFetch('https://api.tavily.com/search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                api_key: tavilyKey, query, max_results: count,
+                search_depth: 'basic', include_answer: true,
+              }),
+              signal: AbortSignal.timeout(10000),
+            });
+            if (!res.ok) throw new Error(`Tavily API ${res.status}`);
+            const data = await res.json();
+            const results = (data.results || []).slice(0, count).map(r => ({
+              title: r.title, url: r.url, snippet: r.content || '',
+            }));
+            return { success: true, engine: 'tavily', query, answer: data.answer || '', results };
+          } catch (tavilyErr) {
+            // 自动降级到 DuckDuckGo
+            if (engine === 'auto') {
+              log.warn('Tavily search failed, falling back to DuckDuckGo', { query, error: tavilyErr?.message });
+              try {
+                const results = await doDuckDuckGo(query, count);
+                if (results.length === 0) {
+                  return { success: true, engine: 'duckduckgo', query, results: [], fallback: true, hint: 'DuckDuckGo 无即时结果（国内可能无法访问）' };
+                }
+                return { success: true, engine: 'duckduckgo', query, results, fallback: true };
+              } catch (ddgErr) {
+                return { success: false, error: `Tavily 失败: ${tavilyErr?.message}，降级 DuckDuckGo 也失败: ${ddgErr?.message}` };
+              }
+            }
+            throw tavilyErr;
+          }
+
+        } else {
+          const results = await doDuckDuckGo(query, count);
           if (results.length === 0) {
-            return { success: true, engine: 'duckduckgo', query, results: [], hint: 'DuckDuckGo 无即时结果（国内可能无法访问），建议用 Tavily' };
+            return { success: true, engine: 'duckduckgo', query, results: [], hint: 'DuckDuckGo 无即时结果（国内可能无法访问），建议用 Brave 或 Tavily' };
           }
           return { success: true, engine: 'duckduckgo', query, results };
         }
