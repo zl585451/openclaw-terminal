@@ -1,6 +1,6 @@
 # 已知问题汇总
 
-> 最后更新：2026-03-20
+> 最后更新：2026-03-22
 
 ---
 
@@ -15,10 +15,22 @@
 | 7 | 🟡 中等 | `cleanupOldHistory` 只打日志不真删 | 历史数据无限增长 | 🚧 待完善 |
 | 8 | 🔵 低 | `hypothesis.js` 需确认是否真正接入 | 可能额外浪费 API 调用 | 🚧 待确认 |
 | 9 | 🔵 低 | 两套提示词目录并存 | 可能写错地方 | 🚧 待统一 |
+| 10 | 🔴 致命 | `truncateHistory` 截断导致孤立 tool 消息 | API 返回 400 错误，会话中断 | ✅ 已修复 (2026-03-22) |
+| 11 | 🟡 中等 | Windows 中文路径编码导致工具失败 | 找不到文件错误 | ✅ 已修复 (2026-03-22) |
 
 ---
 
 ## 修复记录
+
+### 2026-03-22 Gateway 稳定性修复
+- **问题 1**：复杂调研时 API 返回 400 错误 "messages with role 'tool' must be a response to a preceeding message with 'tool_calls'"
+- **原因**：`truncateHistory` 函数简单截断消息列表，可能在 `assistant.tool_calls` 和对应的 `tool` 消息之间截断，导致孤立的 `tool` 消息
+- **修复**：
+  - 重写 `truncateHistory`：智能查找安全截断点（以 `user` 消息为边界）
+  - 新增 `validateAndFixMessages`：防御性地移除孤立的 `tool` 消息
+- **问题 2**：Windows 上包含中文的文件路径导致工具执行失败
+- **原因**：PowerShell 默认使用 GBK 编码，无法正确处理 UTF-8 中文路径
+- **修复**：`exec_command` 在 Windows 上先执行 `chcp 65001` 切换到 UTF-8 编码
 
 ### 2026-03-20 BUG3 修复
 - **问题**：反馈检测未在 onDone 中调用

@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-03-21（AI.library 集成 P0+P1+P2）  
+> **最后更新**：2026-03-22（Gateway 稳定性修复、多引擎搜索、会话稳定性、提示词优化）  
 > **详细说明**：查看 `docs/feature-map/` 文件夹中的分模块文档
 
 ---
@@ -72,6 +72,31 @@
 ---
 
 ## 最近修复
+
+### 2026-03-22 Gateway 稳定性修复（API 400 错误）
+- **问题**：复杂调研时 API 返回 400 错误，原因是消息截断导致孤立的 tool 消息
+- **修复 1**：`ai.js` 重写 `truncateHistory` 函数，智能查找安全截断点，保护 `tool_calls`/`tool` 消息配对
+- **修复 2**：`ai.js` 新增 `validateAndFixMessages` 函数，防御性地移除孤立的 tool 消息
+- **修复 3**：`tools.js` 的 `exec_command` 在 Windows 上先执行 `chcp 65001`，解决中文路径编码问题
+- **影响**：彻底解决「messages with role "tool" must be a response to a preceeding message with "tool_calls"」错误
+
+### 2026-03-22 会话稳定性修复（三处改动）
+- **问题**：复杂调研任务时「会话假断开」，前端无视觉反馈
+- **改动 1**：`ai.js` 超时从 2 分钟延长到 10 分钟
+- **改动 2**：`index.js` 添加「思考心跳」每 8 秒推送 `thinking` 事件
+- **改动 3**：`ChatTab.tsx` 显示「深度思考中」动画 + 计时器
+- **文档**：更新 09-tools.md
+
+### 2026-03-22 多引擎搜索封装
+- **新增**：`src/gateway/search.ts` TypeScript 封装
+- **特性**：Brave/Tavily/DuckDuckGo 三引擎自动降级
+- **配置**：Settings 面板新增搜索引擎 API Key 入口
+- **文档**：更新 FEATURE_MAP.md、09-tools.md
+
+### 2026-03-22 提示词优化
+- **SOUL.md**：新增「诚实铁律」+「语气校准锚点」，删除自动学习规则
+- **OCT_PROTOCOL.md**：新增「复杂任务处理协议」，>3 个工具调用先拆分确认
+- **目标**：对抗 Qwen 模型的献媚性撒谎和风格不稳定问题
 
 ### 2026-03-21 AI.library 集成（P0+P1+P2）
 - **P0**：search_knowledge 工具、KnowledgeBaseAPI.search 方法、OCT 返回格式

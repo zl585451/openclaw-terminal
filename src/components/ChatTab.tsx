@@ -213,83 +213,97 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
       return (
         <div
           style={{
-            position: 'relative',
-            margin: '8px 0',
-            border: '1px solid var(--border-subtle)',
+            margin: '12px 0',
             borderRadius: '8px',
             overflow: 'hidden',
             background: 'var(--bg-code)',
-            height: 'fit-content',
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
           }}
           data-oct-block-code={__octBlockCode ? '1' : undefined}
         >
+          {/* Claude-style header */}
           <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            background: 'var(--bg-code-header)',
-            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
             padding: '8px 16px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
           }}>
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', letterSpacing: '1px' }}>
-              {(className?.replace('language-', '') || 'code').toUpperCase()} · {lines} lines
+            <span style={{
+              fontSize: '12px',
+              color: 'var(--text-tertiary)',
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 500,
+            }}>
+              {(className?.replace('language-', '') || 'code')}
             </span>
-            <div style={{ display: 'flex', gap: '6px' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               {isLong && (
                 <button
                   onClick={() => setExpanded(!expanded)}
                   style={{
-                    background: 'transparent',
-                    border: '1px solid var(--border-light)',
-                    borderRadius: '3px',
-                    color: 'var(--text-secondary)',
-                    fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
-                    padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
-                    transition: 'all 0.15s',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-tertiary)',
+                    fontSize: '12px',
+                    fontFamily: 'var(--font-sans)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    transition: 'color 0.15s',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; }}
                 >
-                  {expanded ? '收起' : '展开'}
+                  {expanded ? 'Collapse' : 'Expand'}
                 </button>
               )}
               <button
                 onClick={handleCopy}
                 style={{
-                  background: copied ? 'var(--accent-primary-muted)' : 'transparent',
-                  border: '1px solid',
-                  borderColor: copied ? 'var(--accent-primary)' : 'var(--border-light)',
-                  borderRadius: '3px',
-                  color: copied ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                  fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
-                  padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
-                  transition: 'all 0.2s',
+                  background: 'none',
+                  border: 'none',
+                  color: copied ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  fontSize: '12px',
+                  fontFamily: 'var(--font-sans)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  transition: 'color 0.15s',
                 }}
+                onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = 'var(--text-primary)'; }}
+                onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = 'var(--text-tertiary)'; }}
               >
-                {copied ? '✓' : '⎘'}
+                {copied ? 'Copied!' : 'Copy'}
               </button>
             </div>
           </div>
-          <div className="md-codeblock-pre" style={{
-            background: 'var(--bg-code)',
+          {/* Code area */}
+          <pre style={{
+            margin: 0,
             padding: '16px',
             overflow: 'auto',
-            margin: 0,
-            maxHeight: expanded ? 'none' : '240px',
+            background: 'transparent',
+            border: 'none',
+            borderRadius: 0,
+            maxHeight: isLong && !expanded ? '220px' : 'none',
             transition: 'max-height 0.3s ease',
             position: 'relative',
           }}>
-            <code style={{ color: 'var(--text-code-color)', fontSize: 'var(--text-code)', fontFamily: 'var(--font-mono)' }}>
+            <code style={{
+              color: 'var(--text-code)',
+              fontSize: '13px',
+              fontFamily: 'var(--font-mono)',
+              lineHeight: '1.6',
+            }}>
               {code}
             </code>
             {isLong && !expanded && (
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
-                height: '40px',
+                height: '48px',
                 background: 'linear-gradient(transparent, var(--bg-code))',
                 pointerEvents: 'none',
               }} />
             )}
-          </div>
+          </pre>
         </div>
       );
     };
