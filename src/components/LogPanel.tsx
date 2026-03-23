@@ -3,6 +3,18 @@ import '../styles/LogPanel.css';
 
 export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'OK';
 
+// 6种语义分类（面向用户）
+type LogCategory = 'AI' | 'Tool' | 'Memory' | 'System' | 'Warn' | 'Error';
+
+const CATEGORY_STYLE: Record<LogCategory, { dot: string; bg: string; text: string; label: string }> = {
+  AI:     { dot: '#7c6fcd', bg: '#26215C', text: '#c4b5fd', label: 'AI思考' },
+  Tool:   { dot: '#34a87e', bg: '#04342C', text: '#6ee7b7', label: '工具' },
+  Memory: { dot: '#4a90d9', bg: '#0c2a4a', text: '#7ec8f5', label: '记忆' },
+  System: { dot: '#6b6b66', bg: '#2a2a28', text: '#9a9a94', label: '系统' },
+  Warn:   { dot: '#d4900a', bg: '#3a2800', text: '#f5c842', label: '警告' },
+  Error:  { dot: '#e05252', bg: '#3a1212', text: '#fca5a5', label: '错误' },
+};
+
 export type LogEntry = {
   id: number;
   raw: string;
@@ -10,41 +22,12 @@ export type LogEntry = {
   time: string;
   level: LogLevel;
   message: string;
+  category: LogCategory;
+  brief: string;
+  detail: string;
 };
 
 const ALL_LEVELS: LogLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'OK'];
-
-const MODULE_COLORS: Record<string, { bg: string; text: string }> = {
-  Memory: { bg: '#2a1f3d', text: '#c4b5fd' },
-  MemHistory: { bg: '#2a1f3d', text: '#c4b5fd' },
-  Feedback: { bg: '#1a2e1a', text: '#86efac' },
-  SelfEval: { bg: '#2e2a1a', text: '#fcd34d' },
-  Gateway: { bg: '#1a2a3d', text: '#93c5fd' },
-  AI: { bg: '#1a2a3d', text: '#93c5fd' },
-  Config: { bg: '#2a2a2a', text: '#a0a0a0' },
-  Parking: { bg: '#2e1a2a', text: '#f9a8d4' },
-  Tool: { bg: '#1a2e2a', text: '#5eead4' },
-  ExtractMem: { bg: '#2a1f3d', text: '#c4b5fd' },
-  Hypothesis: { bg: '#2e2a1a', text: '#fcd34d' },
-  ERROR: { bg: '#3d1a1a', text: '#fca5a5' },
-  WARN: { bg: '#3d2e1a', text: '#fdba74' },
-  OK: { bg: '#1a2e1a', text: '#86efac' },
-  OCT: { bg: '#2a2a2a', text: '#a0a0a0' },
-  mem: { bg: '#2a1f3d', text: '#c4b5fd' },
-  memory: { bg: '#2a1f3d', text: '#c4b5fd' },
-  memory_history: { bg: '#2a1f3d', text: '#c4b5fd' },
-  memory_feedback: { bg: '#1a2e1a', text: '#86efac' },
-  memory_search: { bg: '#2a1f3d', text: '#c4b5fd' },
-  self_eval: { bg: '#2e2a1a', text: '#fcd34d' },
-  gateway: { bg: '#1a2a3d', text: '#93c5fd' },
-  ai: { bg: '#1a2a3d', text: '#93c5fd' },
-  config: { bg: '#2a2a2a', text: '#a0a0a0' },
-  tools: { bg: '#1a2e2a', text: '#5eead4' },
-  hypothesis: { bg: '#2e2a1a', text: '#fcd34d' },
-  clarification: { bg: '#2a1f3d', text: '#c4b5fd' },
-  session: { bg: '#2a2a2a', text: '#a0a0a0' },
-};
-const DEFAULT_MODULE_COLOR = { bg: '#2a2a2a', text: '#a0a0a0' };
 
 function parseLevel(raw: string): LogLevel {
   const upper = raw.toUpperCase();
@@ -60,22 +43,139 @@ function parseLevel(raw: string): LogLevel {
   return 'INFO';
 }
 
-/** 后端模块名 → 前端 tag（用于过滤匹配） */
-const MODULE_TO_TAG: Record<string, string> = {
-  mem: 'Memory',
-  memory: 'Memory',
-  memory_history: 'MemHistory',
-  memory_feedback: 'Feedback',
-  memory_search: 'Memory',
-  self_eval: 'SelfEval',
-  gateway: 'Gateway',
-  ai: 'AI',
-  config: 'Config',
-  tools: 'Tool',
-  hypothesis: 'Hypothesis',
-  clarification: 'Memory',
-  session: 'Gateway',
-};
+function categorize(entry: { level: LogLevel; tag: string; raw: string }): LogCategory {
+  if (entry.level === 'ERROR') return 'Error';
+  if (entry.level === 'WARN') return 'Warn';
+  const tag = entry.tag.toLowerCase();
+  if (['ai'].includes(tag)) return 'AI';
+  if (['tool', 'tools'].includes(tag)) return 'Tool';
+  if (['memory', 'memhistory', 'feedback', 'extractmem', 'mem',
+       'memory_history', 'memory_feedback', 'memory_search', 'clarification'].includes(tag)) return 'Memory';
+  if (['gateway', 'system', 'session', 'config', 'ai_library'].includes(tag)) return 'System';
+  // 关键词兜底
+  if (/tool_call|web_search|exec_command|read_file|write_file/i.test(entry.raw)) return 'Tool';
+  if (/memory|nocturne|history|feedback/i.test(entry.raw)) return 'Memory';
+  if (/gateway|connect|heartbeat|心跳/i.test(entry.raw)) return 'System';
+  if (/ai\s|model|stream|request|response/i.test(entry.raw)) return 'AI';
+  return 'System';
+}
+
+function humanize(entry: LogEntry): { brief: string; detail: string } {
+  const raw = entry.raw;
+  const msg = entry.message;
+
+  // AI 分类
+  if (entry.category === 'AI') {
+    if (/request start/i.test(raw)) {
+      const modelM = raw.match(/"model":"([^"]+)"/);
+      const msgM = raw.match(/"messages":(\d+)/);
+      const model = modelM?.[1] ?? '';
+      const msgs = msgM?.[1] ?? '';
+      return { brief: 'AMY 开始思考', detail: `模型 ${model}${msgs ? ` · 上下文 ${msgs} 条消息` : ''}` };
+    }
+    if (/stream done|request done/i.test(raw)) {
+      const lenM = raw.match(/"(?:outputLen|len)":(\d+)/);
+      const tokM = raw.match(/"total_tokens":(\d+)/);
+      const len = lenM?.[1];
+      const tok = tokM?.[1];
+      return { brief: `AMY 回复完成${len ? `（${len}字）` : ''}`, detail: tok ? `消耗 ${tok} tokens` : '' };
+    }
+    if (/tool_calls/i.test(raw)) {
+      const cntM = raw.match(/"count":(\d+)/);
+      return { brief: `调用工具 ×${cntM?.[1] ?? 1}`, detail: '' };
+    }
+    if (/tool call/i.test(raw)) {
+      const nameM = raw.match(/"name":"([^"]+)"/);
+      const queryM = raw.match(/"query":"([^"]+)"/);
+      const name = nameM?.[1] ?? '';
+      const query = queryM?.[1] ?? '';
+      if (name === 'web_search') return { brief: `搜索网页 · "${query}"`, detail: '' };
+      return { brief: `调用 ${name}`, detail: query };
+    }
+    if (/System prompt loaded/i.test(raw)) return { brief: '系统提示词加载完成', detail: '' };
+    if (/bootMemory loaded/i.test(raw)) return { brief: 'AMY 启动记忆已就绪', detail: '' };
+  }
+
+  // Tool 分类
+  if (entry.category === 'Tool') {
+    if (/Brave search failed|falling back to DuckDuckGo/i.test(raw))
+      return { brief: 'Brave 不可用，切换 DuckDuckGo', detail: 'error: fetch failed（可能需要代理）' };
+    if (/web_search/i.test(raw)) {
+      const queryM = raw.match(/"query":"([^"]+)"/);
+      return { brief: `网页搜索 · "${queryM?.[1] ?? ''}"`, detail: '' };
+    }
+    if (/BRAVE_SEARCH_API_KEY 未配置/i.test(raw)) return { brief: 'Brave API Key 未配置', detail: '请在设置面板填入' };
+    if (/TAVILY_API_KEY 未配置/i.test(raw)) return { brief: 'Tavily API Key 未配置', detail: '请在设置面板填入' };
+  }
+
+  // Memory 分类
+  if (entry.category === 'Memory') {
+    if (/boot read/i.test(raw)) {
+      const uriM = raw.match(/"uri":"([^"]+)"/);
+      return { brief: '启动记忆加载', detail: uriM?.[1] ?? '' };
+    }
+    if (/read not found|404/i.test(raw)) {
+      const uriM = raw.match(/"uri":"([^"]+)"/);
+      return { brief: '记忆路径不存在（自动修复中）', detail: uriM?.[1] ?? '' };
+    }
+    if (/create ok/i.test(raw)) {
+      const uriM = raw.match(/"uri":"([^"]+)"/);
+      return { brief: '记忆写入成功', detail: uriM?.[1] ?? '' };
+    }
+    if (/history summary written/i.test(raw)) {
+      const uriM = raw.match(/"uri":"([^"]+)"/);
+      return { brief: '对话历史写入成功', detail: uriM?.[1] ?? '' };
+    }
+    if (/memory write ok/i.test(raw)) {
+      const uriM = raw.match(/"uri":"([^"]+)"/);
+      return { brief: '记忆更新成功', detail: uriM?.[1] ?? '' };
+    }
+    if (/memory extracted/i.test(raw)) return { brief: '记忆提取写入完成', detail: '' };
+    if (/read ok/i.test(raw)) {
+      // 收起模式不显示普通 read ok，这里只返回 detail
+      const uriM = raw.match(/"uri":"([^"]+)"/);
+      return { brief: '读取记忆', detail: uriM?.[1] ?? '' };
+    }
+    if (/ensurePathExists.*created/i.test(raw)) {
+      const uriM = raw.match(/"uri":"([^"]+)"/);
+      return { brief: '记忆路径已创建', detail: uriM?.[1] ?? '' };
+    }
+    if (/MEMORY\.md synced/i.test(raw)) return { brief: '记忆协议文件已同步', detail: '' };
+    if (/glossary warmed/i.test(raw)) return { brief: '记忆索引预热完成', detail: '' };
+  }
+
+  // System 分类
+  if (entry.category === 'System') {
+    if (/WebSocket listening|listening/i.test(raw)) return { brief: 'Gateway 已启动，监听 18789', detail: 'ws://0.0.0.0:18789' };
+    if (/client connected/i.test(raw)) return { brief: '客户端已连接', detail: '' };
+    if (/client authenticated/i.test(raw)) return { brief: '认证成功', detail: '' };
+    if (/Nocturne 心跳正常|heartbeat/i.test(raw)) return { brief: '系统心跳正常', detail: '' };
+    if (/RSS=/i.test(raw)) {
+      const rssM = raw.match(/rssMb":([\d.]+)/);
+      return { brief: `内存正常 · RSS ${rssM?.[1] ?? '?'}MB`, detail: '' };
+    }
+    if (/AI\.library 检索失败/i.test(raw)) return { brief: 'AI知识库未启动（不影响对话）', detail: '' };
+    if (/Core memory health ok/i.test(raw)) return { brief: '核心记忆健康检查通过', detail: '' };
+    if (/loaded sessions/i.test(raw)) {
+      const cntM = raw.match(/"count":(\d+)/);
+      return { brief: `历史会话加载完成（${cntM?.[1] ?? 0}条）`, detail: '' };
+    }
+    if (/Mobile HTTP/i.test(raw)) return { brief: '', detail: '' }; // 静默
+  }
+
+  // Warn 分类
+  if (entry.category === 'Warn') {
+    if (/allowlist contains unknown/i.test(raw)) return { brief: '工具配置含未知项（不影响使用）', detail: msg };
+    return { brief: msg.slice(0, 60), detail: '' };
+  }
+
+  // Error 分类
+  if (entry.category === 'Error') {
+    return { brief: msg.slice(0, 80), detail: raw.slice(0, 120) };
+  }
+
+  return { brief: msg.slice(0, 60), detail: '' };
+}
 
 /** 解析原始日志行。支持格式：
  * 1) oct-gateway: [yyyy-mm-dd hh:mi:ss] [LEVEL] [MODULE] message
@@ -91,48 +191,54 @@ function formatLogLine(raw: string, id: number): LogEntry {
   const backendMatch = line.match(/^\[([\d-]+\s[\d:]+)\]\s*\[(\w+)\]\s*\[(\w+)\]\s*(.*)/s);
   if (backendMatch) {
     const [, time, levelStr, module, message] = backendMatch;
-    const tag = MODULE_TO_TAG[module] || module;
-    return {
+    const tag = module;
+    return enrich({
       id,
       raw,
       tag,
       time: time || '',
       level: parseLevel(`[${levelStr}]`),
       message: formatMessage(message || ''),
-    };
+    });
   }
   const match = line.match(/^\[(\w+)\]\s*\[([^\]]+)\]\s*\[(\w+)\]\s*(.*)/s);
   if (match) {
     const [, tag, time, levelStr, message] = match;
-    return {
+    return enrich({
       id,
       raw,
       tag: tag || '',
       time: time || '',
       level: parseLevel(`[${levelStr}]`),
       message: formatMessage(message || ''),
-    };
+    });
   }
   const match2 = line.match(/^\[(\w+)\]\s*(.*)/s);
   if (match2) {
     const [, tag, message] = match2;
-    return {
+    return enrich({
       id,
       raw,
       tag: tag || '',
       time: '',
       level: isErr ? 'ERROR' : 'INFO',
       message: formatMessage(message || ''),
-    };
+    });
   }
-  return {
+  return enrich({
     id,
     raw,
     tag: isErr ? 'ERROR' : '',
     time: '',
     level: parseLevel(raw),
     message: formatMessage(raw),
-  };
+  });
+}
+
+function enrich(base: Omit<LogEntry, 'category' | 'brief' | 'detail'>): LogEntry {
+  const category = categorize(base);
+  const { brief, detail } = humanize({ ...base, category, brief: '', detail: '' });
+  return { ...base, category, brief, detail };
 }
 
 /** 解析消息中的 JSON，提取关键字段 */
@@ -162,16 +268,11 @@ type LogFilterType = 'all' | 'error' | 'memory' | 'eval' | 'gateway' | 'tools';
 function filterByType(entries: LogEntry[], filter: LogFilterType): LogEntry[] {
   if (filter === 'all') return entries;
   return entries.filter((e) => {
-    if (filter === 'error') return e.level === 'ERROR' || e.level === 'WARN';
-    if (filter === 'memory') {
-      const memTags = ['Memory', 'MemHistory', 'Feedback', 'ExtractMem'];
-      if (memTags.includes(e.tag)) return true;
-      if (e.tag === 'Gateway' && /memory extracted|history summary|feedback saved/i.test(e.raw)) return true;
-      return false;
-    }
+    if (filter === 'error') return e.category === 'Error' || e.category === 'Warn';
+    if (filter === 'memory') return e.category === 'Memory';
     if (filter === 'eval') return ['SelfEval', 'Hypothesis'].includes(e.tag);
-    if (filter === 'gateway') return ['Gateway', 'AI', 'Config'].includes(e.tag);
-    if (filter === 'tools') return ['Tool', 'tools'].includes(e.tag) || /tool_call|exec_command|read_file|write_file|web_search|web_fetch/i.test(e.raw);
+    if (filter === 'gateway') return e.category === 'System' || e.category === 'AI';
+    if (filter === 'tools') return e.category === 'Tool';
     return true;
   });
 }
@@ -179,7 +280,7 @@ function filterByType(entries: LogEntry[], filter: LogFilterType): LogEntry[] {
 export default function LogPanel(props: {
   title?: string;
   lines: string[];
-  bodyRef?: React.RefObject<HTMLDivElement>;
+  bodyRef?: React.RefObject<HTMLDivElement | null>;
   onClear?: () => void;
   onExport?: () => void;
   emptyText?: string;
@@ -274,33 +375,47 @@ export default function LogPanel(props: {
     [filteredByLevel, logFilter]
   );
 
-  const renderLogLine = (e: LogEntry) => {
-    const style = e.tag ? (MODULE_COLORS[e.tag] ?? DEFAULT_MODULE_COLOR) : null;
+  // 收起模式：哪些行应该静默（不显示）
+  function shouldHideInCompact(e: LogEntry): boolean {
+    if (e.category === 'Memory' && e.brief === '读取记忆') return true;
+    if (e.category === 'Memory' && /ensurePathExists.*path exists/i.test(e.raw)) return true;
+    if (e.category === 'Memory' && /parent already confirmed/i.test(e.raw)) return true;
+    if (e.category === 'System' && e.brief === '') return true;
+    if (/sourceMimeType.*image/i.test(e.raw)) return true; // 图片压缩日志
+    if (/saveHistorySummary called/i.test(e.raw)) return true;
+    if (/write history summary.*type/i.test(e.raw)) return true;
+    return false;
+  }
+
+  const renderCompactLine = (e: LogEntry) => {
+    if (shouldHideInCompact(e)) return null;
+    if (!e.brief) return null;
+    const cat = CATEGORY_STYLE[e.category];
     return (
-      <div key={e.id} className={`log-line log-${e.level}`}>
-        {showTimestamp && e.time ? (
-          <span className="log-ts">[{e.time}]</span>
-        ) : null}
-        {e.tag ? (
-          <span
-            className="log-tag"
-            style={
-              style
-                ? {
-                    backgroundColor: style.bg,
-                    color: style.text,
-                    padding: '1px 6px',
-                    borderRadius: '4px',
-                    marginRight: 8,
-                  }
-                : undefined
-            }
-          >
-            [{e.tag}]
-          </span>
-        ) : null}
-        <span className="log-lv">[{e.level}]</span>
-        <span className="log-msg">{e.message}</span>
+      <div key={e.id} className="log-line-compact">
+        <span className="log-dot" style={{ background: cat.dot }} />
+        <span className="log-brief">{e.brief}</span>
+      </div>
+    );
+  };
+
+  const renderLogLine = (e: LogEntry) => {
+    const cat = CATEGORY_STYLE[e.category];
+    return (
+      <div key={e.id} className="log-line-expanded">
+        <span
+          className="log-tag-badge"
+          style={{ background: cat.bg, color: cat.text }}
+        >
+          {cat.label}
+        </span>
+        <div className="log-line-content">
+          <span className="log-brief-text">{e.brief || e.message}</span>
+          {e.detail && <span className="log-detail-text">{e.detail}</span>}
+        </div>
+        {e.time && (
+          <span className="log-ts-right">{e.time.split(' ')[1] || e.time}</span>
+        )}
       </div>
     );
   };
@@ -389,16 +504,16 @@ export default function LogPanel(props: {
           </div>
         </div>
 
+        {/* 收起模式的日志区域 */}
         <div ref={(el) => {
           // 同时设置内部 ref 和外部 ref
           (internalBodyRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-          if (typeof bodyRef === 'function') bodyRef(el);
-          else if (bodyRef) (bodyRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+          if (bodyRef) (bodyRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }} className="log-panel-body" tabIndex={-1}>
           {filtered.length === 0 ? (
             <div className="log-empty">{emptyText}</div>
           ) : (
-            filtered.map(renderLogLine)
+            filtered.map(renderCompactLine).filter(Boolean)
           )}
         </div>
         <div className="log-panel-statusbar">
@@ -523,6 +638,7 @@ export default function LogPanel(props: {
             </div>
           </div>
 
+          {/* 展开模式的日志区域 */}
           <div
             ref={internalBodyRef}
             style={{

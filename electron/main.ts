@@ -2399,52 +2399,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     TAVILY_API_KEY?: string;
   }) => {
   try {
-    const envFilePath = path.join(__dirname, '..', '.env');
-    if (!app.isPackaged) {
-      let envContent = fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf-8') : `# OCT | OpenClaw Terminal 环境配置
-
-# ===== 阿里云百炼 API（主要使用）=====
-DASHSCOPE_API_KEY=your_dashscope_api_key_here
-
-# ===== DeepSeek API（备选）=====
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
-
-# OpenClaw WebSocket 地址
-OPENCLAW_WS_URL=ws://127.0.0.1:18789
-
-# OpenClaw WebSocket Token 认证
-OPENCLAW_TOKEN=your_openclaw_token_here
-
-# Eagle API 地址
-EAGLE_API_URL=http://localhost:41595
-
-# Vite 开发服务器端口
-VITE_DEV_PORT=5176
-
-# OpenClaw 日志路径
-OPENCLAW_LOG_PATH=
-`;
-      const lines = envContent.split('\n');
-      const updatedKeys = new Set<string>();
-      for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i].trim();
-        if (trimmed && !trimmed.startsWith('#')) {
-          const [key] = trimmed.split('=');
-          if (key && keys.hasOwnProperty(key.trim())) {
-            const value = keys[key.trim() as keyof typeof keys] || '';
-            lines[i] = `${key.trim()}=${value}`;
-            updatedKeys.add(key.trim());
-          }
-        }
-      }
-      for (const [key, value] of Object.entries(keys)) {
-        if (!updatedKeys.has(key)) lines.push(`${key}=${value || ''}`);
-      }
-      fs.writeFileSync(envFilePath, lines.join('\n'), 'utf-8');
-      dotenv.config({ path: envFilePath, override: true });
-    }
-    
-    // 同时写入 userData/config.json（打包后 .env 不存在，以此为准）
+    // 先写 userData/config.json（主要存储，renderer 读取来源）
     ensureConfigFile();
     let cfg: Record<string, string> = {};
     if (fs.existsSync(CONFIG_FILE)) {
@@ -2468,7 +2423,7 @@ OPENCLAW_LOG_PATH=
     });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
 
-    // 验证回读：若意图写入非空值，回读必须非空
+    // 验证回读
     let verified: Record<string, string> = {};
     try {
       verified = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
@@ -2476,24 +2431,23 @@ OPENCLAW_LOG_PATH=
     const expectBrave = (keys.BRAVE_SEARCH_API_KEY || '').trim();
     const expectTavily = (keys.TAVILY_API_KEY || '').trim();
     if (expectBrave && !(verified.BRAVE_SEARCH_API_KEY || '').trim()) {
-      console.error('[API Keys] 验证失败: BRAVE_SEARCH_API_KEY 写入后回读为空');
       return { success: false, error: 'Brave Search API Key 保存验证失败，请重试' };
     }
     if (expectTavily && !(verified.TAVILY_API_KEY || '').trim()) {
-      console.error('[API Keys] 验证失败: TAVILY_API_KEY 写入后回读为空');
       return { success: false, error: 'Tavily API Key 保存验证失败，请重试' };
     }
-    
+
     loadOpenClawConfig();
     if (openclawWs) {
       openclawWs.close();
       openclawWs = null;
     }
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
-    // AI 配置变更需重启 Gateway 才能生效
+    // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
     const aiConfigChanged = keys.OCT_PROVIDER !== undefined || keys.OCT_MODEL !== undefined
       || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
-      || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined;
+      || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
+      || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
       octGatewayProcess.kill();
       octGatewayProcess = null;

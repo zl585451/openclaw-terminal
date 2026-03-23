@@ -37,7 +37,7 @@ export interface ParsedContent {
  * 严格规则：必须以 ？ 或 ? 结尾，且长度在合理范围内。
  * 不再依赖"含疑问词"这类宽松条件，避免正文句子被误判。
  */
-function isQuestionLabel(label: string): boolean {
+export function isQuestionLabel(label: string): boolean {
   const t = label.trim();
   if (t.length < 5 || t.length > 120) return false;
   return t.endsWith('？') || t.endsWith('?');
@@ -65,7 +65,7 @@ const OPTION_REGEX = /\[选项\s*(\d+)\s*:\s*([^\|\]]+)\s*\|\s*([^\]]+)\]/g;
 export const OPTIONS_PLACEHOLDER = '\n<!--OPTIONS_HERE-->\n';
 
 /** 解析 "1. xxx 2. xxx" 或 "1) xxx 2) xxx" 风格的选项（同一行或跨行） */
-function parseNumberedOptions(text: string): OptionItem[] {
+export function parseNumberedOptions(text: string): OptionItem[] {
   const options: OptionItem[] = [];
   // 只把“行首的编号”当作边界，允许内容里出现数字（版本号/日期/金额等）
   // 例如：`1. OCT v0.1.4 最想加什么？` 不应被截断。
@@ -81,7 +81,7 @@ function parseNumberedOptions(text: string): OptionItem[] {
 }
 
 /** 解析 [ ] / [x] 开头的 checkbox 列表（Claude 风格），不含星号的标题行 */
-function parseCheckboxOptions(text: string): OptionItem[] {
+export function parseCheckboxOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
   const options: OptionItem[] = [];
   const rx = /^[\s]*(?:[-*+]\s*)?\[\s*(?:[✓xX]|\s)\s*\]\s*(.+)$/;
@@ -104,12 +104,12 @@ function parseCheckboxOptions(text: string): OptionItem[] {
 const SYMBOL_CHARS = '■●◆○◉▪▸•·';
 
 /** 从 label 中清除前导符号字符（■●◆○ 等） */
-function cleanLabel(label: string): string {
+export function cleanLabel(label: string): string {
   return label.replace(new RegExp(`^[${SYMBOL_CHARS}]\\s*`), '').trim();
 }
 
 /** 解析含 ■ ● ◆ ○ 等符号的选项，支持 "■ xxx"、"- ■ xxx"、"* ■ xxx" 等格式 */
-function parseSymbolOptions(text: string): OptionItem[] {
+export function parseSymbolOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
   const options: OptionItem[] = [];
   const rx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*(.+)$`);
@@ -132,7 +132,7 @@ function parseSymbolOptions(text: string): OptionItem[] {
  * 含 Markdown 强调（*）的行跳过，避免信息列表误触发交互。
  * 最低阈值提高到 3 条，减少两行普通列表的误触发。
  */
-function parseLineOptions(text: string): OptionItem[] {
+export function parseLineOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
   const options: OptionItem[] = [];
   const rx = /^[\s]*(\d+)[.）、]\s*(.+)$|^[\s]*[-*]\s*(.+)$/;
@@ -365,10 +365,10 @@ function extractRenderHint(text: string): { hint: RenderHint | null; cleaned: st
 // 或 `/   [question]...`：这样可避免标签原样泄露成纯文本。
 // 标签名两侧允许可选空白（模型可能输出 [ question ] 或 [ / question ]）
 // 注意：保持 // 不受影响，不匹配纯 // 注释
-const PAIRED_TAG_RX = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
+export const PAIRED_TAG_RX = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
 
 /** 将非空行作为普通选项（兜底：标签内没有标准格式时） */
-function parsePlainLines(text: string): OptionItem[] {
+export function parsePlainLines(text: string): OptionItem[] {
   return text.split('\n')
     .map(l => l.replace(/^[-*+]\s*/, '').trim())
     .filter(l => l.length > 0 && l.length < 100)
@@ -376,7 +376,7 @@ function parsePlainLines(text: string): OptionItem[] {
 }
 
 /** 解析形如 "A || B || C" 的选项（用于部分模型输出的降级格式） */
-function parsePipeSeparatedOptions(text: string): OptionItem[] {
+export function parsePipeSeparatedOptions(text: string): OptionItem[] {
   const parts = text
     .split(/\s*\|\|\s*/g)
     .map((p) => p.trim())
@@ -392,7 +392,7 @@ function parsePipeSeparatedOptions(text: string): OptionItem[] {
  * 计算原始文本中所有 fenced code block 的字符范围 [start, end)。
  * 用于在 parseTaggedContent 中过滤掉落在代码块内的标签匹配。
  */
-function getCodeBlockRanges(text: string): Array<[number, number]> {
+export function getCodeBlockRanges(text: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   const fence = /^(`{3,})[^\n]*$/gm;
   let openMatch: RegExpExecArray | null = null;
@@ -418,7 +418,7 @@ function getCodeBlockRanges(text: string): Array<[number, number]> {
 }
 
 /** 检查一个字符位置是否落在任意代码块范围内 */
-function isInsideCodeBlock(pos: number, ranges: Array<[number, number]>): boolean {
+export function isInsideCodeBlock(pos: number, ranges: Array<[number, number]>): boolean {
   return ranges.some(([start, end]) => pos >= start && pos < end);
 }
 

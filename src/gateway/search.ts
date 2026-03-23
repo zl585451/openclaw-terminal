@@ -50,9 +50,6 @@ export interface SearchConfig {
 const DEFAULT_TIMEOUT = 10000;
 const DEFAULT_COUNT = 5;
 
-// 引擎优先级 (auto 模式): Brave -> Tavily -> DuckDuckGo
-const ENGINE_PRIORITY: SearchEngine[] = ['brave', 'tavily', 'duckduckgo'];
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 从环境变量获取配置 (Node.js 环境)
 // ─────────────────────────────────────────────────────────────────────────────

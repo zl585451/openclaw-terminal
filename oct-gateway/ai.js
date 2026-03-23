@@ -174,6 +174,14 @@ ${bootMemory}
         log.warn('MEMORY.md sync failed', { path: memoryMdPath, error: e?.message || String(e) });
       }
 
+      // 记忆注入配额：最多 4000 字符（约 2000 tokens）
+      const MEMORY_INJECT_LIMIT = 4000;
+      if (bootMemory && bootMemory.length > MEMORY_INJECT_LIMIT) {
+        log.warn('[AI] 记忆内容超过配额，截断中', { original: bootMemory.length, limit: MEMORY_INJECT_LIMIT });
+        bootMemory = bootMemory.slice(0, MEMORY_INJECT_LIMIT)
+          + '\n\n---\n> ⚠️ 记忆内容已截断（超过 ' + MEMORY_INJECT_LIMIT + ' 字符限制）';
+      }
+
       return buildSystemPrompt(bootMemory, 'nocturne', promptsDir);
     }
   }

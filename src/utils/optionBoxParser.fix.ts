@@ -1,10 +1,26 @@
 // 修复版 parseTaggedContent - 解决 pills 标签内代码框断节问题
 
+// 从主文件导入类型和常量
+import type { RenderSegment, SegmentType } from './optionBoxParser';
+import {
+  PAIRED_TAG_RX,
+  getCodeBlockRanges,
+  isInsideCodeBlock,
+  parseSymbolOptions,
+  parsePlainLines,
+  parseCheckboxOptions,
+  parseNumberedOptions,
+  parseLineOptions,
+  parsePipeSeparatedOptions,
+  isQuestionLabel,
+  cleanLabel,
+} from './optionBoxParser';
+
 /** 解析成对标签 [pills]...[/pills] 等，返回按顺序排列的渲染段 */
-function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
+export function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
   PAIRED_TAG_RX.lastIndex = 0;
   const allMatches = [...content.matchAll(PAIRED_TAG_RX)];
-  
+
   if (allMatches.length === 0) return { segments: [], found: false };
 
   const codeRanges = getCodeBlockRanges(content);
@@ -22,7 +38,7 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
     const matchEnd = matchStart + m[0].length;
 
     const textBefore = content.slice(lastIndex, matchStart);
-    
+
     if (textBefore.trim()) {
       // 【修复 A】textBefore 不经过 filterExpectedEffect，避免误删代码块
       segments.push({ type: 'text', content: textBefore, options: [] });
@@ -36,22 +52,22 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
         // 【修复 B】text 标签内容也不过滤
         if (inner) segments.push({ type: 'text', content: inner, options: [] });
         break;
-      
+
       case 'pills': {
         // 1. 提取选项按钮
         let opts = parseSymbolOptions(inner);
         if (opts.length === 0) opts = parsePlainLines(inner);
-        
+
         // 2. 【修复 C】保留完整的 inner 内容作为 text segment，不做任何过滤
         // 这样代码块、表格、列表都能完整保留
         if (opts.length > 0) {
-          segments.push({ 
-            type: 'pills', 
-            content: '', 
-            options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })) 
+          segments.push({
+            type: 'pills',
+            content: '',
+            options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) }))
           });
         }
-        
+
         // 3. 将 pills 标签内的剩余内容（含代码块、表格等）作为 text segment
         // 不再尝试分离选项行，而是保留完整格式
         if (inner.length > 0) {
@@ -59,14 +75,14 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
         }
         break;
       }
-      
+
       case 'checkbox': {
         let opts = parseCheckboxOptions(inner);
         if (opts.length === 0) opts = parsePlainLines(inner);
         segments.push({ type: 'checkbox', content: inner, options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
         break;
       }
-      
+
       case 'question': {
         let opts = parseNumberedOptions(inner);
         if (opts.length < 2) opts = parseLineOptions(inner);
@@ -77,7 +93,7 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
         segments.push({ type: 'question', content: inner, options: finalOpts.map((o, i) => ({ ...o, num: i + 1, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
         break;
       }
-      
+
       case 'tasklist': {
         let opts = parseCheckboxOptions(inner);
         if (opts.length === 0) opts = parsePlainLines(inner);

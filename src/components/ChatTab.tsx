@@ -679,6 +679,8 @@ interface ChatMessageItemProps {
   onQuoteQuestion: (text: string) => void;
   /** 成对标签解析出的渲染段（存在时优先渲染） */
   segments?: RenderSegment[];
+  /** 思考耗时（秒） */
+  thinkingElapsed?: number;
 }
 
 const ChatMessageItem = memo(function ChatMessageItem({
@@ -1703,7 +1705,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   };
 
   const handleIncomingMessage = (
-    data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean }
+    data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean; elapsed?: number }
   ) => {
     if (!data || data.type === 'status' || data.connected !== undefined) return;
     if (data.type === 'agent-phase') {

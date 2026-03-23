@@ -12,7 +12,7 @@ const memorySearch = require('./memory_search');
 const imageAnalyzer = require('./image_analyzer');
 const tools = require('./tools');
 const crypto = require('crypto');
-const selfEval = require('./self_eval');
+// const selfEval = require('./self_eval');  // 自评估系统已停用 2026-03-22
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
 const nocturneQueue = require('./nocturne_task_queue');
@@ -403,7 +403,17 @@ wss.on('connection', (ws) => {
       );
 
       const systemPrompt = await systemPromptReady;
-      const history = session.getHistory(sessionKey);
+      let history = session.getHistory(sessionKey);
+
+      // 对话历史限制：最多保留最近 20 条消息
+      const MAX_HISTORY_MESSAGES = 20;
+      if (history.length > MAX_HISTORY_MESSAGES) {
+        history = [
+          history[0],
+          ...history.slice(-(MAX_HISTORY_MESSAGES - 1)),
+        ];
+        log.info('[Gateway] 历史消息已截断', { original: session.getHistory(sessionKey).length, kept: history.length });
+      }
 
       // 假设验证（异步，不阻塞主流程）
       let hypothesisResult = null;
@@ -536,11 +546,12 @@ wss.on('connection', (ws) => {
               ),
               'clarificationMemory'
             );
-            nocturneQueue.enqueue(
-              () => selfEval.evaluateReply(userMessage, fullReply)
-                .then(() => selfEval.maybeDistill()),
-              'selfEval+maybeDistill'
-            );
+            // 自评估系统已停用 2026-03-22
+            // nocturneQueue.enqueue(
+            //   () => selfEval.evaluateReply(userMessage, fullReply)
+            //     .then(() => selfEval.maybeDistill()),
+            //   'selfEval+maybeDistill'
+            // );
           }
           
           if (ws.readyState === ws.OPEN) {
