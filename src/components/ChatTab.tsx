@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 // xterm 已完全移除以修复闪退问题
 import '../styles/ChatTab.css';
+import './ResponseTray.css';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../utils/optionBoxParser';
 import OptionBox from './OptionBox';
 import TaskList from './TaskList';
@@ -681,6 +682,8 @@ interface ChatMessageItemProps {
   segments?: RenderSegment[];
   /** 思考耗时（秒） */
   thinkingElapsed?: number;
+  /** 是否为最后一条 assistant 消息（是则不渲染 pills，因已在 ResponseTray 显示） */
+  isLastAssistant?: boolean;
 }
 
 const ChatMessageItem = memo(function ChatMessageItem({
@@ -702,6 +705,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
   onContextMenu,
   onQuoteQuestion,
   segments,
+  isLastAssistant,
 }: ChatMessageItemProps) {
   const [hoverTime, setHoverTime] = React.useState(false);
   
@@ -755,9 +759,9 @@ const ChatMessageItem = memo(function ChatMessageItem({
                 switch (seg.type) {
                   case 'text':
                     // 已解析出 segments 时，文本段始终走非流式路径，表格等统一由 ReactMarkdown 渲染
-                    return <MarkdownContent key={idx} content={seg.content} isStreaming={false} />;
+                    return <MarkdownContent key={idx} content={stripRenderAndPillsMarkers(seg.content, isLastAssistant)} isStreaming={false} />;
                   case 'pills':
-                    return seg.options.length > 0 ? (
+                    return seg.options.length > 0 && !isLastAssistant ? (
                       <OptionBox
                         key={idx}
                         messageId={msg.id}
@@ -802,7 +806,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
             ) : (
               <>
                 {(() => {
-                  const cleanedText = filterExpectedEffect(textToShow);
+                  const cleanedText = filterExpectedEffect(textToShow, isLastAssistant);
                   const hasInlinePlaceholder = cleanedText.includes('<!--OPTIONS_HERE-->');
                   const showInlineOptions = hasInlinePlaceholder && optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions;
 
@@ -810,9 +814,11 @@ const ChatMessageItem = memo(function ChatMessageItem({
                     const parts = cleanedText.split('<!--OPTIONS_HERE-->');
                     const before = parts[0]?.trim() || '';
                     const after = parts.slice(1).join('').trim();
+                    const showPillsHere = !isLastAssistant || !forcePills;
                     return (
                       <>
                         {before && <MarkdownContent content={before} isStreaming={isStreamingMsg} />}
+                        {showPillsHere && (
                         <OptionBox
                           messageId={msg.id}
                           options={optionsToShow}
@@ -824,6 +830,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
                           }}
                           forcePills={forcePills}
                         />
+                        )}
                         {after && <MarkdownContent content={after} isStreaming={isStreamingMsg} />}
                         {isStreamingMsg && <TypewriterCursor show />}
                       </>
@@ -834,7 +841,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
                     <>
                       <MarkdownContent content={cleanedText} isStreaming={isStreamingMsg} />
                       {isStreamingMsg && <TypewriterCursor show />}
-                      {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (
+                      {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (!isLastAssistant || !forcePills) && (
                         <OptionBox
                           messageId={msg.id}
                           options={optionsToShow}
@@ -900,13 +907,29 @@ const ChatMessageItem = memo(function ChatMessageItem({
     prev.thinkingElapsed === next.thinkingElapsed &&
     prev.wsConnected === next.wsConnected &&
     prev.currentPage === next.currentPage &&
-    prev.segments === next.segments
+    prev.segments === next.segments &&
+    prev.isLastAssistant === next.isLastAssistant
   );
 });
 
-function filterExpectedEffect(text: string): string {
+/** 剥离 [RENDER:xxx] 和 [pills]...[/pills] 块（后者已在托盘显示）；isLastAI 时额外清掉 ■ 开头的选项行 */
+function stripRenderAndPillsMarkers(text: string, isLastAI?: boolean): string {
   if (!text || typeof text !== 'string') return text;
-  return text
+  let result = text
+    .replace(/\[RENDER:[^\]]+\]/gi, '')
+    .replace(/\[pills\][\s\S]*?\[\/pills\]/gi, '');
+  if (isLastAI) {
+    result = result
+      .replace(/^[■●◆○◉▪▸]\s*.+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n');
+  }
+  return result.trim();
+}
+
+function filterExpectedEffect(text: string, isLastAI?: boolean): string {
+  if (!text || typeof text !== 'string') return text;
+  const stripped = stripRenderAndPillsMarkers(text, isLastAI);
+  return stripped
     .split('\n')
     .filter((line) => {
       if (line.includes('预期效果')) return false;
@@ -980,6 +1003,7 @@ interface ChatInputAreaProps {
   injectInputText?: string | null;
   onInjectConsumed?: () => void;
   onClearHistory?: () => void;
+  hasPendingPills?: boolean;
 }
 
 const ChatInputArea = memo(function ChatInputArea({
@@ -994,6 +1018,7 @@ const ChatInputArea = memo(function ChatInputArea({
   injectInputText,
   onInjectConsumed,
   onClearHistory,
+  hasPendingPills,
 }: ChatInputAreaProps) {
   const [inputValue, setInputValue] = useState('');
   const [inputHistory, setInputHistory] = useState<string[]>([]);
@@ -1227,7 +1252,7 @@ const ChatInputArea = memo(function ChatInputArea({
               }
             }
           }}
-          placeholder="// INPUT COMMAND OR MESSAGE..."
+          placeholder={hasPendingPills ? '或者自己输入...' : '// INPUT COMMAND OR MESSAGE...'}
           rows={1}
         />
         <button type="button" className="attach-btn" title="添加附件（或拖拽文件到此处）" onClick={handlePickFiles}>📎</button>
@@ -1260,6 +1285,7 @@ interface ChatMessageListProps {
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
   onMessageContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
   onQuoteQuestion: (text: string) => void;
+  pendingPills?: string[] | null;
 }
 
 const ChatMessageList = function ChatMessageList({
@@ -1278,6 +1304,7 @@ const ChatMessageList = function ChatMessageList({
   onScroll,
   onMessageContextMenu,
   onQuoteQuestion,
+  pendingPills,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -1287,6 +1314,7 @@ const ChatMessageList = function ChatMessageList({
   }, []);
 
   const showTypingIndicator = (awaitingResponse || isStreaming) && (messages.length === 0 || messages[messages.length - 1]?.role === 'user');
+  const lastAssistantId = [...messages].reverse().find(m => m.role === 'assistant')?.id;
 
   return (
     <div className="chat-messages-wrap" onScroll={onScroll} ref={messagesContainerRef}>
@@ -1371,9 +1399,26 @@ const ChatMessageList = function ChatMessageList({
             quickSend={quickSend}
             onContextMenu={onMessageContextMenu}
             onQuoteQuestion={onQuoteQuestion}
+            isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
           />
         );
         })}
+        {pendingPills && pendingPills.length > 0 && (
+          <div className="response-tray-inline">
+            <div className="response-tray-inline__pills">
+              {pendingPills.map((pill: string, i: number) => (
+                <button
+                  key={i}
+                  className="response-tray-inline__pill"
+                  title={pill}
+                  onClick={() => quickSend(pill)}
+                >
+                  {pill}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div ref={bottomRef as React.Ref<HTMLDivElement>} />
       </div>
     </div>
@@ -1427,6 +1472,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
   const [displayedLength, setDisplayedLength] = useState(0);
   const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE_MESSAGES);
+  const [pendingPills, setPendingPills] = useState<string[] | null>(null);
   // 任务看板显示状态
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // ===== 所有 useRef 集中声明 =====
@@ -1473,6 +1519,20 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [getNextMessageId, setMessages]);
 
   // ===== 所有 useEffect 放在 useState/useRef 之后 =====
+  // 提取 pendingPills：统一使用 parseOptionBox，与消息内渲染逻辑一致；只有最后一条是 AI 时才显示托盘
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant') {
+      setPendingPills(null);
+      return;
+    }
+    const raw = typeof lastMsg.content === 'string' ? lastMsg.content : String((lastMsg.content as any)?.text ?? (lastMsg.content as any)?.content ?? lastMsg.content ?? '');
+    const parsed = parseOptionBox(raw);
+    const pillsSeg = parsed.segments?.find((s) => s.type === 'pills');
+    const pills = pillsSeg?.options?.map((o) => o.value) ?? (parsed.forcePills ? parsed.options?.map((o) => o.value) ?? [] : []);
+    setPendingPills(pills.length > 0 ? pills : null);
+  }, [messages]);
+
   // 通知父组件状态变化
   useEffect(() => {
     onStatusChange?.(wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
@@ -1996,6 +2056,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
     userScrolledUp.current = false;
     setStreak(touchStreak());
+    setPendingPills(null);
     setMessages((prev) => [
       ...prev,
       {
@@ -2054,6 +2115,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setAgentPhase('thinking');
     }
     userScrolledUp.current = false;
+    setPendingPills(null);
     setMessages((prev) => [
       ...prev,
       { id: getNextMessageId(), role: 'user', content: content.trim(), timestamp: Date.now() },
@@ -2333,6 +2395,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           onScroll={handleChatScroll}
           onMessageContextMenu={(e, msg, raw) => setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id, text: raw })}
           onQuoteQuestion={(text: string) => setInjectInputText(text)}
+          pendingPills={pendingPills}
         />
         {showScrollBtn && (
           <div

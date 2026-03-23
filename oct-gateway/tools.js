@@ -302,7 +302,7 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          uri: { type: 'string', description: '记忆 URI，如 core://amy/identity' },
+          uri: { type: 'string', description: '记忆 URI，如 core://agent/identity' },
         },
         required: ['uri'],
       },

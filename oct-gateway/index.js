@@ -60,9 +60,11 @@ async function checkMemoryHealth() {
     const CORE_URIS = [
       'core://agent/identity',
       'core://my_user/profile',
-      'core://agent/my_user',
-      'core://my_user/communication',
       'core://agent/rules/output_format',
+      'core://my_user/preferences',
+      'core://my_user/communication',
+      'core://project/oct/status',
+      'core://project/oct/decisions',
     ];
 
     const missing = [];

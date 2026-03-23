@@ -277,7 +277,6 @@ function stripMarkdownTables(text: string): string {
     if (/^\s*\|/.test(currentLine)) {
       // 首先排除文件树结构
       if (isFileTreeLine(currentLine)) {
-        console.log('[stripMarkdownTables] 跳过文件树行，位置:', i);
         result.push(currentLine);
         i++;
         continue;
@@ -303,15 +302,12 @@ function stripMarkdownTables(text: string): string {
         const hasSeparator = isMarkdownTableSeparator(secondLine);
 
         if (hasSeparator) {
-          console.log('[stripMarkdownTables] 检测到真正的 Markdown 表格，起始位置:', i, '行数:', potentialTableLines.length, '分隔符验证: 通过');
-          // 跳过整个表格块
+          // 跳过整个表格块，避免表格内 | 符号干扰后续 ■ / - [ ] 检测
           i = j;
           continue;
         } else {
-          console.log('[stripMarkdownTables] 排除伪表格（无分隔符行），位置:', i);
+          // 无分隔符，非标准表格，保留
         }
-      } else {
-        console.log('[stripMarkdownTables] 排除伪表格（行数不足），位置:', i, '行数:', potentialTableLines.length);
       }
     }
 
@@ -543,8 +539,19 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
 const parseCache = new Map<string, ParsedContent>();
 const CACHE_MAX = 200;
 
+/** 简单哈希，用于生成可靠的缓存键，避免长消息因仅用 prefix+length 导致碰撞 */
+function simpleHash(str: string): string {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) ^ str.charCodeAt(i);
+  }
+  return (h >>> 0).toString(36);
+}
+
 function getCacheKey(content: string): string {
-  return content.slice(0, 100) + ':' + content.length;
+  // 原逻辑 content.slice(0,100)+':'+length 在长消息中易碰撞：
+  // 两条不同消息若前缀相同、长度相近，会错误复用缓存，导致交互元素不渲染
+  return content.length + ':' + simpleHash(content);
 }
 
 function _parseOptionBox(content: string): ParsedContent {

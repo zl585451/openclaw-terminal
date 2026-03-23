@@ -424,3 +424,65 @@ describe('边界情况', () => {
     expect(pillsSeg!.options).toHaveLength(2);
   });
 });
+
+// ============================================================
+// 长内容 + 表格 + 交互标签 — 修复缓存碰撞导致的不渲染
+// ============================================================
+describe('长内容 + 表格 + 交互标签', () => {
+  it('长消息 + 表格 + [pills] 标签，交互元素正确渲染', () => {
+    const longPrefix = '根据您的问题，我整理了以下分析：\n\n'.repeat(5);
+    const input = longPrefix + `## 方案对比
+
+| 优先级 | 操作 | 文件 |
+| --- | --- | --- |
+| P0 | 改核心规则 | AGENTS.md |
+| P1 | 细化边界 | OCT_PROTOCOL.md |
+
+[pills]
+■ 先改 P0 的两条核心规则
+■ 直接用 DeepSeek 的方案
+[/pills]`;
+
+    const result = parseOptionBox(input);
+    expect(result.segments).toBeDefined();
+    const pillsSeg = result.segments!.find(s => s.type === 'pills');
+    expect(pillsSeg).toBeDefined();
+    expect(pillsSeg!.options).toHaveLength(2);
+  });
+
+  it('长消息 + 表格 + 无标签的 ■ 选项，自动检测仍生效', () => {
+    const longPrefix = '根据您的问题，我整理了以下内容：\n\n'.repeat(8);
+    const input = longPrefix + `| 方案 | 优点 |
+|------|------|
+| A    | 快   |
+| B    | 稳   |
+
+请选择：
+■ 方案 A
+■ 方案 B`;
+
+    const result = parseOptionBox(input);
+    expect(result.options.length).toBeGreaterThanOrEqual(2);
+    expect(result.options.some(o => o.label.includes('方案 A'))).toBe(true);
+  });
+
+  it('缓存键不碰撞：两条长消息前缀相同、结尾不同，各自解析正确', () => {
+    const sharedPrefix = '根据您的问题：\n\n'.repeat(10);
+    const msgWithoutPills = sharedPrefix + '这是纯文本回复，没有选项。';
+    const msgWithPills = sharedPrefix + `[pills]
+■ 选项1
+■ 选项2
+[/pills]`;
+
+    const r1 = parseOptionBox(msgWithoutPills);
+    const r2 = parseOptionBox(msgWithPills);
+
+    expect(r1.options?.length ?? 0).toBe(0);
+    expect(r1.segments?.some(s => s.type === 'pills') ?? false).toBe(false);
+
+    expect(r2.segments).toBeDefined();
+    const pillsSeg = r2.segments!.find(s => s.type === 'pills');
+    expect(pillsSeg).toBeDefined();
+    expect(pillsSeg!.options).toHaveLength(2);
+  });
+});

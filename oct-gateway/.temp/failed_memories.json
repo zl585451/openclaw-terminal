@@ -8,7 +8,7 @@
     "ts": "2026-03-20T03:45:04.781Z"
   },
   {
-    "uri": "core://amy/task3.1",
+    "uri": "core://agent/task3.1",
     "content": "任务3.1已完成：修复maybeDistill触发条件，阈值10条最低/20条理想触发，当前211条记录",
     "priority": 1,
     "disclosure": "用户询问任务3.1完成情况或触发条件相关配置时",

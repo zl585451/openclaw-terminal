@@ -1060,6 +1060,11 @@
   text-shadow: none;
 }
 
+.has-tray .chat-input {
+  border-radius: 0 0 12px 12px;
+  border-top: none;
+}
+
 .chat-input {
   flex: 1;
   background: var(--bg-input);
