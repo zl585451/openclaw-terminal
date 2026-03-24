@@ -1,5 +1,27 @@
+// 强制 DashScope API 请求绕过系统代理（直连国内服务器）
+// 解决 V2RayN 全局代理导致国内 API 被路由到境外节点的问题
+const { HttpsProxyAgent } = (() => {
+  try { return require('https-proxy-agent'); }
+  catch { return { HttpsProxyAgent: null }; }
+})();
+
+function getDirectFetchOptions() {
+  // 检测系统代理环境变量
+  const proxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy ||
+                   process.env.HTTP_PROXY || process.env.http_proxy || '';
+
+  // 如果没有代理，直接返回空配置
+  if (!proxyEnv) return {};
+
+  console.log('[AI] 检测到系统代理，DashScope 请求将强制直连');
+
+  // 返回 no-proxy 标记，fetch 时不传 agent 即为直连
+  // Node.js 18+ 的 fetch 默认不走系统代理，这里额外清理环境变量
+  return { _bypassProxy: true };
+}
+
 const config = require('./config');
-const { TOOL_DEFINITIONS, executeTool } = require('./tools');
+const toolLoader = require('./tool_loader');
 const memory = require('./memory');
 const memoryFeedback = require('./memory_feedback');
 const fs = require('fs');
@@ -208,6 +230,47 @@ ${bootMemory}
   return buildSystemPrompt(parts.join('\n\n---\n\n'), 'local', promptsDir);
 }
 
+async function fetchWithRetry(url, options, maxRetries = 2) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      log.info(`第 ${attempt} 次重试请求...`);
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        log.warn('请求超时（90秒），触发 abort');
+      }, 90000);
+
+      const resp = await fetch(url, {
+        ...options,
+        ...getDirectFetchOptions(),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+      }
+      return resp;
+    } catch (e) {
+      lastError = e;
+      if (e.name === 'AbortError') {
+        log.error('请求被中止（超时）');
+        break;
+      }
+      if (attempt < maxRetries) {
+        log.warn(`请求失败，将重试: ${e.message}`);
+      }
+    }
+  }
+  throw lastError;
+}
+
 function readTextIfExists(p) {
   try {
     if (!p || !fs.existsSync(p)) return '';
@@ -336,6 +399,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     return;
   }
 
+  let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用
   try {
     const hasImage = truncatedMessages.some(m =>
       Array.isArray(m.content) &&
@@ -360,18 +424,17 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
       requestBody.stream_options = { include_usage: true };
     }
     if (caps.supportsTools && !hasImage) {
-      requestBody.tools = TOOL_DEFINITIONS;
+      requestBody.tools = toolLoader.getDefinitions();
       requestBody.tool_choice = 'auto';
     }
 
-    const res = await fetch(`${baseUrl}/chat/completions`, {
+    const res = await fetchWithRetry(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(600000),   // 10 分钟
     });
 
     log.info('response', { status: res.status });
@@ -385,7 +448,6 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     const reader = res.body;
     const decoder = new TextDecoder('utf-8');
     let buf = '';
-    let fullText = '';
     let toolCalls = [];
     let totalUsage = null;
     let responseModel = null;  // API 返回的实际模型名（用于校验和展示）
@@ -450,7 +512,16 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
             let args = {};
             try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
             log.info('tool call', { name: tc.function.name, args });
-            const result = await executeTool(tc.function.name, args);
+            const toolName = tc.function.name;
+            const result = await Promise.race([
+              toolLoader.executeTool(toolName, args),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`工具 ${toolName} 超时（30秒）`)), 30000)
+              )
+            ]).catch(e => {
+              log.error(`工具 ${toolName} 执行失败: ${e.message}`);
+              return `工具执行失败: ${e.message}，请稍后重试或换个方式表达需求。`;
+            });
             toolResults.push({
               tool_call_id: tc.id,
               role: 'tool',
@@ -477,6 +548,17 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
     onDone(fullText, totalUsage, responseModel);
   } catch (e) {
+    log.error('流中断:', e?.message || String(e));
+
+    // 如果已经输出了一部分内容，发送截断提示而不是直接报错
+    if (fullText && fullText.length > 10) {
+      const truncateMsg = '\n\n---\n⚠️ 网络波动，回复可能不完整。如需继续，请发送「继续」';
+      onDelta(truncateMsg);
+      onDone(fullText + truncateMsg, null, null);
+      log.warn('已发送截断提示，已输出内容长度:', fullText.length);
+      return;
+    }
+
     // 只有在百炼失败且有 DeepSeek Key 时才 fallback（切换 provider 才能生效）
     if (canFallbackToDeepseek) {
       log.warn('primary provider failed, fallback to deepseek', { error: e?.message || String(e) });

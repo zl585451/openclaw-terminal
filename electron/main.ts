@@ -355,42 +355,6 @@ async function startAiLibraryBackend(): Promise<boolean> {
   return false;
 }
 
-// Device identity
-let deviceKeys: { publicKeyPem: string; privateKeyPem: string; deviceId: string } | null = null;
-const KEYS_FILE = path.join(app.getPath('userData'), 'device_keys.json');
-
-// Generate Ed25519 keypair and device ID
-function generateNewKeys(): { publicKeyPem: string; privateKeyPem: string; deviceId: string } {
-  console.log('[OpenClaw] Generating new Ed25519 keypair...');
-  
-  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
-  const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
-  const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
-  
-  // Device ID = SHA-256 of raw public key (32 bytes after SPKI prefix)
-  const rawKey = extractRawPublicKey(publicKeyPem);
-  const deviceId = crypto.createHash('sha256').update(rawKey).digest('hex');
-  
-  return { publicKeyPem, privateKeyPem, deviceId };
-}
-
-// Extract raw 32-byte public key from SPKI PEM
-function extractRawPublicKey(publicKeyPem: string): Buffer {
-  const key = crypto.createPublicKey(publicKeyPem);
-  const spki = key.export({ type: 'spki', format: 'der' }) as Buffer;
-  // Ed25519 SPKI DER: 12 bytes prefix + 32 bytes raw key
-  // Prefix: 30 2a 30 05 06 03 2b 65 70 03 21 00
-  return spki.subarray(-32);
-}
-
-// Base64URL encode
-function base64UrlEncode(buf: Buffer): string {
-  return buf.toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
-}
-
 // Save session state to file
 function saveSessionState(state: { messages?: any[]; sessionKey?: string }) {
   try {
@@ -416,102 +380,7 @@ function loadSessionState(): { messages?: any[]; sessionKey?: string } | null {
   return null;
 }
 
-// Load or generate device keys
-function loadOrGenerateKeys(): { publicKeyPem: string; privateKeyPem: string; deviceId: string } {
-  try {
-    if (fs.existsSync(KEYS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf-8'));
-      
-      // Validate keys
-      if (data.publicKeyPem && data.privateKeyPem && data.publicKeyPem.includes('-----BEGIN')) {
-        // Verify keys are valid by trying to use them
-        try {
-          crypto.createPublicKey(data.publicKeyPem);
-          crypto.createPrivateKey(data.privateKeyPem);
-          
-          const rawKey = extractRawPublicKey(data.publicKeyPem);
-          const deviceId = crypto.createHash('sha256').update(rawKey).digest('hex');
-          
-          console.log('[OpenClaw] Loaded existing keys, deviceId:', deviceId);
-          return { publicKeyPem: data.publicKeyPem, privateKeyPem: data.privateKeyPem, deviceId };
-        } catch (e) {
-          console.warn('[OpenClaw] Stored keys invalid, regenerating...');
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('[OpenClaw] Failed to load keys:', e);
-  }
-  
-  // Generate new keys
-  const keys = generateNewKeys();
-  
-  // Save to file
-  try {
-    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2));
-    console.log('[OpenClaw] Saved new keys to:', KEYS_FILE);
-  } catch (e) {
-    console.error('[OpenClaw] Failed to save keys:', e);
-  }
-  
-  return keys;
-}
-
-// normalizeDeviceMetadataForAuth - copy from OpenClaw source
-function normalizeDeviceMetadataForAuth(value?: string | null): string {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  // Lowercase ASCII only
-  return trimmed.replace(/[A-Z]/g, (char) =>
-    String.fromCharCode(char.charCodeAt(0) + 32)
-  );
-}
-
-// buildDeviceAuthPayloadV3 - exact copy from OpenClaw device-auth.ts
-function buildDeviceAuthPayloadV3(params: {
-  deviceId: string;
-  clientId: string;
-  clientMode: string;
-  role: string;
-  scopes: string[];
-  signedAtMs: number;
-  token: string | null;
-  nonce: string;
-  platform?: string | null;
-  deviceFamily?: string | null;
-}): string {
-  const scopes = params.scopes.join(',');
-  const token = params.token ?? '';
-  const platform = normalizeDeviceMetadataForAuth(params.platform);
-  const deviceFamily = normalizeDeviceMetadataForAuth(params.deviceFamily);
-  return [
-    'v3',
-    params.deviceId,
-    params.clientId,
-    params.clientMode,
-    params.role,
-    scopes,
-    String(params.signedAtMs),
-    token,
-    params.nonce,
-    platform,
-    deviceFamily
-  ].join('|');
-}
-
-// Sign with Ed25519
-function signPayload(payload: string, privateKeyPem: string): string {
-  const key = crypto.createPrivateKey(privateKeyPem);
-  const sig = crypto.sign(null, Buffer.from(payload, 'utf8'), key);
-  return base64UrlEncode(sig);
-}
-
 function createWindow() {
-  // Initialize device keys
-  deviceKeys = loadOrGenerateKeys();
-  console.log('[OpenClaw] Device ID:', deviceKeys.deviceId);
-  
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
@@ -668,9 +537,9 @@ function connectOpenClaw() {
   if (openclawWs?.readyState === WebSocket.OPEN) return;
 
   openclawWs = null;
-  console.log('[OpenClaw] Connecting to', OPENCLAW_WS_URL, 'retry:', reconnectRetryCount);
+  console.log('[OCT] Connecting to', OPENCLAW_WS_URL, 'retry:', reconnectRetryCount);
   sendConnLog(`正在连接 ${OPENCLAW_WS_URL} (重试 #${reconnectRetryCount})`);
-  sendConnLog(`Device ID: ${deviceKeys?.deviceId || '未初始化'} | Token: ${OPENCLAW_TOKEN ? OPENCLAW_TOKEN.slice(0, 8) + '...' : '未设置'}`);
+  sendConnLog(`Token: ${(process.env.OCT_GATEWAY_TOKEN || OPENCLAW_TOKEN || '').trim() ? '已设置' : '未设置'}`);
 
   const ws = new WebSocket(OPENCLAW_WS_URL);
   openclawWs = ws;
@@ -689,7 +558,7 @@ function connectOpenClaw() {
   };
 
   ws.on('open', () => {
-    console.log('[OpenClaw] WebSocket opened, waiting for challenge...');
+    console.log('[OCT] WebSocket opened, waiting for challenge...');
     sendConnLog('WebSocket 已连接，等待 Gateway 下发 challenge...');
     heartbeatIntervalId = setInterval(() => {
       if (ws.readyState !== WebSocket.OPEN) return;
@@ -717,7 +586,7 @@ function connectOpenClaw() {
       const msg = JSON.parse(data.toString());
       handleMessage(msg);
     } catch (e) {
-      console.error('[OpenClaw] Parse error:', e);
+      console.error('[OCT] Parse error:', e);
       sendConnLog(`消息解析失败：${e instanceof Error ? e.message : String(e)}`);
     }
   });
@@ -745,14 +614,14 @@ function connectOpenClaw() {
   ws.on('close', (code: number, reason: Buffer) => {
     clearHeartbeat();
     const reasonStr = (reason?.length ? reason.toString('utf8') : '') || '(无)';
-    console.log('[OpenClaw] WebSocket disconnected', code, reasonStr);
+    console.log('[OCT] WebSocket disconnected', code, reasonStr);
     sendConnLog(`WebSocket 已断开 code=${code} reason=${reasonStr}，${reconnectRetryCount <= MAX_RECONNECT_RETRIES ? '将按退避延迟重连' : '已达重试上限'}`);
     scheduleReconnect();
   });
 
   ws.on('error', (error) => {
     clearHeartbeat();
-    console.error('[OpenClaw] Connection error:', error);
+    console.error('[OCT] Connection error:', error);
     const msg = error.message || String(error);
     sendConnLog(`连接错误: ${msg}，将按退避延迟重连`);
     if (msg.includes('ECONNRESET')) {
@@ -766,12 +635,12 @@ function connectOpenClaw() {
 function sendStatus(status: { connected: boolean; error?: string; model?: string; reconnecting?: boolean }) {
   if (appQuitting) return;
   if (status.connected) reconnectRetryCount = 0;
-  console.log('[OpenClaw] Sending status to frontend:', status);
+  console.log('[OCT] Sending status to frontend:', status);
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
     mainWindow.webContents.send('openclaw-status', status);
-    console.log('[OpenClaw] Status sent successfully');
+    console.log('[OCT] Status sent successfully');
   } else {
-    console.warn('[OpenClaw] mainWindow not available, skip send status');
+    console.warn('[OCT] mainWindow not available, skip send status');
   }
 }
 
@@ -887,10 +756,7 @@ function handleMessage(msg: any) {
   switch (msg.type) {
     case 'event':
       if (msg.event === 'connect.challenge') {
-        const nonce = msg.payload?.nonce || '';
-        console.log('[OpenClaw] Challenge received, nonce:', nonce);
-        sendConnLog('收到 connect.challenge，正在发送 connect 请求...');
-        sendConnectRequest(nonce);
+        sendOctConnectRequest();
       } else if (msg.event === 'task-board-update') {
         mainWindow?.webContents.send('task-board-update');
         mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
@@ -925,15 +791,15 @@ function handleMessage(msg: any) {
       break;
       
     case 'res':
-      console.log('[OpenClaw] Response: ok=', msg.ok, 'payload=', msg.payload ? JSON.stringify(msg.payload).slice(0, 200) : null);
+      console.log('[OCT] Response: ok=', msg.ok, 'payload=', msg.payload ? JSON.stringify(msg.payload).slice(0, 200) : null);
       if (msg.ok && (msg.payload?.type === 'hello-ok' || msg.method === 'connect')) {
         const model = msg.payload?.model || msg.payload?.agent?.model || undefined;
-        console.log('[OpenClaw] Connection successful!');
+        console.log('[OCT] Connection successful!');
         sendConnLog(`认证成功，已连接 (model: ${model || '—'})`);
         sendStatus({ connected: true, model });
       } else if (!msg.ok) {
         const errMsg = msg.error?.message || JSON.stringify(msg.error) || 'Connection failed';
-        console.error('[OpenClaw] Error:', JSON.stringify(msg.error, null, 2));
+        console.error('[OCT] Error:', JSON.stringify(msg.error, null, 2));
         sendConnLog(`认证失败: ${errMsg}`);
         sendStatus({ 
           connected: false, 
@@ -944,7 +810,7 @@ function handleMessage(msg: any) {
         if (text) forwardChatToFrontend(msg.payload, 'res');
         else sendStatus({ connected: true });
       } else if (msg.ok) {
-        console.log('[OpenClaw] Connection successful (no payload)!');
+        console.log('[OCT] Connection successful (no payload)!');
         sendConnLog('认证成功，已连接');
         sendStatus({ connected: true });
       }
@@ -955,81 +821,22 @@ function handleMessage(msg: any) {
   }
 }
 
-function sendConnectRequest(nonce: string) {
-  if (!deviceKeys) {
-    console.error('[OpenClaw] No device keys');
-    sendConnLog('错误: 未初始化 device keys，无法发送 connect');
-    return;
-  }
-
-  console.log('[OpenClaw] Sending connect request...');
-  sendConnLog('已发送 connect 请求（含 device 签名）');
-  
-  const now = Date.now();
-  const platform = process.platform; // win32, darwin, linux
-  const deviceFamily = undefined;    // official uses undefined -> ''
-  
-  // Exact match to official client: gateway-client, backend
-  const clientId = 'gateway-client';
-  const clientMode = 'backend';
-  const scopes = ['operator.read', 'operator.write'];
-  
-  const payload = buildDeviceAuthPayloadV3({
-    deviceId: deviceKeys.deviceId,
-    clientId,
-    clientMode,
-    role: 'operator',
-    scopes,
-    signedAtMs: now,
-    token: typeof OPENCLAW_TOKEN === 'string' ? OPENCLAW_TOKEN : '',
-    nonce,
-    platform,
-    deviceFamily
-  });
-  
-  console.log('[OpenClaw] Auth payload:', payload);
-  
-  const signature = signPayload(payload, deviceKeys.privateKeyPem);
-  const publicKeyBase64Url = base64UrlEncode(extractRawPublicKey(deviceKeys.publicKeyPem));
-  
+function sendOctConnectRequest() {
+  const token = process.env.OCT_GATEWAY_TOKEN || '';
   const connectMsg = {
     type: 'req',
     id: generateId(),
     method: 'connect',
     params: {
-      minProtocol: 3,
-      maxProtocol: 3,
-      client: {
-        id: clientId,
-        version: '1.0.0',
-        platform,
-        mode: clientMode
-      },
-      role: 'operator',
-      scopes,
-      caps: [],
-      commands: [],
-      permissions: {},
-      auth: { 
-        token: typeof OPENCLAW_TOKEN === 'string' ? OPENCLAW_TOKEN : ''
-      },
-      locale: 'zh-CN',
-      userAgent: 'claw-terminal/1.0.0',
-      device: {
-        id: deviceKeys.deviceId,
-        publicKey: publicKeyBase64Url,
-        signature,
-        signedAt: now,
-        nonce
-      }
+      auth: { token },
+      client: { id: 'oct-terminal', version: '1.0.0', mode: 'frontend' }
     }
   };
-  
-  console.log('[OpenClaw] Sending connect (client.id=%s, client.mode=%s, platform=%s)', clientId, clientMode, platform);
   try {
     openclawWs?.send(JSON.stringify(connectMsg));
+    console.log('[OCT] 已发送 connect 请求');
   } catch (err: any) {
-    if (err?.code === 'EPIPE' || (err?.message && String(err.message).includes('broken pipe'))) {
+    if (err?.code === 'EPIPE' || String(err?.message).includes('broken pipe')) {
       openclawWs = null;
       sendStatus({ connected: false, reconnecting: true });
       setTimeout(connectOpenClaw, 1500);
@@ -1057,7 +864,7 @@ function sendChatMessage(content: string, imageDataUrl?: string | null, files?: 
 
   const message = typeof content === 'string' ? content : String(content ?? '');
   if (!imageDataUrl && (!files || files.length === 0) && (!message || typeof message !== 'string' || message.trim() === '')) {
-    console.warn('[OpenClaw] 消息为空，跳过发送');
+    console.warn('[OCT] 消息为空，跳过发送');
     return { success: false, error: '消息不能为空' };
   }
 

@@ -17,6 +17,8 @@ const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
 const nocturneQueue = require('./nocturne_task_queue');
 const aiLibrary = require('./tools/ai_library');
+const orchestrator = require('./orchestrator');
+const taskQueue = require('./task_queue');
 const { createLogger } = require('./logger');
 const log = createLogger('gateway');
 const memLog = createLogger('mem');
@@ -43,6 +45,8 @@ function getModelContextLimit(modelId) {
 const systemPromptReady = (async () => {
   SYSTEM_PROMPT = await loadSystemPrompt(config.PROMPTS_DIR);
   log.info('System prompt loaded', { len: SYSTEM_PROMPT.length });
+  taskQueue.checkTimeouts();
+  taskQueue.cleanup();
   memoryHistory.cleanupOldHistory().catch(() => {});
   memorySearch.warmGlossaryCache().catch(() => {});
   return SYSTEM_PROMPT;
@@ -254,7 +258,7 @@ wss.on('connection', (ws) => {
     const { type, id, method, params } = msg;
 
     if (type === 'req' && method === 'connect') {
-      const token = params?.auth?.token || '';
+      const token = params?.auth?.token ?? params?.token ?? '';
       const configToken = process.env.OCT_GATEWAY_TOKEN || '';
       if (configToken && token !== configToken) {
         ws.send(JSON.stringify({ type: 'res', id, ok: false, error: { message: 'Invalid token' } }));
@@ -284,6 +288,10 @@ wss.on('connection', (ws) => {
       const sessionKey = params?.sessionKey || 'main';
       const userMessage = params?.message || '';
       const attachments = params?.attachments || [];
+
+      const orchResult = await orchestrator.dispatch(userMessage, sessionKey);
+      // orchResult 包含 intent/agent/shouldDelegate 信息，日志已在 orchestrator 内打印
+      // 现阶段不改变后续流程，预留为未来 Agent 路由扩展点
 
       if (userMessage.startsWith('/')) {
         await handleSlashCommand(ws, id, userMessage.trim(), sessionKey);
@@ -482,6 +490,21 @@ wss.on('connection', (ws) => {
         ...history.slice(0, -1).map(h => ({ role: h.role, content: h.content })),
         { role: 'user', content: lastUserMsg },
       ];
+
+      const taskContext = orchestrator.getCompletedTasksContext(sessionKey);
+      if (taskContext) {
+        const lastIdx = messages.length - 1;
+        if (messages[lastIdx]?.role === 'user') {
+          const content = messages[lastIdx].content;
+          messages[lastIdx] = {
+            ...messages[lastIdx],
+            content: typeof content === 'string'
+              ? content + taskContext
+              : [...(Array.isArray(content) ? content : []), { type: 'text', text: taskContext }]
+          };
+          log.info('已注入后台任务结果到上下文');
+        }
+      }
 
       ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
 

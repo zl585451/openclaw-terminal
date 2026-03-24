@@ -1,0 +1,19 @@
+{
+  "task-1774332835396-f6f592": {
+    "taskId": "task-1774332835396-f6f592",
+    "type": "搜索",
+    "instruction": "帮我搜索一下今天的AI新闻，我们继续聊别的",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "帮我搜索一下今天的AI新闻，我们继续聊别的"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774332835396,
+    "startedAt": 1774332835399,
+    "completedAt": 1774332837619,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我搜索一下今天的AI新闻，我们继续聊别的\",\"results\":[{\"title\":\"每日AI资讯、热点、动态、融资、产品发布 | AI工具集\",\"url\":\"https://ai-bot.cn/daily-ai-news/\",\"snippet\":\"<strong>AI工具集每日实时更新 AI 行业的最新资讯、新闻、热点、融资、产品动态、爆料等</strong>，让你随时了解人工智能领域最新趋势、更新突破和热门大事件。加入AI工具集官方社群，获取最新一...\"},{\"title\":\"每日AI早报，关心 AI 每早来一次就够了｜AI产品榜 aicpb.com\",\"url\":\"https://www.aicpb.com/news\",\"snippet\":\"李榜主 AI产品榜创始人 · 公众号：@AI品榜\"},{\"title\":\"AI News - Get the Latest AGI News | AIbase\",\"url\":\"https://www.aibase.com/news\",\"snippet\":\"AI News gathers top news, videos, and other content related to artificial intelligence, large language models, multimodal models, machine learning, deep learning, computer vision, natural language processing, data science, and big data from both domestic and international sources, providing a one-stop solution for the latest AI news.\"},{\"title\":\"Latest AI News - Artificial Intelligence Headlines & Updates | AIBase\",\"url\":\"https://news.aibase.com/news\",\"snippet\":\"Stay updated with the latest AI news, artificial intelligence headlines, and industry developments. Comprehensive coverage of machine learning, deep learning, LLM updates, and AGI breakthroughs. Your trusted source for AI technology news.\"},{\"title\":\"每日AI资讯 - 猫目\",\"url\":\"https://maomu.com/news\",\"snippet\":\"<strong>Science 最新论文颠覆「技术奇点」叙事：真正的智能爆炸已在发生，但它不是孤独超级大脑的降临，而是人与 AI 深度缠绕的社会性跃迁</strong>。推理模型内部自发涌现出「思想社会」，人机混合的「半人马时代」已然开启。问题...\"}]}",
+    "error": null,
+    "notified": true
+  }
+}

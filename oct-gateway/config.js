@@ -8,6 +8,18 @@ if (fs.existsSync(envPath)) {
   require('dotenv').config({ path: envPath });
 }
 
+// 网络配置：DashScope 是国内服务，强制不走代理
+// 启动时清理可能影响直连的代理环境变量
+if (process.env.HTTPS_PROXY || process.env.HTTP_PROXY) {
+  console.log('[Config] 检测到系统代理，已配置 DashScope 直连');
+  const existing = process.env.NO_PROXY || '';
+  const dashscopeDomains = 'dashscope.aliyuncs.com,dashscope-intl.aliyuncs.com,coding.dashscope.aliyuncs.com';
+  process.env.NO_PROXY = existing
+    ? `${existing},${dashscopeDomains}`
+    : dashscopeDomains;
+  console.log('[Config] NO_PROXY 已更新:', process.env.NO_PROXY);
+}
+
 function loadConfigFile() {
   const configFile = process.env.OCT_CONFIG_FILE || path.join(__dirname, 'config.json');
   if (configFile && fs.existsSync(configFile)) {
