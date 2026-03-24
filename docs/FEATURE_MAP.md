@@ -23,6 +23,15 @@
 | 附录 | Provider 系统 | [`provider-system.md`](./feature-map/provider-system.md) |
 | 附录 | 已知问题 | [`99_known_issues.md`](./feature-map/99_known_issues.md) |
 | 附录 | 数据流向 | [`98_data_flow.md`](./feature-map/98_data_flow.md) |
+| **AI 协作** | 项目总览 | [`AI_PROJECT_OVERVIEW.md`](./AI_PROJECT_OVERVIEW.md) |
+| **AI 协作** | IPC 通道 | [`ELECTRON_IPC_CHANNELS.md`](./ELECTRON_IPC_CHANNELS.md) |
+| **AI 协作** | WebSocket 协议 | [`WEBSOCKET_PROTOCOL.md`](./WEBSOCKET_PROTOCOL.md) |
+| **AI 协作** | 提示词加载 | [`PROMPT_LOADING_ORDER.md`](./PROMPT_LOADING_ORDER.md) |
+| **AI 协作** | 选项框解析 | [`OPTIONBOX_PARSER_REFERENCE.md`](./OPTIONBOX_PARSER_REFERENCE.md) |
+| **AI 协作** | Skills 目录 | [`SKILLS_DIRECTORY.md`](./SKILLS_DIRECTORY.md) |
+| **AI 协作** | 文档差距报告 | [`DOCUMENTATION_GAP_REPORT.md`](./DOCUMENTATION_GAP_REPORT.md) |
+
+> AI 协作文档补全于 2026-03-24 · CURSOR
 
 ---
 
