@@ -12,6 +12,8 @@ export type TabType = 'chat' | 'sound' | 'reaper';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [vaultOpen, setVaultOpen] = useState(false);
+  const [vaultUnlocked, setVaultUnlocked] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messageIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,11 +70,15 @@ const App: React.FC = () => {
         <TitleBar />
         
         {/* 标签栏 */}
-        <TabBar 
-          activeTab={activeTab} 
-          onTabChange={setActiveTab} 
+        <TabBar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          vaultOpen={vaultOpen}
+          setVaultOpen={setVaultOpen}
+          vaultUnlocked={vaultUnlocked}
+          onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
         />
-        
+
         {/* 内容区域 */}
         <div className="content-area">
           {activeTab === 'chat' && (

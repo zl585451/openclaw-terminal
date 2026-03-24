@@ -1,6 +1,6 @@
 # 第一层：基础设施
 
-> 最后更新：2026-03-20
+> 最后更新：2026-03-24
 
 ---
 
@@ -22,9 +22,9 @@
 |------|------|
 | 做什么 | 调用 OpenAI 兼容 API，支持多服务商（百炼、DeepSeek、硅基、Groq、Ollama 等） |
 | 文件 | `oct-gateway/ai.js`、`oct-gateway/providers.js` |
-| 调用链 | streamChat() → getProviderConfig() → 按能力组装请求 → fetch → onDelta/onDone |
+| 调用链 | streamChat() → getProviderConfig() → 按能力组装请求 → fetchWithRetry → onDelta/onDone |
 | 依赖 | config.getProviderConfig()、provider.models（tools/thinking 能力） |
-| 特性 | Provider 抽象、按模型能力动态组装、百炼失败 fallback DeepSeek |
+| 特性 | Provider 抽象、按模型能力动态组装、百炼失败 fallback DeepSeek；fetchWithRetry（90s 超时 + 重试）、流中断截断、工具 30s 超时隔离；代理绕过（NO_PROXY、getDirectFetchOptions） |
 | 验证 | 终端看到 `[AI] model caps`、`[Gateway] Stream done` |
 | 状态 | ✅ 正常 |
 
@@ -36,7 +36,7 @@
 |------|------|
 | 做什么 | 启动时从 Nocturne 加载记忆 + 本地 MD 文件拼接成 system prompt |
 | 文件 | `oct-gateway/ai.js` → `loadSystemPrompt()` |
-| 调用链 | Gateway 启动 → loadSystemPrompt(PROMPTS_DIR) → 尝试 Nocturne loadBootMemory → 失败则读本地 SOUL.md/AGENTS.md/USER.md/MEMORY.md |
+| 调用链 | Gateway 启动 → loadSystemPrompt(PROMPTS_DIR) → 尝试 Nocturne loadBootMemory → 失败则读本地 MD 文件 → buildSystemPrompt 追加 skillAdapter.formatSkillsForPrompt() |
 | 写到哪 | 同步写回 `MEMORY.md`（让文件和 Nocturne 保持一致） |
 | 验证 | 终端看到 `[AI] System prompt 加载完成，长度：XXXX` |
 | 状态 | ✅ 正常 |

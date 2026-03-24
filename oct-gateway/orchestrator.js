@@ -2,8 +2,28 @@ const config = require('./config');
 const taskQueue = require('./task_queue');
 const worker = require('./worker');
 
-// 后台任务触发词 → 工具映射
+// 后台任务触发词 → 工具映射（邮件规则放前面，优先于泛化的「查一下」）
 const TASK_TOOL_MAP = {
+  '查验证码': {
+    toolName: 'email_reader',
+    extractArgs: () => ({ vaultRef: '163_邮箱', action: 'find_code', count: 10 })
+  },
+  '查一下邮件': {
+    toolName: 'email_reader',
+    extractArgs: () => ({ vaultRef: '163_邮箱', action: 'get_latest', count: 5 })
+  },
+  '查邮件': {
+    toolName: 'email_reader',
+    extractArgs: (msg) => {
+      const refMatch = msg.match(/((?:\d+|\w+)\s*邮箱|\w+mail)/i);
+      const vaultRef = refMatch
+        ? refMatch[0].trim().toLowerCase().replace(/\s+/g, '_')
+        : '163_邮箱';
+      let action = 'get_latest';
+      if (msg.includes('验证码')) action = 'find_code';
+      return { vaultRef, action, count: 5 };
+    }
+  },
   '搜索': { toolName: 'web_search', extractArgs: (msg) => ({ query: msg }) },
   '查一下': { toolName: 'web_search', extractArgs: (msg) => ({ query: msg }) },
   '查找': { toolName: 'web_search', extractArgs: (msg) => ({ query: msg }) },
@@ -20,7 +40,8 @@ const TASK_TOOL_MAP = {
 function tryDispatchAsTask(userMessage, sessionKey) {
   const ASYNC_TRIGGERS = [
     '后台', '帮我查', '帮我搜', '查一下', '搜索一下',
-    '顺便', '同时', '另外帮我', '后台执行', '读取文件'
+    '顺便', '同时', '另外帮我', '后台执行', '读取文件',
+    '查邮件', '查验证码', '查一下邮件', '有没有邮件'
   ];
 
   const triggered = ASYNC_TRIGGERS.some(t => userMessage.includes(t));

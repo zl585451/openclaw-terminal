@@ -238,23 +238,21 @@ Agent 之间不直接通信，都通过 Orchestrator 中转。消息格式：
 - Nocturne 记忆系统
 - 清除 OpenClaw 协议残留
 
-### 阶段 1：工具层升级（下一步，约 2-3 天）
+### 阶段 1：工具层升级（已完成）✅ 2026-03-24
 **目标**：把现有的 `tools.js` 重构为动态目录加载
 
-- [ ] 创建 `oct-gateway/tools/` 目录
-- [ ] 把现有工具拆分成独立文件
-- [ ] 写 `tool_loader.js`（扫描目录，自动注册）
-- [ ] 验证：加一个新工具文件，重启后 AMY 能用
+- [x] 创建 `oct-gateway/tools/` 目录
+- [x] 把现有工具拆分成独立文件（19 个工具）
+- [x] 写 `tool_loader.js`（扫描目录，自动注册）
+- [x] 验证：加一个新工具文件，重启后 AMY 能用
 
-**为什么先做这个**：工具层是 Agent 的执行基础，Agent 没有工具等于没有手。
-
-### 阶段 2：Orchestrator（约 3-5 天）
+### 阶段 2：Orchestrator（已完成）✅ 2026-03-24
 **目标**：AMY 能判断任务类型并派发
 
-- [ ] 写 `orchestrator.js`（意图分类逻辑）
-- [ ] 在 `index.js` 的 `chat.send` 里接入 Orchestrator
-- [ ] 写 AGENTS.md 的 dispatch 规则（AMY 怎么判断派发）
-- [ ] 验证：说「帮我写个代码」，日志里能看到派发记录
+- [x] 写 `orchestrator.js`（意图分类逻辑）
+- [x] 在 `index.js` 的 `chat.send` 里接入 Orchestrator
+- [x] 后台任务派发（task_queue + worker）
+- [x] 验证：说「帮我搜索一下今天的AI新闻」，日志能看到派发记录
 
 ### 阶段 3：第一个专职 Agent（约 2 天）
 **目标**：Coder Agent 上线
@@ -283,16 +281,18 @@ Agent 之间不直接通信，都通过 Orchestrator 中转。消息格式：
 |---------|------------|------|
 | `index.js` | 连接层，不变 | 加一行：消息流经 Orchestrator |
 | `ai.js` | AMY 的 AI 调用引擎 | 复用，Agent 也用这个调用 API |
-| `tools.js` | 被目录化替代 | 拆分成 `tools/` 目录 |
+| `tools.js` | 已目录化替代 | 拆分为 `tools/` 目录 + `tool_loader.js` |
 | `session.js` | Session 管理，不变 | 无需修改 |
 | `memory.js` | 记忆访问，不变 | 无需修改 |
 | `hypothesis.js` | AMY 的前置思考 | 保留，作为 Orchestrator 的一部分 |
 | `self_eval.js` | AMY 的自我评估 | 保留，未来也给 Agent 用 |
 
 **新增文件**：
-- `orchestrator.js` — Orchestrator 核心
+- `orchestrator.js` — Orchestrator 核心（意图分类、后台任务派发）
 - `tool_loader.js` — 工具目录加载器
-- `agents/*.js` — 各专职 Agent
+- `task_queue.js` — 后台任务持久化
+- `worker.js` — 异步执行器
+- `agents/*.js` — 各专职 Agent（阶段 3 待建）
 
 ---
 
@@ -329,4 +329,4 @@ Agent 之间不直接通信，都通过 Orchestrator 中转。消息格式：
 ---
 
 *文档由 Claude 生成 · 2026-03-24*  
-*下一次更新：阶段1完成后补充工具目录的实际结构*
+*最近更新：阶段 1、2 已完成，工具目录实际结构见 oct-gateway/tools/*

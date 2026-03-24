@@ -22,6 +22,7 @@ function getDirectFetchOptions() {
 
 const config = require('./config');
 const toolLoader = require('./tool_loader');
+const skillAdapter = require('./skill_adapter');
 const memory = require('./memory');
 const memoryFeedback = require('./memory_feedback');
 const fs = require('fs');
@@ -369,13 +370,21 @@ AI · Cursor · Claude 三角协作：
 【已知】[已尝试的方案]
 【期望】[想要的结果]
 `;
-  return [
+  let prompt = [
     memoryContent,
     '\n\n---\n\n',
     clarification ? clarification + '\n\n---\n\n' : '',
     adaptiveSystem ? adaptiveSystem + '\n\n---\n\n' : '',
     nocturneInstructions,
   ].join('');
+
+  // 注入 OpenClaw 兼容技能列表
+  const skills = skillAdapter.loadSkills();
+  if (skills.length > 0) {
+    prompt += skillAdapter.formatSkillsForPrompt(skills);
+  }
+
+  return prompt;
 }
 
 async function streamChat({ messages, onDelta, onDone, onError }) {
@@ -453,6 +462,26 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     let responseModel = null;  // API 返回的实际模型名（用于校验和展示）
     let sawDone = false;
 
+    // 心跳计时器：每 5 秒检查，超过 12 秒无新内容时发零宽空格，防止代理切断连接
+    let heartbeatTimer = null;
+    let lastChunkTime = Date.now();
+    const startHeartbeat = () => {
+      heartbeatTimer = setInterval(() => {
+        const now = Date.now();
+        if (now - lastChunkTime > 12000) {
+          onDelta('\u200B'); // 零宽空格，前端过滤掉不显示
+          console.log('[AI] 发送流心跳，防止连接断开');
+        }
+      }, 5000);
+    };
+    const stopHeartbeat = () => {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+
+    startHeartbeat();
     log.debug('stream start');
     for await (const chunk of reader) {
       const raw = decoder.decode(chunk, { stream: true });
@@ -489,6 +518,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
         }
         if (delta.content) {
           fullText += delta.content;
+          lastChunkTime = Date.now(); // 每次收到真实 chunk 时更新时间
           onDelta(delta.content);
         }
 
@@ -506,6 +536,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
         const finishReason = parsed?.choices?.[0]?.finish_reason;
         if (finishReason === 'stop') sawDone = true;
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
+          stopHeartbeat();
           log.info('tool_calls', { count: toolCalls.filter(Boolean).length });
           const toolResults = [];
           for (const tc of toolCalls.filter(Boolean)) {
@@ -545,9 +576,11 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
     } else {
       log.debug('stream end');
     }
+    stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
     onDone(fullText, totalUsage, responseModel);
   } catch (e) {
+    stopHeartbeat();
     log.error('流中断:', e?.message || String(e));
 
     // 如果已经输出了一部分内容，发送截断提示而不是直接报错

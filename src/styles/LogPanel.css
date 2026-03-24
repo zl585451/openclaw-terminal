@@ -240,3 +240,23 @@
   flex-shrink: 0;
 }
 
+/* 展开模式：字体缩放生效（子元素用 em 继承父级 logFontSize） */
+.log-expanded-scroll .log-tag-badge {
+  font-size: 0.7em;
+}
+
+.log-expanded-scroll .log-brief-text {
+  font-size: 1em;
+  color: #b0b0b0;
+}
+
+.log-expanded-scroll .log-detail-text {
+  font-size: 0.88em;
+  color: #888;
+}
+
+.log-expanded-scroll .log-ts-right {
+  font-size: 0.7em;
+  color: #555;
+}
+

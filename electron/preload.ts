@@ -85,6 +85,8 @@ const electronAPI = {
   nocturneClearCompletedTasks: () => ipcRenderer.invoke('nocturne-clear-completed-tasks'),
   nocturneSetIntention: (intention: string) =>
     ipcRenderer.invoke('nocturne-set-intention', { intention }),
+  invokeGatewayTool: (toolName: string, args: any) =>
+    ipcRenderer.invoke('invoke-gateway-tool', toolName, args),
 };
 
 if (typeof window !== 'undefined') {

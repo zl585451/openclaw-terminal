@@ -1806,7 +1806,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (u.model != null) setModelName(String(u.model));
     }
 
-    const content = extractContent(data);
+    let content = extractContent(data);
+    content = (content || '').replace(/\u200B/g, ''); // 过滤流式心跳字符（零宽空格）
     const done = (data.done === true) || (data.payload?.done === true);
     const isDelta = isDeltaPayload(data);
 

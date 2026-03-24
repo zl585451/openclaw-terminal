@@ -506,7 +506,6 @@ export default function LogPanel(props: {
 
         {/* 收起模式的日志区域 */}
         <div ref={(el) => {
-          // 同时设置内部 ref 和外部 ref
           (internalBodyRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
           if (bodyRef) (bodyRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }} className="log-panel-body" tabIndex={-1}>
@@ -638,9 +637,10 @@ export default function LogPanel(props: {
             </div>
           </div>
 
-          {/* 展开模式的日志区域 */}
+          {/* 展开模式的日志区域（logFontSize 通过父级 font-size 生效，子元素用 em 继承） */}
           <div
             ref={internalBodyRef}
+            className="log-expanded-scroll"
             style={{
               flex: 1,
               minHeight: 0,

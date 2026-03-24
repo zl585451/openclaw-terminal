@@ -1505,6 +1505,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
 
   const promptsDir = path.join(__dirname, '..', 'docs', '01_system_prompts');
   const tasksPath = path.join(app.getPath('userData'), 'tasks.json');
+  const vaultPath = path.join(app.getPath('userData'), 'vault.enc');
 
   try {
     octGatewayProcess = spawn('node', [entry], {
@@ -1518,6 +1519,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         OCT_PROMPTS_DIR: promptsDir,
         OCT_CONFIG_FILE: CONFIG_FILE,
         OPENCLAW_TASKS_PATH: tasksPath,
+        OCT_VAULT_PATH: vaultPath,
         ...(resolvedAiLibraryUrlForGateway && !(process.env.AI_LIBRARY_URL || '').trim()
           ? { AI_LIBRARY_URL: resolvedAiLibraryUrlForGateway }
           : {}),
@@ -2137,6 +2139,24 @@ ipcMain.handle('gateway-status', async () => {
 });
 
 ipcMain.handle('get-env', (_, key: string) => process.env[key] || '');
+
+/** 调用 oct-gateway 的工具执行接口（用于保险箱等） */
+ipcMain.handle('invoke-gateway-tool', async (_, toolName: string, args: any) => {
+  const toolPort = GATEWAY_PORT + 1;
+  try {
+    const res = await fetch(`http://127.0.0.1:${toolPort}/tool`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool: toolName, args: args || {} }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '工具执行失败');
+    return data.result;
+  } catch (e: any) {
+    throw new Error(e?.message || 'Gateway 工具调用失败');
+  }
+});
 
 // API Key 配置管理：config.json 优先（与 save-api-keys 写入一致，保证回填）
 ipcMain.handle('get-api-keys', async () => {

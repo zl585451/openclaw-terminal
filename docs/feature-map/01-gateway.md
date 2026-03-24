@@ -4,8 +4,58 @@
 |------|------|
 | 做什么 | 接收前端消息，转发给 AI，返回流式回复 |
 | 文件 | `oct-gateway/index.js` |
-| 调用链 | 前端 WebSocket → index.js 收到消息 → ai.js streamChat → 流式返回前端 |
+| 调用链 | 前端 WebSocket → index.js 收到消息 → **orchestrator.dispatch** → ai.js streamChat → 流式返回前端 |
 | 验证 | 打开 OCT 界面，发消息能收到回复 |
+| 状态 | ✅ 正常 |
+
+---
+
+# 1.1.1 连接握手（OCT 协议）
+
+| 项目 | 内容 |
+|------|------|
+| 协议 | OCT 自有协议，仅验证 token，无 ECDSA 签名 |
+| 握手格式 | `params.auth.token` 或 `params.token`，`params.client: { id, version, mode }` |
+| 文件 | `electron/main.ts` → `sendOctConnectRequest()`，`oct-gateway/index.js` connect 处理 |
+| 验证 | 前端点击「重连」→ 日志显示 `[OCT] 已发送 connect 请求` → `[OCT] 认证成功，已连接` |
+| 状态 | ✅ 正常 |
+
+---
+
+# 1.1.2 Orchestrator 意图分类
+
+| 项目 | 内容 |
+|------|------|
+| 做什么 | 分析用户消息意图，派发后台任务，预留 Agent 路由扩展点 |
+| 文件 | `oct-gateway/orchestrator.js` |
+| 调用链 | chat.send → orchestrator.dispatch() → 意图分析 + tryDispatchAsTask → 返回分析结果 |
+| 特性 | 关键词匹配（code/write/research）、后台任务触发词（帮我搜/查一下/搜索一下等） |
+| 状态 | ✅ 正常 |
+
+---
+
+# 1.1.3 后台任务队列
+
+| 项目 | 内容 |
+|------|------|
+| 做什么 | AMY 派发任务给 Worker 异步执行，主对话不中断 |
+| 文件 | `oct-gateway/task_queue.js`、`oct-gateway/worker.js` |
+| 持久化 | `tasks_runtime.json` |
+| 超时 | 60 秒，失败/超时状态可被 AMY 在下次对话中获知 |
+| 调用链 | orchestrator.tryDispatchAsTask → taskQueue.createTask → worker.dispatch → toolLoader.executeTool |
+| 触发词 | 帮我搜/查一下/搜索一下/**查邮件/查验证码/查一下邮件**等 |
+| 状态 | ✅ 正常 |
+
+---
+
+# 1.1.4 HTTP 工具端口（保险箱 /tool）
+
+| 项目 | 内容 |
+|------|------|
+| 端口 | 18790（PORT+1） |
+| 用途 | 前端 VaultPanel、IPC invoke-gateway-tool 调用工具 |
+| 接口 | POST /tool、GET /health |
+| 调用链 | Electron main → fetch 127.0.0.1:18790/tool → tool_loader.executeTool |
 | 状态 | ✅ 正常 |
 
 ---
@@ -74,3 +124,7 @@
 | 已知问题 | 曾频繁掉线（2026-03-16 已修复 Electron 启动逻辑） |
 | 验证 | `/memory status` 或 `/status` 看 Nocturne 是否 ✅ |
 | 状态 | ⚠️ 偶尔掉线（是所有记忆功能的基础，掉了全失效） |
+
+---
+
+> **最后更新**：2026-03-24（OCT 握手、Orchestrator、后台任务、HTTP 工具端口）

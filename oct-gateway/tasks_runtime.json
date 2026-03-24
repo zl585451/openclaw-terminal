@@ -15,5 +15,192 @@
     "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我搜索一下今天的AI新闻，我们继续聊别的\",\"results\":[{\"title\":\"每日AI资讯、热点、动态、融资、产品发布 | AI工具集\",\"url\":\"https://ai-bot.cn/daily-ai-news/\",\"snippet\":\"<strong>AI工具集每日实时更新 AI 行业的最新资讯、新闻、热点、融资、产品动态、爆料等</strong>，让你随时了解人工智能领域最新趋势、更新突破和热门大事件。加入AI工具集官方社群，获取最新一...\"},{\"title\":\"每日AI早报，关心 AI 每早来一次就够了｜AI产品榜 aicpb.com\",\"url\":\"https://www.aicpb.com/news\",\"snippet\":\"李榜主 AI产品榜创始人 · 公众号：@AI品榜\"},{\"title\":\"AI News - Get the Latest AGI News | AIbase\",\"url\":\"https://www.aibase.com/news\",\"snippet\":\"AI News gathers top news, videos, and other content related to artificial intelligence, large language models, multimodal models, machine learning, deep learning, computer vision, natural language processing, data science, and big data from both domestic and international sources, providing a one-stop solution for the latest AI news.\"},{\"title\":\"Latest AI News - Artificial Intelligence Headlines & Updates | AIBase\",\"url\":\"https://news.aibase.com/news\",\"snippet\":\"Stay updated with the latest AI news, artificial intelligence headlines, and industry developments. Comprehensive coverage of machine learning, deep learning, LLM updates, and AGI breakthroughs. Your trusted source for AI technology news.\"},{\"title\":\"每日AI资讯 - 猫目\",\"url\":\"https://maomu.com/news\",\"snippet\":\"<strong>Science 最新论文颠覆「技术奇点」叙事：真正的智能爆炸已在发生，但它不是孤独超级大脑的降临，而是人与 AI 深度缠绕的社会性跃迁</strong>。推理模型内部自发涌现出「思想社会」，人机混合的「半人马时代」已然开启。问题...\"}]}",
     "error": null,
     "notified": true
+  },
+  "task-1774337910853-5f67f9": {
+    "taskId": "task-1774337910853-5f67f9",
+    "type": "查一下",
+    "instruction": "AMY 帮我查一下 openclaw的技能有多少种类  大致与我说一下",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "AMY 帮我查一下 openclaw的技能有多少种类  大致与我说一下"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774337910853,
+    "startedAt": 1774337910856,
+    "completedAt": 1774337912880,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"AMY 帮我查一下 openclaw的技能有多少种类  大致与我说一下\",\"results\":[{\"title\":\"OpenClaw 最强军火库：精选 2868 个 skills - 知乎\",\"url\":\"https://zhuanlan.zhihu.com/p/2010926090475045346\",\"snippet\":\"21.8k Stars、2.2k Forks，从 5705 个社区技能中精选 2868 个——这个 GitHub 仓库，正在重新定义 AI Agent 的能力边界。前言：当 AI 助手拿到了”武器库”2026 年的 AI 圈，如果你还在用”聊天机器人”来定义 AI…\"},{\"title\":\"OpenClaw生态比你想象的要大：15个插件和技能排名 - 极道\",\"url\":\"https://www.jdon.com/90808-openclaw-ecosystem-15-plugins-skills-ranking-guide.html\",\"snippet\":\"深度拆解OpenClaw平台的<strong>15款核心插件与技能</strong>，涵盖语音通话、Microsoft Teams集成、LanceDB记忆增强、Composio OAuth管理等生产级工具，以及Capability Evolver、Self-Improving Agent等热门技能，提供从入...\"},{\"title\":\"OpenClaw 官方 53 个技能完整指南：功能详解 + 风险评估 + 安装建议 - 53AI-AI知识库|企业AI知识库|大模型知识库|AIHub\",\"url\":\"https://www.53ai.com/news/Openclaw/2026022738691.html\",\"snippet\":\"ClawHub 上 5700+ 个技能中，只有这 <strong>53 个</strong>是官方内置的。本文逐一拆解每个技能的功能、平台、风险等级，帮你做出最安全的选择。 · 注意：2026 年 2 月，安全研究团队在 ClawHub 上发现 341 个恶意技能（ClawHavoc 事件），约占总数的 ...\"},{\"title\":\"GitHub - clawdbot-ai/awesome-openclaw-skills-zh: OpenClaw 中文官方技能库 | 翻译自 Clawdbot 官方技能，按场景分类整理，支持中文自然语言调用\",\"url\":\"https://github.com/clawdbot-ai/awesome-openclaw-skills-zh\",\"snippet\":\"OpenClaw 中文官方技能库 | 翻译自 Clawdbot 官方技能，按场景分类整理，支持中文自然语言调用 - clawdbot-ai/awesome-openclaw-skills-zh\"},{\"title\":\"Top 10 OpenClaw Skill Recommendations: The Most Practical AI Agent Skills List for 2026 - Apiyi.com Blog\",\"url\":\"https://help.apiyi.com/en/openclaw-skill-recommendations-2026-en.html\",\"snippet\":\"OpenClaw Skill Recommendations: Why You Need a Curated List OpenClaw (formerly Clawdbot) is an open-source AI Agent framework created by Peter Steinberger. It uses messaging platforms like Telegram, Discord, and WhatsApp as its interface, allowing users to drive various automated tasks through ...\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774339273888-28ef6e": {
+    "taskId": "task-1774339273888-28ef6e",
+    "type": "查一下",
+    "instruction": "AMY帮我查一下163邮箱有多少邮件",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "AMY帮我查一下163邮箱有多少邮件"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774339273888,
+    "startedAt": 1774339273892,
+    "completedAt": 1774339276022,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"AMY帮我查一下163邮箱有多少邮件\",\"results\":[{\"title\":\"网易邮箱大师-高效强大的全平台邮箱客户端\",\"url\":\"https://dashi.163.com/help.html\",\"snippet\":\"浏览器不支持或禁止了网页脚本，您需要开启浏览器脚本运行\"},{\"title\":\"163邮箱存储空间使用情况在哪看_163邮箱容量在哪里看-CSDN博客\",\"url\":\"https://blog.csdn.net/frdevolcqzyxynjds/article/details/114980277\",\"snippet\":\"本文介绍如何查看及清理网易邮箱的存储空间，避免因邮件过多而导致的空间不足问题。通过简单的步骤，用户可以轻松管理自己的邮箱存储。 · 分享一下：查看网易邮箱存储空间 邮件比较多，需要及时清理丫\"},{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"帮助中心_常见问题\",\"url\":\"https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4b8f4f8e49998b374173cfe9171305fa1ce630d7f67ac2c0bc658a48688b13\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 常见问题 · 邮箱入门问题 · 入门问题 · 账号修复专栏 · 账号修复提交引导 · 账号修复结果引导 · 1对1人工服务\"},{\"title\":\"163邮箱_百度百科\",\"url\":\"https://baike.baidu.com/item/163%E9%82%AE%E7%AE%B1/2250159\",\"snippet\":\"163邮箱作为中国最大的电子邮件服务商网易公司经典之作，为用户提供了安全、稳定、快速、便捷的电子邮件服务，2014年已拥有超过2.3亿的用户，是全球使用人数最多的中文邮箱。TomPDA软件评测室就大家盘点一下手机上的邮箱软件，让这些经典的手机邮箱客户端帮助你掌上收发邮件。163邮箱是由网易专为手机用户推出的手机版163邮箱客户端，通过该软件的帮助用户可直接在手机上完成收发邮件等工作，同时，软件还为用户呈现了最简洁、最即时、以及最有效的网易邮箱手机版操作体验。\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774340729396-ada65a": {
+    "taskId": "task-1774340729396-ada65a",
+    "type": "查一下",
+    "instruction": "好了AMY  我又存了一次 你试试去帮我查一下163邮箱有多少邮件",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "好了AMY  我又存了一次 你试试去帮我查一下163邮箱有多少邮件"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774340729396,
+    "startedAt": 1774340729399,
+    "completedAt": 1774340732839,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"好了AMY  我又存了一次 你试试去帮我查一下163邮箱有多少邮件\",\"results\":[{\"title\":\"网易邮箱大师-高效强大的全平台邮箱客户端\",\"url\":\"https://dashi.163.com/help.html\",\"snippet\":\"浏览器不支持或禁止了网页脚本，您需要开启浏览器脚本运行\"},{\"title\":\"帮助中心_常见问题\",\"url\":\"https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4b8f4f8e49998b374173cfe9171305fa1ce630d7f67ac2fa2471480510e7be\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 常见问题 · 邮箱入门问题 · 入门问题 · 账号修复专栏 · 账号修复提交引导 · 账号修复结果引导 · 1对1人工服务\"},{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"网易免费企业邮--帮助中心\",\"url\":\"https://ym.163.com/help/help.html\",\"snippet\":\"A27：对于企业用户而言，比较实用的功能有：邮箱搬家（通过网易免费企业邮，代收其他常用的个人邮箱帐号，方便管理）、自动转发（将到达本邮箱的所有邮件自动转发到指定的邮件地址）、全文搜索（国内首家实现的附件正文搜索，帮助用户迅速定位目标邮件）。\"},{\"title\":\"网易163免费邮箱登录\",\"url\":\"https://smart.mail.163.com/login.htm\",\"snippet\":\"阅读并接受 《服务条款》和 《隐私政策》 · 账号密码登录手机号登录 · 登录iframe\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774341202309-25272f": {
+    "taskId": "task-1774341202309-25272f",
+    "type": "查一下",
+    "instruction": "AMY 帮我查一下163邮箱有多少邮件",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "AMY 帮我查一下163邮箱有多少邮件"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774341202309,
+    "startedAt": 1774341202314,
+    "completedAt": 1774341204233,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"AMY 帮我查一下163邮箱有多少邮件\",\"results\":[{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"帮助中心_首页\",\"url\":\"https://help.mail.163.com/\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 呼叫小易 · 关于网易 网易VIP邮箱 网易公正邮 隐私政策 网易公司版权所有 © 1997- · 返回顶部\"},{\"title\":\"网易163免费邮箱登录\",\"url\":\"https://smart.mail.163.com/login.htm\",\"snippet\":\"阅读并接受 《服务条款》和 《隐私政策》 · 账号密码登录手机号登录 · 登录iframe\"},{\"title\":\"163网易免费邮-你的专业电子邮局\",\"url\":\"https://mail.163.com/\",\"snippet\":\"163网易邮箱 · 你的专业电子邮局 · 手机App下载 电脑客户端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 扫码登录 · 账号登录 · 密码登录注册新账号 · 阅读并接受 《服务条款》和 《隐私政策》 · 注册新账号 ...\"},{\"title\":\"网易企业邮箱 - 登录入口\",\"url\":\"https://qy.163.com/login\",\"snippet\":\"下载网易企业邮箱专属客户端 · 客户端无需重复登录，追踪邮件阅读状态，收到邮件实时提醒，重要工作不再错过\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774342290144-d3ca7e": {
+    "taskId": "task-1774342290144-d3ca7e",
+    "type": "查一下",
+    "instruction": "amy 帮我去查一下163邮箱最新邮件",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "amy 帮我去查一下163邮箱最新邮件"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774342290145,
+    "startedAt": 1774342290152,
+    "completedAt": 1774342293719,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"amy 帮我去查一下163邮箱最新邮件\",\"results\":[{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"帮助中心_首页\",\"url\":\"https://help.mail.163.com/\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 呼叫小易 · 关于网易 网易VIP邮箱 网易公正邮 隐私政策 网易公司版权所有 © 1997- · 返回顶部\"},{\"title\":\"网易163免费邮箱登录\",\"url\":\"https://smart.mail.163.com/login.htm\",\"snippet\":\"阅读并接受 《服务条款》和 《隐私政策》 · 账号密码登录手机号登录 · 登录iframe\"},{\"title\":\"163网易免费邮-你的专业电子邮局\",\"url\":\"https://mail.163.com/\",\"snippet\":\"163网易邮箱 · 你的专业电子邮局 · 手机App下载 电脑客户端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 扫码登录 · 账号登录 · 密码登录注册新账号 · 阅读并接受 《服务条款》和 《隐私政策》 · 注册新账号 ...\"},{\"title\":\"网易VIP邮箱登录注册-企业邮箱-个人收费邮箱-安全稳定\",\"url\":\"https://vipmail.163.com/\",\"snippet\":\"VIP邮箱介绍 企业团购 手机App下载 桌面端下载 客户服务 · 网易VIP邮箱官博\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774342658678-57cb3c": {
+    "taskId": "task-1774342658678-57cb3c",
+    "type": "查一下",
+    "instruction": "AMY 帮我查一下163邮箱有没有新邮件",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "AMY 帮我查一下163邮箱有没有新邮件"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774342658678,
+    "startedAt": 1774342658680,
+    "completedAt": 1774342661015,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"AMY 帮我查一下163邮箱有没有新邮件\",\"results\":[{\"title\":\"帮助中心_首页\",\"url\":\"https://help.mail.163.com/\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 呼叫小易 · 关于网易 网易VIP邮箱 网易公正邮 隐私政策 网易公司版权所有 © 1997- · 返回顶部\"},{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"网易企业邮箱 - 登录入口\",\"url\":\"https://qy.163.com/login\",\"snippet\":\"下载网易企业邮箱专属客户端 · 客户端无需重复登录，追踪邮件阅读状态，收到邮件实时提醒，重要工作不再错过\"},{\"title\":\"网易163免费邮箱登录\",\"url\":\"https://smart.mail.163.com/login.htm\",\"snippet\":\"阅读并接受 《服务条款》和 《隐私政策》 · 账号密码登录手机号登录 · 登录iframe\"},{\"title\":\"网易VIP邮箱登录注册-企业邮箱-个人收费邮箱-安全稳定\",\"url\":\"https://vipmail.163.com/\",\"snippet\":\"VIP邮箱介绍 企业团购 手机App下载 桌面端下载 客户服务 · 网易VIP邮箱官博\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774344036268-cc3005": {
+    "taskId": "task-1774344036268-cc3005",
+    "type": "查一下",
+    "instruction": "好了 现在帮我查一下GMAIL的最新5封邮件",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "好了 现在帮我查一下GMAIL的最新5封邮件"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774344036269,
+    "startedAt": 1774344036272,
+    "completedAt": 1774344037449,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"好了 现在帮我查一下GMAIL的最新5封邮件\",\"results\":[{\"title\":\"查看和查找电子邮件 - Gmail帮助\",\"url\":\"https://support.google.com/mail/answer/9259955?hl=zh-Hans\",\"snippet\":\"在邮件窗口中，将鼠标指向收件箱上方的数字。这些数字表示页面和收件箱中的邮件数量。例如，1-42/42 表示您正在当前页面查看第 1-42 封邮件，而您的收件箱中有 42 封邮件。\"},{\"title\":\"发送或撤消发送 Gmail 邮件 - 电脑 - Gmail帮助\",\"url\":\"https://support.google.com/mail/answer/2819488?hl=zh-Hans&co=GENIE.Platform%3DDesktop\",\"snippet\":\"检查“已发邮件”和“草稿”文件夹。如果找不到该邮件，可能是在发送前将其删除了。\"},{\"title\":\"通过完整标头跟踪电子邮件 - Gmail帮助\",\"url\":\"https://support.google.com/mail/answer/29436?hl=zh-Hans\",\"snippet\":\"对于来自 Gmail 账号的电子邮件，您可以查看其完整标头，了解其来源。 查看并复制电子邮件的完整标头 Gmail 在浏览器中打开 Gmail。 打开要查看其标头的电子邮件。 点击“回复”图标\"},{\"title\":\"将 Gmail 邮件归档 - 电脑 - Gmail帮助\",\"url\":\"https://support.google.com/mail/answer/6576?hl=zh-Hans&co=GENIE.Platform%3DDesktop\",\"snippet\":\"如果您不想删除旧邮件，可以将其归档。归档邮件后，该邮件不会再显示在收件箱中，但您仍可在“所有邮件”标签下找到它。 归档邮件 重要提示：如果有人回复了您归档的邮件，该邮件会重新出现在您的收件箱中。 在计算机上打开\"},{\"title\":\"登录 Gmail - 电脑 - Gmail帮助\",\"url\":\"https://support.google.com/mail/answer/8494?hl=zh-Hans&co=GENIE.Platform%3DDesktop\",\"snippet\":\"若要打开 Gmail，您可从计算机上登录，也可在手机或平板电脑上将您的帐号添加到 Gmail 应用中。一旦成功登录，您便可打开收件箱查看邮件。 ... 如果系统已预填相关信息而您必须登录一个不同的帐号，请点击使用其他帐号。 · 如果您看到的是一个描述 Gmail 的页面，而不是登录页面，请点击页面右上角的登录。 ... 提示：如果您使用公用计算机登录，请务必在离开计算机前退出帐号。不妨了解如何在他人的设备上登录。\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774345049221-50f351": {
+    "taskId": "task-1774345049221-50f351",
+    "type": "查一下",
+    "instruction": "AMY查一下谷歌邮箱有多少未读邮件",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "AMY查一下谷歌邮箱有多少未读邮件"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774345049222,
+    "startedAt": 1774345049225,
+    "completedAt": 1774345051096,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"AMY查一下谷歌邮箱有多少未读邮件\",\"results\":[{\"title\":\"Gmail：如何跟踪邮件阅读状态_mailtrack插件 csdn-CSDN博客\",\"url\":\"https://blog.csdn.net/penny_cheng/article/details/125388576\",\"snippet\":\"如果你还没有Gmail邮箱，请先看这篇教程注册Gmail。 · 本文原文出自LOYSEO：https://loyseo.com/how-to-track-the-reading-status-of-gmail-emails/ 首先，确保你使用的是谷歌浏览器（Chrome），在谷歌浏览器的设置中，找到more tools（更多工具）-Extensions（扩展） ... 在日常工作中, 发送邮件给新客户, 邮件报价或是合同时, 对方有没有打开阅读呢?\"},{\"title\":\"查看未读邮件 - Google 网上论坛帮助\",\"url\":\"https://support.google.com/groups/answer/9792691?hl=zh-Hans\",\"snippet\":\"要查看群组的未读帖子数量，请在电子邮件客户端中设置过滤器。 启用网上论坛企业版后，如要查看群组的未读帖子数量，则您必须将订阅选项设置为每封电子邮件。详情请参阅查看和修改成员资格设置。 以下是针对 Gmail 的示例说明。 在 Gmail 中\"},{\"title\":\"Google Gmail邮箱一次性标记所有未读邮件为已读_谷歌邮箱怎么全选已读-CSDN博客\",\"url\":\"https://blog.csdn.net/u014801221/article/details/119409995\",\"snippet\":\"<strong>Gmail Checker收件箱 显示Gmail收件箱中未读邮件的数量</strong>。 您也可以单击按钮打开收件箱，并接收有关新电子邮件的通知。 您可以设置“安静时间”以消除在最忙碌的时间里的干扰，也可以暂时“无干扰”地享受番茄般的...\"},{\"title\":\"查看和查找电子邮件 - Gmail帮助\",\"url\":\"https://support.google.com/mail/answer/9259955?hl=zh-Hans\",\"snippet\":\"在 Gmail 中：将收件箱设置为按接收顺序显示邮件或会话（默认）。您也可以先查看已加星标、未读或重要的邮件。您也可以将顺序从最新更改为最早。\"},{\"title\":\"如何察看Gmail中的未读邮件？ – 静水潜流\",\"url\":\"https://www.myvoipapp.com/blogs/yxh/2010/06/18/%E5%A6%82%E4%BD%95%E5%AF%9F%E7%9C%8Bgmail%E4%B8%AD%E7%9A%84%E6%9C%AA%E8%AF%BB%E9%82%AE%E4%BB%B6%EF%BC%9F/\",\"snippet\":\"在讨论这个问题之前，先讨论一个别的问题：gmail对来信的时间判断。gmail不是根据gmail服务器的时间来判断的，而是根据来信自己的时间戳进行判断。如果来信的时间是非常久远之前的，则gmail将它排到列表的最后面（oldest）。有位不知名的朋友发了封信过来，在gmail的inbox中显示有一封未读来信，可是我始终找不着是哪封邮件未读，只好将583M的邮件翻了个底朝天，最后发现，来信的日期居然是2004年，gmail直接将它放在最后面了。\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774345181532-922d7c": {
+    "taskId": "task-1774345181532-922d7c",
+    "type": "查一下",
+    "instruction": "那你帮我查一下163有多少邮件",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "那你帮我查一下163有多少邮件"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774345181532,
+    "startedAt": 1774345181535,
+    "completedAt": 1774345182659,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"那你帮我查一下163有多少邮件\",\"results\":[{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"网易邮箱大师-高效强大的全平台邮箱客户端\",\"url\":\"https://dashi.163.com/help.html\",\"snippet\":\"浏览器不支持或禁止了网页脚本，您需要开启浏览器脚本运行\"},{\"title\":\"帮助中心_首页\",\"url\":\"https://help.mail.163.com/\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 呼叫小易 · 关于网易 网易VIP邮箱 网易公正邮 隐私政策 网易公司版权所有 © 1997- · 返回顶部\"},{\"title\":\"网易企业邮箱 - 登录入口\",\"url\":\"https://qy.163.com/login\",\"snippet\":\"下载网易企业邮箱专属客户端 · 客户端无需重复登录，追踪邮件阅读状态，收到邮件实时提醒，重要工作不再错过\"},{\"title\":\"帮助中心_常见问题\",\"url\":\"http://help.mail.163.com/searchFAQ.do?m=search&word=%E5%A6%82%E4%BD%95%E6%90%9C%E7%B4%A2%E9%82%AE%E4%BB%B6%E6%88%96%E5%8F%91%E4%BB%B6%E4%BA%BA\",\"snippet\":\"您要找的是不是： 怎样搜索邮件或发件人 , 如何搜索附件 , 如何设置默认发件人\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774353282852-6dd7a9": {
+    "taskId": "task-1774353282852-6dd7a9",
+    "type": "查一下",
+    "instruction": "帮我查一下今天美元兑人民币的汇率",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "帮我查一下今天美元兑人民币的汇率"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774353282852,
+    "startedAt": 1774353282856,
+    "completedAt": 1774353286956,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我查一下今天美元兑人民币的汇率\",\"results\":[{\"title\":\"中国银行网站_金融市场_外汇牌价\",\"url\":\"https://www.boc.cn/sourcedb/whpj/\",\"snippet\":\"当前位置：首页 &gt; 金融市场 &gt; 外汇牌价 · 网银登录 · 个人客户网银登录 · 个人贵宾网银登录 · iGTB企业网银登录 · 中国银行外汇牌价 · 打印 · 共10页\"},{\"title\":\"无标题文档\",\"url\":\"http://m.safe.gov.cn/safe/rmbhlzjj/index.html\",\"snippet\":\"主页 &gt; 统计数据 &gt; 统计数据列表 &gt; 人民币汇率中间价\"},{\"title\":\"外汇实时汇率-招商银行\",\"url\":\"https://m.cmbchina.com/fxrate.html\",\"snippet\":\"We cannot provide a description for this page right now\"},{\"title\":\"美元兑人民币_概览_行情走势_FinScope-AI让投资更简单\",\"url\":\"https://gushitong.baidu.com/foreign/global-USDCNY\",\"snippet\":\"We cannot provide a description for this page right now\"},{\"title\":\"1 USD to CNY - US Dollars to Chinese Yuan Renminbi Exchange Rate\",\"url\":\"https://www.xe.com/en-us/currencyconverter/convert/?Amount=1&From=USD&To=CNY\",\"snippet\":\"Get the latest 1 US Dollar to Chinese Yuan Renminbi rate for FREE with the original Universal Currency Converter. Set rate alerts for USD to CNY and learn more about US Dollars and Chinese Yuan Renminbi from XE - the Currency Authority.\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774353676496-da5c1b": {
+    "taskId": "task-1774353676496-da5c1b",
+    "type": "查一下",
+    "instruction": "帮我查一下 有什么免费生图API能调用",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "帮我查一下 有什么免费生图API能调用"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774353676496,
+    "startedAt": 1774353676499,
+    "completedAt": 1774353679300,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我查一下 有什么免费生图API能调用\",\"results\":[{\"title\":\"免费文生成图（Text-to-Image）API —— StableDiffusionAPI.com、Hugging Face Inference API、Replicat_免费生图api-CSDN博客\",\"url\":\"https://blog.csdn.net/weixin_45934622/article/details/147382782\",\"snippet\":\"文章浏览阅读2.9k次，点赞3次，收藏13次。本文将介绍六种主流且对开发者友好的免费文本生成图像（Text-to-Image）API —— <strong>StableDiffusionAPI.com、Hugging Face Inference API、Replicate、Craiyon、Segmind 及 DeepAI</strong>，并为每种服务提供可直接使用的 ...\"},{\"title\":\"GitHub - LLM-Red-Team/jimeng-free-api: 🚀 即梦3.0逆向API【特长：图像生成顶流】，零配置部署，多路token支持，仅供测试，如需商用请前往官方开放平台。\",\"url\":\"https://github.com/LLM-Red-Team/jimeng-free-api\",\"snippet\":\"🚀 即梦3.0逆向API【特长：图像生成顶流】，零配置部署，多路token支持，仅供测试，如需商用请前往官方开放平台。 - LLM-Red-Team/jimeng-free-api\"},{\"title\":\"3个国产免费AI生图大模型API使用教程（申请流程+源码） - 苏米客\",\"url\":\"https://www.xmsumi.com/detail/1406\",\"snippet\":\"同时现在每天直接白送你 2,000 次免费调用额度，不仅可以用 <strong>Qwen3-Code，Qwen-Image也同样可以调用</strong>，你说这么个大厂的限量白嫖你不用，你还去花那钱干嘛~ 直接在魔塔社区注册账号，应该是需要绑定阿里云账号的，因为我之...\"},{\"title\":\"Gemini API | Google AI for Developers\",\"url\":\"https://ai.google.dev/gemini-api/docs/image-generation\",\"snippet\":\"Get started generating images with the <strong>Gemini API</strong> using Nano Banana and Nano Banana Pro\"},{\"title\":\"万相-文生图V1\",\"url\":\"https://help.aliyun.com/zh/model-studio/text-to-image-api-reference\",\"snippet\":\"如果模型调用失败并返回报错信息，请参见错误信息进行解决。 ... 额度说明：免费额度是指模型成功生成的输出图片数量。输入图片及模型处理失败的情况不占用免费额度。 · 领取方式：开通阿里云百炼大模型服务后自动发放，有效期90天。\"}]}",
+    "error": null,
+    "notified": true
   }
 }

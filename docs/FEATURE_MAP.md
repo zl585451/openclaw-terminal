@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-03-22（Gateway 稳定性修复、多引擎搜索、会话稳定性、提示词优化）  
+> **最后更新**：2026-03-24（网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉）  
 > **详细说明**：查看 `docs/feature-map/` 文件夹中的分模块文档
 
 ---
@@ -29,7 +29,9 @@
 ## 核心架构一览
 
 ### 基础设施（第一层）
-- **Gateway WebSocket**：前端 ↔ AI 的桥梁
+- **Gateway WebSocket**：前端 ↔ AI 的桥梁，OCT 自有 token 认证（无 ECDSA）
+- **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由
+- **后台任务队列**：task_queue + worker，持久化、60s 超时
 - **AI 对话引擎**：Provider 抽象，支持百炼/DeepSeek/硅基/Groq/OpenAI/Ollama 等
 - **Provider 系统**：服务商预设、按模型能力动态组装、Settings 服务商选择器
 - **System Prompt**：从 Nocturne + 本地 MD 文件动态加载
@@ -72,6 +74,22 @@
 ---
 
 ## 最近修复
+
+### 2026-03-24 网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉
+- **网络稳定性**：ai.js 代理绕过（getDirectFetchOptions）、fetchWithRetry（90s 超时 + 重试）、流中断截断提示、工具调用 30s 超时隔离；config.js NO_PROXY 直连 DashScope
+- **OpenClaw Skills**：skill_adapter.js 解析 SKILL.md（YAML frontmatter），注入 `<skills>` 到系统提示词，支持 bins 依赖检查
+- **http_request**：通用 HTTP 工具，GET/POST/PUT/DELETE，对接第三方 API
+- **image_gen**：通义万象 wanx-v1 图像生成，复用 DashScope API Key
+- **VaultPanel 抽屉**：从右下角悬浮球改为 TabBar 内嵌 🔐 VAULT 按钮，右侧滑入抽屉，深绿黑主题
+
+### 2026-03-24 OCT 握手 + 工具层 + Orchestrator + 后台任务 + 保险箱与邮件
+- **OCT 握手**：移除 OpenClaw ECDSA 签名，改为 `params.auth.token` 认证
+- **工具层**：静态 tools.js → 动态 tool_loader + tools/*.js，23 个工具按文件拆分
+- **Orchestrator**：意图分类（code/write/research），后台任务触发词（帮我搜/查一下/**查邮件/查验证码**等）
+- **后台任务**：task_queue.js、worker.js，任务持久化到 tasks_runtime.json，AMY 下次对话时注入结果
+- **保险箱**：vault_manager.js 加密存储、key normalize、HTTP 18790/tool、VaultPanel 编辑/邮箱表单
+- **邮件工具**：email_reader（imapflow）、email_sender（nodemailer）、email_manager（count_unread/search 等）
+- **文档**：更新 01-gateway、09_tools、CHANGELOG、OCT_MAS_ARCHITECTURE
 
 ### 2026-03-22 Gateway 稳定性修复（API 400 错误）
 - **问题**：复杂调研时 API 返回 400 错误，原因是消息截断导致孤立的 tool 消息

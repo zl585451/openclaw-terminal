@@ -1,6 +1,6 @@
 # 1.1 Gateway WebSocket 服务器
 
-> **最后更新**：2026-03-20 | **状态**：✅ 正常
+> **最后更新**：2026-03-24 | **状态**：✅ 正常
 
 ---
 
@@ -12,7 +12,7 @@
 
 ## 调用链
 ```
-前端 WebSocket → index.js 收到消息 → ai.js streamChat → 流式返回前端
+前端 WebSocket → index.js 收到消息 → orchestrator.dispatch → ai.js streamChat → 流式返回前端
 ```
 
 ## 写到哪
@@ -30,4 +30,5 @@
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-03-24 | Orchestrator 接入、OCT token 握手 |
 | 2026-03-20 | 初始拆分 |

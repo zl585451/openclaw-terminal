@@ -6,3 +6,5 @@ dist/
 *.log
 .DS_Store
 resources/nocturne_memory/
+resources/vault.enc
+*.enc

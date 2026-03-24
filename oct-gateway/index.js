@@ -11,6 +11,7 @@ const memoryFeedback = require('./memory_feedback');
 const memorySearch = require('./memory_search');
 const imageAnalyzer = require('./image_analyzer');
 const tools = require('./tools');
+const toolLoader = require('./tool_loader');
 const crypto = require('crypto');
 // const selfEval = require('./self_eval');  // 自评估系统已停用 2026-03-22
 const hypothesis = require('./hypothesis');
@@ -198,6 +199,38 @@ if (tools.setOnTaskBoardUpdate) {
 // HTTP 服务：提供手机端 mobile.html
 const HTTP_PORT = PORT + 1;
 const httpServer = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, service: 'oct-vault' }));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/tool') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { tool, args } = JSON.parse(body || '{}');
+        const result = await toolLoader.executeTool(tool, args || {});
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, result }));
+      } catch (e) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e?.message || String(e) }));
+      }
+    });
+    return;
+  }
+
   if (req.url === '/' || req.url === '/mobile') {
     const htmlPath = path.join(__dirname, 'mobile.html');
     try {
@@ -216,6 +249,7 @@ const httpServer = http.createServer((req, res) => {
 httpServer.listen(HTTP_PORT, '0.0.0.0', () => {
   log.info('Mobile HTTP listening', { url: 'http://0.0.0.0:' + HTTP_PORT });
   log.info('Mobile HTTP local', { url: 'http://localhost:' + HTTP_PORT });
+  console.log('[Gateway] HTTP 工具端口已启动:', HTTP_PORT);
 });
 
 httpServer.on('error', (err) => {
@@ -404,11 +438,18 @@ wss.on('connection', (ws) => {
         log.debug('contextMemory 加载失败，继续对话', { error: e?.message || String(e) });
       }
 
+      // 后台任务已派发时，提示 AMY 简短回复，不要在主对话中再次调用工具
+      let backgroundTaskNotice = '';
+      if (orchResult?.hasBackgroundTask) {
+        backgroundTaskNotice = '\n\n[系统] 用户这条消息已派发后台任务执行（如查邮件），请简短回复「好的，我已经派出去查了，我们继续聊」之类，不要在主对话中调用 email_reader 等工具。';
+      }
+
       const lastUserMsg = typeof messageContent === 'string'
-        ? messageContent + contextMemory
+        ? messageContent + contextMemory + backgroundTaskNotice
         : [
             ...messageContent,
             ...(contextMemory ? [{ type: 'text', text: contextMemory }] : []),
+            ...(backgroundTaskNotice ? [{ type: 'text', text: backgroundTaskNotice }] : []),
           ];
 
       session.addMessage(sessionKey, 'user',

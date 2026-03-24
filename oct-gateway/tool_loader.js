@@ -11,30 +11,29 @@ function loadTools() {
   _definitions = [];
   _executors = {};
 
-  if (!fs.existsSync(TOOLS_DIR)) {
-    console.warn('[ToolLoader] tools/ 目录不存在，跳过加载');
-    return;
-  }
+  if (fs.existsSync(TOOLS_DIR)) {
+    const files = fs.readdirSync(TOOLS_DIR).filter(f => f.endsWith('.js'));
 
-  const files = fs.readdirSync(TOOLS_DIR).filter(f => f.endsWith('.js'));
+    for (const file of files) {
+      try {
+        const toolPath = path.join(TOOLS_DIR, file);
+        delete require.cache[require.resolve(toolPath)]; // 支持热重载
+        const tool = require(toolPath);
 
-  for (const file of files) {
-    try {
-      const toolPath = path.join(TOOLS_DIR, file);
-      delete require.cache[require.resolve(toolPath)]; // 支持热重载
-      const tool = require(toolPath);
+        if (!tool.name || !tool.definition || !tool.execute) {
+          console.warn(`[ToolLoader] 跳过 ${file}：缺少 name/definition/execute`);
+          continue;
+        }
 
-      if (!tool.name || !tool.definition || !tool.execute) {
-        console.warn(`[ToolLoader] 跳过 ${file}：缺少 name/definition/execute`);
-        continue;
+        _definitions.push(tool.definition);
+        _executors[tool.name] = tool.execute;
+        console.log(`[ToolLoader] 已加载工具: ${tool.name}`);
+      } catch (e) {
+        console.error(`[ToolLoader] 加载 ${file} 失败:`, e.message);
       }
-
-      _definitions.push(tool.definition);
-      _executors[tool.name] = tool.execute;
-      console.log(`[ToolLoader] 已加载工具: ${tool.name}`);
-    } catch (e) {
-      console.error(`[ToolLoader] 加载 ${file} 失败:`, e.message);
     }
+  } else {
+    console.warn('[ToolLoader] tools/ 目录不存在，跳过加载');
   }
 
   console.log(`[ToolLoader] 共加载 ${_definitions.length} 个工具`);

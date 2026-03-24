@@ -7,7 +7,8 @@ OCT 独立 AI Gateway，替换 OpenClaw Gateway。
 ```bash
 cd oct-gateway
 npm install
-node index.js
+npm run start
+# 或：node index.js
 ```
 
 ## 环境变量
@@ -19,7 +20,16 @@ DASHSCOPE_API_KEY=你的百炼API Key
 DEEPSEEK_API_KEY=你的DeepSeek Key（可选，百炼失败时备用）
 OCT_MODEL=qwen-plus
 OCT_GATEWAY_PORT=18789
+OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 ```
+
+## 架构概览
+
+- **连接层**：WebSocket 18789，OCT 自有 token 认证（无 ECDSA 签名）
+- **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由扩展
+- **工具层**：`tool_loader.js` 动态加载 `tools/*.js`，含 http_request、image_gen 等 25+ 工具
+- **OpenClaw Skills**：`skill_adapter.js` 解析 `skills/` 下的 SKILL.md，注入到系统提示词
+- **后台任务**：`task_queue.js` + `worker.js`，任务持久化到 `tasks_runtime.json`，60 秒超时
 
 ## 图片分析（云端 + 本地降级）
 
@@ -60,3 +70,15 @@ OCT_GATEWAY_PORT=18789
 ## 与 Electron 集成
 
 main.ts 通过 `spawn('node', ['oct-gateway/index.js'])` 启动。
+
+## 后台任务
+
+用户消息包含「帮我搜」「查一下」「搜索一下」「顺便」「后台执行」等触发词时，Orchestrator 会派发后台任务。任务异步执行，主对话不中断。AMY 在用户**下次发消息**时自动收到任务结果并注入上下文。
+
+## OpenClaw Skills
+
+将 OpenClaw Skills 市场下载的技能放入 `skills/` 目录，重启后 AMY 即可使用。支持 SKILL.md 格式（YAML frontmatter + Markdown 指令体）。详见 `skills/README.md`。
+
+## 网络稳定性（代理环境）
+
+启用 V2RayN 等全局代理时，DashScope API 会自动直连（NO_PROXY），避免流式回复中断。fetch 支持 90 秒超时与重试，工具调用 30 秒超时隔离。

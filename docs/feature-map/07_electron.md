@@ -1,6 +1,6 @@
 # 第七层：Electron 桌面应用
 
-> 最后更新：2026-03-22
+> 最后更新：2026-03-24
 
 ---
 
@@ -67,4 +67,17 @@
 |------|------|
 | 做什么 | 保存/恢复会话状态到本地文件 |
 | 文件 | `electron/main.ts` → `saveSessionState()`/`loadSessionState()` |
+| 状态 | ✅ 正常 |
+
+---
+
+## 7.7 保险箱面板（VaultPanel）
+
+|| 项目 | 内容 |
+|------|------|
+| 做什么 | 加密保险箱管理：创建/解锁/添加凭证/删除，TabBar 内嵌入口 |
+| 文件 | `src/components/VaultPanel.tsx`、`src/components/TabBar.tsx`、`src/App.tsx` |
+| 入口 | TabBar 中 [CHAT] 旁 🔐 VAULT / 🔓 VAULT 按钮 |
+| 布局 | 点击后右侧滑入 300px 抽屉，遮罩点击/ESC 关闭 |
+| IPC | `invoke-gateway-tool` → HTTP 127.0.0.1:18790/tool |
 | 状态 | ✅ 正常 |
