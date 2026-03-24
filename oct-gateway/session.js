@@ -8,6 +8,7 @@ const log = createLogger('session');
 // 会话数据瘦身优化
 // ═══════════════════════════════════════════════════════════════
 const MAX_HISTORY = 30; // 从 50 降到 30，减少内存占用
+const MAX_HISTORY_CHARS = 40000; // 约 2 万 token，留 system prompt 余量
 const SESSION_EXPIRE_DAYS = 3; // 从 7 天缩短到 3 天
 const CACHE_DIR = process.env.OCT_CACHE_DIR || path.join(os.homedir(), '.oct-gateway');
 const SESSIONS_FILE = path.join(CACHE_DIR, 'sessions.json');
@@ -90,6 +91,13 @@ function addMessage(sessionKey, role, content) {
     history.push(...trimmed);
   }
   
+  // 按总字符裁剪（从最早的消息开始删，但保留至少 2 条保证对话完整性）
+  let totalChars = history.reduce((s, m) => s + (m.content?.length || 0), 0);
+  while (totalChars > MAX_HISTORY_CHARS && history.length > 2) {
+    const removed = history.shift();
+    totalChars -= (removed.content?.length || 0);
+  }
+  
   saveSessions();
 }
 
@@ -128,6 +136,7 @@ function cleanOldSessions() {
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.timestamp && lastMsg.timestamp < expireThreshold) {
       sessions.delete(key);
+      thinkModes.delete(key);
       cleaned++;
     }
   }

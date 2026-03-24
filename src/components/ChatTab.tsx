@@ -1485,7 +1485,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const typewriterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const displayedLengthRef = useRef(0);
   const userScrolledUp = useRef<boolean>(false);
-  const pendingSystemReply = useRef<boolean>(false);
+  const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
+  const lastSentRequestId = useRef<string>('');
   const streamDoneReceived = useRef<boolean>(false);
   const streamUiRafRef = useRef<number | null>(null);
 
@@ -1499,7 +1500,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
-          return prev.map((m, idx) => (idx === prev.length - 1 ? { ...m, content: buf } : m));
+          // 不用空值覆盖已有内容
+          const newContent = buf || last.content;
+          return prev.map((m, idx) => (idx === prev.length - 1 ? { ...m, content: newContent } : m));
         }
         if (last?.role === 'assistant' && !last.isStreaming && (last.content ?? '').trim() === buf.trim()) {
           return prev;
@@ -1685,7 +1688,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     const handleMessage = (_: any, msg: any) => {
       try {
-        if (msg && (msg.type === 'status' || msg.connected !== undefined)) {
+        // 只有明确的 status 类型消息才允许更新连接状态，
+        // 避免含有 connected 字段的普通消息误触发 UI 假断开
+        if (msg && msg.type === 'status') {
           const connected = msg.connected === true;
           setWsConnected(connected);
           if (!connected) {
@@ -1825,8 +1830,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // 只有在流式内容为空时才用 done 消息里的 content
       let finalStreamContent = streamingMessageRef.current || content;
       // 不立刻清空，让打字机跑完
-      const systemReply = pendingSystemReply.current;
-      pendingSystemReply.current = false;
+      const currentRequestId = lastSentRequestId.current;
+      const systemReply = pendingSystemReplyMap.current.get(currentRequestId) ?? false;
+      pendingSystemReplyMap.current.delete(currentRequestId);
       // 兼容旧消息：如果包含 [THINK_MODE:xxx] 标记，静默剥离
       if (!systemReply && finalStreamContent) {
         finalStreamContent = stripThinkModeMarker(finalStreamContent);
@@ -2047,8 +2053,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (!ok) return;
     }
 
-    pendingSystemReply.current = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
-    const cmdIsSystem = pendingSystemReply.current;
+    const newRequestId = Date.now().toString();
+    lastSentRequestId.current = newRequestId;
+    const cmdIsSystem = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
+    pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
     streamingMessageRef.current = '';
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
@@ -2108,9 +2116,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (!ok) return;
     }
 
-    pendingSystemReply.current = isSystemCommand(content.trim());
+    const newRequestId = Date.now().toString();
+    lastSentRequestId.current = newRequestId;
+    const isSystem = isSystemCommand(content.trim());
+    pendingSystemReplyMap.current.set(newRequestId, isSystem);
     streamingMessageRef.current = '';
-    if (!pendingSystemReply.current) {
+    if (!isSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
@@ -2223,7 +2234,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       
       // 内容越多、落后越多，每次推进越快，保证能追上
       const CHARS_PER_TICK = Math.max(3, Math.ceil((fullLen - current) / 20));
-      const next = Math.min(current + CHARS_PER_TICK, fullLen);
+      let next = Math.min(current + CHARS_PER_TICK, fullLen);
+      // 不在 surrogate pair 中间切断
+      const full = streamingMessageRef.current;
+      if (next < full.length) {
+        const code = full.charCodeAt(next - 1);
+        if (code >= 0xD800 && code <= 0xDBFF) next += 1; // high surrogate → 跳到下一个
+      }
       displayedLengthRef.current = next;
       setDisplayedLength(next);
       

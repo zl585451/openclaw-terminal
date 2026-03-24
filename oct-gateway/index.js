@@ -224,6 +224,9 @@ wss.on('connection', (ws) => {
   const clientId = crypto.randomUUID();
   log.info('client connected', { clientId });
 
+  // 每个 ws 连接独立维护一个取消令牌，用于中止上一个流
+  let currentAbort = null;
+
   try {
     const nonce = crypto.randomBytes(16).toString('hex');
     ws._nonce = nonce;
@@ -497,8 +500,14 @@ wss.on('connection', (ws) => {
         }
       }, 8000);
 
+      // 中止上一个流（如果有）
+      if (currentAbort) currentAbort();
+      let cancelled = false;
+      currentAbort = () => { cancelled = true; };
+
       let fullReply = '';
       const merge = createStreamMergeDelta(config.stream_merge, (chunk) => {
+        if (cancelled) return;
         fullReply += chunk;
         if (ws.readyState === ws.OPEN) {
           ws.send(JSON.stringify({
@@ -513,6 +522,8 @@ wss.on('connection', (ws) => {
         messages,
         onDelta: merge.onDelta,
         onDone: (_text, usage, responseModel) => {
+          if (cancelled) return;
+          currentAbort = null;
           if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
           merge.flush();
           if (fullReply) {
@@ -568,6 +579,8 @@ wss.on('connection', (ws) => {
           log.info('stream done', { len: fullReply.length });
         },
         onError: (err) => {
+          if (cancelled) return;
+          currentAbort = null;
           if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
           log.error('AI error', { error: err?.message || String(err) });
           if (ws.readyState === ws.OPEN) {
@@ -600,6 +613,8 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    if (currentAbort) currentAbort();
+    currentAbort = null;
     authenticatedClients.delete(ws);
     log.info('client disconnected', { clientId });
   });

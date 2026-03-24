@@ -701,7 +701,7 @@ function connectOpenClaw() {
       pongTimeoutId = setTimeout(() => {
         pongTimeoutId = null;
         ws.terminate();
-      }, 10000);
+      }, 20000);  // 从 10s 延长至 20s，给重型渲染留出余量
     }, 30000);
   });
 

@@ -3,7 +3,6 @@
 // 从主文件导入类型和常量
 import type { RenderSegment, SegmentType } from './optionBoxParser';
 import {
-  PAIRED_TAG_RX,
   getCodeBlockRanges,
   isInsideCodeBlock,
   parseSymbolOptions,
@@ -18,8 +17,9 @@ import {
 
 /** 解析成对标签 [pills]...[/pills] 等，返回按顺序排列的渲染段 */
 export function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
-  PAIRED_TAG_RX.lastIndex = 0;
-  const allMatches = [...content.matchAll(PAIRED_TAG_RX)];
+  // 每次调用创建新的 regex 实例，避免全局状态的 lastIndex 并发问题
+  const pairedTagRx = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
+  const allMatches = [...content.matchAll(pairedTagRx)];
 
   if (allMatches.length === 0) return { segments: [], found: false };
 

@@ -361,6 +361,8 @@ function extractRenderHint(text: string): { hint: RenderHint | null; cleaned: st
 // 或 `/   [question]...`：这样可避免标签原样泄露成纯文本。
 // 标签名两侧允许可选空白（模型可能输出 [ question ] 或 [ / question ]）
 // 注意：保持 // 不受影响，不匹配纯 // 注释
+// ⚠️ 此 regex 带 g flag，内部 parseTaggedContent 已改用局部实例避免并发问题；
+//    保留导出仅供外部测试或兼容使用，调用者应使用 matchAll 或每次创建新实例。
 export const PAIRED_TAG_RX = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
 
 /** 将非空行作为普通选项（兜底：标签内没有标准格式时） */
@@ -420,8 +422,9 @@ export function isInsideCodeBlock(pos: number, ranges: Array<[number, number]>):
 
 /** 解析成对标签 [pills]...[/pills] 等，返回按顺序排列的渲染段 */
 function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
-  PAIRED_TAG_RX.lastIndex = 0;
-  const allMatches = [...content.matchAll(PAIRED_TAG_RX)];
+  // 每次调用创建新的 regex 实例，避免全局状态的 lastIndex 并发问题
+  const pairedTagRx = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
+  const allMatches = [...content.matchAll(pairedTagRx)];
   
   if (allMatches.length === 0) return { segments: [], found: false };
 
