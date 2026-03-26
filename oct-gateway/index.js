@@ -20,6 +20,7 @@ const nocturneQueue = require('./nocturne_task_queue');
 const aiLibrary = require('./tools/ai_library');
 const orchestrator = require('./orchestrator');
 const taskQueue = require('./task_queue');
+const { generateClaudeBrief } = require('./claude_brief');
 const { createLogger } = require('./logger');
 const log = createLogger('gateway');
 const memLog = createLogger('mem');
@@ -329,6 +330,47 @@ wss.on('connection', (ws) => {
 
       if (userMessage.startsWith('/')) {
         await handleSlashCommand(ws, id, userMessage.trim(), sessionKey);
+        return;
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // AMY 指令：生成 Claude 问题简报（本地生成，不调用模型）
+      // 触发短语：包含“生成简报”或“发给Claude”
+      // ─────────────────────────────────────────────────────────────
+      const msgTrim = (userMessage || '').trim();
+      const briefTriggered = msgTrim.includes('生成简报')
+        || msgTrim.includes('发给Claude')
+        || msgTrim.includes('发给 Claude');
+      if (briefTriggered) {
+        try {
+          // 使用触发前的历史作为上下文（不把触发词当成症状）
+          const history = session.getHistory(sessionKey) || [];
+          const projectRoot = path.join(__dirname, '..');
+          const { briefPath, brief } = generateClaudeBrief({
+            projectRoot,
+            sessionHistory: history,
+          });
+
+          // 记录到会话（保持对话连续）
+          session.addMessage(sessionKey, 'user', msgTrim);
+          const reply = '简报已生成，请复制 docs/claude-brief.md 的内容发给 Claude';
+          session.addMessage(sessionKey, 'assistant', reply);
+
+          // 直接在 OCT 界面展示简报内容，方便复制
+          const combined = `${reply}\n\n---\n\n（以下为 ${briefPath} 内容）\n\n${brief}`;
+          ws.send(JSON.stringify({
+            type: 'event',
+            event: 'chat',
+            payload: { text: combined, state: 'done', done: true },
+          }));
+        } catch (e) {
+          const errMsg = e?.message || String(e);
+          ws.send(JSON.stringify({
+            type: 'event',
+            event: 'chat',
+            payload: { text: `❌ 生成简报失败：${errMsg}`, state: 'done', done: true },
+          }));
+        }
         return;
       }
 

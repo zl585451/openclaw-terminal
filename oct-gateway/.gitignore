@@ -1,0 +1,7 @@
+# Google Drive temporary folders
+.tmp.drivedownload/
+.tmp.driveupload/
+
+# OS files
+.DS_Store
+Thumbs.db
