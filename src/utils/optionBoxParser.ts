@@ -420,6 +420,103 @@ export function isInsideCodeBlock(pos: number, ranges: Array<[number, number]>):
   return ranges.some(([start, end]) => pos >= start && pos < end);
 }
 
+/** 成对标签解析后，对纯 text 段内 □ / [ ] 行做二次拆分，避免与 [pills] 等混排时漏渲染 */
+function enhanceTextSegmentsWithInlineCheckboxes(segments: RenderSegment[]): RenderSegment[] {
+  const taskHintFromEnhanced = (enhanced: RenderSegment[]): boolean => {
+    for (let i = enhanced.length - 1; i >= 0; i--) {
+      const s = enhanced[i];
+      if (s.type !== 'text' || !s.content.trim()) continue;
+      const lines = s.content.split('\n');
+      for (let j = lines.length - 1; j >= 0; j--) {
+        const t = lines[j].trim().toLowerCase();
+        if (!t) continue;
+        return (
+          TASK_HEADER_KEYWORDS.some((k) => t.startsWith(k.toLowerCase())) ||
+          t.includes('任务') ||
+          t.includes('清单')
+        );
+      }
+    }
+    return false;
+  };
+
+  const enhancedSegments: RenderSegment[] = [];
+
+  for (const seg of segments) {
+    if (seg.type !== 'text' || !seg.content.trim()) {
+      enhancedSegments.push(seg);
+      continue;
+    }
+
+    const lines = seg.content.split('\n');
+    const normalLines: string[] = [];
+    const checkboxLines: string[] = [];
+    let inCheckboxBlock = false;
+
+    const parseCheckboxLabels = (cls: string[]) =>
+      cls
+        .map((cl, i) => {
+          const label = cl
+            .replace(/^[•\-*+]?\s*[□☐☑✓✗]\s*/, '')
+            .replace(/^[•\-*+]?\s*\[\s*[xX✓ ]?\s*\]\s*/, '')
+            .trim();
+          return { num: i + 1, label, value: label };
+        })
+        .filter((o) => o.label.length > 0);
+
+    const flushCheckboxBlock = () => {
+      if (checkboxLines.length === 0) return;
+      const opts = parseCheckboxLabels(checkboxLines);
+      if (opts.length >= 2) {
+        if (normalLines.length > 0) {
+          enhancedSegments.push({ type: 'text', content: normalLines.join('\n'), options: [] });
+          normalLines.length = 0;
+        }
+        const isTask = taskHintFromEnhanced(enhancedSegments);
+        enhancedSegments.push({
+          type: isTask ? 'tasklist' : 'checkbox',
+          content: '',
+          options: opts.map((o) => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })),
+        });
+      } else {
+        normalLines.push(...checkboxLines);
+      }
+      checkboxLines.length = 0;
+      inCheckboxBlock = false;
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const isCheckboxLine =
+        /^[•\-*+]?\s*[□☐☑✓✗]/.test(trimmed) ||
+        /^[•\-*+]?\s*\[\s*[xX✓ ]?\s*\]/.test(trimmed);
+
+      if (isCheckboxLine) {
+        if (!inCheckboxBlock && normalLines.length > 0) {
+          enhancedSegments.push({ type: 'text', content: normalLines.join('\n'), options: [] });
+          normalLines.length = 0;
+        }
+        inCheckboxBlock = true;
+        checkboxLines.push(trimmed);
+      } else {
+        if (inCheckboxBlock) flushCheckboxBlock();
+        normalLines.push(line);
+      }
+    }
+    if (inCheckboxBlock) flushCheckboxBlock();
+
+    if (normalLines.length > 0) {
+      const content = normalLines.join('\n').trim();
+      if (content) enhancedSegments.push({ type: 'text', content, options: [] });
+    }
+  }
+
+  const changed =
+    enhancedSegments.length !== segments.length ||
+    enhancedSegments.some((s, i) => s.type !== segments[i]?.type);
+  return changed ? enhancedSegments : segments;
+}
+
 /** 解析成对标签 [pills]...[/pills] 等，返回按顺序排列的渲染段 */
 function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
   // 每次调用创建新的 regex 实例，避免全局状态的 lastIndex 并发问题
@@ -535,7 +632,8 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
     }
   }
 
-  return { segments: segments.filter(s => s.type !== 'text' || s.content.trim()), found: true };
+  const withInline = enhanceTextSegmentsWithInlineCheckboxes(segments);
+  return { segments: withInline.filter((s) => s.type !== 'text' || s.content.trim()), found: true };
 }
 
 // LRU 缓存：避免同一条消息反复解析

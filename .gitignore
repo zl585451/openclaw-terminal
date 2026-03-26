@@ -1,6 +1,5 @@
 node_modules/
 .vite/
-node_modules/.vite/
 .env
 dist-electron/
 dist/
@@ -11,3 +10,5 @@ resources/vault.enc
 *.enc
 release/
 *.exe
+.tmp.drivedownload/
+.tmp.driveupload/

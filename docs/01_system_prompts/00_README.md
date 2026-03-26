@@ -126,26 +126,13 @@ await chat.send(sessionKey, message, {
 
 ### 步骤 4：前端组件联动
 
-确保前端组件能正确识别协议标签（成对标签优先）：
+前端通过解析 AI 回复中的成对标签自动渲染交互组件：
+- `[pills]...[/pills]` → 胶囊按钮
+- `[checkbox]...[/checkbox]` → 复选框
+- `[question]...[/question]` → 问题卡片
+- `[tasklist]...[/tasklist]` → 任务清单
 
-**OptionBox / Pill**：
-```typescript
-// 检测 `- [ ] 选项` 格式的列表
-const options = message.split('\n').filter(line => line.startsWith('- [ ] '));
-if (options.length > 0) {
-  // 渲染为选项框组件
-  setShowOptionBox(true);
-}
-```
-
-**TaskList**：
-```typescript
-// 检测"任务清单："标题行
-if (message.includes('任务清单：')) {
-  // 渲染为任务清单组件
-  setShowTaskList(true);
-}
-```
+详见 OCT_PROTOCOL.md 渲染协议章节。
 
 ---
 

@@ -52,7 +52,9 @@
       {
         "from": "resources/nocturne_server",
         "to": "nocturne_server",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "docs/01_system_prompts",
@@ -145,6 +147,7 @@
     "@types/react-dom": "^18.2.17",
     "@types/ws": "^8.5.10",
     "@vitejs/plugin-react": "^4.2.1",
+    "chokidar": "^3.6.0",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "decode-ico": "^0.4.1",

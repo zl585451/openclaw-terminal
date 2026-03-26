@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 // xterm 已完全移除以修复闪退问题
@@ -563,17 +563,35 @@ function preprocessMarkdown(text: string): string {
   return processed;
 }
 
-const MAX_MARKDOWN_TABLE_ROWS = 20;
-const MAX_MARKDOWN_TABLE_COLS = 8;
-function shouldFallbackTableRendering(text: string): boolean {
-  if (!text) return false;
-  const lines = text.split('\n');
-  const codeBlockRanges = getCodeBlockLineRanges(lines);
-  const tableLines = lines.filter((l, i) => !isLineInCodeBlock(i, codeBlockRanges) && isTableRow(l));
-  if (tableLines.length === 0) return false;
-  const rows = tableLines.length;
-  const cols = Math.max(0, (tableLines[0].match(/\|/g)?.length || 0) - 1);
-  return rows > MAX_MARKDOWN_TABLE_ROWS || cols > MAX_MARKDOWN_TABLE_COLS;
+/**  finalized 消息的 Markdown 预处理结果缓存（仅 UI，不改消息结构） */
+const processedMarkdownCache = new Map<string, string>();
+const MAX_PROCESSED_MD_CACHE = 400;
+
+function markdownCacheKey(messageId: number, segmentKey: string | undefined, text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) + h) ^ text.charCodeAt(i);
+  }
+  const sig = (h >>> 0).toString(36);
+  return `${messageId}\0${segmentKey ?? 'full'}\0${text.length}\0${sig}`;
+}
+
+function clearProcessedMarkdownCache(): void {
+  processedMarkdownCache.clear();
+}
+
+function getCachedPreprocessedMarkdown(messageId: number, segmentKey: string | undefined, text: string): string {
+  const key = markdownCacheKey(messageId, segmentKey, text);
+  const hit = processedMarkdownCache.get(key);
+  if (hit !== undefined) return hit;
+  while (processedMarkdownCache.size >= MAX_PROCESSED_MD_CACHE) {
+    const first = processedMarkdownCache.keys().next().value;
+    if (first === undefined) break;
+    processedMarkdownCache.delete(first);
+  }
+  const processed = preprocessMarkdown(text);
+  processedMarkdownCache.set(key, processed);
+  return processed;
 }
 
 /** 打字机光标：单独组件避免随内容重渲染导致闪烁 */
@@ -582,23 +600,38 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
   return <span className="cursor-blink">▋</span>;
 });
 
-const MarkdownContent = memo(
-  function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
-    const text = content || '';
-    const processedText = React.useMemo(() => preprocessMarkdown(text), [text]);
-    const contentRef = React.useRef<HTMLSpanElement>(null);
-
-    // 统一使用 ReactMarkdown 渲染，流式/非流式均走同一路径，确保表格稳定显示为 HTML
-    // 之前流式期间将表格当纯文本显示，导致同一消息有时表格有时纯文本的不稳定现象
-    if (shouldFallbackTableRendering(processedText)) {
-      return (
-        <span className={`msg-content markdown-body ${isStreaming ? 'msg-content-streaming-root' : ''}`} ref={contentRef}>
-          <span className="msg-streaming-raw-table">{processedText}</span>
-        </span>
-      );
-    }
+/** 流式阶段：纯文本尾段，不走 ReactMarkdown / 预处理 / 代码高亮 */
+const StreamingTail = memo(
+  function StreamingTail({ text }: { text: string }) {
     return (
-      <span className={`msg-content markdown-body ${isStreaming ? 'msg-content-streaming-root' : ''}`} ref={contentRef}>
+      <span
+        className="msg-content markdown-body msg-content-streaming-root"
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+      >
+        {text}
+      </span>
+    );
+  },
+  (a, b) => a.text === b.text
+);
+
+/** 流式结束后的正文：预处理 + ReactMarkdown，结果按 messageId+段键缓存 */
+const FinalizedMarkdownContent = memo(
+  function FinalizedMarkdownContent({
+    messageId,
+    segmentKey,
+    content,
+  }: {
+    messageId: number;
+    segmentKey?: string;
+    content: string;
+  }) {
+    const processedText = useMemo(
+      () => getCachedPreprocessedMarkdown(messageId, segmentKey, content || ''),
+      [messageId, segmentKey, content]
+    );
+    return (
+      <span className="msg-content markdown-body">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
           {processedText}
         </ReactMarkdown>
@@ -606,10 +639,40 @@ const MarkdownContent = memo(
     );
   },
   (prev, next) =>
-    prev.content === next.content && prev.isStreaming === next.isStreaming
+    prev.messageId === next.messageId &&
+    prev.segmentKey === next.segmentKey &&
+    prev.content === next.content
 );
 
 const UI_CTRL_PATTERNS = [/\[上一页\]/, /\[下一页\]/, /\[第\d+\/\d+页\]/, /\[确认导入\]/, /\[取消\]/];
+
+/** 剥离 [RENDER:xxx] 和 [pills]...[/pills] 块（后者已在托盘显示）；isLastAI 时额外清掉 ■ 开头的选项行 */
+function stripRenderAndPillsMarkers(text: string, isLastAI?: boolean): string {
+  if (!text || typeof text !== 'string') return text;
+  let result = text
+    .replace(/\[RENDER:[^\]]+\]/gi, '')
+    .replace(/\[pills\][\s\S]*?\[\/pills\]/gi, '');
+  if (isLastAI) {
+    result = result
+      .replace(/^[■●◆○◉▪▸]\s*.+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n');
+  }
+  return result.trim();
+}
+
+function filterExpectedEffect(text: string, isLastAI?: boolean): string {
+  if (!text || typeof text !== 'string') return text;
+  const stripped = stripRenderAndPillsMarkers(text, isLastAI);
+  return stripped
+    .split('\n')
+    .filter((line) => {
+      if (line.includes('预期效果')) return false;
+      return !UI_CTRL_PATTERNS.some((p) => p.test(line.trim()));
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 const SystemMessage = ({ text }: { text: string }) => {
   const [collapsed, setCollapsed] = React.useState(true);
@@ -686,7 +749,103 @@ interface ChatMessageItemProps {
   isLastAssistant?: boolean;
 }
 
-const ChatMessageItem = memo(function ChatMessageItem({
+const MessageMeta = memo(function MessageMeta({ timestamp }: { timestamp: string | number | undefined }) {
+  const [hoverTime, setHoverTime] = useState(false);
+  return (
+    <span
+      className="msg-timestamp"
+      onMouseEnter={() => setHoverTime(true)}
+      onMouseLeave={() => setHoverTime(false)}
+      style={{
+        color: hoverTime ? 'var(--accent)' : 'var(--text-secondary)',
+        fontSize: 'var(--text-xs)',
+        fontFamily: 'var(--font-mono)',
+        cursor: 'default',
+        transition: 'color 0.2s',
+        letterSpacing: '0.5px',
+      }}
+    >
+      {hoverTime ? formatFullTime(timestamp) : formatTime(timestamp)}
+    </span>
+  );
+});
+
+const MessageHeader = memo(
+  function MessageHeader({
+    msg,
+    isStreamingMsg,
+    agentPhase,
+  }: {
+    msg: ChatMessage;
+    isStreamingMsg: boolean;
+    agentPhase: 'idle' | 'thinking' | 'typing';
+  }) {
+    return (
+      <div className="msg-header">
+        {msg.role === 'user' ? (
+          <span className="msg-label">YOU ▶</span>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
+            <span
+              style={{
+                color: 'var(--accent)',
+                fontSize: 'var(--text-xs)',
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '2px',
+              }}
+            >
+              AMY
+            </span>
+            {isStreamingMsg && agentPhase !== 'idle' && (
+              <span className="agent-status-badge">{agentPhase === 'thinking' ? '思考中' : '打字中'}</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  },
+  (a, b) =>
+    a.msg.id === b.msg.id &&
+    a.msg.role === b.msg.role &&
+    !!a.msg.isStreaming === !!b.msg.isStreaming &&
+    a.isStreamingMsg === b.isStreamingMsg &&
+    a.agentPhase === b.agentPhase
+);
+
+const UserMessageBody = memo(
+  function UserMessageBody({ imageDataUrl, textToShow }: { imageDataUrl?: string; textToShow: string }) {
+    return (
+      <div className="msg-user-body">
+        {imageDataUrl && <img src={imageDataUrl} alt="" className="msg-user-image" />}
+        {textToShow && <span className="msg-content msg-user-text">{textToShow}</span>}
+      </div>
+    );
+  },
+  (a, b) => a.imageDataUrl === b.imageDataUrl && a.textToShow === b.textToShow
+);
+
+type AssistantMessageBodyProps = Pick<
+  ChatMessageItemProps,
+  | 'msg'
+  | 'textToShow'
+  | 'raw'
+  | 'optionsToShow'
+  | 'isTaskList'
+  | 'isReflectiveQuestions'
+  | 'forcePills'
+  | 'totalPages'
+  | 'currentPage'
+  | 'onPageChange'
+  | 'isStreamingMsg'
+  | 'wsConnected'
+  | 'quickSend'
+  | 'onQuoteQuestion'
+  | 'segments'
+  | 'isLastAssistant'
+>;
+
+const AssistantMessageBody = memo(function AssistantMessageBody({
   msg,
   textToShow,
   raw,
@@ -698,25 +857,209 @@ const ChatMessageItem = memo(function ChatMessageItem({
   currentPage,
   onPageChange,
   isStreamingMsg,
-  agentPhase,
-  speakingMessageId,
   wsConnected,
   quickSend,
-  onContextMenu,
   onQuoteQuestion,
   segments,
   isLastAssistant,
-}: ChatMessageItemProps) {
-  const [hoverTime, setHoverTime] = React.useState(false);
-  
-  const msgRef = React.useRef<HTMLDivElement>(null);
-  const bodyRef = React.useRef<HTMLDivElement>(null);
-  const assistantBodyRef = React.useRef<HTMLDivElement>(null);
-  
-  
+}: AssistantMessageBodyProps) {
+  if (msg.isSystemReply) {
+    return <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />;
+  }
+
   return (
     <div
-      ref={msgRef}
+      className="msg-assistant-body"
+      style={isStreamingMsg ? { minHeight: '40vh', display: 'flex', flexDirection: 'column' } : undefined}
+    >
+      {segments && segments.length > 0 ? (
+        <>
+          {(() => {
+            let remaining = textToShow || '';
+            return segments.map((seg, idx) => {
+            const contentBefore =
+              idx > 0 ? segments.slice(0, idx).reduce((sum, s) => sum + (s.content?.length || 0), 0) : 0;
+            const contentAfter =
+              idx < segments.length - 1
+                ? segments.slice(idx + 1).reduce((sum, s) => sum + (s.content?.length || 0), 0)
+                : 0;
+
+            switch (seg.type) {
+              case 'text':
+                if (isStreamingMsg) {
+                  // 流式：文本段按顺序消耗 displayedText 前缀；组件始终挂载（即使 text 为空）
+                  const fullSegText = stripRenderAndPillsMarkers(seg.content, isLastAssistant);
+                  const take = remaining.slice(0, fullSegText.length);
+                  remaining = remaining.slice(take.length);
+                  return <StreamingTail key={idx} text={take} />;
+                }
+                return (
+                  <FinalizedMarkdownContent
+                    key={idx}
+                    messageId={msg.id}
+                    segmentKey={`seg-${idx}`}
+                    content={stripRenderAndPillsMarkers(seg.content, isLastAssistant)}
+                  />
+                );
+              case 'pills':
+                return seg.options.length > 0 && !isLastAssistant ? (
+                  <OptionBox
+                    key={idx}
+                    messageId={msg.id}
+                    options={seg.options}
+                    totalPages={undefined}
+                    currentPage={1}
+                    onPageChange={(page) => onPageChange(msg.id, page)}
+                    onSelect={(value) => {
+                      if (value && wsConnected) quickSend(value);
+                    }}
+                    forcePills={true}
+                    segmentIndex={idx}
+                    contentBefore={contentBefore}
+                    contentAfter={contentAfter}
+                  />
+                ) : null;
+              case 'checkbox':
+                return seg.options.length > 0 ? (
+                  <OptionBox
+                    key={idx}
+                    messageId={msg.id}
+                    options={seg.options}
+                    totalPages={undefined}
+                    currentPage={1}
+                    onPageChange={(page) => onPageChange(msg.id, page)}
+                    onSelect={(value) => {
+                      if (value && wsConnected) quickSend(value);
+                    }}
+                    forcePills={false}
+                  />
+                ) : null;
+              case 'question':
+                return seg.options.length > 0 ? (
+                  <QuestionCards key={idx} questions={seg.options} onQuote={onQuoteQuestion} />
+                ) : null;
+              case 'tasklist':
+                return seg.options.length > 0 ? <TaskList key={idx} items={seg.options} /> : null;
+              default:
+                return null;
+            }
+          });
+          })()}
+        </>
+      ) : (
+        <>
+          {(() => {
+            if (isStreamingMsg) {
+              // 流式：只做纯文本打字展示；交互组件由 fullContent 解析结果驱动并保持挂载
+              return (
+                <>
+                  <StreamingTail text={textToShow || ''} />
+                  {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (!isLastAssistant || !forcePills) && (
+                    <OptionBox
+                      messageId={msg.id}
+                      options={optionsToShow}
+                      totalPages={totalPages}
+                      currentPage={currentPage}
+                      onPageChange={(page) => onPageChange(msg.id, page)}
+                      onSelect={(value) => {
+                        if (value && wsConnected) quickSend(value);
+                      }}
+                      forcePills={forcePills}
+                    />
+                  )}
+                </>
+              );
+            }
+
+            const cleanedText = filterExpectedEffect(textToShow, isLastAssistant);
+            const hasInlinePlaceholder = cleanedText.includes('<!--OPTIONS_HERE-->');
+            const showInlineOptions = hasInlinePlaceholder && optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions;
+
+            if (showInlineOptions) {
+              const parts = cleanedText.split('<!--OPTIONS_HERE-->');
+              const before = parts[0]?.trim() || '';
+              const after = parts.slice(1).join('').trim();
+              const showPillsHere = !isLastAssistant || !forcePills;
+              return (
+                <>
+                  {before &&
+                    (isStreamingMsg ? (
+                      <StreamingTail text={before} />
+                    ) : (
+                      <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-before" content={before} />
+                    ))}
+                  {showPillsHere && (
+                    <OptionBox
+                      messageId={msg.id}
+                      options={optionsToShow}
+                      totalPages={totalPages}
+                      currentPage={currentPage}
+                      onPageChange={(page) => onPageChange(msg.id, page)}
+                      onSelect={(value) => {
+                        if (value && wsConnected) quickSend(value);
+                      }}
+                      forcePills={forcePills}
+                    />
+                  )}
+                  {after &&
+                    (isStreamingMsg ? (
+                      <StreamingTail text={after} />
+                    ) : (
+                      <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-after" content={after} />
+                    ))}
+                </>
+              );
+            }
+
+            return (
+              <>
+                <FinalizedMarkdownContent messageId={msg.id} content={cleanedText} />
+                {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (!isLastAssistant || !forcePills) && (
+                  <OptionBox
+                    messageId={msg.id}
+                    options={optionsToShow}
+                    totalPages={totalPages}
+                    currentPage={currentPage}
+                    onPageChange={(page) => onPageChange(msg.id, page)}
+                    onSelect={(value) => {
+                      if (value && wsConnected) quickSend(value);
+                    }}
+                    forcePills={forcePills}
+                  />
+                )}
+              </>
+            );
+          })()}
+          {optionsToShow.length > 0 && isTaskList && <TaskList items={optionsToShow} />}
+          {optionsToShow.length > 0 && isReflectiveQuestions && (
+            <QuestionCards questions={optionsToShow} onQuote={onQuoteQuestion} />
+          )}
+        </>
+      )}
+      {isStreamingMsg && <TypewriterCursor show />}
+    </div>
+  );
+});
+
+/** 单行消息外壳（不设 memo：子树由 ChatMessageItem 控制） */
+function MessageRow({
+  msg,
+  raw,
+  speakingMessageId,
+  isStreamingMsg,
+  onContextMenu,
+  children,
+}: {
+  msg: ChatMessage;
+  raw: string;
+  speakingMessageId: number | null;
+  isStreamingMsg: boolean;
+  onContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      data-msg-id={msg.id}
       className={`chat-message ${msg.role} ${msg.isSystemReply ? 'system-reply' : ''} ${speakingMessageId === msg.id ? 'speaking' : ''} ${isStreamingMsg ? 'streaming' : ''}`}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -728,217 +1071,71 @@ const ChatMessageItem = memo(function ChatMessageItem({
           <MsgCopyButton text={raw} />
         </div>
       )}
-      <div className="msg-header">
-        {msg.role === 'user' ? (
-          <span className="msg-label">YOU ▶</span>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
-            <span style={{ color: 'var(--accent)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', letterSpacing: '2px' }}>AMY</span>
-            {isStreamingMsg && agentPhase !== 'idle' && (
-              <span className="agent-status-badge">
-                {agentPhase === 'thinking' ? '思考中' : '打字中'}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="msg-body" ref={bodyRef}>
-        {msg.role === 'assistant' ? (
-          msg.isSystemReply ? (
-            <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />
-          ) : (
-          <div className="msg-assistant-body" ref={assistantBodyRef}>
-            {segments && segments.length > 0 ? (
-              <>
-                {segments.map((seg, idx) => {
-                // 计算 pills 前后的内容长度
-                const contentBefore = idx > 0 ? segments.slice(0, idx).reduce((sum, s) => sum + (s.content?.length || 0), 0) : 0;
-                const contentAfter = idx < segments.length - 1 ? segments.slice(idx + 1).reduce((sum, s) => sum + (s.content?.length || 0), 0) : 0;
-                
-                switch (seg.type) {
-                  case 'text':
-                    // 已解析出 segments 时，文本段始终走非流式路径，表格等统一由 ReactMarkdown 渲染
-                    return <MarkdownContent key={idx} content={stripRenderAndPillsMarkers(seg.content, isLastAssistant)} isStreaming={false} />;
-                  case 'pills':
-                    return seg.options.length > 0 && !isLastAssistant ? (
-                      <OptionBox
-                        key={idx}
-                        messageId={msg.id}
-                        options={seg.options}
-                        totalPages={undefined}
-                        currentPage={1}
-                        onPageChange={(page) => onPageChange(msg.id, page)}
-                        onSelect={(value) => { if (value && wsConnected) quickSend(value); }}
-                        forcePills={true}
-                        segmentIndex={idx}
-                        contentBefore={contentBefore}
-                        contentAfter={contentAfter}
-                      />
-                    ) : null;
-                  case 'checkbox':
-                    return seg.options.length > 0 ? (
-                      <OptionBox
-                        key={idx}
-                        messageId={msg.id}
-                        options={seg.options}
-                        totalPages={undefined}
-                        currentPage={1}
-                        onPageChange={(page) => onPageChange(msg.id, page)}
-                        onSelect={(value) => { if (value && wsConnected) quickSend(value); }}
-                        forcePills={false}
-                      />
-                    ) : null;
-                  case 'question':
-                    return seg.options.length > 0 ? (
-                      <QuestionCards key={idx} questions={seg.options} onQuote={onQuoteQuestion} />
-                    ) : null;
-                  case 'tasklist':
-                    return seg.options.length > 0 ? (
-                      <TaskList key={idx} items={seg.options} />
-                    ) : null;
-                  default:
-                    return null;
-                }
-              })}
-                {isStreamingMsg && <TypewriterCursor show />}
-              </>
-            ) : (
-              <>
-                {(() => {
-                  const cleanedText = filterExpectedEffect(textToShow, isLastAssistant);
-                  const hasInlinePlaceholder = cleanedText.includes('<!--OPTIONS_HERE-->');
-                  const showInlineOptions = hasInlinePlaceholder && optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions;
-
-                  if (showInlineOptions) {
-                    const parts = cleanedText.split('<!--OPTIONS_HERE-->');
-                    const before = parts[0]?.trim() || '';
-                    const after = parts.slice(1).join('').trim();
-                    const showPillsHere = !isLastAssistant || !forcePills;
-                    return (
-                      <>
-                        {before && <MarkdownContent content={before} isStreaming={isStreamingMsg} />}
-                        {showPillsHere && (
-                        <OptionBox
-                          messageId={msg.id}
-                          options={optionsToShow}
-                          totalPages={totalPages}
-                          currentPage={currentPage}
-                          onPageChange={(page) => onPageChange(msg.id, page)}
-                          onSelect={(value) => {
-                            if (value && wsConnected) quickSend(value);
-                          }}
-                          forcePills={forcePills}
-                        />
-                        )}
-                        {after && <MarkdownContent content={after} isStreaming={isStreamingMsg} />}
-                        {isStreamingMsg && <TypewriterCursor show />}
-                      </>
-                    );
-                  }
-
-                  return (
-                    <>
-                      <MarkdownContent content={cleanedText} isStreaming={isStreamingMsg} />
-                      {isStreamingMsg && <TypewriterCursor show />}
-                      {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (!isLastAssistant || !forcePills) && (
-                        <OptionBox
-                          messageId={msg.id}
-                          options={optionsToShow}
-                          totalPages={totalPages}
-                          currentPage={currentPage}
-                          onPageChange={(page) => onPageChange(msg.id, page)}
-                          onSelect={(value) => {
-                            if (value && wsConnected) quickSend(value);
-                          }}
-                          forcePills={forcePills}
-                        />
-                      )}
-                    </>
-                  );
-                })()}
-                {optionsToShow.length > 0 && isTaskList && (
-                  <TaskList items={optionsToShow} />
-                )}
-                {optionsToShow.length > 0 && isReflectiveQuestions && (
-                  <QuestionCards
-                    questions={optionsToShow}
-                    onQuote={onQuoteQuestion}
-                  />
-                )}
-              </>
-            )}
-          </div>
-          )
-        ) : (
-          <div className="msg-user-body">
-            {msg.imageDataUrl && <img src={msg.imageDataUrl} alt="" className="msg-user-image" />}
-            {textToShow && <span className="msg-content msg-user-text">{textToShow}</span>}
-          </div>
-        )}
-      </div>
-      <span
-        className="msg-timestamp"
-        onMouseEnter={() => setHoverTime(true)}
-        onMouseLeave={() => setHoverTime(false)}
-        style={{
-          color: hoverTime ? 'var(--accent)' : 'var(--text-secondary)',
-          fontSize: 'var(--text-xs)',
-          fontFamily: 'var(--font-mono)',
-          cursor: 'default',
-          transition: 'color 0.2s',
-          letterSpacing: '0.5px',
-        }}
-      >
-        {hoverTime ? formatFullTime(msg.timestamp) : formatTime(msg.timestamp)}
-      </span>
+      {children}
     </div>
   );
-}, (prev, next) => {
-  // 精细比较：只有真正变化的属性才触发重渲染
+}
+
+const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProps) {
+  const {
+    msg,
+    textToShow,
+    raw,
+    optionsToShow,
+    isTaskList,
+    isReflectiveQuestions,
+    forcePills,
+    totalPages,
+    currentPage,
+    onPageChange,
+    isStreamingMsg,
+    agentPhase,
+    speakingMessageId,
+    wsConnected,
+    quickSend,
+    onContextMenu,
+    onQuoteQuestion,
+    segments,
+    isLastAssistant,
+  } = props;
+
   return (
-    prev.msg.id === next.msg.id &&
-    prev.msg.content === next.msg.content &&
-    prev.msg.isStreaming === next.msg.isStreaming &&
-    prev.textToShow === next.textToShow &&
-    prev.isStreamingMsg === next.isStreamingMsg &&
-    prev.speakingMessageId === next.speakingMessageId &&
-    prev.agentPhase === next.agentPhase &&
-    prev.thinkingElapsed === next.thinkingElapsed &&
-    prev.wsConnected === next.wsConnected &&
-    prev.currentPage === next.currentPage &&
-    prev.segments === next.segments &&
-    prev.isLastAssistant === next.isLastAssistant
+    <MessageRow
+      msg={msg}
+      raw={raw}
+      speakingMessageId={speakingMessageId}
+      isStreamingMsg={isStreamingMsg}
+      onContextMenu={onContextMenu}
+    >
+      <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} />
+      <div className="msg-body">
+        {msg.role === 'assistant' ? (
+          <AssistantMessageBody
+            msg={msg}
+            textToShow={textToShow}
+            raw={raw}
+            optionsToShow={optionsToShow}
+            isTaskList={isTaskList}
+            isReflectiveQuestions={isReflectiveQuestions}
+            forcePills={forcePills}
+            totalPages={totalPages}
+            currentPage={currentPage}
+            onPageChange={onPageChange}
+            isStreamingMsg={isStreamingMsg}
+            wsConnected={wsConnected}
+            quickSend={quickSend}
+            onQuoteQuestion={onQuoteQuestion}
+            segments={segments}
+            isLastAssistant={isLastAssistant}
+          />
+        ) : (
+          <UserMessageBody imageDataUrl={msg.imageDataUrl} textToShow={textToShow} />
+        )}
+      </div>
+      <MessageMeta timestamp={msg.timestamp} />
+    </MessageRow>
   );
 });
-
-/** 剥离 [RENDER:xxx] 和 [pills]...[/pills] 块（后者已在托盘显示）；isLastAI 时额外清掉 ■ 开头的选项行 */
-function stripRenderAndPillsMarkers(text: string, isLastAI?: boolean): string {
-  if (!text || typeof text !== 'string') return text;
-  let result = text
-    .replace(/\[RENDER:[^\]]+\]/gi, '')
-    .replace(/\[pills\][\s\S]*?\[\/pills\]/gi, '');
-  if (isLastAI) {
-    result = result
-      .replace(/^[■●◆○◉▪▸]\s*.+$/gm, '')
-      .replace(/\n{3,}/g, '\n\n');
-  }
-  return result.trim();
-}
-
-function filterExpectedEffect(text: string, isLastAI?: boolean): string {
-  if (!text || typeof text !== 'string') return text;
-  const stripped = stripRenderAndPillsMarkers(text, isLastAI);
-  return stripped
-    .split('\n')
-    .filter((line) => {
-      if (line.includes('预期效果')) return false;
-      return !UI_CTRL_PATTERNS.some((p) => p.test(line.trim()));
-    })
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
 
 function stripMarkdown(text: string): string {
   return text
@@ -964,6 +1161,8 @@ interface ChatTabProps {
 
 const MAX_VISIBLE_MESSAGES = 50;
 const VISIBLE_MESSAGES_STEP = 30;
+const BOTTOM_FOLLOW_THRESHOLD = 100;
+const SHOW_SCROLL_BUTTON_THRESHOLD = 300;
 
 // ── STREAK 工具函数 ──────────────────────────────────────────────────────
 function getTodayStr(): string {
@@ -1269,13 +1468,25 @@ const ChatInputArea = memo(function ChatInputArea({
   );
 });
 
+/** 列表渲染用稳定引用，避免每条 user 消息因新对象触发无意义子树更新 */
+const STABLE_EMPTY_OPTIONS: OptionItem[] = [];
+const USER_ROW_PARSE_PLACEHOLDER = {
+  text: '',
+  options: STABLE_EMPTY_OPTIONS,
+  totalPages: undefined as number | undefined,
+  isTaskList: false,
+  isReflectiveQuestions: false,
+  forcePills: undefined as boolean | undefined,
+  segments: undefined as RenderSegment[] | undefined,
+};
+
 interface ChatMessageListProps {
   messages: ChatMessage[];
   displayMessages: ChatMessage[];
   isStreaming: boolean;
   awaitingResponse: boolean;
   streamingContent: string;
-  displayedLength: number;
+  displayedText: string;
   speakingMessageId: number | null;
   agentPhase: 'idle' | 'thinking' | 'typing';
   thinkingElapsed: number;
@@ -1286,6 +1497,7 @@ interface ChatMessageListProps {
   onMessageContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
   onQuoteQuestion: (text: string) => void;
   pendingPills?: string[] | null;
+  messagesContainerRef: React.MutableRefObject<HTMLDivElement | null>;
 }
 
 const ChatMessageList = function ChatMessageList({
@@ -1294,7 +1506,7 @@ const ChatMessageList = function ChatMessageList({
   isStreaming,
   awaitingResponse,
   streamingContent,
-  displayedLength,
+  displayedText,
   speakingMessageId,
   agentPhase,
   thinkingElapsed,
@@ -1305,9 +1517,9 @@ const ChatMessageList = function ChatMessageList({
   onMessageContextMenu,
   onQuoteQuestion,
   pendingPills,
+  messagesContainerRef,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
@@ -1360,15 +1572,23 @@ const ChatMessageList = function ChatMessageList({
           }
         } catch {}
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
-        // 流式消息：用 displayedLength 控制显示进度，实现打字机效果
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
-        // 如果 displayedLength 为 0 但有内容，显示完整内容（避免空白）
-        const display = isStreamingMsg && displayedLength > 0 ? fullContent.slice(0, displayedLength) : fullContent;
-        // 流式期间不解析交互标签（标签可能未闭合，且会绕过打字机切片）
-        // 流式结束后才调用 parseOptionBox 解析 pills/question 等
-        const parsed = (msg.role === 'assistant' && !isStreamingMsg)
-          ? parseOptionBox(raw)
-          : { text: display, options: [] as OptionItem[], totalPages: undefined, isTaskList: false, isReflectiveQuestions: false, forcePills: undefined, segments: undefined };
+        // displayedText 仅用于视觉打字；结构一律从 fullContent 解析
+        const display = isStreamingMsg ? displayedText : fullContent;
+        const parsed =
+          msg.role === 'user'
+            ? USER_ROW_PARSE_PLACEHOLDER
+            : msg.role === 'assistant'
+              ? parseOptionBox(typeof fullContent === 'string' ? fullContent : '')
+              : {
+                  text: display,
+                  options: STABLE_EMPTY_OPTIONS,
+                  totalPages: undefined,
+                  isTaskList: false,
+                  isReflectiveQuestions: false,
+                  forcePills: undefined,
+                  segments: undefined,
+                };
         const textToShow = msg.role === 'assistant'
           ? (isStreamingMsg ? display : (parsed.text?.trim() ? parsed.text : raw))
           : display;
@@ -1419,6 +1639,7 @@ const ChatMessageList = function ChatMessageList({
             </div>
           </div>
         )}
+        <div style={{ minHeight: '30px', flexShrink: 0 }} aria-hidden />
         <div ref={bottomRef as React.Ref<HTMLDivElement>} />
       </div>
     </div>
@@ -1426,7 +1647,7 @@ const ChatMessageList = function ChatMessageList({
 }
 
 const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange }) => {
-  const { settings, setSettings, streamSpeedMs } = useSettings();
+  const { settings, setSettings } = useSettings();
   const { permissions } = usePermissions();
 
   // ===== 所有 useState 集中声明 =====
@@ -1437,7 +1658,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [isStreaming, setIsStreaming] = useState(false);
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [streamingDisplayContent, setStreamingDisplayContent] = useState('');
+  // typing scheduler 双状态：fullText（真实流式内容） / displayedText（UI可见）
+  const [fullText, setFullText] = useState('');
+  const [displayedText, setDisplayedText] = useState('');
   const [modelName, setModelName] = useState('--');
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
   const [localTime, setLocalTime] = useState('');
@@ -1470,7 +1693,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
-  const [displayedLength, setDisplayedLength] = useState(0);
   const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE_MESSAGES);
   const [pendingPills, setPendingPills] = useState<string[] | null>(null);
   // 任务看板显示状态
@@ -1481,32 +1703,91 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const streamingMessageRef = useRef('');
-  const typewriterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const displayedLengthRef = useRef(0);
+  const streamingMessageRef = useRef(''); // 仍保留：用于与现有消息 content 合并/落盘，不改 schema
+  const typewriterRafRef = useRef<number | null>(null);
+  const fullTextRef = useRef<string>('');
+  const visibleFullTextRef = useRef<string>(''); // 用于打字展示的“可见正文”（从 fullText 解析得到）
+  const displayedLenRef = useRef<number>(0);
+  const typingBudgetMsRef = useRef<number>(0);
+  const lastTypingTsRef = useRef<number>(0);
+  const pendingFullTextSyncRafRef = useRef<number | null>(null);
   const userScrolledUp = useRef<boolean>(false);
+  const followScrollRef = useRef<boolean>(true);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
   const streamDoneReceived = useRef<boolean>(false);
   const streamUiRafRef = useRef<number | null>(null);
+  const anchoredStreamingMsgIdRef = useRef<number | null>(null);
+  // 用一个稳定的 ref 标记"是否应该运行打字机"
+  const shouldRunTypewriterRef = useRef(false);
 
-  const scheduleStreamUiUpdate = useCallback(() => {
-    if (streamUiRafRef.current != null) return;
-    streamUiRafRef.current = requestAnimationFrame(() => {
-      streamUiRafRef.current = null;
-      const buf = streamingMessageRef.current;
-      setStreamingDisplayContent(buf);
-      if (!buf) return;
+  const scrollToBottom = useCallback((force = false) => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    if (!force && !followScrollRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  /** 布局稳定后再滚动（ResizeObserver / 流式 tick 共用） */
+  const scheduleScrollAfterLayout = useCallback(
+    (force = false) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom(force);
+        });
+      });
+    },
+    [scrollToBottom]
+  );
+
+  /** 发送后双 rAF：等 DOM 布局完成再锚定最新用户消息并重置跟随 */
+  const scrollAfterUserSend = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = messagesContainerRef.current;
+        const userMsgs = el?.querySelectorAll('.chat-message.user');
+        const lastUserMsg = userMsgs?.[userMsgs.length - 1] as HTMLElement | undefined;
+        if (lastUserMsg && el) {
+          el.scrollTop = lastUserMsg.offsetTop;
+        } else {
+          bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+        }
+        followScrollRef.current = true;
+      });
+    });
+  }, []);
+
+  const scheduleFullTextSync = useCallback(() => {
+    if (pendingFullTextSyncRafRef.current != null) return;
+    pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
+      pendingFullTextSyncRafRef.current = null;
+      const buf = fullTextRef.current;
+      setFullText(buf);
+      // 打字展示用的可见正文：始终从 fullContent 解析而来（不依赖 displayedText）
+      try {
+        const parsed = parseOptionBox(buf || '');
+        const visible = (parsed.text ?? '').toString();
+        visibleFullTextRef.current = visible;
+        // 若 visible 变短（例如标签被剥离），夹紧 displayedLen，避免 slice 越界/回退抖动
+        const clamped = Math.min(displayedLenRef.current, visible.length);
+        if (clamped !== displayedLenRef.current) {
+          displayedLenRef.current = clamped;
+          setDisplayedText(visible.slice(0, clamped));
+        }
+      } catch {
+        visibleFullTextRef.current = buf || '';
+      }
+      // 仅保证“流式气泡存在”，不驱动可见文本（可见文本由 typing scheduler 输出）
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
-          // 不用空值覆盖已有内容
-          const newContent = buf || last.content;
-          return prev.map((m, idx) => (idx === prev.length - 1 ? { ...m, content: newContent } : m));
+          // content 保持为完整 fullText 以便复制/最终落盘，但 UI 渲染不直接用它（用 displayedText）
+          if (last.content === buf) return prev;
+          return prev.map((m, idx) => (idx === prev.length - 1 ? { ...m, content: buf } : m));
         }
-        if (last?.role === 'assistant' && !last.isStreaming && (last.content ?? '').trim() === buf.trim()) {
-          return prev;
-        }
+        // 若还没创建 assistant 流式气泡，创建一个（content 先放 fullText）
+        if (!buf || !buf.trim()) return prev;
         return [
           ...prev,
           {
@@ -1521,11 +1802,77 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     });
   }, [getNextMessageId, setMessages]);
 
+  const getNextCharIndex = (text: string, idx: number): number => {
+    if (idx >= text.length) return idx;
+    const code = text.charCodeAt(idx);
+    // 高代理项 + 低代理项视为一个字符
+    if (code >= 0xd800 && code <= 0xdbff && idx + 1 < text.length) {
+      const next = text.charCodeAt(idx + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) return idx + 2;
+    }
+    return idx + 1;
+  };
+
+  const charDelayMs = (ch: string): number => {
+    let d = 18; // base speed
+    if (ch === '\n') d += 220;
+    else if (ch === '.' || ch === ',' || ch === '。' || ch === '，') d += 120;
+    return d;
+  };
+
+  const isWordChar = (ch: string): boolean => {
+    // ASCII word-ish; CJK/其它无空格语言按“单字符”自然显示
+    return /^[A-Za-z0-9_]+$/.test(ch);
+  };
+
+  const computeRangeCostMs = (text: string, start: number, end: number): number => {
+    let cost = 0;
+    let i = start;
+    while (i < end) {
+      const ni = getNextCharIndex(text, i);
+      const ch = text.slice(i, ni);
+      cost += charDelayMs(ch);
+      i = ni;
+    }
+    return cost;
+  };
+
+  const pickPreferredNextIndex = (text: string, idx: number, maxChars: number): number => {
+    if (idx >= text.length) return idx;
+    // 先看第一个字符；非 word（空白/标点/CJK 等）则按“单字符”推进
+    const firstEnd = getNextCharIndex(text, idx);
+    const firstCh = text.slice(idx, firstEnd);
+    if (!isWordChar(firstCh)) return firstEnd;
+
+    // 在 maxChars 范围内尽量推进到 word 边界（包含可选的 1 个尾随空格）
+    let i = idx;
+    let used = 0;
+    while (used < maxChars && i < text.length) {
+      const ni = getNextCharIndex(text, i);
+      const ch = text.slice(i, ni);
+      if (!isWordChar(ch)) break;
+      i = ni;
+      used += 1;
+    }
+
+    // 若后面紧跟空格且仍有容量，则把空格也带上，观感更“按词组”流出
+    if (used < maxChars && i < text.length) {
+      const ni = getNextCharIndex(text, i);
+      const ch = text.slice(i, ni);
+      if (ch === ' ') return ni;
+    }
+    return i;
+  };
+
   // ===== 所有 useEffect 放在 useState/useRef 之后 =====
   // 提取 pendingPills：统一使用 parseOptionBox，与消息内渲染逻辑一致；只有最后一条是 AI 时才显示托盘
   useEffect(() => {
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg || lastMsg.role !== 'assistant') {
+      setPendingPills(null);
+      return;
+    }
+    if (lastMsg.isStreaming) {
       setPendingPills(null);
       return;
     }
@@ -1841,7 +2188,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // 将最终（已清理）内容刷新到 UI（避免节流导致最后一段没显示）
       if (finalStreamContent) {
         streamingMessageRef.current = finalStreamContent;
-        scheduleStreamUiUpdate();
+        fullTextRef.current = finalStreamContent;
+        scheduleFullTextSync();
       }
 
       // 解析 /status 系统回复，更新状态栏
@@ -1918,7 +2266,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         return prev;
       });
       // 不立即 setIsStreaming(false)，等打字机跑完再结束
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 50);
+      if (followScrollRef.current) {
+        scheduleScrollAfterLayout(false);
+      }
       return;
     }
 
@@ -1936,14 +2286,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // delta 模式：追加增量；全量模式：直接替换
       if (isDelta) {
         streamingMessageRef.current += content;
+        fullTextRef.current += content;
       } else {
         streamingMessageRef.current = content;
+        fullTextRef.current = content;
       }
       
-      scheduleStreamUiUpdate();
+      scheduleFullTextSync();
       setIsStreaming(true);
-      if (!userScrolledUp.current) 
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      if (followScrollRef.current) {
+        scheduleScrollAfterLayout(false);
+      }
     }
   };
 
@@ -2059,25 +2412,44 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const cmdIsSystem = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
     pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
     streamingMessageRef.current = '';
+    fullTextRef.current = '';
+    visibleFullTextRef.current = '';
+    displayedLenRef.current = 0;
+    setFullText('');
+    setDisplayedText('');
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
     userScrolledUp.current = false;
+    followScrollRef.current = true;
     setStreak(touchStreak());
     setPendingPills(null);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: getNextMessageId(),
-        role: 'user' as const,
-        content: displayContent,
-        timestamp: Date.now(),
-        imageDataUrl: imageDataUrl || undefined,
-        files: files,
-      },
-    ]);
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 30);
+    setMessages((prev) => {
+      const next: ChatMessage[] = [
+        ...prev,
+        {
+          id: getNextMessageId(),
+          role: 'user' as const,
+          content: displayContent,
+          timestamp: Date.now(),
+          imageDataUrl: imageDataUrl || undefined,
+          files: files,
+        },
+      ];
+      // Claude-style：不等首 token，立即创建 assistant 占位并开始锚定/留白
+      if (!cmdIsSystem) {
+        next.push({
+          id: getNextMessageId(),
+          role: 'assistant' as const,
+          content: '',
+          isStreaming: true,
+          timestamp: Date.now(),
+        });
+      }
+      return next;
+    });
+    scrollAfterUserSend();
 
     // 发送到 OpenClaw，包含图片和文件（content 含路径引用，AMY 用 read_file 读取）
     const result = await ipcRenderer.invoke('openclaw-send', {
@@ -2089,7 +2461,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setAwaitingResponse(false);
       console.warn('[ChatTab] Send failed:', result?.error);
     }
-  }, [wsConnected, getNextMessageId, permissions]);
+  }, [wsConnected, getNextMessageId, permissions, scrollAfterUserSend]);
 
   const handleFileAttach = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -2122,22 +2494,42 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const isSystem = isSystemCommand(content.trim());
     pendingSystemReplyMap.current.set(newRequestId, isSystem);
     streamingMessageRef.current = '';
+    fullTextRef.current = '';
+    visibleFullTextRef.current = '';
+    displayedLenRef.current = 0;
+    setFullText('');
+    setDisplayedText('');
     if (!isSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
     userScrolledUp.current = false;
+    followScrollRef.current = true;
     setPendingPills(null);
-    setMessages((prev) => [
-      ...prev,
-      { id: getNextMessageId(), role: 'user', content: content.trim(), timestamp: Date.now() },
-    ]);
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 30);
+    setMessages((prev) => {
+      const next: ChatMessage[] = [
+        ...prev,
+        { id: getNextMessageId(), role: 'user', content: content.trim(), timestamp: Date.now() },
+      ];
+      // Claude-style：不等首 token，立即创建 assistant 占位并开始锚定/留白
+      if (!isSystem) {
+        next.push({
+          id: getNextMessageId(),
+          role: 'assistant' as const,
+          content: '',
+          isStreaming: true,
+          timestamp: Date.now(),
+        });
+      }
+      return next;
+    });
+    scrollAfterUserSend();
     ipcRenderer.invoke('openclaw-send', content.trim());
-  }, [wsConnected, getNextMessageId, permissions]);
+  }, [wsConnected, getNextMessageId, permissions, scrollAfterUserSend]);
 
   const handleClearHistory = useCallback(() => {
     if (!window.confirm('确认清空所有聊天记录？')) return;
+    clearProcessedMarkdownCache();
     setMessages([]);
     (window as any).electronAPI?.chatHistorySave?.([]);
   }, []);
@@ -2175,89 +2567,188 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     };
   }, []);
 
-  const handleChatScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setShowScrollBtn(distFromBottom > 100);
-    userScrolledUp.current = distFromBottom > 200;
+  const handleChatScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(distFromBottom > SHOW_SCROLL_BUTTON_THRESHOLD);
 
-    // 向上滚动接近顶部时，逐步加载更早消息（轻量“虚拟滚动”）
-    if (el.scrollTop < 120 && messages.length > visibleCount) {
-      setVisibleCount((prev) => Math.min(prev + VISIBLE_MESSAGES_STEP, messages.length));
+      if (isStreaming) {
+        if (distFromBottom < 50) {
+          followScrollRef.current = true;
+          userScrolledUp.current = false;
+        } else if (distFromBottom > 600) {
+          followScrollRef.current = false;
+          userScrolledUp.current = true;
+        }
+      } else {
+        const nearBottom = distFromBottom < BOTTOM_FOLLOW_THRESHOLD;
+        followScrollRef.current = nearBottom;
+        userScrolledUp.current = distFromBottom > 200;
+      }
+
+      if (el.scrollTop < 120 && messages.length > visibleCount) {
+        setVisibleCount((prev) => Math.min(prev + VISIBLE_MESSAGES_STEP, messages.length));
+      }
+    },
+    [messages.length, visibleCount, isStreaming]
+  );
+
+  useLayoutEffect(() => {
+    const wrap = messagesContainerRef.current;
+    if (!wrap) return;
+    const inner = wrap.querySelector('.chat-messages');
+    const target = inner ?? wrap;
+    const ro = new ResizeObserver(() => {
+      if (!followScrollRef.current) return;
+      scheduleScrollAfterLayout(false);
+    });
+    ro.observe(target);
+    return () => ro.disconnect();
+  }, [scheduleScrollAfterLayout, messages.length, displayedText.length, fullText.length]);
+
+  // assistant 新流式消息启动时：锚定到该消息顶部，并禁用跟底滚动
+  useLayoutEffect(() => {
+    const last = messages[messages.length - 1];
+    const isAssistantStreaming = !!last && last.role === 'assistant' && last.isStreaming;
+
+    if (!isAssistantStreaming) {
+      anchoredStreamingMsgIdRef.current = null;
+      return;
     }
-  }, [messages.length, visibleCount]);
 
+    if (anchoredStreamingMsgIdRef.current === last.id) return;
+    anchoredStreamingMsgIdRef.current = last.id;
+
+    // 流式开始默认关闭跟底；仅当用户手动滚到接近底部时，handleChatScroll 才会重新开启
+    followScrollRef.current = false;
+    userScrolledUp.current = true;
+
+    requestAnimationFrame(() => {
+      const wrap = messagesContainerRef.current;
+      const el = wrap?.querySelector(`[data-msg-id="${last.id}"]`) as HTMLElement | null;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [messages.length]);
+
+  // 仅用于启动/停止打字机的 effect —— 依赖精简为启停条件
   useEffect(() => {
     const lastMsg = messages[messages.length - 1];
-    if (!lastMsg?.isStreaming || lastMsg.role !== 'assistant') {
-      if (typewriterTimerRef.current) {
-        clearInterval(typewriterTimerRef.current);
-        typewriterTimerRef.current = null;
+    const shouldRun = !!lastMsg?.isStreaming && lastMsg.role === 'assistant';
+    shouldRunTypewriterRef.current = shouldRun;
+
+    if (!shouldRun) {
+      if (typewriterRafRef.current != null) {
+        cancelAnimationFrame(typewriterRafRef.current);
+        typewriterRafRef.current = null;
       }
-      setDisplayedLength(0);
-      displayedLengthRef.current = 0;
       streamDoneReceived.current = false;
       return;
     }
 
-    // 打字机效果已启动，跳过
-    if (typewriterTimerRef.current) return;
+    // 已在运行，不重复启动
+    if (typewriterRafRef.current != null) return;
 
-    typewriterTimerRef.current = setInterval(() => {
-      // ref 追踪内容长度
-      const fullLen = streamingMessageRef.current.length;
-      const current = displayedLengthRef.current;
-      
-      if (current >= fullLen) {
-        // 打字机跑完了
-        if (streamDoneReceived.current) {
-          // done 已收到，现在可以结束 streaming
-          clearInterval(typewriterTimerRef.current!);
-          typewriterTimerRef.current = null;
-          setDisplayedLength(0);
-          displayedLengthRef.current = 0;
-          streamingMessageRef.current = '';
-          setStreamingDisplayContent('');
-          streamDoneReceived.current = false;
-          setIsStreaming(false);
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant' && last?.isStreaming) {
-              return prev.map((msg, idx) =>
-                idx === prev.length - 1 ? { ...msg, isStreaming: false } : msg
-              );
-            }
-            return prev;
-          });
-        }
+    // 兜底初始化
+    if (!fullTextRef.current) fullTextRef.current = streamingMessageRef.current || '';
+    if (!visibleFullTextRef.current) {
+      try {
+        visibleFullTextRef.current = (parseOptionBox(fullTextRef.current || '').text ?? '').toString();
+      } catch {
+        visibleFullTextRef.current = fullTextRef.current || '';
+      }
+    }
+
+    const tick = (ts: number) => {
+      // 如果外部已标记停止，退出
+      if (!shouldRunTypewriterRef.current) {
+        typewriterRafRef.current = null;
         return;
       }
-      
-      // 内容越多、落后越多，每次推进越快，保证能追上
-      const CHARS_PER_TICK = Math.max(3, Math.ceil((fullLen - current) / 20));
-      let next = Math.min(current + CHARS_PER_TICK, fullLen);
-      // 不在 surrogate pair 中间切断
-      const full = streamingMessageRef.current;
-      if (next < full.length) {
-        const code = full.charCodeAt(next - 1);
-        if (code >= 0xD800 && code <= 0xDBFF) next += 1; // high surrogate → 跳到下一个
+
+      if (!lastTypingTsRef.current) lastTypingTsRef.current = ts;
+      const dt = Math.min(80, ts - lastTypingTsRef.current);
+      lastTypingTsRef.current = ts;
+      typingBudgetMsRef.current += dt;
+
+      const full = visibleFullTextRef.current || '';
+      const fullLen = full.length;
+      let idx = displayedLenRef.current;
+      let typedThisFrame = 0;
+
+      while (typedThisFrame < 4 && idx < fullLen) {
+        const remain = 4 - typedThisFrame;
+        let targetIdx = pickPreferredNextIndex(full, idx, remain);
+        if (targetIdx <= idx) targetIdx = getNextCharIndex(full, idx);
+
+        const cost = computeRangeCostMs(full, idx, targetIdx);
+        if (typingBudgetMsRef.current < cost) {
+          const singleIdx = getNextCharIndex(full, idx);
+          const singleCost = computeRangeCostMs(full, idx, singleIdx);
+          if (typingBudgetMsRef.current < singleCost) break;
+          typingBudgetMsRef.current -= singleCost;
+          idx = singleIdx;
+          typedThisFrame += 1;
+          continue;
+        }
+
+        typingBudgetMsRef.current -= cost;
+        let count = 0;
+        let j = idx;
+        while (j < targetIdx && count < remain) {
+          j = getNextCharIndex(full, j);
+          count += 1;
+        }
+        idx = targetIdx;
+        typedThisFrame += count;
       }
-      displayedLengthRef.current = next;
-      setDisplayedLength(next);
-      
-      if (settings.typingSound) playClickSound();
-      if (!userScrolledUp.current) {
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+
+      if (idx !== displayedLenRef.current) {
+        displayedLenRef.current = idx;
+        setDisplayedText(full.slice(0, idx));
+        if (settings.typingSound) playClickSound();
+        if (followScrollRef.current) scheduleScrollAfterLayout(false);
       }
-    }, streamSpeedMs);
+
+      if (displayedLenRef.current >= fullLen && streamDoneReceived.current) {
+        typewriterRafRef.current = null;
+        shouldRunTypewriterRef.current = false;
+        streamDoneReceived.current = false;
+        lastTypingTsRef.current = 0;
+        typingBudgetMsRef.current = 0;
+        setDisplayedText('');
+        setFullText('');
+        fullTextRef.current = '';
+        visibleFullTextRef.current = '';
+        displayedLenRef.current = 0;
+        streamingMessageRef.current = '';
+        setIsStreaming(false);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant' && last?.isStreaming) {
+            return prev.map((msg, i) =>
+              i === prev.length - 1 ? { ...msg, isStreaming: false } : msg
+            );
+          }
+          return prev;
+        });
+        return;
+      }
+
+      typewriterRafRef.current = requestAnimationFrame(tick);
+    };
+
+    typewriterRafRef.current = requestAnimationFrame(tick);
 
     return () => {
-      if (typewriterTimerRef.current) {
-        clearInterval(typewriterTimerRef.current);
-        typewriterTimerRef.current = null;
+      if (typewriterRafRef.current != null) {
+        cancelAnimationFrame(typewriterRafRef.current);
+        typewriterRafRef.current = null;
       }
     };
-  }, [messages, streamSpeedMs, settings.typingSound]);
+    // ✅ 关键：移除 fullText 和 messages，只在"流式开始/结束"时真正启停
+    // messages.length 变化时检查是否需要启动，但不会 cancel 正在运行的循环
+  }, [messages.length, settings.typingSound, scheduleScrollAfterLayout]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -2402,8 +2893,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           displayMessages={messages.length > visibleCount ? messages.slice(-visibleCount) : messages}
           isStreaming={isStreaming}
           awaitingResponse={awaitingResponse}
-          streamingContent={streamingDisplayContent}
-          displayedLength={displayedLength}
+          streamingContent={fullText}
+          displayedText={displayedText}
           speakingMessageId={speakingMessageId}
           agentPhase={agentPhase}
           thinkingElapsed={thinkingElapsed}
@@ -2414,15 +2905,20 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           onMessageContextMenu={(e, msg, raw) => setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id, text: raw })}
           onQuoteQuestion={(text: string) => setInjectInputText(text)}
           pendingPills={pendingPills}
+          messagesContainerRef={messagesContainerRef}
         />
         {showScrollBtn && (
           <div
-            onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            onClick={() => {
+              followScrollRef.current = true;
+              userScrolledUp.current = false;
+              scheduleScrollAfterLayout(true);
+            }}
             style={{
               position: 'absolute',
-              bottom: '80px',
               left: '50%',
               transform: 'translateX(-50%)',
+              bottom: '90px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',

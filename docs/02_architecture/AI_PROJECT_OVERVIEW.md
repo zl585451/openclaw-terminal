@@ -40,8 +40,15 @@ OpenClaw-Terminal/
 │   └── prompts 相关    # 由 config.PROMPTS_DIR 指向 docs/01_system_prompts
 ├── docs/               # 文档
 │   ├── 01_system_prompts/  # 系统提示词（SOUL、AGENTS、USER、OCT_PROTOCOL 等）
-│   ├── feature-map/    # 功能活地图
-│   └── architecture/   # 架构设计
+│   ├── 02_architecture/    # 项目架构、功能地图
+│   ├── 03_specs/           # 技术协议、规范文档
+│   ├── 04_dev_guides/      # 开发指南
+│   ├── 05_changelog/       # 更新日志、修复报告
+│   ├── 06_release/         # 发布文档
+│   ├── 07_research/        # 研究文档
+│   ├── 08_for_claude/      # 给Claude的上下文
+│   ├── task-queue.md       # 运行时通信文件（不要移动）
+│   └── task-result.md      # 运行时通信文件（不要移动）
 ├── resources/          # Nocturne、打包资源
 └── prompts/            # 部分项目的 MEMORY.md 等（Gateway 默认用 docs/01_system_prompts）
 ```
