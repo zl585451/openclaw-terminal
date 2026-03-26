@@ -111,41 +111,27 @@ setInterval(async () => {
   }
 }, heartbeatIntervalMs);
 
-/** 流式合并：按 min/max chars 或 idle 批量发送，减少 Nocturne 侧连接压力 */
+/** 流式合并：微批量发送，保持打字机流畅度的同时减少 WebSocket 帧数 */
 function createStreamMergeDelta(cfg, onChunk) {
-  const minChars = (cfg?.min_chars ?? 200);
-  const maxChars = (cfg?.max_chars ?? 2000);
-  const idleMs = (cfg?.idle_ms ?? 500);
+  const maxChars = (cfg?.max_chars ?? 60);
+  const idleMs = (cfg?.idle_ms ?? 30);
   let buf = '';
   let idleTimer = null;
 
   function flush() {
-    if (idleTimer) {
-      clearTimeout(idleTimer);
-      idleTimer = null;
-    }
-    if (buf.length > 0) {
-      onChunk(buf);
-      buf = '';
-    }
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    if (buf.length > 0) { onChunk(buf); buf = ''; }
   }
 
   return {
     onDelta: (delta) => {
       if (!delta) return;
       buf += delta;
-      if (buf.length >= maxChars) {
-        flush();
-        return;
-      }
-      if (buf.length >= minChars && !idleTimer) {
-        idleTimer = setTimeout(flush, idleMs);
-      } else if (buf.length < minChars && !idleTimer) {
-        idleTimer = setTimeout(flush, idleMs);
-      } else if (idleTimer) {
-        clearTimeout(idleTimer);
-        idleTimer = setTimeout(flush, idleMs);
-      }
+      // 超过上限立即发送
+      if (buf.length >= maxChars) { flush(); return; }
+      // 否则用短定时器做微批处理（30ms 内的连续 delta 合并为一帧）
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(flush, idleMs);
     },
     flush,
   };

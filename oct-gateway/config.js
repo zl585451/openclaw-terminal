@@ -378,7 +378,7 @@ const config = {
     return { ...def, ...fromFile };
   })(),
   stream_merge: (() => {
-    const def = { min_chars: 200, max_chars: 2000, idle_ms: 500 };
+    const def = { min_chars: 1, max_chars: 60, idle_ms: 30 };
     const fromFile = fileConfig.stream_merge && typeof fileConfig.stream_merge === 'object' ? fileConfig.stream_merge : {};
     return { ...def, ...fromFile };
   })(),

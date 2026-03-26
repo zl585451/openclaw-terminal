@@ -4,5 +4,5 @@ echo ================================
 echo   OpenClaw Terminal ĺŻĺ¨ä¸?..
 echo ================================
 echo.
-npm run start:fast
+npm run start
 pause

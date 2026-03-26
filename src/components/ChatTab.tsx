@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 // xterm 已完全移除以修复闪退问题
@@ -870,7 +871,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   return (
     <div
       className="msg-assistant-body"
-      style={isStreamingMsg ? { minHeight: '40vh', display: 'flex', flexDirection: 'column' } : undefined}
+      style={isStreamingMsg ? { display: 'flex', flexDirection: 'column' } : undefined}
     >
       {segments && segments.length > 0 ? (
         <>
@@ -902,7 +903,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                   />
                 );
               case 'pills':
-                return seg.options.length > 0 && !isLastAssistant ? (
+                // 流式阶段隐藏 pills，消除换行闪跳；流式结束后自然出现
+                if (isStreamingMsg) return null;
+                return seg.options.length > 0 ? (
                   <OptionBox
                     key={idx}
                     messageId={msg.id}
@@ -920,6 +923,8 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                   />
                 ) : null;
               case 'checkbox':
+                // 流式阶段隐藏 checkbox
+                if (isStreamingMsg) return null;
                 return seg.options.length > 0 ? (
                   <OptionBox
                     key={idx}
@@ -950,25 +955,8 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         <>
           {(() => {
             if (isStreamingMsg) {
-              // 流式：只做纯文本打字展示；交互组件由 fullContent 解析结果驱动并保持挂载
-              return (
-                <>
-                  <StreamingTail text={textToShow || ''} />
-                  {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (!isLastAssistant || !forcePills) && (
-                    <OptionBox
-                      messageId={msg.id}
-                      options={optionsToShow}
-                      totalPages={totalPages}
-                      currentPage={currentPage}
-                      onPageChange={(page) => onPageChange(msg.id, page)}
-                      onSelect={(value) => {
-                        if (value && wsConnected) quickSend(value);
-                      }}
-                      forcePills={forcePills}
-                    />
-                  )}
-                </>
-              );
+              // 流式阶段：只做纯文本打字，不渲染 pills/options（避免换行闪跳）
+              return <StreamingTail text={textToShow || ''} />;
             }
 
             const cleanedText = filterExpectedEffect(textToShow, isLastAssistant);
@@ -1014,7 +1002,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
             return (
               <>
                 <FinalizedMarkdownContent messageId={msg.id} content={cleanedText} />
-                {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (!isLastAssistant || !forcePills) && (
+                {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (
                   <OptionBox
                     messageId={msg.id}
                     options={optionsToShow}
@@ -1520,6 +1508,7 @@ const ChatMessageList = function ChatMessageList({
   messagesContainerRef,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
+  const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
@@ -1579,7 +1568,18 @@ const ChatMessageList = function ChatMessageList({
           msg.role === 'user'
             ? USER_ROW_PARSE_PLACEHOLDER
             : msg.role === 'assistant'
-              ? parseOptionBox(typeof fullContent === 'string' ? fullContent : '')
+              ? (() => {
+                  const fc = typeof fullContent === 'string' ? fullContent : '';
+                  // 流式阶段：缓存解析结果，避免每帧重跑 867 行解析器
+                  if (isStreamingMsg) {
+                    const cached = streamingParseCacheRef.current;
+                    if (cached && cached.input === fc) return cached.output;
+                    const result = parseOptionBox(fc);
+                    streamingParseCacheRef.current = { input: fc, output: result };
+                    return result;
+                  }
+                  return parseOptionBox(fc);
+                })()
               : {
                   text: display,
                   options: STABLE_EMPTY_OPTIONS,
@@ -1719,6 +1719,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const streamDoneReceived = useRef<boolean>(false);
   const streamUiRafRef = useRef<number | null>(null);
   const anchoredStreamingMsgIdRef = useRef<number | null>(null);
+  // 滚动控制：标记编程式滚动（防止 handleChatScroll 误把程序滚动当成用户操作）
+  const programmaticScrollRef = useRef(false);
+  // 滚动控制：发送消息后的短暂保护期（防止 ResizeObserver 立即覆盖用户消息锚定）
+  const scrollGraceUntilRef = useRef<number>(0);
   // 用一个稳定的 ref 标记"是否应该运行打字机"
   const shouldRunTypewriterRef = useRef(false);
 
@@ -1726,7 +1730,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const el = messagesContainerRef.current;
     if (!el) return;
     if (!force && !followScrollRef.current) return;
+    programmaticScrollRef.current = true;
     el.scrollTop = el.scrollHeight;
+    // 下一帧清除标记，让后续用户滚动能正常检测
+    requestAnimationFrame(() => { programmaticScrollRef.current = false; });
   }, []);
 
   /** 布局稳定后再滚动（ResizeObserver / 流式 tick 共用） */
@@ -1743,13 +1750,18 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   /** 发送后双 rAF：等 DOM 布局完成再锚定最新用户消息并重置跟随 */
   const scrollAfterUserSend = useCallback(() => {
+    // 短保护期：让用户消息锚定到视口顶部，保护期内 ResizeObserver 不干预
+    scrollGraceUntilRef.current = Date.now() + 400;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const el = messagesContainerRef.current;
         const userMsgs = el?.querySelectorAll('.chat-message.user');
         const lastUserMsg = userMsgs?.[userMsgs.length - 1] as HTMLElement | undefined;
         if (lastUserMsg && el) {
-          el.scrollTop = lastUserMsg.offsetTop;
+          programmaticScrollRef.current = true;
+          // scrollIntoView 比 offsetTop 更可靠，确保用户消息完全推到视口顶部
+          lastUserMsg.scrollIntoView({ behavior: 'instant', block: 'start' });
+          requestAnimationFrame(() => { programmaticScrollRef.current = false; });
         } else {
           bottomRef.current?.scrollIntoView({ behavior: 'instant' });
         }
@@ -1814,9 +1826,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   };
 
   const charDelayMs = (ch: string): number => {
-    let d = 18; // base speed
-    if (ch === '\n') d += 220;
-    else if (ch === '.' || ch === ',' || ch === '。' || ch === '，') d += 120;
+    let d = 60; // base speed — ~15字/秒，接近 Claude.ai 从容阅读节奏
+    if (ch === '\n') d += 180;         // 换行：明显呼吸暂停
+    else if (ch === '。' || ch === '！' || ch === '？' || ch === '…') d += 140;  // 句末：长停顿
+    else if (ch === '.' || ch === '!' || ch === '?') d += 100;    // 英文句末
+    else if (ch === ',' || ch === '，' || ch === '、' || ch === ';' || ch === '；') d += 50;  // 逗号微顿
     return d;
   };
 
@@ -1865,22 +1879,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   };
 
   // ===== 所有 useEffect 放在 useState/useRef 之后 =====
-  // 提取 pendingPills：统一使用 parseOptionBox，与消息内渲染逻辑一致；只有最后一条是 AI 时才显示托盘
+  // pendingPills 已停用：pills 现在始终在消息体内渲染，不再需要底部 ResponseTray 重复显示
   useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    if (!lastMsg || lastMsg.role !== 'assistant') {
-      setPendingPills(null);
-      return;
-    }
-    if (lastMsg.isStreaming) {
-      setPendingPills(null);
-      return;
-    }
-    const raw = typeof lastMsg.content === 'string' ? lastMsg.content : String((lastMsg.content as any)?.text ?? (lastMsg.content as any)?.content ?? lastMsg.content ?? '');
-    const parsed = parseOptionBox(raw);
-    const pillsSeg = parsed.segments?.find((s) => s.type === 'pills');
-    const pills = pillsSeg?.options?.map((o) => o.value) ?? (parsed.forcePills ? parsed.options?.map((o) => o.value) ?? [] : []);
-    setPendingPills(pills.length > 0 ? pills : null);
+    setPendingPills(null);
   }, [messages]);
 
   // 通知父组件状态变化
@@ -2573,11 +2574,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       setShowScrollBtn(distFromBottom > SHOW_SCROLL_BUTTON_THRESHOLD);
 
+      // 编程式滚动（scrollToBottom/scrollAfterUserSend 触发的）不改变跟随状态，只更新按钮显隐
+      if (programmaticScrollRef.current) return;
+
       if (isStreaming) {
-        if (distFromBottom < 50) {
+        // 用户手动滚动到接近底部 → 恢复跟随
+        if (distFromBottom < 60) {
           followScrollRef.current = true;
           userScrolledUp.current = false;
-        } else if (distFromBottom > 600) {
+        }
+        // 用户上滑超过 80px → 立即解除跟随（一两下滚轮就能解锁）
+        else if (distFromBottom > 80) {
           followScrollRef.current = false;
           userScrolledUp.current = true;
         }
@@ -2601,13 +2608,16 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const target = inner ?? wrap;
     const ro = new ResizeObserver(() => {
       if (!followScrollRef.current) return;
+      // 保护期内不覆盖用户消息锚定（让用户消息保持在视口顶部）
+      if (Date.now() < scrollGraceUntilRef.current) return;
       scheduleScrollAfterLayout(false);
     });
     ro.observe(target);
     return () => ro.disconnect();
   }, [scheduleScrollAfterLayout, messages.length, displayedText.length, fullText.length]);
 
-  // assistant 新流式消息启动时：锚定到该消息顶部，并禁用跟底滚动
+  // assistant 新流式消息启动时：仅记录锚定 ID，保持跟随滚动开启
+  // 初始定位由 scrollAfterUserSend 完成（用户消息顶部对齐），此处不再覆盖
   useLayoutEffect(() => {
     const last = messages[messages.length - 1];
     const isAssistantStreaming = !!last && last.role === 'assistant' && last.isStreaming;
@@ -2620,15 +2630,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     if (anchoredStreamingMsgIdRef.current === last.id) return;
     anchoredStreamingMsgIdRef.current = last.id;
 
-    // 流式开始默认关闭跟底；仅当用户手动滚到接近底部时，handleChatScroll 才会重新开启
-    followScrollRef.current = false;
-    userScrolledUp.current = true;
-
-    requestAnimationFrame(() => {
-      const wrap = messagesContainerRef.current;
-      const el = wrap?.querySelector(`[data-msg-id="${last.id}"]`) as HTMLElement | null;
-      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    // Claude-style：保持 followScrollRef=true，让 ResizeObserver 自然驱动跟底
+    // scrollAfterUserSend 已将用户消息定位到视口顶部，文字增长后 ResizeObserver 平滑跟随
   }, [messages.length]);
 
   // 仅用于启动/停止打字机的 effect —— 依赖精简为启停条件
@@ -2669,12 +2672,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (!lastTypingTsRef.current) lastTypingTsRef.current = ts;
       const dt = Math.min(80, ts - lastTypingTsRef.current);
       lastTypingTsRef.current = ts;
-      typingBudgetMsRef.current += dt;
 
       const full = visibleFullTextRef.current || '';
       const fullLen = full.length;
       let idx = displayedLenRef.current;
       let typedThisFrame = 0;
+      const backlog = fullLen - displayedLenRef.current;
+      // 平缓追赶：积压超过 200 字才加速，且力度很轻
+      const catchUpBoost = backlog > 200 ? Math.min(backlog * 0.2, 100) : 0;
+      typingBudgetMsRef.current += dt + catchUpBoost;
 
       while (typedThisFrame < 4 && idx < fullLen) {
         const remain = 4 - typedThisFrame;
@@ -2847,9 +2853,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             }}>⬇ DROP FILES HERE</span>
           </div>
         )}
-        <div className="section-header">
-          <div className="header-left">
-            <span className="section-title">◆ OpenClaw Chat</span>
+        {/* VOICE / SETTINGS / CONNECTED 通过 portal 渲染到 TabBar 右侧 */}
+        {typeof document !== 'undefined' && document.getElementById('chat-header-portal') && createPortal(
+          <>
             <button
               type="button"
               className={`voice-toggle ${settings.typingSound ? 'on' : 'off'}`}
@@ -2866,12 +2872,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             >
               ⚙ SETTINGS
             </button>
-          </div>
-          <span className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`}>
-            {wsConnected && <span className="status-dot" />}
-            {wsConnected ? 'CONNECTED' : wsReconnecting ? '重连..' : wsError || 'DISCONNECTED'}
-          </span>
-        </div>
+            <span className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`} style={{ fontSize: '11px' }}>
+              {wsConnected && <span className="status-dot" />}
+              {wsConnected ? 'CONNECTED' : wsReconnecting ? '重连..' : wsError || 'DISCONNECTED'}
+            </span>
+          </>,
+          document.getElementById('chat-header-portal')!
+        )}
 
         <SetupGuide
           wsConnected={wsConnected}

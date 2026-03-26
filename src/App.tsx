@@ -69,15 +69,18 @@ const App: React.FC = () => {
         {/* 标题栏 */}
         <TitleBar />
         
-        {/* 标签栏 */}
-        <TabBar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          vaultOpen={vaultOpen}
-          setVaultOpen={setVaultOpen}
-          vaultUnlocked={vaultUnlocked}
-          onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
-        />
+        {/* 标签栏 + 右侧 portal 插槽 */}
+        <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-panel)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <TabBar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            vaultOpen={vaultOpen}
+            setVaultOpen={setVaultOpen}
+            vaultUnlocked={vaultUnlocked}
+            onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
+          />
+          <div id="chat-header-portal" />
+        </div>
 
         {/* 内容区域 */}
         <div className="content-area">

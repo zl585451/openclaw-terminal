@@ -355,5 +355,39 @@
     "result": "{\"success\":false,\"error\":\"Brave 失败: Brave API 422，降级 DuckDuckGo 也失败: Unexpected token '<', \\\"<!DOCTYPE \\\"... is not valid JSON\"}",
     "error": null,
     "notified": true
+  },
+  "task-1774517127911-acc3d0": {
+    "taskId": "task-1774517127911-acc3d0",
+    "type": "查一下",
+    "instruction": "检查一下gir 推送结果怎么样",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "检查一下gir 推送结果怎么样"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774517127912,
+    "startedAt": 1774517127915,
+    "completedAt": 1774517128957,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"检查一下gir 推送结果怎么样\",\"results\":[{\"title\":\"生成式信息检索（GIR）-信息检索的新范式 - 知乎\",\"url\":\"https://zhuanlan.zhihu.com/p/683812147\",\"snippet\":\"与RAG的区别：RAG (Retrieval Augamented Generation) 是一种解决大模型(LLMs)内容实时性、幻觉、事实正确性等问题的一种有效方法。在检索效果上，GIR和RAG类似。如图3右一所示，GIR返回的结果是一段自然语言答案，加上Doc IDs作为引用。图4展示了目前流行的LLMs+RAG检索引擎Perplexity的结果。区别之处在于，RAG的Index和retrieval都是外置于LLMs之外的。LLMs只负责在自然语言token空间训练，并不感知索引库的信息和结构。不能直接生成doc IDs。所以RAG+LLMs类似于召回之后用LLMs对结果进行摘要。与此不同，GIR是一种统一的&quot;Index-Retrieval-Rank&quot;范式，所以如果是用LLMs作为GIR的主体模型，理论上需要LLMs在corpus上继续训练，最终效果是LLMs能直接返回text token + doc IDs的混合结果，不需要独立的retrieval过程。\"},{\"title\":\"探索未来跨平台应用开发的新星：Gir.Core-CSDN博客\",\"url\":\"https://blog.csdn.net/gitblog_00054/article/details/139257135\",\"snippet\":\"虽然代码仍在积极开发阶段，尚未准备好生产使用，但已有可用的Nuget包。API在1.0版本发布之前可能有所变化。你可以在GirCore Nuget组织查看最新的包信息。项目未来的计划和发布可查看milestones。\"},{\"title\":\"关于 BEPS 2.0支柱二的最新进展 - 知乎\",\"url\":\"https://zhuanlan.zhihu.com/p/646033580\",\"snippet\":\"OECD本次发布了修订版《GloBE信息申报表》（GloBE Information Return，GIR），该申报表包括两个板块：\"},{\"title\":\"移轉訂價洞悉 TP Insights 2023年7⽉4⽇\",\"url\":\"https://www.ey.com/content/dam/ey-unified-site/ey-com/zh-tw/technical/taiwan-tax-alerts/documents/ey-transfer-pricing-tax-alert-20230704.pdf\",\"snippet\":\"若跨國企業已備妥GloBE稅務資訊申報表（GIR）並完成申報義務，即便該跨國企\"},{\"title\":\"如何加快I-485审批速度？I-485加速处理申请资格/流程/费用 - EasyGoAmerica\",\"url\":\"https://www.easygoamerica.com/%E5%A6%82%E4%BD%95%E5%8A%A0%E5%BF%ABi-485%E5%AE%A1%E6%89%B9%E9%80%9F%E5%BA%A6-%E5%8A%A0%E9%80%9F%E5%A4%84%E7%90%86/\",\"snippet\":\"如何加快I-485审批速度？│I-485表格的审批过程可能会耗费数月甚至数年的时间，这对申请人及其家人造成了极大的不便和压力。为了帮助申请人尽快获得绿卡身份，美国移民局提供了加速处理服务。本文将详细介绍如何加...\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774517250503-5dbefa": {
+    "taskId": "task-1774517250503-5dbefa",
+    "type": "查一下",
+    "instruction": "检查一下git 是推送完成了吗",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "检查一下git 是推送完成了吗"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774517250503,
+    "startedAt": 1774517250506,
+    "completedAt": 1774517251545,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"检查一下git 是推送完成了吗\",\"results\":[{\"title\":\"git查看本地还未推送到远程的提交明细_git查看本地提交没有push的代码-CSDN博客\",\"url\":\"https://blog.csdn.net/zhang197093/article/details/113243871\",\"snippet\":\"本文介绍了如何使用Git命令查看本地分支中未被推送到远程仓库的提交记录。通过使用特定的Git命令组合，可以详细了解哪些提交尚未同步到远程。 · <strong>git status</strong> 只能查看到本地当前有多少个提交还未推送，但看不到具体是...\"},{\"title\":\"git 中怎样查看未传送(git push)到远程代码库的(git commit)提交?_git 怎么查看未推送到远程库的代码-CSDN博客\",\"url\":\"https://blog.csdn.net/tianyafeng123xin/article/details/52635324\",\"snippet\":\"文章浏览阅读2.4w次。总结：可以查看已经commit 但是还没有push 的代码git log master ^origin/mastergit 中怎样查看未传送(git push)到远程代码库的(git commit)提交?1,查看到未传送到远程代码库的提交次数git status显示结果类似于这样：# On branch master# Your branch _git 怎么查看未推送到远程库的代码\"},{\"title\":\"git查看只commit没有push的文件或者提交记录_git 查看commit但未push的-CSDN博客\",\"url\":\"https://blog.csdn.net/u010089432/article/details/85318995\",\"snippet\":\"如果你只记得部分commit ID，Git通常也能找到匹配的提交。但为了确保准确性，至少提供4位以上的字符。 在Git中，还有一个强大的工具可以帮助你追踪你的操作历史，那就是`git reflog`。它记录了你执行的每一个Git... ... git-remind检查您计算机中所有git存储库的状态，并显示状态是否存在未提交的文件和应提交到远程的预先提交。 桌面通知 git-remind使用桌面通知通知您git-commit / git-push状态。 此功能已通过macOS的测试，但可在... git-commit-push-via-github-api：使用GitHub API进行Git提交和推送。 不依赖于Git二进制文件\"},{\"title\":\"什么是 `git status`？——掌握 Git 状态查看的关键命令-阿里云开发者社区\",\"url\":\"https://developer.aliyun.com/article/1587124\",\"snippet\":\"本文全面解析 Git 的关键命令 `git status`，重点剖析其如何展示工作区、暂存区与远程仓库的状态差异，并解读关键输出信息，助您精准掌握仓库状态，高效、自信地进行版本控制。\"},{\"title\":\"git 检查是否有commit到本地但还没push的代码 - ismallboy - 博客园\",\"url\":\"https://www.cnblogs.com/ismallboy/p/6785335.html\",\"snippet\":\"使用git status命令可以得到以下结果$ git statusOn branch dev_getTicketCntYour branch is ahead of &#x27;origin/master&#x27; by 1 commit. (use &quot;git push&quot; to\"}]}",
+    "error": null,
+    "notified": true
   }
 }

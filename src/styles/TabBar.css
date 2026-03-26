@@ -5,9 +5,23 @@
   align-items: center;
   height: 36px;
   padding: 0 10px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  border-bottom: none;
   gap: 5px;
+}
+
+/* portal 插槽：ChatTab 的 VOICE/SETTINGS/CONNECTED 渲染在这里 */
+#chat-header-portal {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  height: 36px;
+}
+
+#chat-header-portal:empty {
+  display: none;
 }
 
 .tab-btn {

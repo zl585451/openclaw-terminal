@@ -27,9 +27,9 @@
     }
   },
   "stream_merge": {
-    "min_chars": 200,
-    "max_chars": 2000,
-    "idle_ms": 500
+    "min_chars": 1,
+    "max_chars": 60,
+    "idle_ms": 30
   },
   "ai_library": {
     "enabled": true,
