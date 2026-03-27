@@ -27,6 +27,10 @@ OCT (OpenClaw Terminal) 是一个桌面应用，让你通过自然对话控制�
 | 📊 信息获取 | 天气查询、新闻摘要、数据搜索 |
 | 🎨 多媒体 | 图片查看、屏幕截图 |
 | 🤖 子代理 | 后台任务自动执行 |
+| 🌐 网络请求 | HTTP API 调用（v0.1.8 新增） |
+| 📧 邮件管理 | 收发邮件、验证码查询（v0.1.8 新增） |
+| 🔐 保险箱 | 安全存储 API 密钥和凭证（v0.1.8 新增） |
+| 🎨 图片生成 | AI 生成配图和封面（v0.1.8 新增） |
 
 ---
 
@@ -44,14 +48,19 @@ OCT (OpenClaw Terminal) 是一个桌面应用，让你通过自然对话控制�
 
 **下载即用，无需激活** — 安装后直接启动即可使用。
 
-**最新版本**: v0.1.2（2026-03-12 发布）
+**最新版本**: v0.1.8（2026-03-27 发布）
 
 | 平台 | 安装包 | 大小 |
 |------|--------|------|
-| Windows | [OCT-Setup-v0.1.2.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.1.2/OCT-Setup-v0.1.2.exe) | 79.7 MB |
-| Mac Intel | [OCT-0.1.2-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.1.2/OCT-0.1.2-Mac-x64.dmg) | 101 MB |
-| Mac M1/M2 | [OCT-0.1.2-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.1.2/OCT-0.1.2-Mac-arm64.dmg) | 95.8 MB |
-| Linux | [OCT-0.1.2-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.1.2/OCT-0.1.2-Linux-x86_64.AppImage) | 105 MB |
+| 🪟 Windows | [OCT-Setup-v0.1.8.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.1.8/OCT-Setup-v0.1.8.exe) | 约 80 MB |
+| 🍎 Mac Intel | [OCT-0.1.8-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.1.8/OCT-0.1.8-Mac-x64.dmg) | 约 100 MB |
+| 🍎 Mac M1/M2 | [OCT-0.1.8-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.1.8/OCT-0.1.8-Mac-arm64.dmg) | 约 96 MB |
+| 🐧 Linux | [OCT-0.1.8-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.1.8/OCT-0.1.8-Linux-x86_64.AppImage) | 约 105 MB |
+
+> 💡 **v0.1.8 更新亮点**：
+> - ✨ **体验优化** — 流式聊天更流畅、代码块渲染增强、上下文统计显示，等等若干...
+> - 🔧 **工具集成** — 新增 http_request、image_gen、vault_ops、email_manager，等等若干...
+> - 🐛 **问题修复** — 选项框解析、CSS 溢出保护、日志面板更新，等等若干...
 
 ---
 
@@ -72,6 +81,7 @@ OCT (OpenClaw Terminal) 是一个桌面应用，让你通过自然对话控制�
 | 构建工具 | Vite 5 |
 | 终端组件 | xterm 5 |
 | Markdown | react-markdown |
+| 国际化 | i18next |
 
 ---
 

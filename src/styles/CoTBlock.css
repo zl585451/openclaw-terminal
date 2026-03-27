@@ -1,0 +1,96 @@
+/* ========================================
+   CoT 思维链折叠面板
+   ======================================== */
+
+.cot-block {
+  border-radius: var(--radius-md);
+  margin: 8px 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  transition: background 0.2s ease;
+}
+
+.cot-block:hover {
+  background: var(--bg-hover);
+}
+
+.cot-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.cot-icon {
+  flex-shrink: 0;
+  font-size: var(--text-base);
+}
+
+.cot-label {
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.cot-preview {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.cot-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.cot-chevron-up {
+  transform: rotate(180deg);
+}
+
+.cot-body {
+  padding: 4px 12px 12px 12px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.cot-body p {
+  margin: 4px 0;
+}
+
+.cot-body ol,
+.cot-body ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+/* 流式动画：思考中的脉冲效果 */
+.cot-streaming .cot-icon {
+  animation: cot-spin 1.2s linear infinite;
+}
+
+@keyframes cot-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 折叠状态 */
+.cot-collapsed .cot-body {
+  display: none;
+}
+

@@ -10,7 +10,7 @@ export interface TaskItem {
   done: boolean;
 }
 
-export type SegmentType = 'text' | 'pills' | 'checkbox' | 'question' | 'tasklist';
+export type SegmentType = 'text' | 'pills' | 'checkbox' | 'question' | 'tasklist' | 'cot';
 
 export interface RenderSegment {
   type: SegmentType;
@@ -363,7 +363,7 @@ function extractRenderHint(text: string): { hint: RenderHint | null; cleaned: st
 // 注意：保持 // 不受影响，不匹配纯 // 注释
 // ⚠️ 此 regex 带 g flag，内部 parseTaggedContent 已改用局部实例避免并发问题；
 //    保留导出仅供外部测试或兼容使用，调用者应使用 matchAll 或每次创建新实例。
-export const PAIRED_TAG_RX = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
+export const PAIRED_TAG_RX = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text|cot)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
 
 /** 将非空行作为普通选项（兜底：标签内没有标准格式时） */
 export function parsePlainLines(text: string): OptionItem[] {
@@ -520,7 +520,7 @@ function enhanceTextSegmentsWithInlineCheckboxes(segments: RenderSegment[]): Ren
 /** 解析成对标签 [pills]...[/pills] 等，返回按顺序排列的渲染段 */
 function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
   // 每次调用创建新的 regex 实例，避免全局状态的 lastIndex 并发问题
-  const pairedTagRx = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
+  const pairedTagRx = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text|cot)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
   const allMatches = [...content.matchAll(pairedTagRx)];
   
   if (allMatches.length === 0) return { segments: [], found: false };
@@ -553,6 +553,13 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
       case 'text':
         if (inner) segments.push({ type: 'text', content: filterExpectedEffect(inner), options: [] });
         break;
+      case 'cot': {
+        // CoT 内容原样保留，不解析选项
+        if (inner) {
+          segments.push({ type: 'cot', content: inner, options: [] });
+        }
+        break;
+      }
       case 'pills': {
         // pills 标签内必须有符号选项（■●◆○ 等），没有就当普通文本
         const opts = parseSymbolOptions(inner);
@@ -625,7 +632,7 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
 
   // 清理所有 text segment 中残留的孤立标签文字（如未闭合的 [pills]）
   // 标签名两侧允许可选空白，与 PAIRED_TAG_RX 一致；不匹配 // 注释
-  const TAG_STRIP_RX = /\[\s*\/?\s*(pills|checkbox|question|tasklist)\s*\]\s*/gi;
+  const TAG_STRIP_RX = /\[\s*\/?\s*(pills|checkbox|question|tasklist|cot)\s*\]\s*/gi;
   for (const seg of segments) {
     if (seg.type === 'text' && seg.content) {
       seg.content = seg.content.replace(TAG_STRIP_RX, '').replace(/\n{3,}/g, '\n\n').trim();

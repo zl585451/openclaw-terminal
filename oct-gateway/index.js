@@ -519,9 +519,9 @@ wss.on('connection', (ws) => {
       const thinkMode = session.getThinkMode(sessionKey);
       if (thinkMode && thinkMode !== 'off') {
         const thinkPrompts = {
-          'low': '\n\n[思考模式：LOW] 在回复末尾简要总结思路要点即可。',
-          'medium': '\n\n[思考模式：MEDIUM] 请结构化分析问题：1)核心目标 2)关键约束 3)可行方案 4)建议行动。',
-          'high': '\n\n[思考模式：HIGH] 请深度推理：先分析问题本质，列举多种解决思路，评估各方案优劣，给出详细论证和建议。',
+          'low': '\n\n[思考模式：LOW] 回复时先用 [cot] 标签简要列出你的思路要点（2-3 步），然后 [/cot] 结束，最后给出正式回复。格式示例：\n[cot]\n1. 分析问题核心\n2. 确定方案\n[/cot]\n\n正式回复内容...',
+          'medium': '\n\n[思考模式：MEDIUM] 回复时先用 [cot] 标签结构化分析问题（1.核心目标 2.关键约束 3.可行方案 4.建议行动），然后 [/cot] 结束，最后给出正式回复。格式示例：\n[cot]\n1. 核心目标：...\n2. 关键约束：...\n3. 可行方案：...\n4. 建议行动：...\n[/cot]\n\n正式回复内容...',
+          'high': '\n\n[思考模式：HIGH] 回复时先用 [cot] 标签做深度推理，分析问题本质，列举多种思路，评估优劣，然后 [/cot] 结束，最后给出详细正式回复。格式示例：\n[cot]\n## 问题分析\n...\n## 可能方案\n### 方案A：...\n### 方案B：...\n## 评估\n...\n## 结论\n...\n[/cot]\n\n正式回复内容...',
         };
         finalSystemPrompt = finalSystemPrompt + thinkPrompts[thinkMode];
       }
@@ -1359,9 +1359,9 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // /think 思考模式命令
+  // /think 思考模式命令（/cot 兼容别名）
   // ═══════════════════════════════════════════════════════════════
-  if (base === '/think') {
+  if (base === '/think' || base === '/cot') {
     const level = (parts[1] || '').toLowerCase();
     const validLevels = ['off', 'low', 'medium', 'high'];
 
@@ -1373,10 +1373,10 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
         `当前状态：${currentLevel.toUpperCase()}`,
         '',
         '可用级别：',
-        '  /think off    — 关闭思考模式',
-        '  /think low    — 低强度思考引导',
-        '  /think medium — 中等强度思考引导',
-        '  /think high   — 高强度思考引导',
+        '  /cot off    — 关闭思考模式',
+        '  /cot low    — 低强度思考引导',
+        '  /cot medium — 中等强度思考引导',
+        '  /cot high   — 高强度思考引导',
       ].join('\n'));
       return;
     }

@@ -12,6 +12,7 @@ import TaskBoard from './TaskBoard';
 import QuestionCards from './QuestionCards';
 import SettingsPanel from './SettingsPanel';
 import CodeBlock from './CodeBlock';
+import CoTBlock from './CoTBlock';
 import QuickCommandMenu from './QuickCommandMenu';
 import HeartbeatWave from './HeartbeatWave';
 import AmyAvatar from './AmyAvatar';
@@ -735,6 +736,10 @@ interface ChatMessageItemProps {
   currentPage: number;
   onPageChange: (msgId: number, page: number) => void;
   isStreamingMsg: boolean;
+  /** 流式阶段在 display 文本里检测出的 CoT 内容（未必闭合） */
+  streamingCotContent?: string | null;
+  /** 流式阶段 CoT 是否已闭合（display 是否包含 [/cot]） */
+  streamingCotClosed?: boolean;
   agentPhase: 'idle' | 'thinking' | 'typing';
   speakingMessageId: number | null;
   wsConnected: boolean;
@@ -839,6 +844,8 @@ type AssistantMessageBodyProps = Pick<
   | 'currentPage'
   | 'onPageChange'
   | 'isStreamingMsg'
+  | 'streamingCotContent'
+  | 'streamingCotClosed'
   | 'wsConnected'
   | 'quickSend'
   | 'onQuoteQuestion'
@@ -858,6 +865,8 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   currentPage,
   onPageChange,
   isStreamingMsg,
+  streamingCotContent,
+  streamingCotClosed,
   wsConnected,
   quickSend,
   onQuoteQuestion,
@@ -873,6 +882,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
       className="msg-assistant-body"
       style={isStreamingMsg ? { display: 'flex', flexDirection: 'column' } : undefined}
     >
+      {isStreamingMsg && streamingCotContent && (
+        <CoTBlock content={streamingCotContent} isStreaming={!streamingCotClosed} />
+      )}
       {segments && segments.length > 0 ? (
         <>
           {(() => {
@@ -945,6 +957,10 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                 ) : null;
               case 'tasklist':
                 return seg.options.length > 0 ? <TaskList key={idx} items={seg.options} /> : null;
+              case 'cot':
+                return seg.content ? (
+                  <CoTBlock key={idx} content={seg.content} isStreaming={isStreamingMsg} />
+                ) : null;
               default:
                 return null;
             }
@@ -1564,6 +1580,15 @@ const ChatMessageList = function ChatMessageList({
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
         // displayedText 仅用于视觉打字；结构一律从 fullContent 解析
         const display = isStreamingMsg ? displayedText : fullContent;
+        // 流式消息中检测 CoT 内容
+        const streamingCotMatch = isStreamingMsg
+          ? (display || '').match(/\[cot\]([\s\S]*?)(?:\[\/cot\]|$)/)
+          : null;
+        const streamingCotContent = streamingCotMatch ? streamingCotMatch[1].trim() : null;
+        const streamingCotClosed = isStreamingMsg ? (display || '').includes('[/cot]') : false;
+        const displayWithoutCot = streamingCotContent
+          ? (display || '').replace(/\[cot\][\s\S]*?(?:\[\/cot\]|$)/, '').trim()
+          : display;
         const parsed =
           msg.role === 'user'
             ? USER_ROW_PARSE_PLACEHOLDER
@@ -1590,8 +1615,8 @@ const ChatMessageList = function ChatMessageList({
                   segments: undefined,
                 };
         const textToShow = msg.role === 'assistant'
-          ? (isStreamingMsg ? display : (parsed.text?.trim() ? parsed.text : raw))
-          : display;
+          ? (isStreamingMsg ? (displayWithoutCot as string) : (parsed.text?.trim() ? parsed.text : raw))
+          : (displayWithoutCot as string);
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;
         const isTaskList = !!parsed.isTaskList;
@@ -1613,6 +1638,8 @@ const ChatMessageList = function ChatMessageList({
             currentPage={pageByMsgId[msg.id] ?? 1}
             onPageChange={handlePageChange}
             isStreamingMsg={!!msg.isStreaming}
+            streamingCotContent={streamingCotContent}
+            streamingCotClosed={streamingCotClosed}
             agentPhase={agentPhase}
             speakingMessageId={speakingMessageId}
             wsConnected={wsConnected}
