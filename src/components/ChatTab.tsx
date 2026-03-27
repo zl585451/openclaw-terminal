@@ -1639,8 +1639,8 @@ const ChatMessageList = function ChatMessageList({
             </div>
           </div>
         )}
-        <div style={{ minHeight: '30px', flexShrink: 0 }} aria-hidden />
         <div ref={bottomRef as React.Ref<HTMLDivElement>} />
+        <div style={{ minHeight: (isStreaming || awaitingResponse) ? '75vh' : '30px', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
       </div>
     </div>
   );
@@ -1723,6 +1723,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const programmaticScrollRef = useRef(false);
   // 滚动控制：发送消息后的短暂保护期（防止 ResizeObserver 立即覆盖用户消息锚定）
   const scrollGraceUntilRef = useRef<number>(0);
+  // 标记：需要在下次渲染后将最新用户消息滚动到视口顶部
+  const needsScrollToUserRef = useRef(false);
   // 用一个稳定的 ref 标记"是否应该运行打字机"
   const shouldRunTypewriterRef = useRef(false);
 
@@ -1730,8 +1732,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const el = messagesContainerRef.current;
     if (!el) return;
     if (!force && !followScrollRef.current) return;
+    if (!bottomRef.current) return;
+
+    const containerRect = el.getBoundingClientRect();
+    const bottomRect = bottomRef.current.getBoundingClientRect();
+
+    // 只向下滚：仅当 bottomRef 在视口下方（内容溢出）时才追
+    // 当 bottomRef 还在视口内（AI 刚开始输出），不滚动，保持用户消息在顶部
+    if (bottomRect.top <= containerRect.bottom + 10) return;
+
     programmaticScrollRef.current = true;
-    el.scrollTop = el.scrollHeight;
+    bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
     // 下一帧清除标记，让后续用户滚动能正常检测
     requestAnimationFrame(() => { programmaticScrollRef.current = false; });
   }, []);
@@ -1750,24 +1761,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   /** 发送后双 rAF：等 DOM 布局完成再锚定最新用户消息并重置跟随 */
   const scrollAfterUserSend = useCallback(() => {
-    // 短保护期：让用户消息锚定到视口顶部，保护期内 ResizeObserver 不干预
-    scrollGraceUntilRef.current = Date.now() + 400;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const el = messagesContainerRef.current;
-        const userMsgs = el?.querySelectorAll('.chat-message.user');
-        const lastUserMsg = userMsgs?.[userMsgs.length - 1] as HTMLElement | undefined;
-        if (lastUserMsg && el) {
-          programmaticScrollRef.current = true;
-          // scrollIntoView 比 offsetTop 更可靠，确保用户消息完全推到视口顶部
-          lastUserMsg.scrollIntoView({ behavior: 'instant', block: 'start' });
-          requestAnimationFrame(() => { programmaticScrollRef.current = false; });
-        } else {
-          bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-        }
-        followScrollRef.current = true;
-      });
-    });
+    // 仅设标记，实际滚动由 useEffect 在 React 渲染完成后执行
+    needsScrollToUserRef.current = true;
+    scrollGraceUntilRef.current = Date.now() + 600;
   }, []);
 
   const scheduleFullTextSync = useCallback(() => {
@@ -2615,6 +2611,36 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     ro.observe(target);
     return () => ro.disconnect();
   }, [scheduleScrollAfterLayout, messages.length, displayedText.length, fullText.length]);
+
+  // 发送消息后：等 React 渲染完成，将最新用户消息滚动到视口顶部
+  useEffect(() => {
+    if (!needsScrollToUserRef.current) return;
+    needsScrollToUserRef.current = false;
+
+    // 双 rAF 确保 DOM 布局稳定
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = messagesContainerRef.current;
+        if (!el) return;
+        const userMsgs = el.querySelectorAll('.chat-message.user');
+        const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement | undefined;
+        if (lastUserMsg) {
+          programmaticScrollRef.current = true;
+          const containerRect = el.getBoundingClientRect();
+          const msgRect = lastUserMsg.getBoundingClientRect();
+          el.scrollTop = el.scrollTop + (msgRect.top - containerRect.top);
+          requestAnimationFrame(() => {
+            programmaticScrollRef.current = false;
+            followScrollRef.current = true;
+            userScrolledUp.current = false;
+          });
+        } else {
+          followScrollRef.current = true;
+          userScrolledUp.current = false;
+        }
+      });
+    });
+  }, [messages.length]);
 
   // assistant 新流式消息启动时：仅记录锚定 ID，保持跟随滚动开启
   // 初始定位由 scrollAfterUserSend 完成（用户消息顶部对齐），此处不再覆盖

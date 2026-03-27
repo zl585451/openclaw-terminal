@@ -187,11 +187,14 @@
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
   gap: 0;
   background: var(--bg-base);
   font-family: var(--font-sans);
   min-height: 0;
   width: 100%;
+  /* scrollIntoView({ block: 'start' }) 对齐位置 */
+  scroll-padding-top: 4px;
 }
 
 /* 内容容器：负责居中排版，不负责滚动 */

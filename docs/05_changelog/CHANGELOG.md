@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-03-26 | Chat UI 流式滚动热修复：顶部锚定、按需跟底、动态 spacer 收放、标题栏 portal 化 | ChatTab.tsx, ChatTab.css, App.tsx, TabBar.css | 详见 scroll-streaming-hotfix-2026-03-26.md |
 | 2026-03-24 | OCT 握手协议：移除 OpenClaw ECDSA 签名，改为 token 认证 | electron/main.ts, oct-gateway/index.js | sendOctConnectRequest、params.auth.token |
 | 2026-03-24 | 工具层重构：静态 tools.js → 动态 tool_loader + tools/*.js | tool_loader.js, tools/*.js, ai.js | 加文件即生效 |
 | 2026-03-24 | Orchestrator：意图分类、后台任务派发 | orchestrator.js, index.js | 预留 Agent 路由 |
