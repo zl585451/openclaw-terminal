@@ -35,3 +35,8 @@ logs/
 .cursorignore
 scripts/clear-cursor-cache.bat
 node_modules
+
+# Google Drive / local sync artifacts
+.tmp.driveupload/
+docs/06_release/
+resources/nocturne_server/
