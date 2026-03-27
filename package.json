@@ -100,12 +100,6 @@
           ]
         },
         {
-          "target": "rpm",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
           "target": "AppImage",
           "arch": [
             "x64"
