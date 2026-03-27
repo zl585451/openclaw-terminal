@@ -1,20 +1,26 @@
 {
   "name": "openclaw-terminal",
   "version": "0.1.6",
-  "author": "少爷",
+  "author": "OCT Team",
   "description": "OpenClaw Terminal - Windows 超级系统助手",
   "main": "dist-electron/main.js",
   "scripts": {
-    "postinstall": "electron-rebuild",
+    "init": "node scripts/init-user-config.js",
+    "postinstall": "echo skip rebuild",
     "dev": "vite",
-    "build:electron": "tsc -p tsconfig.electron.json",
-    "build": "tsc && vite build && npm run build:electron",
+    "build:electron": "npx -p typescript tsc -p tsconfig.electron.json",
+    "build": "npx -p typescript tsc && vite build && npm run build:electron",
     "start": "npm run build:electron && concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
+    "start:fast": "concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
     "electron:dev": "npm run build:electron && concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
-    "electron:build:win": "npm run build && electron-builder --win --x64",
+    "build:nocturne": "scripts/build-nocturne-exe.bat",
+    "electron:build:win": "npm run build:nocturne && npm run build && electron-builder --win --x64",
+    "electron:build:win:nolocal": "npm run build && electron-builder --win --x64",
     "electron:build:mac": "npm run build && electron-builder --mac --x64 --arm64",
     "electron:build:linux": "npm run build && electron-builder --linux --x64",
-    "electron:build:all": "npm run build && electron-builder --win --mac --linux --x64"
+    "electron:build:all": "npm run build && electron-builder --win --mac --linux --x64",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "build": {
     "appId": "com.openclaw.terminal",
@@ -44,10 +50,18 @@
         ]
       },
       {
+        "from": "resources/nocturne_server",
+        "to": "nocturne_server",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "docs/01_system_prompts",
         "to": "prompts",
         "filter": [
-          "**/*"
+          "**/*",
+          "!USER.md"
         ]
       }
     ],
@@ -133,6 +147,7 @@
     "@types/react-dom": "^18.2.17",
     "@types/ws": "^8.5.10",
     "@vitejs/plugin-react": "^4.2.1",
+    "chokidar": "^3.6.0",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "decode-ico": "^0.4.1",
@@ -145,6 +160,7 @@
     "typescript": "^5.3.3",
     "vite": "^5.0.8",
     "vite-plugin-javascript-obfuscator": "^3.1.0",
+    "vitest": "^4.1.0",
     "wait-on": "^7.2.0"
   }
 }

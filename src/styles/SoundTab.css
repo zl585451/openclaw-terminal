@@ -9,8 +9,8 @@
 
 /* 搜索区域 */
 .search-section {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
   padding: 12px;
 }
 
@@ -22,24 +22,24 @@
 }
 
 .section-title {
-  font-size: 12px;
-  color: var(--cyan);
+  font-size: var(--text-sm);
+  color: var(--accent-primary);
   letter-spacing: 1px;
 }
 
 .eagle-status {
-  font-size: 11px;
+  font-size: var(--text-xs);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .eagle-status.connected {
-  color: var(--green);
+  color: var(--status-success);
 }
 
 .eagle-status.disconnected {
-  color: var(--text-dim);
+  color: var(--text-tertiary);
 }
 
 .search-input-area {
@@ -49,45 +49,45 @@
 }
 
 .input-prompt {
-  color: var(--cyan);
-  font-size: 14px;
+  color: var(--accent-primary);
+  font-size: var(--text-base);
   font-weight: bold;
 }
 
 .search-input {
   flex: 1;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   color: var(--text-primary);
   padding: 10px 14px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-code);
   outline: none;
 }
 
 .search-input:focus {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 5px rgba(0, 255, 159, 0.3);
+  border-color: var(--border-focus);
+  box-shadow: var(--shadow-sm);
 }
 
 .search-input::placeholder {
-  color: var(--text-dim);
+  color: var(--text-placeholder);
 }
 
 .search-btn {
   padding: 10px 20px;
   background: transparent;
-  border: 1px solid var(--text-primary);
-  color: var(--text-primary);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .search-btn:hover:not(:disabled) {
-  background: var(--text-primary);
-  color: var(--bg-primary);
+  background: var(--accent-primary-muted);
+  color: var(--accent-primary);
 }
 
 /* 关键词区域 */
@@ -100,8 +100,8 @@
 }
 
 .keywords-label {
-  color: var(--text-dim);
-  font-size: 11px;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
 }
 
 .keyword-tag {
@@ -109,7 +109,7 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--cyan);
   color: var(--cyan);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 /* 结果区域 */
@@ -128,7 +128,7 @@
   min-height: 120px;
   max-height: 180px;
   overflow-y: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.6;
 }
 
@@ -163,7 +163,7 @@
   padding: 8px 12px;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--cyan);
 }
 
@@ -191,7 +191,7 @@
 
 .result-index {
   color: var(--cyan);
-  font-size: 11px;
+  font-size: var(--text-xs);
   min-width: 28px;
 }
 
@@ -205,12 +205,12 @@
 
 .result-ext {
   color: var(--yellow);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .result-folder {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -223,7 +223,7 @@
   border: 1px solid var(--green);
   color: var(--green);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   transition: all 0.15s ease;
   flex-shrink: 0;
 }

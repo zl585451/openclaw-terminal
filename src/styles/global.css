@@ -18,11 +18,35 @@ body {
   background: var(--bg-base);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: var(--text-md);
-  line-height: 1.6;
+  font-size: var(--text-md);           /* 15px 正文基准 */
+  line-height: var(--leading-relaxed); /* 1.8 中文友好行高 */
+  letter-spacing: 0.01em;              /* 微调字间距，中文更透气 */
   transition: background 0.3s ease, color 0.3s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* 中文字体优化 */
+body:lang(zh), body:lang(zh-CN), body:lang(zh-TW), body:lang(zh-HK) {
+  font-family: var(--font-sans);
+}
+
+/* 代码相关 — 独立字号体系 */
+code, pre, .monospace, .font-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-code);         /* 13px 固定 */
+  line-height: var(--leading-tight);   /* 1.4 代码行高紧凑 */
+  font-feature-settings: "liga" 1, "calt" 1;
+}
+
+/* 行内代码 */
+code {
+  font-size: 0.9em;  /* 相对于父级缩小，保持和正文视觉协调 */
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-panel);
 }
 
 /* Selection */
@@ -193,7 +217,7 @@ tbody tr:hover td {
 .code-header {
   background: var(--bg-code-header);
   padding: 6px 14px;
-  font-size: var(--text-xs);
+  font-size: var(--text-code-sm);  /* 12px */
   font-family: var(--font-mono);
   color: var(--text-tertiary);
   display: flex;
@@ -205,21 +229,12 @@ tbody tr:hover td {
   background: var(--bg-code);
   padding: 14px;
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  line-height: 1.7;
-  color: var(--text-code);
+  font-size: var(--text-code);     /* 13px */
+  line-height: var(--leading-tight); /* 1.4 */
+  color: var(--text-code-color);
   overflow-x: auto;
 }
 
-/* 行内代码 */
-code, .inline-code {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  background: var(--bg-panel);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: var(--text-primary);
-}
 
 /* ========================================
    输入框
@@ -241,18 +256,26 @@ code, .inline-code {
   box-shadow: var(--shadow-md);
 }
 
+.input-bar input,
+.chat-input-area textarea,
+.chat-input-area input {
+  font-size: var(--text-md);           /* 15px — 输入和正文一致 */
+  line-height: var(--leading-normal);
+}
+
 .input-bar input {
   flex: 1;
   border: none;
   outline: none;
-  font-size: var(--text-md);
   font-family: var(--font-sans);
   color: var(--text-primary);
   background: transparent;
 }
 
-.input-bar input::placeholder {
+.input-bar input::placeholder,
+.chat-input-area textarea::placeholder {
   color: var(--text-placeholder);
+  font-size: var(--text-md);
 }
 
 /* 通用文本输入 */
@@ -306,24 +329,33 @@ code, .inline-code {
    字体层级
    ======================================== */
 h1 {
-  font-size: var(--text-3xl);
+  font-size: var(--text-3xl);         /* 30px */
   font-weight: 600;
   letter-spacing: -0.02em;
-  line-height: 1.3;
+  line-height: var(--leading-loose);  /* 2.0 */
   font-family: var(--font-display);
 }
 h2 {
-  font-size: var(--text-xl);
+  font-size: var(--text-2xl);         /* 24px */
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: var(--leading-tight);  /* 1.4 */
 }
 h3 {
-  font-size: var(--text-lg);
+  font-size: var(--text-xl);          /* 20px */
   font-weight: 600;
+  line-height: var(--leading-tight);  /* 1.4 */
+}
+h4 {
+  font-size: var(--text-lg);          /* 17px */
+  font-weight: 600;
+  line-height: var(--leading-normal); /* 1.7 */
 }
 
-.text-caption {
-  font-size: var(--text-xs);
+/* 辅助文字 */
+.text-caption, .text-xs {
+  font-size: var(--text-xs);          /* 11px */
+  line-height: var(--leading-normal); /* 1.7 */
   color: var(--text-tertiary);
 }
 

@@ -1,0 +1,40 @@
+{
+  "OCT_MODEL": "kimi-k2.5",
+  "memory": {
+    "auto_save_history": true,
+    "auto_save_feedback": true,
+    "enable_memory_search": true,
+    "search_cache_ttl": 1800,
+    "search_default_limit": 10,
+    "max_history_days": 7,
+    "max_feedback_days": 7,
+    "load_feedback_on_boot": true,
+    "compress_length": {
+      "user": 100,
+      "amy": 200
+    }
+  },
+  "nocturne": {
+    "heartbeat_interval_seconds": 300,
+    "NOCTURNE_BUSY_TIMEOUT": 10000,
+    "read_retry": {
+      "count": 3,
+      "interval_ms": 500
+    },
+    "write_retry": {
+      "count": 3,
+      "interval_ms": 500
+    }
+  },
+  "stream_merge": {
+    "min_chars": 1,
+    "max_chars": 60,
+    "idle_ms": 30
+  },
+  "ai_library": {
+    "enabled": true,
+    "url": "http://127.0.0.1:8001",
+    "timeout_ms": 3000,
+    "default_top_k": 3
+  }
+}

@@ -1,31 +1,27 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 // xterm 已完全移除以修复闪退问题
 import '../styles/ChatTab.css';
+import './ResponseTray.css';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../utils/optionBoxParser';
 import OptionBox from './OptionBox';
 import TaskList from './TaskList';
 import TaskBoard from './TaskBoard';
 import QuestionCards from './QuestionCards';
-import ThinkModeMenu from './ThinkModeMenu';
 import SettingsPanel from './SettingsPanel';
-import SocraticPanel from './SocraticPanel';
-import {
-  detectThinkModeMarker,
-  stripThinkModeMarker,
-  parseSocraticSections,
-  type SocraticRound,
-} from '../utils/socraticTemplates';
 import CodeBlock from './CodeBlock';
 import QuickCommandMenu from './QuickCommandMenu';
 import HeartbeatWave from './HeartbeatWave';
 import AmyAvatar from './AmyAvatar';
 import SetupGuide from './SetupGuide';
+import LogPanel from './LogPanel';
 import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
-import { playClickSound } from '../utils/clickSound';
+import { playClickSound, resetSoundCounter } from '../utils/clickSound';
+import { stripThinkModeMarker } from '../utils/socraticTemplates';
 
 const ipcRenderer =
   typeof window !== 'undefined' && typeof (window as any).require === 'function'
@@ -43,48 +39,6 @@ const ipcRenderer =
 //   if (/\[LOG\]/i.test(line)) return '\x1b[38;2;0;204;204m';
 //   return '\x1b[32m';
 // }
-
-// DOM 日志级别判断 - 优先解析原始 JSON level 字段
-function getLogLevel(rawLine: string): string {
-  try {
-    const parsed = JSON.parse(rawLine) as { _meta?: { logLevelName?: string }; level?: string };
-    const level = (parsed?._meta?.logLevelName ?? parsed?.level)?.toUpperCase?.();
-    if (level === 'ERROR') return 'ERROR';
-    if (level === 'WARN') return 'WARN';
-    if (level === 'INFO') return 'INFO';
-    if (level === 'LOG') return 'LOG';
-    if (level === 'AGENT') return 'AGENT';
-  } catch {}
-  // fallback：文本匹配（适配已格式化的日志行）
-  if (/error|failed|exception/i.test(rawLine)) return 'ERROR';
-  if (/warn|invalid|missing/i.test(rawLine)) return 'WARN';
-  if (/\[LOG\]/.test(rawLine)) return 'LOG';
-  if (/\[AGENT\]|\[OpenClaw\]/i.test(rawLine)) return 'AGENT';
-  return 'INFO';
-}
-
-// 日志颜色分类 - 根据关键词判断
-function getLogColorClass(rawLine: string): string {
-  const lower = rawLine.toLowerCase();
-  
-  // 记忆相关：蓝色
-  if (lower.includes('memory') || lower.includes('记忆') || /\[memory\]/i.test(rawLine)) {
-    return 'log-memory';
-  }
-  
-  // 错误：红色
-  if (/error|错误|failed|exception/i.test(rawLine)) {
-    return 'log-error';
-  }
-  
-  // 调试：灰色
-  if (/debug|调试/i.test(rawLine)) {
-    return 'log-debug';
-  }
-  
-  // 默认
-  return '';
-}
 
 // const LOG_NOISE_PATTERNS = [
 //   'typing indicator',
@@ -130,18 +84,43 @@ export interface UploadedFile {
   mimeType: string;
   isText: boolean;
   content: string | null;
-  base64: string;
+  base64?: string;
+  /** 文件绝对路径，AMY 可用 read_file 读取；无 path 时（如拖入的非本地文件）不可用 */
+  path?: string;
 }
 
+/** 将浏览器 File 转为 UploadedFile。Electron 拖入本地文件时 file.path 存在，只存元数据；否则需读内容（大文件体验差） */
 async function fileToUploadedFile(file: File): Promise<UploadedFile> {
   const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const mimeType = file.type || 'application/octet-stream';
+  const isImage = mimeType.startsWith('image/');
+
+  // Electron 拖入本地文件时有 path，只传元数据，不读内容
+  const filePath = (file as File & { path?: string }).path;
+  if (filePath) {
+    return {
+      name: file.name,
+      size: file.size,
+      ext,
+      mimeType,
+      isText: false,
+      content: null,
+      base64: isImage ? await readFileAsBase64(file) : undefined,
+      path: filePath,
+    };
+  }
+
+  // 无 path（如 Web 或非本地拖入）：仍需读内容，大文件体验差
   const textExts = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'go', 'rs', 'html', 'css', 'sql', 'xml', 'yaml', 'yml'];
   const isText = textExts.includes(ext);
   let content: string | null = null;
-  if (isText) {
-    content = await file.text();
-  }
-  const base64 = await new Promise<string>((res, rej) => {
+  if (isText) content = await file.text();
+  const base64 = await readFileAsBase64(file);
+  return { name: file.name, size: file.size, ext, mimeType, isText, content, base64 };
+}
+
+async function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => {
       const dataUrl = r.result as string;
@@ -150,15 +129,6 @@ async function fileToUploadedFile(file: File): Promise<UploadedFile> {
     r.onerror = rej;
     r.readAsDataURL(file);
   });
-  return {
-    name: file.name,
-    size: file.size,
-    ext,
-    mimeType: file.type || 'application/octet-stream',
-    isText,
-    content,
-    base64,
-  };
 }
 
 /** 判断是否Gateway 直接处理的系统命令（不等AMY 回复*/
@@ -200,11 +170,17 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
       title={href}
     >{children}</a>
   ),
-  input: ({ type, ...props }) => {
-    if (type === 'checkbox') return null;
+  input: ({ type, checked, ...props }) => {
+    if (type === 'checkbox') {
+      return <span role="img" aria-hidden style={{ marginRight: '4px', color: 'var(--text-secondary)' }}>{checked ? '☑' : '☐'}</span>;
+    }
     return <input type={type} {...props} />;
   },
-  table: ({ children }) => <table className="md-table">{children}</table>,
+  table: ({ children }) => (
+    <div className="table-wrapper">
+      <table className="md-table">{children}</table>
+    </div>
+  ),
   thead: ({ children }) => <thead>{children}</thead>,
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ children }) => <tr>{children}</tr>,
@@ -216,18 +192,19 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
     if (!isBlock) {
       return (
         <code style={{
-          background: 'var(--bg-code)', color: 'var(--text-code)',
+          background: 'var(--bg-code)', color: 'var(--text-code-color)',
           padding: '1px 5px', borderRadius: '3px',
-          fontSize: '12px', fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--text-code)', fontFamily: 'var(--font-mono)',
         }}>{children}</code>
       );
     }
     const code = String(children);
-    const CodeBlockWithCopy = () => {
+    const CodeBlockWithCopy = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
       const [copied, setCopied] = React.useState(false);
-      const [expanded, setExpanded] = React.useState(false);
       const lines = code.split('\n').length;
       const isLong = lines > 12;
+      // 长代码块默认不折叠，避免“看起来被截断”
+      const [expanded, setExpanded] = React.useState(() => isLong);
 
       const handleCopy = () => {
         navigator.clipboard.writeText(code);
@@ -236,70 +213,94 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
       };
 
       return (
-        <div style={{ position: 'relative', margin: '8px 0' }}>
+        <div
+          style={{
+            margin: '12px 0',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            background: 'var(--bg-code)',
+          }}
+          data-oct-block-code={__octBlockCode ? '1' : undefined}
+        >
+          {/* Claude-style header */}
           <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            background: 'var(--bg-code-header)',
-            border: '1px solid var(--border-subtle)',
-            borderBottom: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '4px 12px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '8px 16px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
           }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'Share Tech Mono', letterSpacing: '1px' }}>
-              {(className?.replace('language-', '') || 'code').toUpperCase()} · {lines} lines
+            <span style={{
+              fontSize: '12px',
+              color: 'var(--text-tertiary)',
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 500,
+            }}>
+              {(className?.replace('language-', '') || 'code')}
             </span>
-            <div style={{ display: 'flex', gap: '6px' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               {isLong && (
                 <button
                   onClick={() => setExpanded(!expanded)}
                   style={{
-                    background: 'transparent',
-                    border: '1px solid var(--border-light)',
-                    borderRadius: '3px',
-                    color: 'var(--text-secondary)',
-                    fontSize: '10px', fontFamily: 'Share Tech Mono',
-                    padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
-                    transition: 'all 0.15s',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-tertiary)',
+                    fontSize: '12px',
+                    fontFamily: 'var(--font-sans)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    transition: 'color 0.15s',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; }}
                 >
-                  {expanded ? '收起' : '展开'}
+                  {expanded ? 'Collapse' : 'Expand'}
                 </button>
               )}
               <button
                 onClick={handleCopy}
                 style={{
-                  background: copied ? 'var(--accent-primary-muted)' : 'transparent',
-                  border: '1px solid',
-                  borderColor: copied ? 'var(--accent-primary)' : 'var(--border-light)',
-                  borderRadius: '3px',
-                  color: copied ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                  fontSize: '10px', fontFamily: 'Share Tech Mono',
-                  padding: '2px 8px', cursor: 'pointer', letterSpacing: '1px',
-                  transition: 'all 0.2s',
+                  background: 'none',
+                  border: 'none',
+                  color: copied ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  fontSize: '12px',
+                  fontFamily: 'var(--font-sans)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  transition: 'color 0.15s',
                 }}
+                onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = 'var(--text-primary)'; }}
+                onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = 'var(--text-tertiary)'; }}
               >
-      {copied ? '✓' : '⎘'}
+                {copied ? 'Copied!' : 'Copy'}
               </button>
             </div>
           </div>
+          {/* Code area */}
           <pre style={{
-            background: 'var(--bg-code)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '0 0 4px 4px',
-            padding: '12px',
-            overflow: 'auto',
             margin: 0,
-            maxHeight: expanded ? 'none' : '220px',
+            padding: '16px',
+            overflow: 'auto',
+            background: 'transparent',
+            border: 'none',
+            borderRadius: 0,
+            maxHeight: isLong && !expanded ? '220px' : 'none',
             transition: 'max-height 0.3s ease',
             position: 'relative',
           }}>
-            <code style={{ color: 'var(--text-code)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+            <code style={{
+              color: 'var(--text-code)',
+              fontSize: '13px',
+              fontFamily: 'var(--font-mono)',
+              lineHeight: '1.6',
+            }}>
               {code}
             </code>
             {isLong && !expanded && (
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
-                height: '40px',
+                height: '48px',
                 background: 'linear-gradient(transparent, var(--bg-code))',
                 pointerEvents: 'none',
               }} />
@@ -308,10 +309,12 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
         </div>
       );
     };
-    return <CodeBlockWithCopy />;
+    return <CodeBlockWithCopy __octBlockCode />;
   },
   pre: ({ children }) => {
     const child = React.Children.toArray(children)[0] as React.ReactElement | undefined;
+    // 若 code 渲染器返回了自定义代码块（带 data-oct-block-code），剥离外层 <pre>，避免双层边框/断裂
+    if (child?.props?.['data-oct-block-code'] === '1') return <>{children}</>;
     if (child?.type === 'div') return <>{children}</>;
     if (child?.type === 'code') {
       const { className, children: codeChildren } = child.props as { className?: string; children?: React.ReactNode };
@@ -323,15 +326,273 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
   },
 };
 
-/** 流式输出时：从第一个表格行开始到结尾都当作纯文本，避免表格在逐字更新时反复重排导致跳*/
-function splitTableBlockForStreaming(text: string): { before: string; tableAndRest: string } | null {
+/**
+ * 检测文本中所有代码块的位置范围（行号）。
+ * 返回一组 [startLine, endLine) 范围，用于排除代码块内的内容。
+ */
+function getCodeBlockLineRanges(lines: string[]): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  let inCodeBlock = false;
+  let startLine = -1;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (/^`{3,}/.test(trimmed)) {
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        startLine = i;
+      } else {
+        ranges.push([startLine, i + 1]);
+        inCodeBlock = false;
+      }
+    }
+  }
+  
+  // 未闭合的代码块，到末尾都算代码块内
+  if (inCodeBlock && startLine >= 0) {
+    ranges.push([startLine, lines.length]);
+  }
+  
+  return ranges;
+}
+
+/**
+ * 检查某一行是否在代码块内部。
+ */
+function isLineInCodeBlock(lineIndex: number, ranges: Array<[number, number]>): boolean {
+  return ranges.some(([start, end]) => lineIndex >= start && lineIndex < end);
+}
+
+/**
+ * 检查一行是否是 Markdown 表格行。
+ * 支持两种格式：
+ * - 标准格式：| col1 | col2 | （以 | 开头，可以不以 | 结尾）
+ * - 紧凑格式：| col1 | col2 （行末没有 |）
+ */
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  // 必须以 | 开头
+  if (!trimmed.startsWith('|')) return false;
+  // 排除文件树结构（包含 ├── └── │ 等符号）
+  if (/[├└┌┐┘┼─│]/.test(line)) return false;
+  // 以 | 结尾，或行内有 | 分隔符
+  if (trimmed.endsWith('|')) return true;
+  // 行末没有 |，但中间有 | 分隔
+  return trimmed.includes('|');
+}
+
+function shouldPreprocessMarkdownTables(text: string): boolean {
+  if (!text) return false;
+  // 简单判定：包含至少两行“|...|”样式的行，才启用表格预处理，避免误伤普通文本
   const lines = text.split('\n');
-  const idx = lines.findIndex((line) => /^\|.+\|/.test(line.trim()));
-  if (idx < 0) return null;
-  return {
-    before: lines.slice(0, idx).join('\n'),
-    tableAndRest: lines.slice(idx).join('\n'),
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
+  let tableLike = 0;
+  for (let i = 0; i < lines.length; i++) {
+    // 跳过代码块内的行
+    if (isLineInCodeBlock(i, codeBlockRanges)) continue;
+    if (isTableRow(lines[i])) tableLike++;
+    if (tableLike >= 2) return true;
+  }
+  return false;
+}
+
+function fillEmptyCellsInTables(text: string): string {
+  // 将表格行里的空单元格填充为单个空格，避免 remark-gfm 对 `| |` 的不稳定解析；
+  // 使用空格而非 &nbsp;，防止某些解析路径下单元格内容异常
+  const lines = text.split('\n');
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
+
+  return lines.map((line, i) => {
+    if (isLineInCodeBlock(i, codeBlockRanges)) return line;
+    if (isTableRow(line)) {
+      return line.replace(/\|\s*\|/g, '| |');
+    }
+    return line;
+  }).join('\n');
+}
+
+function escapeTableBrackets(text: string): string {
+  // 仅转义表格行里形如 [text](url) 的链接语法，避免破坏表格解析；
+  // 不转义纯 [xxx]（如 [AGENTS.md]），否则反斜杠会导致 remark-gfm 解析异常、单元格内容丢失
+  const lines = text.split('\n');
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
+
+  return lines.map((line, i) => {
+    if (isLineInCodeBlock(i, codeBlockRanges)) return line;
+    if (isTableRow(line)) {
+      // 只转义 [text](url) 形式，替换为 \[text](url) 使方括号不触发链接解析
+      return line.replace(/\[([^\]]*)\]\(([^)]*)\)/g, '\\[$1]($2)');
+    }
+    return line;
+  }).join('\n');
+}
+
+/**
+ * 修复模型偶发输出的“表格分隔符行重复插入”问题。
+ *
+ * 现象：模型把表头分隔符（|---|---|）重复输出到每条数据行之间，导致 remark-gfm 将其视为新的表头分隔符，
+ * 进而破坏整张表格渲染。
+ *
+ * 规则：
+ * - 一个表格块（连续以 `|` 开头的行）中，只允许表头后出现一次分隔符行
+ * - 该表格块内后续出现的分隔符行一律删除
+ */
+function normalizeMarkdownTables(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  const lines = text.split('\n');
+  const out: string[] = [];
+
+  const isTableRow = (l: string) => /^\s*\|/.test(l);
+  const isSeparator = (l: string) => {
+    const trimmed = String(l || '').trim();
+    if (!/^\|/.test(trimmed)) return false;
+    const content = trimmed.replace(/^\|/, '').replace(/\|\s*$/, '');
+    // 仅允许由 | - : 和空白组成，且包含 -
+    return /^[\s\-:|]+$/.test(content) && /-/.test(content);
   };
+
+  let i = 0;
+  while (i < lines.length) {
+    if (!isTableRow(lines[i] || '')) {
+      out.push(lines[i] || '');
+      i++;
+      continue;
+    }
+
+    const block: string[] = [];
+    while (i < lines.length && isTableRow(lines[i] || '')) {
+      block.push(lines[i] || '');
+      i++;
+    }
+
+    // 只有满足“至少两行且第二行是分隔符”才认为是真表格
+    if (block.length >= 2 && isSeparator(block[1] || '')) {
+      const cleaned = [block[0], block[1]];
+      for (let k = 2; k < block.length; k++) {
+        if (isSeparator(block[k] || '')) continue;
+        cleaned.push(block[k]);
+      }
+      out.push(...cleaned);
+    } else {
+      out.push(...block);
+    }
+  }
+
+  return out.join('\n');
+}
+
+function normalizeTableSeparators(text: string): string {
+  const lines = text.split('\n');
+  const out: string[] = [];
+  // 每个表格块只需要一条分隔符（紧跟表头之后）
+  // separatorDone 标记当前表格块是否已经有分隔符
+  let separatorDone = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const cur = lines[i] ?? '';
+    const curTrim = cur.trim();
+    // GFM 允许表格行末尾可选 |，与 isTableRow 逻辑一致
+    const curIsTableRow = curTrim.startsWith('|') && (curTrim.endsWith('|') || curTrim.includes('|'));
+    const curIsSep = /^\|[\s\-:|]+\|?\s*$/.test(curTrim) && /-/.test(curTrim);
+
+    // 非表格行 → 重置状态
+    if (!curIsTableRow) {
+      separatorDone = false;
+      out.push(cur);
+      continue;
+    }
+
+    // 当前行是分隔符行 → 标记已有分隔符
+    if (curIsSep) {
+      separatorDone = true;
+      out.push(cur);
+      continue;
+    }
+
+    // 当前行是普通表格行
+    out.push(cur);
+
+    // 仅在尚未添加/遇到分隔符时，检查下一行是否是分隔符
+    if (!separatorDone) {
+      const next = lines[i + 1] ?? '';
+      const nextTrim = next.trim();
+      const nextIsSep = /^\|[\s\-:|]+\|?\s*$/.test(nextTrim) && /-/.test(nextTrim);
+      if (!nextIsSep) {
+        // 表头后缺少分隔符 → 自动补一条
+        const colCount = Math.max(1, curTrim.split('|').length - 2);
+        out.push('|' + ' --- |'.repeat(colCount));
+      }
+      separatorDone = true; // 无论是否插入，都标记为 done，后续数据行不再插入
+    }
+  }
+  return out.join('\n');
+}
+
+/** 确保表格块前有空行，便于 remark-gfm 识别块级表格 */
+function ensureBlankLineBeforeTables(text: string): string {
+  const lines = text.split('\n');
+  const codeBlockRanges = getCodeBlockLineRanges(lines);
+  const result: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (isLineInCodeBlock(i, codeBlockRanges)) {
+      result.push(lines[i]!);
+      continue;
+    }
+    // 当前行是表格行，且上一行非空
+    if (isTableRow(lines[i]!)) {
+      const prev = result[result.length - 1];
+      if (prev !== undefined && prev.trim() !== '' && !isTableRow(prev)) {
+        result.push('');
+      }
+    }
+    result.push(lines[i]!);
+  }
+  return result.join('\n');
+}
+
+function preprocessMarkdown(text: string): string {
+  if (!shouldPreprocessMarkdownTables(text)) return text;
+  let processed = text;
+  // 确保表格前有空行，便于 GFM 解析
+  processed = ensureBlankLineBeforeTables(processed);
+  // 修复模型偶发输出的“表格分隔符行重复插入”问题：同一表格块内只保留表头后的第一条分隔符行
+  processed = normalizeMarkdownTables(processed);
+  processed = fillEmptyCellsInTables(processed);
+  processed = escapeTableBrackets(processed);
+  processed = normalizeTableSeparators(processed);
+  return processed;
+}
+
+/**  finalized 消息的 Markdown 预处理结果缓存（仅 UI，不改消息结构） */
+const processedMarkdownCache = new Map<string, string>();
+const MAX_PROCESSED_MD_CACHE = 400;
+
+function markdownCacheKey(messageId: number, segmentKey: string | undefined, text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) + h) ^ text.charCodeAt(i);
+  }
+  const sig = (h >>> 0).toString(36);
+  return `${messageId}\0${segmentKey ?? 'full'}\0${text.length}\0${sig}`;
+}
+
+function clearProcessedMarkdownCache(): void {
+  processedMarkdownCache.clear();
+}
+
+function getCachedPreprocessedMarkdown(messageId: number, segmentKey: string | undefined, text: string): string {
+  const key = markdownCacheKey(messageId, segmentKey, text);
+  const hit = processedMarkdownCache.get(key);
+  if (hit !== undefined) return hit;
+  while (processedMarkdownCache.size >= MAX_PROCESSED_MD_CACHE) {
+    const first = processedMarkdownCache.keys().next().value;
+    if (first === undefined) break;
+    processedMarkdownCache.delete(first);
+  }
+  const processed = preprocessMarkdown(text);
+  processedMarkdownCache.set(key, processed);
+  return processed;
 }
 
 /** 打字机光标：单独组件避免随内容重渲染导致闪烁 */
@@ -340,63 +601,79 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
   return <span className="cursor-blink">▋</span>;
 });
 
-const MarkdownContent = memo(
-  function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
-    const text = content || '';
-    const contentRef = React.useRef<HTMLSpanElement>(null);
-    
-
-    if (isStreaming) {
-      // 流式期间：检测是否有表格
-      const tableBlock = splitTableBlockForStreaming(text);
-      if (tableBlock) {
-        return (
-          <span className="msg-content markdown-body msg-content-streaming-root" ref={contentRef}>
-            {tableBlock.before && (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {tableBlock.before}
-              </ReactMarkdown>
-            )}
-            <span style={{
-              display: 'block',
-              fontFamily: 'Share Tech Mono, monospace',
-              fontSize: '13px',
-              color: '#00cc88',
-              whiteSpace: 'pre',
-              lineHeight: 1.6,
-              marginTop: '4px',
-              opacity: 0.8,
-            }}>
-              {tableBlock.tableAndRest}
-            </span>
-          </span>
-        );
-      }
-
-      // 流式期间无表格：正常 ReactMarkdown 渲染
-      return (
-        <span className="msg-content markdown-body msg-content-streaming-root" ref={contentRef}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {text}
-          </ReactMarkdown>
-        </span>
-      );
-    }
-
-    // 完成后：完整 ReactMarkdown 渲染
+/** 流式阶段：纯文本尾段，不走 ReactMarkdown / 预处理 / 代码高亮 */
+const StreamingTail = memo(
+  function StreamingTail({ text }: { text: string }) {
     return (
-      <span className="msg-content markdown-body" ref={contentRef}>
+      <span
+        className="msg-content markdown-body msg-content-streaming-root"
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+      >
+        {text}
+      </span>
+    );
+  },
+  (a, b) => a.text === b.text
+);
+
+/** 流式结束后的正文：预处理 + ReactMarkdown，结果按 messageId+段键缓存 */
+const FinalizedMarkdownContent = memo(
+  function FinalizedMarkdownContent({
+    messageId,
+    segmentKey,
+    content,
+  }: {
+    messageId: number;
+    segmentKey?: string;
+    content: string;
+  }) {
+    const processedText = useMemo(
+      () => getCachedPreprocessedMarkdown(messageId, segmentKey, content || ''),
+      [messageId, segmentKey, content]
+    );
+    return (
+      <span className="msg-content markdown-body">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {text}
+          {processedText}
         </ReactMarkdown>
       </span>
     );
   },
   (prev, next) =>
-    prev.content === next.content && prev.isStreaming === next.isStreaming
+    prev.messageId === next.messageId &&
+    prev.segmentKey === next.segmentKey &&
+    prev.content === next.content
 );
 
 const UI_CTRL_PATTERNS = [/\[上一页\]/, /\[下一页\]/, /\[第\d+\/\d+页\]/, /\[确认导入\]/, /\[取消\]/];
+
+/** 剥离 [RENDER:xxx] 和 [pills]...[/pills] 块（后者已在托盘显示）；isLastAI 时额外清掉 ■ 开头的选项行 */
+function stripRenderAndPillsMarkers(text: string, isLastAI?: boolean): string {
+  if (!text || typeof text !== 'string') return text;
+  let result = text
+    .replace(/\[RENDER:[^\]]+\]/gi, '')
+    .replace(/\[pills\][\s\S]*?\[\/pills\]/gi, '');
+  if (isLastAI) {
+    result = result
+      .replace(/^[■●◆○◉▪▸]\s*.+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n');
+  }
+  return result.trim();
+}
+
+function filterExpectedEffect(text: string, isLastAI?: boolean): string {
+  if (!text || typeof text !== 'string') return text;
+  const stripped = stripRenderAndPillsMarkers(text, isLastAI);
+  return stripped
+    .split('\n')
+    .filter((line) => {
+      if (line.includes('预期效果')) return false;
+      return !UI_CTRL_PATTERNS.some((p) => p.test(line.trim()));
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 const SystemMessage = ({ text }: { text: string }) => {
   const [collapsed, setCollapsed] = React.useState(true);
@@ -418,17 +695,17 @@ const SystemMessage = ({ text }: { text: string }) => {
         marginBottom: collapsed && isLong ? 0 : '8px',
         cursor: isLong ? 'pointer' : 'default',
       }} onClick={() => isLong && setCollapsed(!collapsed)}>
-        <span style={{ color: 'var(--status-warning)', fontSize: '10px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>
+        <span style={{ color: 'var(--status-warning)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', letterSpacing: '2px' }}>
           [ SYSTEM ]
         </span>
         {isLong && (
-          <span style={{ color: 'var(--status-warning)', fontSize: '10px', fontFamily: 'Share Tech Mono', opacity: 0.7 }}>
+          <span style={{ color: 'var(--status-warning)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', opacity: 0.7 }}>
             {collapsed ? '展开' : '收起'}
           </span>
         )}
       </div>
       {collapsed && isLong ? (
-        <div style={{ color: 'var(--text-primary)', fontSize: '13px', opacity: 0.8 }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 'var(--text-code)', opacity: 0.8 }}>
           {preview}
           <span style={{ color: 'var(--status-warning)', opacity: 0.5 }}> ···</span>
         </div>
@@ -436,7 +713,7 @@ const SystemMessage = ({ text }: { text: string }) => {
         <div>
           {lines.map((line, i) => (
             <div key={i} style={{
-              color: 'var(--text-primary)', fontSize: '13px',
+              color: 'var(--text-primary)', fontSize: 'var(--text-code)',
               marginBottom: '4px', lineHeight: 1.5,
             }}>{line}</div>
           ))}
@@ -463,17 +740,113 @@ interface ChatMessageItemProps {
   wsConnected: boolean;
   quickSend: (text: string) => void;
   onContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
-  /** templateId 可选：指定打开哪种思维模式 */
-  onOpenSocratic: (templateId?: string) => void;
   /** 点击反思问引用到输入框 */
   onQuoteQuestion: (text: string) => void;
-  /** 是否是最后一条助手消息（只有最后一条才显示思维模式按钮*/
-  isLastAssistantMsg: boolean;
   /** 成对标签解析出的渲染段（存在时优先渲染） */
   segments?: RenderSegment[];
+  /** 思考耗时（秒） */
+  thinkingElapsed?: number;
+  /** 是否为最后一条 assistant 消息（是则不渲染 pills，因已在 ResponseTray 显示） */
+  isLastAssistant?: boolean;
 }
 
-const ChatMessageItem = memo(function ChatMessageItem({
+const MessageMeta = memo(function MessageMeta({ timestamp }: { timestamp: string | number | undefined }) {
+  const [hoverTime, setHoverTime] = useState(false);
+  return (
+    <span
+      className="msg-timestamp"
+      onMouseEnter={() => setHoverTime(true)}
+      onMouseLeave={() => setHoverTime(false)}
+      style={{
+        color: hoverTime ? 'var(--accent)' : 'var(--text-secondary)',
+        fontSize: 'var(--text-xs)',
+        fontFamily: 'var(--font-mono)',
+        cursor: 'default',
+        transition: 'color 0.2s',
+        letterSpacing: '0.5px',
+      }}
+    >
+      {hoverTime ? formatFullTime(timestamp) : formatTime(timestamp)}
+    </span>
+  );
+});
+
+const MessageHeader = memo(
+  function MessageHeader({
+    msg,
+    isStreamingMsg,
+    agentPhase,
+  }: {
+    msg: ChatMessage;
+    isStreamingMsg: boolean;
+    agentPhase: 'idle' | 'thinking' | 'typing';
+  }) {
+    return (
+      <div className="msg-header">
+        {msg.role === 'user' ? (
+          <span className="msg-label">YOU ▶</span>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
+            <span
+              style={{
+                color: 'var(--accent)',
+                fontSize: 'var(--text-xs)',
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '2px',
+              }}
+            >
+              AMY
+            </span>
+            {isStreamingMsg && agentPhase !== 'idle' && (
+              <span className="agent-status-badge">{agentPhase === 'thinking' ? '思考中' : '打字中'}</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  },
+  (a, b) =>
+    a.msg.id === b.msg.id &&
+    a.msg.role === b.msg.role &&
+    !!a.msg.isStreaming === !!b.msg.isStreaming &&
+    a.isStreamingMsg === b.isStreamingMsg &&
+    a.agentPhase === b.agentPhase
+);
+
+const UserMessageBody = memo(
+  function UserMessageBody({ imageDataUrl, textToShow }: { imageDataUrl?: string; textToShow: string }) {
+    return (
+      <div className="msg-user-body">
+        {imageDataUrl && <img src={imageDataUrl} alt="" className="msg-user-image" />}
+        {textToShow && <span className="msg-content msg-user-text">{textToShow}</span>}
+      </div>
+    );
+  },
+  (a, b) => a.imageDataUrl === b.imageDataUrl && a.textToShow === b.textToShow
+);
+
+type AssistantMessageBodyProps = Pick<
+  ChatMessageItemProps,
+  | 'msg'
+  | 'textToShow'
+  | 'raw'
+  | 'optionsToShow'
+  | 'isTaskList'
+  | 'isReflectiveQuestions'
+  | 'forcePills'
+  | 'totalPages'
+  | 'currentPage'
+  | 'onPageChange'
+  | 'isStreamingMsg'
+  | 'wsConnected'
+  | 'quickSend'
+  | 'onQuoteQuestion'
+  | 'segments'
+  | 'isLastAssistant'
+>;
+
+const AssistantMessageBody = memo(function AssistantMessageBody({
   msg,
   textToShow,
   raw,
@@ -485,28 +858,196 @@ const ChatMessageItem = memo(function ChatMessageItem({
   currentPage,
   onPageChange,
   isStreamingMsg,
-  agentPhase,
-  speakingMessageId,
   wsConnected,
   quickSend,
-  onContextMenu,
-  onOpenSocratic,
   onQuoteQuestion,
-  isLastAssistantMsg,
   segments,
-}: ChatMessageItemProps) {
-  const [hoverTime, setHoverTime] = React.useState(false);
-  const [thinkMenuOpen, setThinkMenuOpen] = React.useState(false);
-  const thinkBtnRef = React.useRef<HTMLButtonElement>(null);
-  
-  const msgRef = React.useRef<HTMLDivElement>(null);
-  const bodyRef = React.useRef<HTMLDivElement>(null);
-  const assistantBodyRef = React.useRef<HTMLDivElement>(null);
-  
-  
+  isLastAssistant,
+}: AssistantMessageBodyProps) {
+  if (msg.isSystemReply) {
+    return <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />;
+  }
+
   return (
     <div
-      ref={msgRef}
+      className="msg-assistant-body"
+      style={isStreamingMsg ? { display: 'flex', flexDirection: 'column' } : undefined}
+    >
+      {segments && segments.length > 0 ? (
+        <>
+          {(() => {
+            let remaining = textToShow || '';
+            return segments.map((seg, idx) => {
+            const contentBefore =
+              idx > 0 ? segments.slice(0, idx).reduce((sum, s) => sum + (s.content?.length || 0), 0) : 0;
+            const contentAfter =
+              idx < segments.length - 1
+                ? segments.slice(idx + 1).reduce((sum, s) => sum + (s.content?.length || 0), 0)
+                : 0;
+
+            switch (seg.type) {
+              case 'text':
+                if (isStreamingMsg) {
+                  // 流式：文本段按顺序消耗 displayedText 前缀；组件始终挂载（即使 text 为空）
+                  const fullSegText = stripRenderAndPillsMarkers(seg.content, isLastAssistant);
+                  const take = remaining.slice(0, fullSegText.length);
+                  remaining = remaining.slice(take.length);
+                  return <StreamingTail key={idx} text={take} />;
+                }
+                return (
+                  <FinalizedMarkdownContent
+                    key={idx}
+                    messageId={msg.id}
+                    segmentKey={`seg-${idx}`}
+                    content={stripRenderAndPillsMarkers(seg.content, isLastAssistant)}
+                  />
+                );
+              case 'pills':
+                // 流式阶段隐藏 pills，消除换行闪跳；流式结束后自然出现
+                if (isStreamingMsg) return null;
+                return seg.options.length > 0 ? (
+                  <OptionBox
+                    key={idx}
+                    messageId={msg.id}
+                    options={seg.options}
+                    totalPages={undefined}
+                    currentPage={1}
+                    onPageChange={(page) => onPageChange(msg.id, page)}
+                    onSelect={(value) => {
+                      if (value && wsConnected) quickSend(value);
+                    }}
+                    forcePills={true}
+                    segmentIndex={idx}
+                    contentBefore={contentBefore}
+                    contentAfter={contentAfter}
+                  />
+                ) : null;
+              case 'checkbox':
+                // 流式阶段隐藏 checkbox
+                if (isStreamingMsg) return null;
+                return seg.options.length > 0 ? (
+                  <OptionBox
+                    key={idx}
+                    messageId={msg.id}
+                    options={seg.options}
+                    totalPages={undefined}
+                    currentPage={1}
+                    onPageChange={(page) => onPageChange(msg.id, page)}
+                    onSelect={(value) => {
+                      if (value && wsConnected) quickSend(value);
+                    }}
+                    forcePills={false}
+                  />
+                ) : null;
+              case 'question':
+                return seg.options.length > 0 ? (
+                  <QuestionCards key={idx} questions={seg.options} onQuote={onQuoteQuestion} />
+                ) : null;
+              case 'tasklist':
+                return seg.options.length > 0 ? <TaskList key={idx} items={seg.options} /> : null;
+              default:
+                return null;
+            }
+          });
+          })()}
+        </>
+      ) : (
+        <>
+          {(() => {
+            if (isStreamingMsg) {
+              // 流式阶段：只做纯文本打字，不渲染 pills/options（避免换行闪跳）
+              return <StreamingTail text={textToShow || ''} />;
+            }
+
+            const cleanedText = filterExpectedEffect(textToShow, isLastAssistant);
+            const hasInlinePlaceholder = cleanedText.includes('<!--OPTIONS_HERE-->');
+            const showInlineOptions = hasInlinePlaceholder && optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions;
+
+            if (showInlineOptions) {
+              const parts = cleanedText.split('<!--OPTIONS_HERE-->');
+              const before = parts[0]?.trim() || '';
+              const after = parts.slice(1).join('').trim();
+              const showPillsHere = !isLastAssistant || !forcePills;
+              return (
+                <>
+                  {before &&
+                    (isStreamingMsg ? (
+                      <StreamingTail text={before} />
+                    ) : (
+                      <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-before" content={before} />
+                    ))}
+                  {showPillsHere && (
+                    <OptionBox
+                      messageId={msg.id}
+                      options={optionsToShow}
+                      totalPages={totalPages}
+                      currentPage={currentPage}
+                      onPageChange={(page) => onPageChange(msg.id, page)}
+                      onSelect={(value) => {
+                        if (value && wsConnected) quickSend(value);
+                      }}
+                      forcePills={forcePills}
+                    />
+                  )}
+                  {after &&
+                    (isStreamingMsg ? (
+                      <StreamingTail text={after} />
+                    ) : (
+                      <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-after" content={after} />
+                    ))}
+                </>
+              );
+            }
+
+            return (
+              <>
+                <FinalizedMarkdownContent messageId={msg.id} content={cleanedText} />
+                {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (
+                  <OptionBox
+                    messageId={msg.id}
+                    options={optionsToShow}
+                    totalPages={totalPages}
+                    currentPage={currentPage}
+                    onPageChange={(page) => onPageChange(msg.id, page)}
+                    onSelect={(value) => {
+                      if (value && wsConnected) quickSend(value);
+                    }}
+                    forcePills={forcePills}
+                  />
+                )}
+              </>
+            );
+          })()}
+          {optionsToShow.length > 0 && isTaskList && <TaskList items={optionsToShow} />}
+          {optionsToShow.length > 0 && isReflectiveQuestions && (
+            <QuestionCards questions={optionsToShow} onQuote={onQuoteQuestion} />
+          )}
+        </>
+      )}
+      {isStreamingMsg && <TypewriterCursor show />}
+    </div>
+  );
+});
+
+/** 单行消息外壳（不设 memo：子树由 ChatMessageItem 控制） */
+function MessageRow({
+  msg,
+  raw,
+  speakingMessageId,
+  isStreamingMsg,
+  onContextMenu,
+  children,
+}: {
+  msg: ChatMessage;
+  raw: string;
+  speakingMessageId: number | null;
+  isStreamingMsg: boolean;
+  onContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      data-msg-id={msg.id}
       className={`chat-message ${msg.role} ${msg.isSystemReply ? 'system-reply' : ''} ${speakingMessageId === msg.id ? 'speaking' : ''} ${isStreamingMsg ? 'streaming' : ''}`}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -518,204 +1059,71 @@ const ChatMessageItem = memo(function ChatMessageItem({
           <MsgCopyButton text={raw} />
         </div>
       )}
-      <div className="msg-header">
-        {msg.role === 'user' ? (
-          <span className="msg-label">YOU ▶</span>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
-            <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: 'Share Tech Mono', letterSpacing: '2px' }}>AMY</span>
-            {isStreamingMsg && agentPhase !== 'idle' && (
-              <span className="agent-status-badge">
-                {agentPhase === 'thinking' ? '思考中' : '打字中'}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="msg-body" ref={bodyRef}>
-        {msg.role === 'assistant' ? (
-          msg.isSystemReply ? (
-            <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />
-          ) : (
-          <div className="msg-assistant-body" ref={assistantBodyRef}>
-            {segments && segments.length > 0 ? (
-              <>
-                {segments.map((seg, idx) => {
-                // 计算 pills 前后的内容长度
-                const contentBefore = idx > 0 ? segments.slice(0, idx).reduce((sum, s) => sum + (s.content?.length || 0), 0) : 0;
-                const contentAfter = idx < segments.length - 1 ? segments.slice(idx + 1).reduce((sum, s) => sum + (s.content?.length || 0), 0) : 0;
-                
-                switch (seg.type) {
-                  case 'text':
-                    return <MarkdownContent key={idx} content={seg.content} isStreaming={isStreamingMsg} />;
-                  case 'pills':
-                    return seg.options.length > 0 ? (
-                      <OptionBox
-                        key={idx}
-                        messageId={msg.id}
-                        options={seg.options}
-                        totalPages={undefined}
-                        currentPage={1}
-                        onPageChange={(page) => onPageChange(msg.id, page)}
-                        onSelect={(value) => { if (value && wsConnected) quickSend(value); }}
-                        forcePills={true}
-                        segmentIndex={idx}
-                        contentBefore={contentBefore}
-                        contentAfter={contentAfter}
-                      />
-                    ) : null;
-                  case 'checkbox':
-                    return seg.options.length > 0 ? (
-                      <OptionBox
-                        key={idx}
-                        messageId={msg.id}
-                        options={seg.options}
-                        totalPages={undefined}
-                        currentPage={1}
-                        onPageChange={(page) => onPageChange(msg.id, page)}
-                        onSelect={(value) => { if (value && wsConnected) quickSend(value); }}
-                        forcePills={false}
-                      />
-                    ) : null;
-                  case 'question':
-                    return seg.options.length > 0 ? (
-                      <QuestionCards key={idx} questions={seg.options} onQuote={onQuoteQuestion} />
-                    ) : null;
-                  case 'tasklist':
-                    return seg.options.length > 0 ? (
-                      <TaskList key={idx} items={seg.options} />
-                    ) : null;
-                  default:
-                    return null;
-                }
-              })}
-                {isStreamingMsg && <TypewriterCursor show />}
-              </>
-            ) : (
-              <>
-                {(() => {
-                  const cleanedText = filterExpectedEffect(textToShow);
-                  const hasInlinePlaceholder = cleanedText.includes('<!--OPTIONS_HERE-->');
-                  const showInlineOptions = hasInlinePlaceholder && optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions;
-
-                  if (showInlineOptions) {
-                    const parts = cleanedText.split('<!--OPTIONS_HERE-->');
-                    const before = parts[0]?.trim() || '';
-                    const after = parts.slice(1).join('').trim();
-                    return (
-                      <>
-                        {before && <MarkdownContent content={before} isStreaming={isStreamingMsg} />}
-                        <OptionBox
-                          messageId={msg.id}
-                          options={optionsToShow}
-                          totalPages={totalPages}
-                          currentPage={currentPage}
-                          onPageChange={(page) => onPageChange(msg.id, page)}
-                          onSelect={(value) => {
-                            if (value && wsConnected) quickSend(value);
-                          }}
-                          forcePills={forcePills}
-                        />
-                        {after && <MarkdownContent content={after} isStreaming={isStreamingMsg} />}
-                        {isStreamingMsg && <TypewriterCursor show />}
-                      </>
-                    );
-                  }
-
-                  return (
-                    <>
-                      <MarkdownContent content={cleanedText} isStreaming={isStreamingMsg} />
-                      {isStreamingMsg && <TypewriterCursor show />}
-                      {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (
-                        <OptionBox
-                          messageId={msg.id}
-                          options={optionsToShow}
-                          totalPages={totalPages}
-                          currentPage={currentPage}
-                          onPageChange={(page) => onPageChange(msg.id, page)}
-                          onSelect={(value) => {
-                            if (value && wsConnected) quickSend(value);
-                          }}
-                          forcePills={forcePills}
-                        />
-                      )}
-                    </>
-                  );
-                })()}
-                {optionsToShow.length > 0 && isTaskList && (
-                  <TaskList items={optionsToShow} />
-                )}
-                {optionsToShow.length > 0 && isReflectiveQuestions && (
-                  <QuestionCards
-                    questions={optionsToShow}
-                    onQuote={onQuoteQuestion}
-                  />
-                )}
-              </>
-            )}
-            {!isStreamingMsg && !msg.isSystemReply && isLastAssistantMsg && (
-              <>
-                <button
-                  ref={thinkBtnRef}
-                  type="button"
-                  className="socratic-trigger-btn"
-                  onClick={() => setThinkMenuOpen((v) => !v)}
-                  title="思维模式：帮你理清思路、做决定、拆解目标"
-                >
-                  ◈ 思维模式
-                </button>
-                <ThinkModeMenu
-                  anchorRef={thinkBtnRef}
-                  visible={thinkMenuOpen}
-                  onClose={() => setThinkMenuOpen(false)}
-                  onSelect={(templateId) => {
-                    setThinkMenuOpen(false);
-                    onOpenSocratic(templateId);
-                  }}
-                />
-              </>
-            )}
-          </div>
-          )
-        ) : (
-          <div className="msg-user-body">
-            {msg.imageDataUrl && <img src={msg.imageDataUrl} alt="" className="msg-user-image" />}
-            {textToShow && <span className="msg-content msg-user-text">{textToShow}</span>}
-          </div>
-        )}
-      </div>
-      <span
-        className="msg-timestamp"
-        onMouseEnter={() => setHoverTime(true)}
-        onMouseLeave={() => setHoverTime(false)}
-        style={{
-          color: hoverTime ? 'var(--accent)' : 'var(--text-secondary)',
-          fontSize: '10px',
-          fontFamily: 'Share Tech Mono',
-          cursor: 'default',
-          transition: 'color 0.2s',
-          letterSpacing: '0.5px',
-        }}
-      >
-        {hoverTime ? formatFullTime(msg.timestamp) : formatTime(msg.timestamp)}
-      </span>
+      {children}
     </div>
   );
-});
-
-function filterExpectedEffect(text: string): string {
-  if (!text || typeof text !== 'string') return text;
-  return text
-    .split('\n')
-    .filter((line) => {
-      if (line.includes('预期效果')) return false;
-      return !UI_CTRL_PATTERNS.some((p) => p.test(line.trim()));
-    })
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }
+
+const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProps) {
+  const {
+    msg,
+    textToShow,
+    raw,
+    optionsToShow,
+    isTaskList,
+    isReflectiveQuestions,
+    forcePills,
+    totalPages,
+    currentPage,
+    onPageChange,
+    isStreamingMsg,
+    agentPhase,
+    speakingMessageId,
+    wsConnected,
+    quickSend,
+    onContextMenu,
+    onQuoteQuestion,
+    segments,
+    isLastAssistant,
+  } = props;
+
+  return (
+    <MessageRow
+      msg={msg}
+      raw={raw}
+      speakingMessageId={speakingMessageId}
+      isStreamingMsg={isStreamingMsg}
+      onContextMenu={onContextMenu}
+    >
+      <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} />
+      <div className="msg-body">
+        {msg.role === 'assistant' ? (
+          <AssistantMessageBody
+            msg={msg}
+            textToShow={textToShow}
+            raw={raw}
+            optionsToShow={optionsToShow}
+            isTaskList={isTaskList}
+            isReflectiveQuestions={isReflectiveQuestions}
+            forcePills={forcePills}
+            totalPages={totalPages}
+            currentPage={currentPage}
+            onPageChange={onPageChange}
+            isStreamingMsg={isStreamingMsg}
+            wsConnected={wsConnected}
+            quickSend={quickSend}
+            onQuoteQuestion={onQuoteQuestion}
+            segments={segments}
+            isLastAssistant={isLastAssistant}
+          />
+        ) : (
+          <UserMessageBody imageDataUrl={msg.imageDataUrl} textToShow={textToShow} />
+        )}
+      </div>
+      <MessageMeta timestamp={msg.timestamp} />
+    </MessageRow>
+  );
+});
 
 function stripMarkdown(text: string): string {
   return text
@@ -740,6 +1148,9 @@ interface ChatTabProps {
 }
 
 const MAX_VISIBLE_MESSAGES = 50;
+const VISIBLE_MESSAGES_STEP = 30;
+const BOTTOM_FOLLOW_THRESHOLD = 100;
+const SHOW_SCROLL_BUTTON_THRESHOLD = 300;
 
 // ── STREAK 工具函数 ──────────────────────────────────────────────────────
 function getTodayStr(): string {
@@ -779,6 +1190,7 @@ interface ChatInputAreaProps {
   injectInputText?: string | null;
   onInjectConsumed?: () => void;
   onClearHistory?: () => void;
+  hasPendingPills?: boolean;
 }
 
 const ChatInputArea = memo(function ChatInputArea({
@@ -793,6 +1205,7 @@ const ChatInputArea = memo(function ChatInputArea({
   injectInputText,
   onInjectConsumed,
   onClearHistory,
+  hasPendingPills,
 }: ChatInputAreaProps) {
   const [inputValue, setInputValue] = useState('');
   const [inputHistory, setInputHistory] = useState<string[]>([]);
@@ -914,7 +1327,7 @@ const ChatInputArea = memo(function ChatInputArea({
                 fontSize: '18px', flexShrink: 0,
                 overflow: 'hidden',
               }}>
-                {file.mimeType.startsWith('image/') ? (
+                {file.mimeType.startsWith('image/') && file.base64 ? (
                   <img
                     src={`data:${file.mimeType};base64,${file.base64}`}
                     alt=""
@@ -927,14 +1340,14 @@ const ChatInputArea = memo(function ChatInputArea({
               </div>
               <div style={{ overflow: 'hidden' }}>
                 <div style={{
-                  fontSize: '12px', color: 'var(--text-primary)',
-                  fontFamily: 'Share Tech Mono, monospace',
+                  fontSize: 'var(--text-sm)', color: 'var(--text-primary)',
+                  fontFamily: 'var(--font-mono)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   maxWidth: '120px',
                 }}>{file.name}</div>
                 <div style={{
-                  fontSize: '10px', color: 'var(--text-tertiary)',
-                  fontFamily: 'Share Tech Mono, monospace',
+                  fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)',
+                  fontFamily: 'var(--font-mono)',
                 }}>{formatFileSize(file.size)}</div>
               </div>
               <button
@@ -1026,7 +1439,7 @@ const ChatInputArea = memo(function ChatInputArea({
               }
             }
           }}
-          placeholder="// INPUT COMMAND OR MESSAGE..."
+          placeholder={hasPendingPills ? '或者自己输入...' : '// INPUT COMMAND OR MESSAGE...'}
           rows={1}
         />
         <button type="button" className="attach-btn" title="添加附件（或拖拽文件到此处）" onClick={handlePickFiles}>📎</button>
@@ -1043,22 +1456,36 @@ const ChatInputArea = memo(function ChatInputArea({
   );
 });
 
+/** 列表渲染用稳定引用，避免每条 user 消息因新对象触发无意义子树更新 */
+const STABLE_EMPTY_OPTIONS: OptionItem[] = [];
+const USER_ROW_PARSE_PLACEHOLDER = {
+  text: '',
+  options: STABLE_EMPTY_OPTIONS,
+  totalPages: undefined as number | undefined,
+  isTaskList: false,
+  isReflectiveQuestions: false,
+  forcePills: undefined as boolean | undefined,
+  segments: undefined as RenderSegment[] | undefined,
+};
+
 interface ChatMessageListProps {
   messages: ChatMessage[];
   displayMessages: ChatMessage[];
   isStreaming: boolean;
   awaitingResponse: boolean;
   streamingContent: string;
-  displayedLength: number;
+  displayedText: string;
   speakingMessageId: number | null;
   agentPhase: 'idle' | 'thinking' | 'typing';
+  thinkingElapsed: number;
   wsConnected: boolean;
   quickSend: (text: string) => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
   onMessageContextMenu: (e: React.MouseEvent, msg: ChatMessage, raw: string) => void;
-  onOpenSocratic: (templateId?: string) => void;
   onQuoteQuestion: (text: string) => void;
+  pendingPills?: string[] | null;
+  messagesContainerRef: React.MutableRefObject<HTMLDivElement | null>;
 }
 
 const ChatMessageList = function ChatMessageList({
@@ -1067,56 +1494,58 @@ const ChatMessageList = function ChatMessageList({
   isStreaming,
   awaitingResponse,
   streamingContent,
-  displayedLength,
+  displayedText,
   speakingMessageId,
   agentPhase,
+  thinkingElapsed,
   wsConnected,
   quickSend,
   bottomRef,
   onScroll,
   onMessageContextMenu,
-  onOpenSocratic,
   onQuoteQuestion,
+  pendingPills,
+  messagesContainerRef,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-
-  const lastAssistantMsgId = useMemo(() => {
-    for (let i = displayMessages.length - 1; i >= 0; i--) {
-      const m = displayMessages[i];
-      if (m.role === 'assistant' && !m.isStreaming && !m.isSystemReply) {
-        return m.id;
-      }
-    }
-    return null;
-  }, [displayMessages]);
+  const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
   }, []);
 
   const showTypingIndicator = (awaitingResponse || isStreaming) && (messages.length === 0 || messages[messages.length - 1]?.role === 'user');
+  const lastAssistantId = [...messages].reverse().find(m => m.role === 'assistant')?.id;
 
   return (
-    <div className="chat-messages" onScroll={onScroll} ref={messagesContainerRef}>
-      {messages.length === 0 && (
-        <div className="chat-empty">
-          <span className="empty-icon">✦</span>
-          <span>输入消息开始对..</span>
-        </div>
-      )}
-      {showTypingIndicator && (
-        <div className="chat-thinking">
-          <span className="msg-label">◆ AMY</span>
-          {agentPhase === 'thinking' && <span className="agent-status-badge">思考中</span>}
-          <span className="processing-blocks typing-dots">
-            <span className="block" />
-            <span className="block" />
-            <span className="block" />
-          </span>
-        </div>
-      )}
-      {displayMessages.map((msg) => {
+    <div className="chat-messages-wrap" onScroll={onScroll} ref={messagesContainerRef}>
+      <div className="chat-messages">
+        {messages.length === 0 && (
+          <div className="chat-empty">
+            <span className="empty-icon">✦</span>
+            <span>输入消息开始对..</span>
+          </div>
+        )}
+        {showTypingIndicator && (
+          <div className="chat-thinking">
+            <span className="msg-label">◆ AMY</span>
+            {agentPhase === 'thinking' && (
+              <>
+                <span className="agent-status-badge">深度思考中</span>
+                {thinkingElapsed > 0 && (
+                  <span className="thinking-elapsed">{thinkingElapsed}s</span>
+                )}
+              </>
+            )}
+            {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
+            <span className="processing-blocks typing-dots">
+              <span className="block" />
+              <span className="block" />
+              <span className="block" />
+            </span>
+          </div>
+        )}
+        {displayMessages.map((msg) => {
         const raw = typeof msg.content === 'string'
           ? msg.content
           : String((msg.content as any)?.text ?? (msg.content as any)?.content ?? msg.content ?? '');
@@ -1132,15 +1561,36 @@ const ChatMessageList = function ChatMessageList({
           }
         } catch {}
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
-        // 流式消息：用 displayedLength 控制显示进度，实现打字机效果
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
-        // 如果 displayedLength 为 0 但有内容，显示完整内容（避免空白）
-        const display = isStreamingMsg && displayedLength > 0 ? fullContent.slice(0, displayedLength) : fullContent;
-        const parsed = (msg.role === 'assistant' && !isStreamingMsg)
-          ? parseOptionBox(raw)
-          : { text: display, options: [] as OptionItem[], totalPages: undefined, isTaskList: false, isReflectiveQuestions: false, forcePills: undefined, segments: undefined };
+        // displayedText 仅用于视觉打字；结构一律从 fullContent 解析
+        const display = isStreamingMsg ? displayedText : fullContent;
+        const parsed =
+          msg.role === 'user'
+            ? USER_ROW_PARSE_PLACEHOLDER
+            : msg.role === 'assistant'
+              ? (() => {
+                  const fc = typeof fullContent === 'string' ? fullContent : '';
+                  // 流式阶段：缓存解析结果，避免每帧重跑 867 行解析器
+                  if (isStreamingMsg) {
+                    const cached = streamingParseCacheRef.current;
+                    if (cached && cached.input === fc) return cached.output;
+                    const result = parseOptionBox(fc);
+                    streamingParseCacheRef.current = { input: fc, output: result };
+                    return result;
+                  }
+                  return parseOptionBox(fc);
+                })()
+              : {
+                  text: display,
+                  options: STABLE_EMPTY_OPTIONS,
+                  totalPages: undefined,
+                  isTaskList: false,
+                  isReflectiveQuestions: false,
+                  forcePills: undefined,
+                  segments: undefined,
+                };
         const textToShow = msg.role === 'assistant'
-          ? (isStreamingMsg && displayedLength > 0 ? display : (parsed.text?.trim() ? parsed.text : raw))
+          ? (isStreamingMsg ? display : (parsed.text?.trim() ? parsed.text : raw))
           : display;
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;
@@ -1168,13 +1618,30 @@ const ChatMessageList = function ChatMessageList({
             wsConnected={wsConnected}
             quickSend={quickSend}
             onContextMenu={onMessageContextMenu}
-            onOpenSocratic={onOpenSocratic}
             onQuoteQuestion={onQuoteQuestion}
-            isLastAssistantMsg={msg.id === lastAssistantMsgId}
+            isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
           />
         );
-      })}
-      <div ref={bottomRef as React.Ref<HTMLDivElement>} />
+        })}
+        {pendingPills && pendingPills.length > 0 && (
+          <div className="response-tray-inline">
+            <div className="response-tray-inline__pills">
+              {pendingPills.map((pill: string, i: number) => (
+                <button
+                  key={i}
+                  className="response-tray-inline__pill"
+                  title={pill}
+                  onClick={() => quickSend(pill)}
+                >
+                  {pill}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef as React.Ref<HTMLDivElement>} />
+        <div style={{ minHeight: '75vh', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
+      </div>
     </div>
   );
 }
@@ -1191,7 +1658,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [isStreaming, setIsStreaming] = useState(false);
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [streamingDisplayContent, setStreamingDisplayContent] = useState('');
+  // typing scheduler 双状态：fullText（真实流式内容） / displayedText（UI可见）
+  const [fullText, setFullText] = useState('');
+  const [displayedText, setDisplayedText] = useState('');
   const [modelName, setModelName] = useState('--');
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
   const [localTime, setLocalTime] = useState('');
@@ -1221,15 +1690,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: number; text: string } | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
-  const [showSocratic, setShowSocratic] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
+  const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
-  const [displayedLength, setDisplayedLength] = useState(0);
-  // AI 自动触发的思维引导数据：customRounds（自然格式）templateId（THINK_MODE 标记）
-  const [activeSocratic, setActiveSocratic] = useState<{
-    rounds?: SocraticRound[];
-    templateId?: string;
-  } | null>(null);
+  const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE_MESSAGES);
+  const [pendingPills, setPendingPills] = useState<string[] | null>(null);
   // 任务看板显示状态
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // ===== 所有 useRef 集中声明 =====
@@ -1238,18 +1703,200 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const streamingMessageRef = useRef('');
-  const typewriterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const displayedLengthRef = useRef(0);
+  const streamingMessageRef = useRef(''); // 仍保留：用于与现有消息 content 合并/落盘，不改 schema
+  const typewriterRafRef = useRef<number | null>(null);
+  const fullTextRef = useRef<string>('');
+  const visibleFullTextRef = useRef<string>(''); // 用于打字展示的“可见正文”（从 fullText 解析得到）
+  const displayedLenRef = useRef<number>(0);
+  const typingBudgetMsRef = useRef<number>(0);
+  const lastTypingTsRef = useRef<number>(0);
+  const pendingFullTextSyncRafRef = useRef<number | null>(null);
   const userScrolledUp = useRef<boolean>(false);
-  const pendingSystemReply = useRef<boolean>(false);
+  const followScrollRef = useRef<boolean>(true);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
+  const lastSentRequestId = useRef<string>('');
   const streamDoneReceived = useRef<boolean>(false);
+  const streamUiRafRef = useRef<number | null>(null);
+  const anchoredStreamingMsgIdRef = useRef<number | null>(null);
+  // 滚动控制：标记编程式滚动（防止 handleChatScroll 误把程序滚动当成用户操作）
+  const programmaticScrollRef = useRef(false);
+  // 滚动控制：发送消息后的短暂保护期（防止 ResizeObserver 立即覆盖用户消息锚定）
+  const scrollGraceUntilRef = useRef<number>(0);
+  // 标记：需要在下次渲染后将最新用户消息滚动到视口顶部
+  const needsScrollToUserRef = useRef(false);
+  const typewriterStartTsRef = useRef<number>(0);
+  // 用一个稳定的 ref 标记"是否应该运行打字机"
+  const shouldRunTypewriterRef = useRef(false);
+
+  const scrollToBottom = useCallback((force = false) => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    if (!force && !followScrollRef.current) return;
+    if (!bottomRef.current) return;
+
+    const containerRect = el.getBoundingClientRect();
+    const bottomRect = bottomRef.current.getBoundingClientRect();
+
+    // 只向下滚：仅当 bottomRef 在视口下方（内容溢出）时才追
+    // 当 bottomRef 还在视口内（AI 刚开始输出），不滚动，保持用户消息在顶部
+    if (bottomRect.top <= containerRect.bottom + 10) return;
+
+    programmaticScrollRef.current = true;
+    bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
+    // 下一帧清除标记，让后续用户滚动能正常检测
+    requestAnimationFrame(() => { programmaticScrollRef.current = false; });
+  }, []);
+
+  /** 布局稳定后再滚动（ResizeObserver / 流式 tick 共用） */
+  const scheduleScrollAfterLayout = useCallback(
+    (force = false) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom(force);
+        });
+      });
+    },
+    [scrollToBottom]
+  );
+
+  /** 发送后双 rAF：等 DOM 布局完成再锚定最新用户消息并重置跟随 */
+  const scrollAfterUserSend = useCallback(() => {
+    // 仅设标记，实际滚动由 useEffect 在 React 渲染完成后执行
+    needsScrollToUserRef.current = true;
+    scrollGraceUntilRef.current = Date.now() + 600;
+  }, []);
+
+  const scheduleFullTextSync = useCallback(() => {
+    if (pendingFullTextSyncRafRef.current != null) return;
+    pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
+      pendingFullTextSyncRafRef.current = null;
+      const buf = fullTextRef.current;
+      setFullText(buf);
+      // 打字展示用的可见正文：始终从 fullContent 解析而来（不依赖 displayedText）
+      try {
+        const parsed = parseOptionBox(buf || '');
+        const visible = (parsed.text ?? '').toString();
+        visibleFullTextRef.current = visible;
+        // 若 visible 变短（例如标签被剥离），夹紧 displayedLen，避免 slice 越界/回退抖动
+        const clamped = Math.min(displayedLenRef.current, visible.length);
+        if (clamped !== displayedLenRef.current) {
+          displayedLenRef.current = clamped;
+          setDisplayedText(visible.slice(0, clamped));
+        }
+      } catch {
+        visibleFullTextRef.current = buf || '';
+      }
+      // 仅保证“流式气泡存在”，不驱动可见文本（可见文本由 typing scheduler 输出）
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant' && last?.isStreaming) {
+          // content 保持为完整 fullText 以便复制/最终落盘，但 UI 渲染不直接用它（用 displayedText）
+          if (last.content === buf) return prev;
+          return prev.map((m, idx) => (idx === prev.length - 1 ? { ...m, content: buf } : m));
+        }
+        // 若还没创建 assistant 流式气泡，创建一个（content 先放 fullText）
+        if (!buf || !buf.trim()) return prev;
+        return [
+          ...prev,
+          {
+            id: getNextMessageId(),
+            role: 'assistant' as const,
+            content: buf,
+            isStreaming: true,
+            timestamp: Date.now(),
+          },
+        ];
+      });
+    });
+  }, [getNextMessageId, setMessages]);
+
+  const getNextCharIndex = (text: string, idx: number): number => {
+    if (idx >= text.length) return idx;
+    const code = text.charCodeAt(idx);
+    // 高代理项 + 低代理项视为一个字符
+    if (code >= 0xd800 && code <= 0xdbff && idx + 1 < text.length) {
+      const next = text.charCodeAt(idx + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) return idx + 2;
+    }
+    return idx + 1;
+  };
+
+  const charDelayMs = (ch: string): number => {
+    // base delay 来自设置面板的「流式速度」档位
+    // fast=50ms, medium=80ms, slow=120ms
+    let d = streamSpeedMs;
+    // 标点停顿按 base 的比例缩放，保持各档位的节奏感一致
+    if (ch === '\n') d += streamSpeedMs * 2.5;                     // 换行：2.5x 呼吸暂停
+    else if (ch === '。' || ch === '！' || ch === '？' || ch === '…') d += streamSpeedMs * 2;  // 句末：2x 停顿
+    else if (ch === '.' || ch === '!' || ch === '?') d += streamSpeedMs * 1.5;    // 英文句末：1.5x
+    else if (ch === ',' || ch === '，' || ch === '、' || ch === ';' || ch === '；') d += streamSpeedMs * 0.6;  // 逗号：0.6x 微顿
+    return d;
+  };
+
+  const isWordChar = (ch: string): boolean => {
+    // ASCII word-ish; CJK/其它无空格语言按“单字符”自然显示
+    return /^[A-Za-z0-9_]+$/.test(ch);
+  };
+
+  const computeRangeCostMs = (text: string, start: number, end: number): number => {
+    let cost = 0;
+    let i = start;
+    while (i < end) {
+      const ni = getNextCharIndex(text, i);
+      const ch = text.slice(i, ni);
+      cost += charDelayMs(ch);
+      i = ni;
+    }
+    return cost;
+  };
+
+  const pickPreferredNextIndex = (text: string, idx: number, maxChars: number): number => {
+    if (idx >= text.length) return idx;
+    // 先看第一个字符；非 word（空白/标点/CJK 等）则按“单字符”推进
+    const firstEnd = getNextCharIndex(text, idx);
+    const firstCh = text.slice(idx, firstEnd);
+    if (!isWordChar(firstCh)) return firstEnd;
+
+    // 在 maxChars 范围内尽量推进到 word 边界（包含可选的 1 个尾随空格）
+    let i = idx;
+    let used = 0;
+    while (used < maxChars && i < text.length) {
+      const ni = getNextCharIndex(text, i);
+      const ch = text.slice(i, ni);
+      if (!isWordChar(ch)) break;
+      i = ni;
+      used += 1;
+    }
+
+    // 若后面紧跟空格且仍有容量，则把空格也带上，观感更“按词组”流出
+    if (used < maxChars && i < text.length) {
+      const ni = getNextCharIndex(text, i);
+      const ch = text.slice(i, ni);
+      if (ch === ' ') return ni;
+    }
+    return i;
+  };
 
   // ===== 所有 useEffect 放在 useState/useRef 之后 =====
+  // pendingPills 已停用：pills 现在始终在消息体内渲染，不再需要底部 ResponseTray 重复显示
+  useEffect(() => {
+    setPendingPills(null);
+  }, [messages]);
+
   // 通知父组件状态变化
   useEffect(() => {
     onStatusChange?.(wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
   }, [wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
+
+  useEffect(() => {
+    return () => {
+      if (streamUiRafRef.current != null) {
+        cancelAnimationFrame(streamUiRafRef.current);
+        streamUiRafRef.current = null;
+      }
+    };
+  }, []);
 
 
   const handleScreenshot = useCallback(async () => {
@@ -1333,7 +1980,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [handleScreenshot]);
 
   useEffect(() => {
-    if (!settings.typingSound && audioRef.current) {
+    if (settings.typingSound === 'off' && audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
       setSpeakingMessageId(null);
@@ -1389,7 +2036,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     const handleMessage = (_: any, msg: any) => {
       try {
-        if (msg && (msg.type === 'status' || msg.connected !== undefined)) {
+        // 只有明确的 status 类型消息才允许更新连接状态，
+        // 避免含有 connected 字段的普通消息误触发 UI 假断开
+        if (msg && msg.type === 'status') {
           const connected = msg.connected === true;
           setWsConnected(connected);
           if (!connected) {
@@ -1469,12 +2118,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   };
 
   const handleIncomingMessage = (
-    data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean }
+    data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean; elapsed?: number }
   ) => {
     if (!data || data.type === 'status' || data.connected !== undefined) return;
     if (data.type === 'agent-phase') {
       const phase = data.phase;
       if (phase === 'thinking' || phase === 'typing' || phase === 'idle') setAgentPhase(phase);
+      if (phase === 'thinking' && data.elapsed != null) setThinkingElapsed(data.elapsed);
+      if (phase === 'idle' || phase === 'typing') setThinkingElapsed(0);
       return;
     }
     // 新格式：{type: 'event', event: 'chat', payload: {...}}
@@ -1503,7 +2154,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (u.model != null) setModelName(String(u.model));
     }
 
-    const content = extractContent(data);
+    let content = extractContent(data);
+    content = (content || '').replace(/\u200B/g, ''); // 过滤流式心跳字符（零宽空格）
     const done = (data.done === true) || (data.payload?.done === true);
     const isDelta = isDeltaPayload(data);
 
@@ -1527,31 +2179,19 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // 只有在流式内容为空时才用 done 消息里的 content
       let finalStreamContent = streamingMessageRef.current || content;
       // 不立刻清空，让打字机跑完
-      const systemReply = pendingSystemReply.current;
-      pendingSystemReply.current = false;
-
-      // ── 思维引导自动触发检──────────────────────────────────
+      const currentRequestId = lastSentRequestId.current;
+      const systemReply = pendingSystemReplyMap.current.get(currentRequestId) ?? false;
+      pendingSystemReplyMap.current.delete(currentRequestId);
+      // 兼容旧消息：如果包含 [THINK_MODE:xxx] 标记，静默剥离
       if (!systemReply && finalStreamContent) {
-        const thinkModeId = detectThinkModeMarker(finalStreamContent);
-        if (thinkModeId) {
-          // [THINK_MODE:xxx] 标记：剥离标记后显示，延迟弹出面板
-          finalStreamContent = stripThinkModeMarker(finalStreamContent);
-          setTimeout(() => {
-            setActiveSocratic({ templateId: thinkModeId });
-            setShowSocratic(true);
-          }, 400);
-        } else {
-          // 检测自然多轮 checkbox 格式（3组及以上）
-          const sections = parseSocraticSections(finalStreamContent);
-          if (sections) {
-            setTimeout(() => {
-              setActiveSocratic({ rounds: sections });
-              setShowSocratic(true);
-            }, 400);
-          }
-        }
+        finalStreamContent = stripThinkModeMarker(finalStreamContent);
       }
-      // ──────────────────────────────────────────────────────────
+      // 将最终（已清理）内容刷新到 UI（避免节流导致最后一段没显示）
+      if (finalStreamContent) {
+        streamingMessageRef.current = finalStreamContent;
+        fullTextRef.current = finalStreamContent;
+        scheduleFullTextSync();
+      }
 
       // 解析 /status 系统回复，更新状态栏
       const isSystem = systemReply;
@@ -1627,7 +2267,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         return prev;
       });
       // 不立即 setIsStreaming(false)，等打字机跑完再结束
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 50);
+      if (followScrollRef.current) {
+        scheduleScrollAfterLayout(false);
+      }
       return;
     }
 
@@ -1645,39 +2287,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // delta 模式：追加增量；全量模式：直接替换
       if (isDelta) {
         streamingMessageRef.current += content;
+        fullTextRef.current += content;
       } else {
         streamingMessageRef.current = content;
+        fullTextRef.current = content;
       }
       
-      const buf = streamingMessageRef.current;
-      setStreamingDisplayContent(buf);
-      
-      if (!buf) return;
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          return prev.map((msg, idx) =>
-            idx === prev.length - 1 ? { ...msg, content: buf } : msg
-          );
-        }
-        if (last?.role === 'assistant' && !last.isStreaming && 
-            (last.content ?? '').trim() === buf.trim()) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            id: getNextMessageId(),
-            role: 'assistant' as const,
-            content: buf,
-            isStreaming: true,
-            timestamp: Date.now(),
-          },
-        ];
-      });
+      scheduleFullTextSync();
       setIsStreaming(true);
-      if (!userScrolledUp.current) 
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      if (followScrollRef.current) {
+        scheduleScrollAfterLayout(false);
+      }
     }
   };
 
@@ -1707,8 +2327,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
   }, [messages]);
 
+  useEffect(() => {
+    // 新消息到来时，确保可见窗口至少覆盖最新的 MAX_VISIBLE_MESSAGES
+    setVisibleCount((prev) => Math.max(prev, Math.min(messages.length, MAX_VISIBLE_MESSAGES)));
+  }, [messages.length]);
+
   const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
-    if (!settings.typingSound || !msg.content) return;
+    if (settings.typingSound === 'off' || !msg.content) return;
     const plain = stripMarkdown(msg.content);
     const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗口' : plain;
     if (!truncated.trim()) return;
@@ -1748,34 +2373,34 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const sendMessage = useCallback(async (text: string, imageDataUrl: string | null, files?: UploadedFile[]) => {
     if (!text.trim() && !imageDataUrl && !files?.length) return;
 
-    // 构建消息内容
+    // 构建消息内容：只传文件路径/元数据，不自动填充内容，AMY 用 read_file 按需读取
     let contentToSend = text;
-    let fileContent = '';
+    let fileRefs = '';
 
     if (files && files.length > 0) {
-      fileContent = '\n\n[上传的文件]\n' + files.map((f, i) => {
+      fileRefs = '\n\n[附件]' + files.map((f) => {
         const size = f.size < 1024 ? `${f.size}B` : f.size < 1024 * 1024 ? `${(f.size / 1024).toFixed(1)}KB` : `${(f.size / (1024 * 1024)).toFixed(1)}MB`;
-        if (f.isText && f.content) {
-          return `\`\`\`${f.ext}\n${f.content}\n\`\`\``;
-        } else {
-          return `[${i + 1}] ${f.name} (${size}) - 二进制文件`;
-        }
-      }).join('\n---\n');
+        if (f.path) return `\n- ${f.name} (${size}): ${f.path}`;
+        if (f.isText && f.content) return `\n\`\`\`${f.ext}\n${f.content}\n\`\`\``;
+        return `\n- ${f.name} (${size}) [无路径]`;
+      }).join('');
     }
 
     if (imageDataUrl) {
       contentToSend = (text ? `${text}\n` : '') + '[用户发送了一张图片，请根据上下文回复]';
     }
 
-    const fullContent = contentToSend + fileContent;
+    const fullContentForAMY = contentToSend + fileRefs;
+    // 对话框只显示文件名，不显示内容/路径
+    const displayContent = contentToSend + (files && files.length > 0 ? '\n\n📎 ' + files.map((f) => f.name).join(', ') : '');
 
     // 权限检查与危险命令拦截
-    const permCheck = checkPermission(fullContent, permissions);
+    const permCheck = checkPermission(fullContentForAMY, permissions);
     if (!permCheck.allowed) {
       window.alert(permCheck.reason || '此操作已被权限设置拦截');
       return;
     }
-    const dangerMatch = getDangerMatch(fullContent);
+    const dangerMatch = getDangerMatch(fullContentForAMY);
     if (dangerMatch) {
       const ok = window.confirm(
         `危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`
@@ -1783,31 +2408,53 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (!ok) return;
     }
 
-    pendingSystemReply.current = !imageDataUrl && !files?.length && isSystemCommand(fullContent);
-    const cmdIsSystem = pendingSystemReply.current;
+    const newRequestId = Date.now().toString();
+    lastSentRequestId.current = newRequestId;
+    const cmdIsSystem = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
+    pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
     streamingMessageRef.current = '';
+    fullTextRef.current = '';
+    visibleFullTextRef.current = '';
+    displayedLenRef.current = 0;
+    setFullText('');
+    setDisplayedText('');
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
     userScrolledUp.current = false;
+    followScrollRef.current = true;
     setStreak(touchStreak());
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: getNextMessageId(),
-        role: 'user' as const,
-        content: fullContent,
-        timestamp: Date.now(),
-        imageDataUrl: imageDataUrl || undefined,
-        files: files,
-      },
-    ]);
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 30);
+    setPendingPills(null);
+    setMessages((prev) => {
+      const next: ChatMessage[] = [
+        ...prev,
+        {
+          id: getNextMessageId(),
+          role: 'user' as const,
+          content: displayContent,
+          timestamp: Date.now(),
+          imageDataUrl: imageDataUrl || undefined,
+          files: files,
+        },
+      ];
+      // Claude-style：不等首 token，立即创建 assistant 占位并开始锚定/留白
+      if (!cmdIsSystem) {
+        next.push({
+          id: getNextMessageId(),
+          role: 'assistant' as const,
+          content: '',
+          isStreaming: true,
+          timestamp: Date.now(),
+        });
+      }
+      return next;
+    });
+    scrollAfterUserSend();
 
-    // 发送到 OpenClaw，包含图片和文件
+    // 发送到 OpenClaw，包含图片和文件（content 含路径引用，AMY 用 read_file 读取）
     const result = await ipcRenderer.invoke('openclaw-send', {
-      content: fullContent,
+      content: fullContentForAMY,
       imageDataUrl: imageDataUrl,
       files: files,
     });
@@ -1815,7 +2462,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setAwaitingResponse(false);
       console.warn('[ChatTab] Send failed:', result?.error);
     }
-  }, [wsConnected, getNextMessageId, permissions]);
+  }, [wsConnected, getNextMessageId, permissions, scrollAfterUserSend]);
 
   const handleFileAttach = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -1843,23 +2490,47 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (!ok) return;
     }
 
-    pendingSystemReply.current = isSystemCommand(content.trim());
+    const newRequestId = Date.now().toString();
+    lastSentRequestId.current = newRequestId;
+    const isSystem = isSystemCommand(content.trim());
+    pendingSystemReplyMap.current.set(newRequestId, isSystem);
     streamingMessageRef.current = '';
-    if (!pendingSystemReply.current) {
+    fullTextRef.current = '';
+    visibleFullTextRef.current = '';
+    displayedLenRef.current = 0;
+    setFullText('');
+    setDisplayedText('');
+    if (!isSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
     userScrolledUp.current = false;
-    setMessages((prev) => [
-      ...prev,
-      { id: getNextMessageId(), role: 'user', content: content.trim(), timestamp: Date.now() },
-    ]);
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 30);
+    followScrollRef.current = true;
+    setPendingPills(null);
+    setMessages((prev) => {
+      const next: ChatMessage[] = [
+        ...prev,
+        { id: getNextMessageId(), role: 'user', content: content.trim(), timestamp: Date.now() },
+      ];
+      // Claude-style：不等首 token，立即创建 assistant 占位并开始锚定/留白
+      if (!isSystem) {
+        next.push({
+          id: getNextMessageId(),
+          role: 'assistant' as const,
+          content: '',
+          isStreaming: true,
+          timestamp: Date.now(),
+        });
+      }
+      return next;
+    });
+    scrollAfterUserSend();
     ipcRenderer.invoke('openclaw-send', content.trim());
-  }, [wsConnected, getNextMessageId, permissions]);
+  }, [wsConnected, getNextMessageId, permissions, scrollAfterUserSend]);
 
   const handleClearHistory = useCallback(() => {
     if (!window.confirm('确认清空所有聊天记录？')) return;
+    clearProcessedMarkdownCache();
     setMessages([]);
     (window as any).electronAPI?.chatHistorySave?.([]);
   }, []);
@@ -1882,7 +2553,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const onLogLines = (_: any, lines: string[]) => {
       setLogLines((prev) => {
         const updated = [...prev, ...lines];
-        return updated.slice(-50); // 只保留最新50条
+        return updated.slice(-100); // 只保留最新100条
       });
       // 自动滚动到底部
       if (logContainerRef.current) {
@@ -1897,78 +2568,238 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     };
   }, []);
 
-  const handleChatScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setShowScrollBtn(distFromBottom > 100);
-    userScrolledUp.current = distFromBottom > 200;
-  }, []);
+  const handleChatScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(distFromBottom > SHOW_SCROLL_BUTTON_THRESHOLD);
 
+      // 编程式滚动（scrollToBottom/scrollAfterUserSend 触发的）不改变跟随状态，只更新按钮显隐
+      if (programmaticScrollRef.current) return;
+
+      if (isStreaming) {
+        // 用户手动滚动到接近底部 → 恢复跟随
+        if (distFromBottom < 60) {
+          followScrollRef.current = true;
+          userScrolledUp.current = false;
+        }
+        // 用户上滑超过 80px → 立即解除跟随（一两下滚轮就能解锁）
+        else if (distFromBottom > 80) {
+          followScrollRef.current = false;
+          userScrolledUp.current = true;
+        }
+      } else {
+        const nearBottom = distFromBottom < BOTTOM_FOLLOW_THRESHOLD;
+        followScrollRef.current = nearBottom;
+        userScrolledUp.current = distFromBottom > 200;
+      }
+
+      if (el.scrollTop < 120 && messages.length > visibleCount) {
+        setVisibleCount((prev) => Math.min(prev + VISIBLE_MESSAGES_STEP, messages.length));
+      }
+    },
+    [messages.length, visibleCount, isStreaming]
+  );
+
+  useLayoutEffect(() => {
+    const wrap = messagesContainerRef.current;
+    if (!wrap) return;
+    const inner = wrap.querySelector('.chat-messages');
+    const target = inner ?? wrap;
+    const ro = new ResizeObserver(() => {
+      if (!followScrollRef.current) return;
+      // 保护期内不覆盖用户消息锚定（让用户消息保持在视口顶部）
+      if (Date.now() < scrollGraceUntilRef.current) return;
+      scheduleScrollAfterLayout(false);
+    });
+    ro.observe(target);
+    return () => ro.disconnect();
+  }, [scheduleScrollAfterLayout, messages.length, displayedText.length, fullText.length]);
+
+  // 发送消息后：等 React 渲染完成，将最新用户消息滚动到视口顶部
+  useEffect(() => {
+    if (!needsScrollToUserRef.current) return;
+    needsScrollToUserRef.current = false;
+
+    // 双 rAF 确保 DOM 布局稳定
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = messagesContainerRef.current;
+        if (!el) return;
+        const userMsgs = el.querySelectorAll('.chat-message.user');
+        const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement | undefined;
+        if (lastUserMsg) {
+          programmaticScrollRef.current = true;
+          const containerRect = el.getBoundingClientRect();
+          const msgRect = lastUserMsg.getBoundingClientRect();
+          el.scrollTop = el.scrollTop + (msgRect.top - containerRect.top);
+          requestAnimationFrame(() => {
+            programmaticScrollRef.current = false;
+            followScrollRef.current = true;
+            userScrolledUp.current = false;
+          });
+        } else {
+          followScrollRef.current = true;
+          userScrolledUp.current = false;
+        }
+      });
+    });
+  }, [messages.length]);
+
+  // assistant 新流式消息启动时：仅记录锚定 ID，保持跟随滚动开启
+  // 初始定位由 scrollAfterUserSend 完成（用户消息顶部对齐），此处不再覆盖
+  useLayoutEffect(() => {
+    const last = messages[messages.length - 1];
+    const isAssistantStreaming = !!last && last.role === 'assistant' && last.isStreaming;
+
+    if (!isAssistantStreaming) {
+      anchoredStreamingMsgIdRef.current = null;
+      return;
+    }
+
+    if (anchoredStreamingMsgIdRef.current === last.id) return;
+    anchoredStreamingMsgIdRef.current = last.id;
+
+    // Claude-style：保持 followScrollRef=true，让 ResizeObserver 自然驱动跟底
+    // scrollAfterUserSend 已将用户消息定位到视口顶部，文字增长后 ResizeObserver 平滑跟随
+  }, [messages.length]);
+
+  // 仅用于启动/停止打字机的 effect —— 依赖精简为启停条件
   useEffect(() => {
     const lastMsg = messages[messages.length - 1];
-    if (!lastMsg?.isStreaming || lastMsg.role !== 'assistant') {
-      if (typewriterTimerRef.current) {
-        clearInterval(typewriterTimerRef.current);
-        typewriterTimerRef.current = null;
+    const shouldRun = !!lastMsg?.isStreaming && lastMsg.role === 'assistant';
+    shouldRunTypewriterRef.current = shouldRun;
+
+    if (!shouldRun) {
+      if (typewriterRafRef.current != null) {
+        cancelAnimationFrame(typewriterRafRef.current);
+        typewriterRafRef.current = null;
       }
-      setDisplayedLength(0);
-      displayedLengthRef.current = 0;
       streamDoneReceived.current = false;
       return;
     }
 
-    // 打字机效果已启动，跳过
-    if (typewriterTimerRef.current) return;
+    // 已在运行，不重复启动
+    if (typewriterRafRef.current != null) return;
 
-    typewriterTimerRef.current = setInterval(() => {
-      // ref 追踪内容长度
-      const fullLen = streamingMessageRef.current.length;
-      const current = displayedLengthRef.current;
-      
-      if (current >= fullLen) {
-        // 打字机跑完了
-        if (streamDoneReceived.current) {
-          // done 已收到，现在可以结束 streaming
-          clearInterval(typewriterTimerRef.current!);
-          typewriterTimerRef.current = null;
-          setDisplayedLength(0);
-          displayedLengthRef.current = 0;
-          streamingMessageRef.current = '';
-          setStreamingDisplayContent('');
-          streamDoneReceived.current = false;
-          setIsStreaming(false);
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant' && last?.isStreaming) {
-              return prev.map((msg, idx) =>
-                idx === prev.length - 1 ? { ...msg, isStreaming: false } : msg
-              );
-            }
-            return prev;
-          });
-        }
+    // 兜底初始化
+    if (!fullTextRef.current) fullTextRef.current = streamingMessageRef.current || '';
+    if (!visibleFullTextRef.current) {
+      try {
+        visibleFullTextRef.current = (parseOptionBox(fullTextRef.current || '').text ?? '').toString();
+      } catch {
+        visibleFullTextRef.current = fullTextRef.current || '';
+      }
+    }
+
+    // 启动时给最小预算，刚好显示第一个字
+    typingBudgetMsRef.current = 20;
+    typewriterStartTsRef.current = performance.now();
+    resetSoundCounter();
+
+    const tick = (ts: number) => {
+      // 如果外部已标记停止，退出
+      if (!shouldRunTypewriterRef.current) {
+        typewriterRafRef.current = null;
         return;
       }
-      
-      // 内容越多、落后越多，每次推进越快，保证能追上
-      const CHARS_PER_TICK = Math.max(3, Math.ceil((fullLen - current) / 20));
-      const next = Math.min(current + CHARS_PER_TICK, fullLen);
-      displayedLengthRef.current = next;
-      setDisplayedLength(next);
-      
-      if (settings.typingSound) playClickSound();
-      if (!userScrolledUp.current) {
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+
+      if (!lastTypingTsRef.current) lastTypingTsRef.current = ts;
+      const dt = Math.min(80, ts - lastTypingTsRef.current);
+      lastTypingTsRef.current = ts;
+
+      const full = visibleFullTextRef.current || '';
+      const fullLen = full.length;
+      let idx = displayedLenRef.current;
+      let typedThisFrame = 0;
+      const backlog = fullLen - displayedLenRef.current;
+      // 预热期（前 2 秒）：不追赶，保持匀速，避免首行过快
+      const elapsed = ts - typewriterStartTsRef.current;
+      let catchUpBoost = 0;
+      if (elapsed > 2000) {
+        // 预热结束后才启用追赶
+        if (backlog > 30) {
+          catchUpBoost = Math.min((backlog - 30) * 0.3, 20);
+        }
+        if (backlog > 100) {
+          catchUpBoost = 20 + Math.min((backlog - 100) * 0.5, 80);
+        }
       }
-    }, streamSpeedMs);
+      typingBudgetMsRef.current += dt + catchUpBoost;
+
+      while (typedThisFrame < 4 && idx < fullLen) {
+        const remain = 4 - typedThisFrame;
+        let targetIdx = pickPreferredNextIndex(full, idx, remain);
+        if (targetIdx <= idx) targetIdx = getNextCharIndex(full, idx);
+
+        const cost = computeRangeCostMs(full, idx, targetIdx);
+        if (typingBudgetMsRef.current < cost) {
+          const singleIdx = getNextCharIndex(full, idx);
+          const singleCost = computeRangeCostMs(full, idx, singleIdx);
+          if (typingBudgetMsRef.current < singleCost) break;
+          typingBudgetMsRef.current -= singleCost;
+          idx = singleIdx;
+          typedThisFrame += 1;
+          continue;
+        }
+
+        typingBudgetMsRef.current -= cost;
+        let count = 0;
+        let j = idx;
+        while (j < targetIdx && count < remain) {
+          j = getNextCharIndex(full, j);
+          count += 1;
+        }
+        idx = targetIdx;
+        typedThisFrame += count;
+      }
+
+      if (idx !== displayedLenRef.current) {
+        displayedLenRef.current = idx;
+        setDisplayedText(full.slice(0, idx));
+        if (settings.typingSound !== 'off') playClickSound(settings.typingSound);
+        if (followScrollRef.current) scheduleScrollAfterLayout(false);
+      }
+
+      if (displayedLenRef.current >= fullLen && streamDoneReceived.current) {
+        typewriterRafRef.current = null;
+        shouldRunTypewriterRef.current = false;
+        streamDoneReceived.current = false;
+        lastTypingTsRef.current = 0;
+        typingBudgetMsRef.current = 0;
+        setDisplayedText('');
+        setFullText('');
+        fullTextRef.current = '';
+        visibleFullTextRef.current = '';
+        displayedLenRef.current = 0;
+        streamingMessageRef.current = '';
+        setIsStreaming(false);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant' && last?.isStreaming) {
+            return prev.map((msg, i) =>
+              i === prev.length - 1 ? { ...msg, isStreaming: false } : msg
+            );
+          }
+          return prev;
+        });
+        return;
+      }
+
+      typewriterRafRef.current = requestAnimationFrame(tick);
+    };
+
+    typewriterRafRef.current = requestAnimationFrame(tick);
 
     return () => {
-      if (typewriterTimerRef.current) {
-        clearInterval(typewriterTimerRef.current);
-        typewriterTimerRef.current = null;
+      if (typewriterRafRef.current != null) {
+        cancelAnimationFrame(typewriterRafRef.current);
+        typewriterRafRef.current = null;
       }
     };
-  }, [messages, streamSpeedMs, settings.typingSound]);
+    // ✅ 关键：移除 fullText 和 messages，只在"流式开始/结束"时真正启停
+    // messages.length 变化时检查是否需要启动，但不会 cancel 正在运行的循环
+  }, [messages.length, settings.typingSound, scheduleScrollAfterLayout]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -1987,13 +2818,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       }
     }
   }, []);
-
-  const socraticContextText = useMemo(() => {
-    const recent = messages.slice(-6);
-    const lastUser = [...recent].reverse().find((m) => m.role === 'user');
-    const lastAI   = [...recent].reverse().find((m) => m.role === 'assistant');
-    return [lastUser?.content, lastAI?.content].filter(Boolean).join(' ');
-  }, [messages]);
 
   return (
     <>
@@ -2027,7 +2851,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '9px 16px', cursor: 'pointer',
                   color: item.danger ? 'var(--status-error)' : 'var(--text-primary)',
-                  fontSize: '12px', fontFamily: 'Share Tech Mono',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
                   transition: 'background 0.15s',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = item.danger ? 'var(--status-error-bg)' : 'var(--bg-hover)'; }}
@@ -2067,23 +2891,26 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           }}>
             <span style={{
               color: 'var(--accent-primary)',
-              fontSize: '16px',
-              fontFamily: 'Share Tech Mono, monospace',
+              fontSize: 'var(--text-lg)',
+              fontFamily: 'var(--font-mono)',
               letterSpacing: '3px',
               textShadow: '0 0 10px var(--glow-color)',
             }}>⬇ DROP FILES HERE</span>
           </div>
         )}
-        <div className="section-header">
-          <div className="header-left">
-            <span className="section-title">◆ OpenClaw Chat</span>
+        {/* VOICE / SETTINGS / CONNECTED 通过 portal 渲染到 TabBar 右侧 */}
+        {typeof document !== 'undefined' && document.getElementById('chat-header-portal') && createPortal(
+          <>
             <button
               type="button"
-              className={`voice-toggle ${settings.typingSound ? 'on' : 'off'}`}
-              onClick={() => setSettings((s) => ({ ...s, typingSound: !s.typingSound }))}
-              title={settings.typingSound ? '点击关闭打字音效' : '点击开启打字音效'}
+              className={`voice-toggle ${settings.typingSound !== 'off' ? 'on' : 'off'}`}
+              onClick={() => setSettings((s) => ({
+                ...s,
+                typingSound: s.typingSound === 'off' ? 'typewriter' : 'off'
+              }))}
+              title={settings.typingSound !== 'off' ? `音效: ${settings.typingSound}（点击关闭）` : '点击开启打字音效'}
             >
-              {settings.typingSound ? '♪ VOICE ON' : '♪ VOICE OFF'}
+              {settings.typingSound !== 'off' ? '♪ VOICE ON' : '♪ VOICE OFF'}
             </button>
             <button
               type="button"
@@ -2093,12 +2920,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             >
               ⚙ SETTINGS
             </button>
-          </div>
-          <span className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`}>
-            {wsConnected && <span className="status-dot" />}
-            {wsConnected ? 'CONNECTED' : wsReconnecting ? '重连..' : wsError || 'DISCONNECTED'}
-          </span>
-        </div>
+            <span className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`} style={{ fontSize: '11px' }}>
+              {wsConnected && <span className="status-dot" />}
+              {wsConnected ? 'CONNECTED' : wsReconnecting ? '重连..' : wsError || 'DISCONNECTED'}
+            </span>
+          </>,
+          document.getElementById('chat-header-portal')!
+        )}
 
         <SetupGuide
           wsConnected={wsConnected}
@@ -2117,45 +2945,35 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
         <ChatMessageList
           messages={messages}
-          displayMessages={messages.length > MAX_VISIBLE_MESSAGES ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages}
+          displayMessages={messages.length > visibleCount ? messages.slice(-visibleCount) : messages}
           isStreaming={isStreaming}
           awaitingResponse={awaitingResponse}
-          streamingContent={streamingDisplayContent}
-          displayedLength={displayedLength}
+          streamingContent={fullText}
+          displayedText={displayedText}
           speakingMessageId={speakingMessageId}
           agentPhase={agentPhase}
+          thinkingElapsed={thinkingElapsed}
           wsConnected={wsConnected}
           quickSend={quickSend}
           bottomRef={bottomRef}
           onScroll={handleChatScroll}
           onMessageContextMenu={(e, msg, raw) => setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id, text: raw })}
-          onOpenSocratic={(templateId?: string) => {
-            if (templateId) setActiveSocratic({ templateId });
-            setShowSocratic(true);
-          }}
           onQuoteQuestion={(text: string) => setInjectInputText(text)}
+          pendingPills={pendingPills}
+          messagesContainerRef={messagesContainerRef}
         />
-        {showSocratic && (
-          <SocraticPanel
-            inline
-            contextText={socraticContextText}
-            customRounds={activeSocratic?.rounds}
-            suggestedTemplateId={activeSocratic?.templateId}
-            onComplete={(text) => {
-              setInjectInputText(text);
-              setShowSocratic(false);
-              setActiveSocratic(null);
-            }}
-            onClose={() => {
-              setShowSocratic(false);
-              setActiveSocratic(null);
-            }}
-          />
-        )}
         {showScrollBtn && (
           <div
-            onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            onClick={() => {
+              followScrollRef.current = true;
+              userScrolledUp.current = false;
+              scheduleScrollAfterLayout(true);
+            }}
             style={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              bottom: '90px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -2163,6 +2981,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               padding: '6px 0',
               cursor: 'pointer',
               gap: '2px',
+              zIndex: 10,
+              pointerEvents: 'auto',
             }}
           >
             {[0, 1, 2].map((i) => (
@@ -2215,12 +3035,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             transform: 'translateY(-50%)',
             width: '24px',
             height: '48px',
-            background: 'var(--bg-panel, #1a1a1a)',
-            border: '1px solid var(--border-color, #2a2a2a)',
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: '4px',
-            color: 'var(--text-secondary, #888888)',
+            color: 'var(--text-secondary)',
             cursor: 'pointer',
-            fontSize: '12px',
+            fontSize: 'var(--text-sm)',
             zIndex: 10,
             display: 'flex',
             alignItems: 'center',
@@ -2259,9 +3079,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             />
             <span
               style={{
-                fontSize: '9px',
+                fontSize: 'var(--text-xs)',
                 color: 'var(--text-tertiary)',
-                fontFamily: 'Share Tech Mono',
+                fontFamily: 'var(--font-mono)',
               }}
             >
               GW
@@ -2281,9 +3101,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             />
             <span
               style={{
-                fontSize: '9px',
+                fontSize: 'var(--text-xs)',
                 color: 'var(--text-tertiary)',
-                fontFamily: 'Share Tech Mono',
+                fontFamily: 'var(--font-mono)',
               }}
             >
               MEM
@@ -2302,9 +3122,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           >
             <div
               style={{
-                fontSize: '20px',
+                fontSize: 'var(--text-3xl)',
                 color: 'var(--text-primary)',
-                fontFamily: 'Share Tech Mono',
+                fontFamily: 'var(--font-mono)',
                 fontWeight: 500,
                 letterSpacing: '1px',
                 lineHeight: 1,
@@ -2321,9 +3141,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             />
             <div
               style={{
-                fontSize: '12px',
+                fontSize: 'var(--text-xs)',
                 color: 'var(--text-secondary)',
-                fontFamily: 'Share Tech Mono',
+                fontFamily: 'var(--font-mono)',
                 letterSpacing: '0.5px',
                 lineHeight: 1,
               }}
@@ -2344,15 +3164,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           <HeartbeatWave connected={wsConnected} pulse={heartbeatPulse} />
         </div>
 
-        {/* 3. 系统信息 */}
+        {/* 3. 系统信息 MODEL/TOK/CTX */}
         <div style={{
           display: 'flex',
           flexWrap: 'wrap',
           padding: '4px 12px',
           borderBottom: '1px solid var(--border-subtle)',
           gap: '8px',
-          fontSize: '10px',
-          fontFamily: 'Share Tech Mono',
+          fontSize: 'var(--text-sm)',
+          fontFamily: 'var(--font-mono)',
         }}>
           <div style={{ display: 'flex', gap: '4px' }}>
             <span style={{ color: 'var(--text-tertiary)' }}>MODEL</span>
@@ -2409,8 +3229,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             style={{
               flex: 1,
               padding: '4px 0',
-              fontSize: '10px',
-              fontFamily: 'Share Tech Mono',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-mono)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -2436,8 +3256,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             style={{
               flex: 1,
               padding: '4px 0',
-              fontSize: '10px',
-              fontFamily: 'Share Tech Mono',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-mono)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -2455,8 +3275,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             style={{
               flex: 1,
               padding: '4px 0',
-              fontSize: '10px',
-              fontFamily: 'Share Tech Mono',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-mono)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -2478,8 +3298,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             style={{
               flex: 1,
               padding: '4px 0',
-              fontSize: '10px',
-              fontFamily: 'Share Tech Mono',
+              fontSize: 'var(--text-xs)',
+              fontFamily: 'var(--font-mono)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -2499,67 +3319,27 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         </div>
 
         {/* 6. Gateway 日志 - 固定高度 */}
-          <div className="gateway-log-section">
-          <div className="section-header gw-log-title-row">
-            <span className="section-title">
-              Gateway 日志
-            </span>
-            <div className="gw-controls gw-controls-log">
-              <button
-                type="button"
-                className="terminal-test-btn gw-btn-export"
-                onClick={async () => {
-                  if (logLines.length === 0) return;
-                  const content = logLines.join('\n');
-                  const blob = new Blob([content], { type: 'text/plain' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `gateway-log-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.txt`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                title="导出日志"
-              >
-                导出
-              </button>
-              <button
-                type="button"
-                className="terminal-test-btn gw-btn-clear"
-                onClick={() => {
-                  setLogLines([]);
-                }}
-                title="清空日志"
-              >
-                清空
-              </button>
-            </div>
-          </div>
-          <div ref={logContainerRef} className="log-terminal-dom" tabIndex={-1}>
-            {logLines.length === 0 ? (
-              <div className="log-empty">[LOG] 等待 Gateway 日志...</div>
-            ) : (
-              logLines.map((line, i) => {
-                const match = line.match(/^(\[[^\]]+\])(.*)/);
-                const colorClass = getLogColorClass(line);
-                const levelClass = `log-${getLogLevel(line)}`;
-                const combinedClass = `log-line ${levelClass} ${colorClass}`.trim();
-                if (match) {
-                  return (
-                    <div key={i} className={combinedClass}>
-                      <strong style={{ color: 'inherit', fontWeight: 900, textShadow: '0 0 8px currentColor' }}>{match[1]}</strong>
-                      {match[2]}
-                    </div>
-                  );
-                }
-                return (
-                  <div key={i} className={combinedClass}>
-                    {line}
-                  </div>
-                );
-              })
-            )}
-          </div>
+        <div className="gateway-log-section">
+          <LogPanel
+            title="Gateway 日志"
+            lines={logLines}
+            bodyRef={logContainerRef}
+            emptyText="[LOG] 等待 Gateway 日志..."
+            nocturneOnline={nocturneOnline}
+            modelName={modelName}
+            onExport={async () => {
+              if (logLines.length === 0) return;
+              const content = logLines.join('\n');
+              const blob = new Blob([content], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `gateway-log-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.txt`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            onClear={() => setLogLines([])}
+          />
         </div>
         {/* 内容区域结束 */}
       </div>
@@ -2578,3 +3358,5 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 };
 
 export default ChatTab;
+
+

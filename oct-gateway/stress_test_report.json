@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-03-20T11:45:51.828Z",
+  "totalRequests": 180,
+  "successCount": 180,
+  "failureCount": 0,
+  "timeoutCount": 0,
+  "avgResponseMs": 60,
+  "totalElapsedSec": "2.7",
+  "conclusion": "PASS",
+  "failedSamples": []
+}

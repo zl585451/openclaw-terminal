@@ -1,10 +1,17 @@
 /**
- * 反馈闭环：少爷说「好/不对/应该是」自动记录，启动时加载最近反馈注入上下文。
+ * 反馈闭环：用户说「好/不对/应该是」自动记录，启动时加载最近反馈注入上下文。
+ * 
+ * 写入逻辑：标准三层 fallback
+ * - 第一层：memoryHistory.ensurePathExists + memory.createMemory
+ * - 第二层：memory.writeMemory（内部自带容错）
+ * - 兜底：最外层 try/catch 静默失败，不阻塞对话
  */
 
 const config = require('./config');
 const memory = require('./memory');
 const memoryHistory = require('./memory_history');
+const { createLogger } = require('./logger');
+const log = createLogger('memory_feedback');
 
 const DOMAIN = 'core';
 const FEEDBACK_POSITIVE = 'agent/feedback/positive';
@@ -68,6 +75,11 @@ function getBasePath(type) {
 
 /**
  * 检测并保存反馈（在 onDone 中调用，失败不阻塞）
+ * 
+ * 标准三层 fallback 写入：
+ * 1. ensurePathExists + createMemory
+ * 2. writeMemory
+ * 3. 最外层静默兜底
  */
 async function detectAndSaveFeedback(userMsg, amyReply) {
   if (!config.memory || config.memory.auto_save_feedback !== true) return;
@@ -94,15 +106,36 @@ async function detectAndSaveFeedback(userMsg, amyReply) {
     action_taken: detected.type === 'correction' ? '已更新规则' : '已写入记忆',
   };
   const content = JSON.stringify(payload, null, 0);
+  const disclosure = `用户反馈：${detected.reason}`;
 
   try {
-    await memoryHistory.ensurePathExists(DOMAIN, pathSeg);
-    const r = await memory.createMemory(uri, content, 2, '');
-    if (r.ok) {
-      console.log('[Memory] 反馈已写入:', uri);
+    // ── 第一层：ensurePathExists + createMemory ──
+    try {
+      await memoryHistory.ensurePathExists(DOMAIN, pathSeg);
+
+      const result = await memory.writeMemory(uri, content, 2, disclosure, { ensureParent: true });
+      if (result.ok) {
+        log.info('saved', { uri, type: detected.type, reason: detected.reason, layer: 'writeMemory' });
+        return;
+      }
+      throw new Error(result?.error || 'writeMemory failed');
+    } catch (e1) {
+      log.warn('layer1 failed, trying writeMemory', { uri, error: e1?.message || String(e1) });
     }
-  } catch (e) {
-    // 静默
+
+    // ── 第二层：fallback 到 writeMemory ──
+    try {
+      const result = await memory.writeMemory(uri, content, 2, disclosure);
+      if (result.ok) {
+        log.info('saved', { uri, type: detected.type, reason: detected.reason, layer: 'writeMemory' });
+        return;
+      }
+      throw new Error(result?.error || 'writeMemory failed');
+    } catch (e2) {
+      log.warn('layer2 failed', { uri, error: e2?.message || String(e2) });
+    }
+  } catch (error) {
+    log.warn('all layers failed', { uri, error: error?.message || String(error) });
   }
 }
 
@@ -110,7 +143,7 @@ async function detectAndSaveFeedback(userMsg, amyReply) {
  * 收集某路径下所有叶子路径（agent/feedback/positive/YYYY-MM-DD/HH-MM-SS），按路径排序取最近 N 条
  */
 async function getRecentLeafPaths(basePath, limit) {
-  const r = await memory.readMemory(`${DOMAIN}://${basePath}`);
+  const r = await memory.readMemory(`${DOMAIN}://${basePath}`, { treat404AsDebug: true });
   if (!r.ok || !r.data) return [];
   const children = r.data?.node?.children || r.data?.children || [];
   const datePaths = [];
@@ -124,7 +157,7 @@ async function getRecentLeafPaths(basePath, limit) {
   datePaths.sort().reverse();
   const leaves = [];
   for (const datePath of datePaths.slice(0, 14)) {
-    const r2 = await memory.readMemory(`${DOMAIN}://${datePath}`);
+    const r2 = await memory.readMemory(`${DOMAIN}://${datePath}`, { treat404AsDebug: true });
     if (!r2.ok) continue;
     const timeChildren = r2.data?.node?.children || r2.data?.children || [];
     for (const tc of timeChildren) {
@@ -160,20 +193,20 @@ async function loadFeedbackForBoot() {
     if (posPaths.length > 0) {
       const lines = [];
       for (const p of posPaths) {
-        const r = await memory.readMemory(`${DOMAIN}://${p}`);
+        const r = await memory.readMemory(`${DOMAIN}://${p}`, { treat404AsDebug: true });
         if (r.ok && r.data) {
           const node = r.data?.node || r.data;
           const raw = node?.content || node?.content_snippet || '';
           try {
             const j = JSON.parse(raw);
-            lines.push(`- 少爷说「${j.reason}」→ ${(j.amy_reply || '').slice(0, 50)}...`);
+            lines.push(`- 用户说「${j.reason}」→ ${(j.amy_reply || '').slice(0, 50)}...`);
           } catch {
             lines.push(`- ${raw.slice(0, 60)}...`);
           }
         }
       }
       if (lines.length) {
-        sections.push(`### 少爷喜欢的回复（最近${lines.length}条）\n${lines.join('\n')}`);
+        sections.push(`### 用户喜欢的回复（最近${lines.length}条）\n${lines.join('\n')}`);
       }
     }
   } catch (e) {}
@@ -183,20 +216,20 @@ async function loadFeedbackForBoot() {
     if (negPaths.length > 0) {
       const lines = [];
       for (const p of negPaths) {
-        const r = await memory.readMemory(`${DOMAIN}://${p}`);
+        const r = await memory.readMemory(`${DOMAIN}://${p}`, { treat404AsDebug: true });
         if (r.ok && r.data) {
           const node = r.data?.node || r.data;
           const raw = node?.content || node?.content_snippet || '';
           try {
             const j = JSON.parse(raw);
-            lines.push(`- 少爷说「${j.reason}」→ 避免类似：${(j.amy_reply || '').slice(0, 50)}...`);
+            lines.push(`- 用户说「${j.reason}」→ 避免类似：${(j.amy_reply || '').slice(0, 50)}...`);
           } catch {
             lines.push(`- ${raw.slice(0, 60)}...`);
           }
         }
       }
       if (lines.length) {
-        sections.push(`### 少爷不喜欢的回复（最近${lines.length}条）\n${lines.join('\n')}`);
+        sections.push(`### 用户不喜欢的回复（最近${lines.length}条）\n${lines.join('\n')}`);
       }
     }
   } catch (e) {}
@@ -206,7 +239,7 @@ async function loadFeedbackForBoot() {
     if (corPaths.length > 0) {
       const lines = [];
       for (const p of corPaths) {
-        const r = await memory.readMemory(`${DOMAIN}://${p}`);
+        const r = await memory.readMemory(`${DOMAIN}://${p}`, { treat404AsDebug: true });
         if (r.ok && r.data) {
           const node = r.data?.node || r.data;
           const raw = node?.content || node?.content_snippet || '';
@@ -219,7 +252,7 @@ async function loadFeedbackForBoot() {
         }
       }
       if (lines.length) {
-        sections.push(`### 少爷纠正的规则（最近${lines.length}条）\n${lines.join('\n')}`);
+        sections.push(`### 用户纠正的规则（最近${lines.length}条）\n${lines.join('\n')}`);
       }
     }
   } catch (e) {}

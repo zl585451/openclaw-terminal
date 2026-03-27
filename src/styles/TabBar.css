@@ -5,9 +5,23 @@
   align-items: center;
   height: 36px;
   padding: 0 10px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  border-bottom: none;
   gap: 5px;
+}
+
+/* portal 插槽：ChatTab 的 VOICE/SETTINGS/CONNECTED 渲染在这里 */
+#chat-header-portal {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  height: 36px;
+}
+
+#chat-header-portal:empty {
+  display: none;
 }
 
 .tab-btn {
@@ -15,9 +29,9 @@
   padding: 0 12px;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-dim);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -26,7 +40,7 @@
 }
 
 .tab-bracket {
-  color: var(--text-dim);
+  color: var(--text-tertiary);
   transition: color 0.15s ease;
 }
 
@@ -35,8 +49,8 @@
 }
 
 .tab-btn:hover {
-  background: var(--bg-tertiary);
-  border-color: var(--border-color);
+  background: var(--bg-hover);
+  border-color: var(--border-light);
 }
 
 .tab-btn:hover .tab-bracket {
@@ -44,12 +58,12 @@
 }
 
 .tab-btn.active {
-  background: var(--bg-tertiary);
-  border-color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
   color: var(--text-primary);
-  box-shadow: 0 0 10px rgba(0, 255, 159, 0.2);
+  box-shadow: none;
 }
 
 .tab-btn.active .tab-bracket {
-  color: var(--cyan);
+  color: var(--accent-primary);
 }

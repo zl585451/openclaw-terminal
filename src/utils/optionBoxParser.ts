@@ -37,7 +37,7 @@ export interface ParsedContent {
  * 严格规则：必须以 ？ 或 ? 结尾，且长度在合理范围内。
  * 不再依赖"含疑问词"这类宽松条件，避免正文句子被误判。
  */
-function isQuestionLabel(label: string): boolean {
+export function isQuestionLabel(label: string): boolean {
   const t = label.trim();
   if (t.length < 5 || t.length > 120) return false;
   return t.endsWith('？') || t.endsWith('?');
@@ -65,9 +65,11 @@ const OPTION_REGEX = /\[选项\s*(\d+)\s*:\s*([^\|\]]+)\s*\|\s*([^\]]+)\]/g;
 export const OPTIONS_PLACEHOLDER = '\n<!--OPTIONS_HERE-->\n';
 
 /** 解析 "1. xxx 2. xxx" 或 "1) xxx 2) xxx" 风格的选项（同一行或跨行） */
-function parseNumberedOptions(text: string): OptionItem[] {
+export function parseNumberedOptions(text: string): OptionItem[] {
   const options: OptionItem[] = [];
-  const rx = /(\d+)[.）、]\s*([^\d\n]+?)(?=\s*\d+[.）、]|$|\n)/gs;
+  // 只把“行首的编号”当作边界，允许内容里出现数字（版本号/日期/金额等）
+  // 例如：`1. OCT v0.1.4 最想加什么？` 不应被截断。
+  const rx = /(?:^|\n)\s*(\d+)[.）、]\s*(.+?)(?=\n\s*\d+[.）、]\s*|$)/gs;
   let m: RegExpExecArray | null;
   while ((m = rx.exec(text)) !== null) {
     const label = m[2].trim();
@@ -79,7 +81,7 @@ function parseNumberedOptions(text: string): OptionItem[] {
 }
 
 /** 解析 [ ] / [x] 开头的 checkbox 列表（Claude 风格），不含星号的标题行 */
-function parseCheckboxOptions(text: string): OptionItem[] {
+export function parseCheckboxOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
   const options: OptionItem[] = [];
   const rx = /^[\s]*(?:[-*+]\s*)?\[\s*(?:[✓xX]|\s)\s*\]\s*(.+)$/;
@@ -102,12 +104,12 @@ function parseCheckboxOptions(text: string): OptionItem[] {
 const SYMBOL_CHARS = '■●◆○◉▪▸•·';
 
 /** 从 label 中清除前导符号字符（■●◆○ 等） */
-function cleanLabel(label: string): string {
+export function cleanLabel(label: string): string {
   return label.replace(new RegExp(`^[${SYMBOL_CHARS}]\\s*`), '').trim();
 }
 
 /** 解析含 ■ ● ◆ ○ 等符号的选项，支持 "■ xxx"、"- ■ xxx"、"* ■ xxx" 等格式 */
-function parseSymbolOptions(text: string): OptionItem[] {
+export function parseSymbolOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
   const options: OptionItem[] = [];
   const rx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*(.+)$`);
@@ -130,7 +132,7 @@ function parseSymbolOptions(text: string): OptionItem[] {
  * 含 Markdown 强调（*）的行跳过，避免信息列表误触发交互。
  * 最低阈值提高到 3 条，减少两行普通列表的误触发。
  */
-function parseLineOptions(text: string): OptionItem[] {
+export function parseLineOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
   const options: OptionItem[] = [];
   const rx = /^[\s]*(\d+)[.）、]\s*(.+)$|^[\s]*[-*]\s*(.+)$/;
@@ -275,7 +277,6 @@ function stripMarkdownTables(text: string): string {
     if (/^\s*\|/.test(currentLine)) {
       // 首先排除文件树结构
       if (isFileTreeLine(currentLine)) {
-        console.log('[stripMarkdownTables] 跳过文件树行，位置:', i);
         result.push(currentLine);
         i++;
         continue;
@@ -301,15 +302,12 @@ function stripMarkdownTables(text: string): string {
         const hasSeparator = isMarkdownTableSeparator(secondLine);
 
         if (hasSeparator) {
-          console.log('[stripMarkdownTables] 检测到真正的 Markdown 表格，起始位置:', i, '行数:', potentialTableLines.length, '分隔符验证: 通过');
-          // 跳过整个表格块
+          // 跳过整个表格块，避免表格内 | 符号干扰后续 ■ / - [ ] 检测
           i = j;
           continue;
         } else {
-          console.log('[stripMarkdownTables] 排除伪表格（无分隔符行），位置:', i);
+          // 无分隔符，非标准表格，保留
         }
-      } else {
-        console.log('[stripMarkdownTables] 排除伪表格（行数不足），位置:', i, '行数:', potentialTableLines.length);
       }
     }
 
@@ -359,21 +357,40 @@ function extractRenderHint(text: string): { hint: RenderHint | null; cleaned: st
   };
 }
 
-const PAIRED_TAG_RX = /\[(pills|checkbox|question|tasklist|text)\]([\s\S]*?)\[\/\1\]/gi;
+// 允许开标签前多一个 `/`（例如错误输出成 `/[question]...[/question]`）
+// 或 `/   [question]...`：这样可避免标签原样泄露成纯文本。
+// 标签名两侧允许可选空白（模型可能输出 [ question ] 或 [ / question ]）
+// 注意：保持 // 不受影响，不匹配纯 // 注释
+// ⚠️ 此 regex 带 g flag，内部 parseTaggedContent 已改用局部实例避免并发问题；
+//    保留导出仅供外部测试或兼容使用，调用者应使用 matchAll 或每次创建新实例。
+export const PAIRED_TAG_RX = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
 
 /** 将非空行作为普通选项（兜底：标签内没有标准格式时） */
-function parsePlainLines(text: string): OptionItem[] {
+export function parsePlainLines(text: string): OptionItem[] {
   return text.split('\n')
     .map(l => l.replace(/^[-*+]\s*/, '').trim())
     .filter(l => l.length > 0 && l.length < 100)
     .map((l, i) => ({ num: i + 1, label: l, value: l }));
 }
 
+/** 解析形如 "A || B || C" 的选项（用于部分模型输出的降级格式） */
+export function parsePipeSeparatedOptions(text: string): OptionItem[] {
+  const parts = text
+    .split(/\s*\|\|\s*/g)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && p.length < 120);
+
+  // 低阈值：至少 2 项才认为是选项列表
+  if (parts.length < 2) return [];
+
+  return parts.map((label, i) => ({ num: i + 1, label, value: label }));
+}
+
 /**
  * 计算原始文本中所有 fenced code block 的字符范围 [start, end)。
  * 用于在 parseTaggedContent 中过滤掉落在代码块内的标签匹配。
  */
-function getCodeBlockRanges(text: string): Array<[number, number]> {
+export function getCodeBlockRanges(text: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   const fence = /^(`{3,})[^\n]*$/gm;
   let openMatch: RegExpExecArray | null = null;
@@ -399,14 +416,112 @@ function getCodeBlockRanges(text: string): Array<[number, number]> {
 }
 
 /** 检查一个字符位置是否落在任意代码块范围内 */
-function isInsideCodeBlock(pos: number, ranges: Array<[number, number]>): boolean {
+export function isInsideCodeBlock(pos: number, ranges: Array<[number, number]>): boolean {
   return ranges.some(([start, end]) => pos >= start && pos < end);
+}
+
+/** 成对标签解析后，对纯 text 段内 □ / [ ] 行做二次拆分，避免与 [pills] 等混排时漏渲染 */
+function enhanceTextSegmentsWithInlineCheckboxes(segments: RenderSegment[]): RenderSegment[] {
+  const taskHintFromEnhanced = (enhanced: RenderSegment[]): boolean => {
+    for (let i = enhanced.length - 1; i >= 0; i--) {
+      const s = enhanced[i];
+      if (s.type !== 'text' || !s.content.trim()) continue;
+      const lines = s.content.split('\n');
+      for (let j = lines.length - 1; j >= 0; j--) {
+        const t = lines[j].trim().toLowerCase();
+        if (!t) continue;
+        return (
+          TASK_HEADER_KEYWORDS.some((k) => t.startsWith(k.toLowerCase())) ||
+          t.includes('任务') ||
+          t.includes('清单')
+        );
+      }
+    }
+    return false;
+  };
+
+  const enhancedSegments: RenderSegment[] = [];
+
+  for (const seg of segments) {
+    if (seg.type !== 'text' || !seg.content.trim()) {
+      enhancedSegments.push(seg);
+      continue;
+    }
+
+    const lines = seg.content.split('\n');
+    const normalLines: string[] = [];
+    const checkboxLines: string[] = [];
+    let inCheckboxBlock = false;
+
+    const parseCheckboxLabels = (cls: string[]) =>
+      cls
+        .map((cl, i) => {
+          const label = cl
+            .replace(/^[•\-*+]?\s*[□☐☑✓✗]\s*/, '')
+            .replace(/^[•\-*+]?\s*\[\s*[xX✓ ]?\s*\]\s*/, '')
+            .trim();
+          return { num: i + 1, label, value: label };
+        })
+        .filter((o) => o.label.length > 0);
+
+    const flushCheckboxBlock = () => {
+      if (checkboxLines.length === 0) return;
+      const opts = parseCheckboxLabels(checkboxLines);
+      if (opts.length >= 2) {
+        if (normalLines.length > 0) {
+          enhancedSegments.push({ type: 'text', content: normalLines.join('\n'), options: [] });
+          normalLines.length = 0;
+        }
+        const isTask = taskHintFromEnhanced(enhancedSegments);
+        enhancedSegments.push({
+          type: isTask ? 'tasklist' : 'checkbox',
+          content: '',
+          options: opts.map((o) => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })),
+        });
+      } else {
+        normalLines.push(...checkboxLines);
+      }
+      checkboxLines.length = 0;
+      inCheckboxBlock = false;
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const isCheckboxLine =
+        /^[•\-*+]?\s*[□☐☑✓✗]/.test(trimmed) ||
+        /^[•\-*+]?\s*\[\s*[xX✓ ]?\s*\]/.test(trimmed);
+
+      if (isCheckboxLine) {
+        if (!inCheckboxBlock && normalLines.length > 0) {
+          enhancedSegments.push({ type: 'text', content: normalLines.join('\n'), options: [] });
+          normalLines.length = 0;
+        }
+        inCheckboxBlock = true;
+        checkboxLines.push(trimmed);
+      } else {
+        if (inCheckboxBlock) flushCheckboxBlock();
+        normalLines.push(line);
+      }
+    }
+    if (inCheckboxBlock) flushCheckboxBlock();
+
+    if (normalLines.length > 0) {
+      const content = normalLines.join('\n').trim();
+      if (content) enhancedSegments.push({ type: 'text', content, options: [] });
+    }
+  }
+
+  const changed =
+    enhancedSegments.length !== segments.length ||
+    enhancedSegments.some((s, i) => s.type !== segments[i]?.type);
+  return changed ? enhancedSegments : segments;
 }
 
 /** 解析成对标签 [pills]...[/pills] 等，返回按顺序排列的渲染段 */
 function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
-  PAIRED_TAG_RX.lastIndex = 0;
-  const allMatches = [...content.matchAll(PAIRED_TAG_RX)];
+  // 每次调用创建新的 regex 实例，避免全局状态的 lastIndex 并发问题
+  const pairedTagRx = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
+  const allMatches = [...content.matchAll(pairedTagRx)];
   
   if (allMatches.length === 0) return { segments: [], found: false };
 
@@ -439,52 +554,37 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
         if (inner) segments.push({ type: 'text', content: filterExpectedEffect(inner), options: [] });
         break;
       case 'pills': {
-        // 1. 提取选项按钮
-        let opts = parseSymbolOptions(inner);
-        if (opts.length === 0) opts = parsePlainLines(inner);
+        // pills 标签内必须有符号选项（■●◆○ 等），没有就当普通文本
+        const opts = parseSymbolOptions(inner);
         
-        // 2. 保留pills标签内的其他Markdown内容（表格、代码块等）
-        // 移除已识别的选项行，保留其他内容
-        const optionLines = new Set<string>();
-        for (const opt of opts) {
-          // 记录选项的原始行，用于后续过滤
-          const lines = inner.split('\n');
-          for (const line of lines) {
-            if (line.includes(opt.label) || line.includes(opt.value)) {
-              optionLines.add(line.trim());
+        if (opts.length > 0) {
+          // 过滤掉选项行，保留其他内容作为文本
+          const optLines = inner.split('\n');
+          const remainingLines: string[] = [];
+          for (const line of optLines) {
+            const trimmed = line.trim();
+            const isOptionLine = /^[\s]*(?:[-*+]\s*)?[■●◆○◉▪▸•·]/.test(line);
+            const isKnownOption = opts.some(o => trimmed.includes(o.label) || trimmed.includes(o.value));
+            if (!isOptionLine && !isKnownOption && trimmed !== '') {
+              remainingLines.push(line);
+            } else if (trimmed === '') {
+              remainingLines.push(line);
             }
           }
-        }
-        
-        // 过滤掉选项行，保留其他内容
-        const lines = inner.split('\n');
-        const remainingLines: string[] = [];
-        for (const line of lines) {
-          const trimmed = line.trim();
-          // 检查是否是选项行（以符号开头）
-          const isOptionLine = /^[\s]*(?:[-*+]\s*)?[■●◆○◉▪▸•·]/.test(line);
-          // 检查是否匹配已知的选项
-          const isKnownOption = opts.some(o => trimmed.includes(o.label) || trimmed.includes(o.value));
           
-          if (!isOptionLine && !isKnownOption && trimmed !== '') {
-            remainingLines.push(line);
-          } else if (trimmed === '') {
-            remainingLines.push(line); // 保留空行
-          }
-        }
-        
-        const remainingContent = remainingLines.join('\n').trim();
-        
-        // 3. 先添加pills选项segment
-        if (opts.length > 0) {
           segments.push({ type: 'pills', content: '', options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
-        }
-        
-        // 4. 再添加剩余的Markdown内容作为text segment
-        if (remainingContent.length > 0) {
-          const filtered = filterExpectedEffect(remainingContent);
-          if (filtered.length > 0) {
-            segments.push({ type: 'text', content: filtered, options: [] });
+          
+          const remainingContent = remainingLines.join('\n').trim();
+          if (remainingContent.length > 0) {
+            const filtered = filterExpectedEffect(remainingContent);
+            if (filtered.length > 0) {
+              segments.push({ type: 'text', content: filtered, options: [] });
+            }
+          }
+        } else {
+          // 没有符号选项 → 整个内容当普通文本渲染，不做交互
+          if (inner.trim()) {
+            segments.push({ type: 'text', content: filterExpectedEffect(inner), options: [] });
           }
         }
         break;
@@ -498,6 +598,7 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
       case 'question': {
         let opts = parseNumberedOptions(inner);
         if (opts.length < 2) opts = parseLineOptions(inner);
+        if (opts.length < 2) opts = parsePipeSeparatedOptions(inner);
         if (opts.length < 2) opts = parsePlainLines(inner);
         const qOpts = opts.filter(o => isQuestionLabel(o.label));
         const finalOpts = qOpts.length >= 2 ? qOpts : opts;
@@ -522,15 +623,36 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
     segments.push({ type: 'text', content: filtered, options: [] });
   }
 
-  return { segments, found: true };
+  // 清理所有 text segment 中残留的孤立标签文字（如未闭合的 [pills]）
+  // 标签名两侧允许可选空白，与 PAIRED_TAG_RX 一致；不匹配 // 注释
+  const TAG_STRIP_RX = /\[\s*\/?\s*(pills|checkbox|question|tasklist)\s*\]\s*/gi;
+  for (const seg of segments) {
+    if (seg.type === 'text' && seg.content) {
+      seg.content = seg.content.replace(TAG_STRIP_RX, '').replace(/\n{3,}/g, '\n\n').trim();
+    }
+  }
+
+  const withInline = enhanceTextSegmentsWithInlineCheckboxes(segments);
+  return { segments: withInline.filter((s) => s.type !== 'text' || s.content.trim()), found: true };
 }
 
 // LRU 缓存：避免同一条消息反复解析
 const parseCache = new Map<string, ParsedContent>();
 const CACHE_MAX = 200;
 
+/** 简单哈希，用于生成可靠的缓存键，避免长消息因仅用 prefix+length 导致碰撞 */
+function simpleHash(str: string): string {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) ^ str.charCodeAt(i);
+  }
+  return (h >>> 0).toString(36);
+}
+
 function getCacheKey(content: string): string {
-  return content.slice(0, 100) + ':' + content.length;
+  // 原逻辑 content.slice(0,100)+':'+length 在长消息中易碰撞：
+  // 两条不同消息若前缀相同、长度相近，会错误复用缓存，导致交互元素不渲染
+  return content.length + ':' + simpleHash(content);
 }
 
 function _parseOptionBox(content: string): ParsedContent {
@@ -542,6 +664,18 @@ function _parseOptionBox(content: string): ParsedContent {
     const textParts = segments.filter(s => s.type === 'text').map(s => s.content).join('\n\n');
     return { text: textParts, options: [], segments };
   }
+
+  // ①b 孤立标签清理：parseTaggedContent 没找到成对标签
+  //     如果内容中有代码块外的 [pills] 等标签文字，剥离掉防止原样显示
+  //     不提前 return——让后续的 ②③④ 自动检测正常处理 ■ 选项
+  const codeRangesForClean = getCodeBlockRanges(content);
+  content = content.replace(
+    /\[\s*\/?\s*(pills|checkbox|question|tasklist)\s*\]\s*/gi,
+    (match, _g1, offset) => {
+      if (codeRangesForClean.some(([s, e]) => offset >= s && offset < e)) return match;
+      return '';
+    }
+  );
 
   // ② 检测 [RENDER:xxx] 显式标记
   const { hint, cleaned: contentWithoutHint } = extractRenderHint(content);
@@ -706,6 +840,11 @@ function _parseOptionBox(content: string): ParsedContent {
 
   const totalPages = parseTotalPages(contentWithoutHint);
   return { text: filterExpectedEffect(contentWithoutHint), options: [], totalPages };
+}
+
+/** 清空解析缓存，开发时修改逻辑后或排查渲染异常时可调用 */
+export function clearParseCache(): void {
+  parseCache.clear();
 }
 
 export function parseOptionBox(content: string): ParsedContent {

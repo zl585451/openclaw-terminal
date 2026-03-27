@@ -1,4 +1,6 @@
 const config = require('./config');
+const { createLogger } = require('./logger');
+const log = createLogger('hypothesis');
 
 // 对复杂问题生成备选思路并选最优
 async function selectBestApproach(userMsg, systemPrompt, history) {
@@ -16,10 +18,10 @@ async function selectBestApproach(userMsg, systemPrompt, history) {
       messages: [
         {
           role: 'system',
-          content: `你是 AMY 的前置思考模块。
-分析少爷的问题，生成2个不同的回复思路，选出最优的一个。
+          content: `你是 AI 的前置思考模块。
+分析用户的问题，生成2个不同的回复思路，选出最优的一个。
 
-少爷的偏好：简洁直接、有温度、具体建议、适时质疑而非一味附和。
+用户的偏好：简洁直接、有温度、具体建议、适时质疑而非一味附和。
 
 输出格式（严格JSON）：
 {
@@ -44,9 +46,9 @@ async function selectBestApproach(userMsg, systemPrompt, history) {
     const jsonMatch = result.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
     const parsed = JSON.parse(jsonMatch[0]);
-    console.log(`[Hypothesis] 选择思路${parsed.chosen.toUpperCase()}: ${parsed.reason}`);
+    log.info(`选择思路${String(parsed.chosen || '').toUpperCase()}: ${parsed.reason || ''}`);
     if (parsed.should_challenge) {
-      console.log(`[Hypothesis] 建议质疑: ${parsed.challenge_point}`);
+      log.info(`建议质疑: ${parsed.challenge_point || ''}`);
     }
     return parsed;
   } catch {
