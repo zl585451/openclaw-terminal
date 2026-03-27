@@ -5,8 +5,8 @@
 
 ## 当前阶段
 
-Phase: 1（ContentBlock 数据模型）✅ 已完成  
-状态: 准备 Phase 2
+Phase: 2（TurnFSM 状态机）✅ 已完成  
+状态: 准备 Phase 3
 
 ## 架构蓝图版本
 
@@ -18,6 +18,7 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 |------|------|------|
 | v2-phase0-done | 2026-03-28 | Phase 0 完成（核心类型就位） |
 | v2-phase1-done | 2026-03-28 | Phase 1 完成（blockRouter + blockAdapter） |
+| v2-phase2-done | 2026-03-28 | Phase 2 完成（turnFSM 状态机） |
 
 ---
 
@@ -59,13 +60,23 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 
 ## Phase 2：TurnFSM 状态机
 
-- [ ] 2.1 实现 `src/core/turnFSM.ts`
-- [ ] 2.2 适配层：FSM → 旧 boolean 变量
-- [ ] 2.3 验收：状态转换正确，现有功能不变
+- [x] 2.1 实现 `src/core/turnFSM/` 目录结构（turnTypes.ts, turnFSM.ts, turnAdapter.ts, index.ts）
+- [x] 2.2 12 个 TurnPhase 状态 + 严格转换表 allowedTransitions
+- [x] 2.3 语义 API（onUserTyping, onUserSubmit, onRequestStart, onStreamOpen 等）
+- [x] 2.4 适配器 deriveLegacyFlags 覆盖全部 12 阶段
+- [x] 2.5 Vitest 单元测试（35 passed）
+- [x] 2.6 TypeScript 编译通过（npx tsc --noEmit）
+- [x] 2.7 Git 提交并打标签 v2-phase2-done
 
-**验收结果**：
+**验收结果**：✅ 通过
+- turnFSM 核心实现完成（严格状态转换 + 语义 API）
+- turnAdapter 适配层完成（含 hasResponse 逻辑）
+- npm run test 全通过（35 passed）
+- TypeScript 编译通过
+- 删除根目录占位文件，避免与目录冲突
+- Git 提交并打标签 v2-phase2-done
 
-**遇到的问题**：
+**遇到的问题**：无
 
 ---
 
@@ -129,6 +140,7 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 | 2026-03-27 | Phase 0 | 目录结构 + 类型定义 + ChatTab 备份 | ✅ |
 | 2026-03-28 | Phase 0 | Git 提交并打标签 v2-phase0-done | ✅ |
 | 2026-03-28 | Phase 1 | blockRouter + blockAdapter 实现 + 测试 | ✅ |
+| 2026-03-28 | Phase 2 | turnFSM 状态机实现 + 测试 + 标签 | ✅ |
 
 ---
 
