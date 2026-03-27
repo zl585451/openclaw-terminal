@@ -736,10 +736,6 @@ interface ChatMessageItemProps {
   currentPage: number;
   onPageChange: (msgId: number, page: number) => void;
   isStreamingMsg: boolean;
-  /** 流式阶段在 display 文本里检测出的 CoT 内容（未必闭合） */
-  streamingCotContent?: string | null;
-  /** 流式阶段 CoT 是否已闭合（display 是否包含 [/cot]） */
-  streamingCotClosed?: boolean;
   agentPhase: 'idle' | 'thinking' | 'typing';
   speakingMessageId: number | null;
   wsConnected: boolean;
@@ -844,8 +840,6 @@ type AssistantMessageBodyProps = Pick<
   | 'currentPage'
   | 'onPageChange'
   | 'isStreamingMsg'
-  | 'streamingCotContent'
-  | 'streamingCotClosed'
   | 'wsConnected'
   | 'quickSend'
   | 'onQuoteQuestion'
@@ -865,8 +859,6 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   currentPage,
   onPageChange,
   isStreamingMsg,
-  streamingCotContent,
-  streamingCotClosed,
   wsConnected,
   quickSend,
   onQuoteQuestion,
@@ -882,9 +874,6 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
       className="msg-assistant-body"
       style={isStreamingMsg ? { display: 'flex', flexDirection: 'column' } : undefined}
     >
-      {isStreamingMsg && streamingCotContent && (
-        <CoTBlock content={streamingCotContent} isStreaming={!streamingCotClosed} />
-      )}
       {segments && segments.length > 0 ? (
         <>
           {(() => {
@@ -1578,17 +1567,36 @@ const ChatMessageList = function ChatMessageList({
         } catch {}
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
         const fullContent = isStreamingMsg && streamingContent ? streamingContent : raw;
-        // displayedText 仅用于视觉打字；结构一律从 fullContent 解析
-        const display = isStreamingMsg ? displayedText : fullContent;
-        // 流式消息中检测 CoT 内容
-        const streamingCotMatch = isStreamingMsg
-          ? (display || '').match(/\[cot\]([\s\S]*?)(?:\[\/cot\]|$)/)
-          : null;
-        const streamingCotContent = streamingCotMatch ? streamingCotMatch[1].trim() : null;
-        const streamingCotClosed = isStreamingMsg ? (display || '').includes('[/cot]') : false;
-        const displayWithoutCot = streamingCotContent
-          ? (display || '').replace(/\[cot\][\s\S]*?(?:\[\/cot\]|$)/, '').trim()
-          : display;
+        const displayedLength = displayedText.length;
+
+        // ═══ CoT 分离：从完整流式内容中提取思维链，绕过打字机（避免时序问题） ═══
+        let streamingCotContent: string | null = null;
+        let streamingCotDone = false; // [/cot] 结束标签已收到
+        let contentAfterCot = ''; // [/cot] 之后的正文
+        let contentBeforeCot = ''; // [cot] 之前的正文（通常为空）
+
+        if (isStreamingMsg && fullContent) {
+          const cotOpenIdx = fullContent.indexOf('[cot]');
+          if (cotOpenIdx !== -1) {
+            contentBeforeCot = fullContent.slice(0, cotOpenIdx);
+            const afterOpen = fullContent.slice(cotOpenIdx + 5); // 5 = '[cot]'.length
+            const cotCloseIdx = afterOpen.indexOf('[/cot]');
+            if (cotCloseIdx !== -1) {
+              streamingCotContent = afterOpen.slice(0, cotCloseIdx).trim();
+              streamingCotDone = true;
+              contentAfterCot = afterOpen.slice(cotCloseIdx + 6).trim(); // 6 = '[/cot]'.length
+            } else {
+              streamingCotContent = afterOpen.trim();
+              streamingCotDone = false;
+              contentAfterCot = '';
+            }
+          }
+        }
+
+        // 打字机只对非 CoT 的正文部分生效（displayedText 已来自解析后的“可见正文”）
+        const mainTextFull =
+          streamingCotContent !== null ? (contentBeforeCot + '\n' + contentAfterCot).trim() : fullContent;
+        const display = isStreamingMsg && displayedLength > 0 ? mainTextFull.slice(0, displayedLength) : mainTextFull;
         const parsed =
           msg.role === 'user'
             ? USER_ROW_PARSE_PLACEHOLDER
@@ -1615,8 +1623,8 @@ const ChatMessageList = function ChatMessageList({
                   segments: undefined,
                 };
         const textToShow = msg.role === 'assistant'
-          ? (isStreamingMsg ? (displayWithoutCot as string) : (parsed.text?.trim() ? parsed.text : raw))
-          : (displayWithoutCot as string);
+          ? (isStreamingMsg ? (display as string) : (parsed.text?.trim() ? parsed.text : raw))
+          : (display as string);
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;
         const isTaskList = !!parsed.isTaskList;
@@ -1624,30 +1632,36 @@ const ChatMessageList = function ChatMessageList({
         const forcePills = parsed.forcePills;
         const segmentsToShow = parsed.segments;
         return (
-          <ChatMessageItem
-            key={msg.id}
-            msg={msg}
-            raw={raw}
-            textToShow={textToShow}
-            optionsToShow={optionsToShow}
-            isTaskList={isTaskList}
-            isReflectiveQuestions={isReflectiveQuestions}
-            forcePills={forcePills}
-            totalPages={totalPages}
-            segments={segmentsToShow}
-            currentPage={pageByMsgId[msg.id] ?? 1}
-            onPageChange={handlePageChange}
-            isStreamingMsg={!!msg.isStreaming}
-            streamingCotContent={streamingCotContent}
-            streamingCotClosed={streamingCotClosed}
-            agentPhase={agentPhase}
-            speakingMessageId={speakingMessageId}
-            wsConnected={wsConnected}
-            quickSend={quickSend}
-            onContextMenu={onMessageContextMenu}
-            onQuoteQuestion={onQuoteQuestion}
-            isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
-          />
+          <React.Fragment key={msg.id}>
+            {/* 流式阶段的 CoT 面板 —— 绕过打字机，实时显示 */}
+            {isStreamingMsg && streamingCotContent && (
+              <div className="cot-stream-wrapper">
+                <CoTBlock content={streamingCotContent} isStreaming={!streamingCotDone} />
+              </div>
+            )}
+            <ChatMessageItem
+              key={`item-${msg.id}`}
+              msg={msg}
+              raw={raw}
+              textToShow={textToShow}
+              optionsToShow={optionsToShow}
+              isTaskList={isTaskList}
+              isReflectiveQuestions={isReflectiveQuestions}
+              forcePills={forcePills}
+              totalPages={totalPages}
+              segments={segmentsToShow}
+              currentPage={pageByMsgId[msg.id] ?? 1}
+              onPageChange={handlePageChange}
+              isStreamingMsg={!!msg.isStreaming}
+              agentPhase={agentPhase}
+              speakingMessageId={speakingMessageId}
+              wsConnected={wsConnected}
+              quickSend={quickSend}
+              onContextMenu={onMessageContextMenu}
+              onQuoteQuestion={onQuoteQuestion}
+              isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
+            />
+          </React.Fragment>
         );
         })}
         {pendingPills && pendingPills.length > 0 && (

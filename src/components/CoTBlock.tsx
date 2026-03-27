@@ -1,53 +1,90 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../styles/CoTBlock.css';
 
 interface CoTBlockProps {
   content: string;
-  /** 流式阶段（正在接收内容） */
   isStreaming?: boolean;
 }
 
 const CoTBlock: React.FC<CoTBlockProps> = ({ content, isStreaming = false }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true); // 流式时默认展开
+  const [autoCollapsed, setAutoCollapsed] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const prevStreamingRef = useRef(isStreaming);
 
-  // 从 content 中提取步骤（按换行分割，过滤空行）
-  const steps = content
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  // 流式结束后自动折叠
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming && !autoCollapsed) {
+      const timer = setTimeout(() => {
+        setExpanded(false);
+        setAutoCollapsed(true);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+    prevStreamingRef.current = isStreaming;
+  }, [isStreaming, autoCollapsed]);
 
+  // 流式时自动滚到底部
+  useEffect(() => {
+    if (isStreaming && expanded && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [content, isStreaming, expanded]);
+
+  const steps = content.split('\n').filter((l) => l.trim().length > 0);
   const stepCount = steps.length;
-  // 摘要：取最后一个非空步骤作为预览
-  const summary = stepCount > 0 ? steps[stepCount - 1] : '思考中...';
-  // 预览文本截断
-  const previewText = summary.length > 60 ? summary.slice(0, 57) + '...' : summary;
+
+  // 计算耗时占位（流式时显示动态数字）
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!isStreaming) return;
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isStreaming]);
 
   return (
-    <div
-      className={`cot-block ${expanded ? 'cot-expanded' : 'cot-collapsed'} ${isStreaming ? 'cot-streaming' : ''}`}
-    >
-      <div
-        className="cot-header"
-        onClick={() => setExpanded((prev) => !prev)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') setExpanded((prev) => !prev);
-        }}
-      >
-        <span className="cot-icon">{isStreaming ? '⟳' : '💭'}</span>
-        <span className="cot-label">{isStreaming ? '思考中...' : `思考过程（${stepCount}步）`}</span>
-        {!isStreaming && <span className="cot-preview">{!expanded ? previewText : ''}</span>}
-        <span className={`cot-chevron ${expanded ? 'cot-chevron-up' : ''}`}>▾</span>
-      </div>
+    <div className={`cot-block ${expanded ? 'cot-expanded' : 'cot-collapsed'} ${isStreaming ? 'cot-streaming' : 'cot-done'}`}>
+      {/* 左侧装饰条 */}
+      <div className="cot-accent-bar" />
 
-      {expanded && (
-        <div className="cot-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <div className="cot-content-area">
+        <div
+          className="cot-header"
+          onClick={() => setExpanded((prev) => !prev)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') setExpanded((prev) => !prev);
+          }}
+        >
+          <span className="cot-icon">
+            {isStreaming ? (
+              <span className="cot-spinner">
+                <span /><span /><span />
+              </span>
+            ) : (
+              '💭'
+            )}
+          </span>
+          <span className="cot-label">
+            {isStreaming ? `思考中 · ${elapsed}s` : `已深度思考（${stepCount}步）`}
+          </span>
+          <span className={`cot-chevron ${expanded ? 'cot-chevron-up' : ''}`}>
+            {expanded ? '▴' : '▾'}
+          </span>
         </div>
-      )}
+
+        <div className={`cot-body-wrapper ${expanded ? 'cot-body-open' : 'cot-body-closed'}`}>
+          <div className="cot-body" ref={bodyRef}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
