@@ -1,51 +1,59 @@
 # OCT v2 迁移状态
 
-> **上次更新**：2026-03-27  
-> **更新人**：Zilong
+> **上次更新**：2026-03-28  
+> **更新人**：AMY
 
 ## 当前阶段
 
-```
-Phase: 0（准备）
-状态: 未开始
-```
+Phase: 1（ContentBlock 数据模型）✅ 已完成  
+状态: 准备 Phase 2
 
 ## 架构蓝图版本
 
-v1.0 (2026-03-27) — 见 architecture-blueprint.md
+v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 
 ## Git 标签记录
 
 | 标签 | 日期 | 说明 |
 |------|------|------|
-| v2-phase0-baseline | 待打 | Phase 0 基线 |
+| v2-phase0-done | 2026-03-28 | Phase 0 完成（核心类型就位） |
+| v2-phase1-done | 2026-03-28 | Phase 1 完成（blockRouter + blockAdapter） |
 
 ---
 
 ## Phase 0：准备工作
 
-- [ ] 0.1 创建 `docs/03_migration/` 目录和状态文件
-- [ ] 0.2 备份 `ChatTab.tsx` → `ChatTab.v1.tsx`
-- [ ] 0.3 创建 `src/core/` 目录
-- [ ] 0.4 创建核心类型定义 `src/core/types.ts`
-- [ ] 0.5 Git 完成标签 `v2-phase0-done`
+- [x] 0.1 创建 `docs/03_migration/` 目录和状态文件
+- [x] 0.2 备份 `ChatTab.tsx` → `ChatTab.v1.tsx`
+- [x] 0.3 创建 `src/core/` 目录
+- [x] 0.4 创建核心类型定义 `src/core/types.ts`
+- [x] 0.5 Git 完成标签 `v2-phase0-done`
 
-**验收结果**：
+**验收结果**：✅ 通过
+- 所有核心类型文件就位（types.ts 7553 字节）
+- blockRouter.ts / turnFSM.ts / streamRouter.ts 占位文件已创建
+- ChatTab.v1.tsx 备份存在（131670 字节）
+- Git 提交并打标签 v2-phase0-done（commit: c1f8d91）
 
-**遇到的问题**：
+**遇到的问题**：无
 
 ---
 
 ## Phase 1：ContentBlock 数据模型
 
-- [ ] 1.1 实现 `src/core/blockRouter.ts`
-- [ ] 1.2 Vitest 单元测试（15 种场景）
-- [ ] 1.3 适配层桥接现有 segments
-- [ ] 1.4 验收：所有现有功能不变，测试全通过
+- [x] 1.1 实现 `src/core/blockRouter.ts`
+- [x] 1.2 Vitest 单元测试（15 种场景）
+- [x] 1.3 适配层桥接现有 segments
+- [x] 1.4 验收：所有现有功能不变，测试全通过
 
-**验收结果**：
+**验收结果**：✅ 通过
+- blockRouter.ts 实现完成
+- blockAdapter 适配层完成
+- npm run test 全通过（29 passed）
+- npm run start 可启动，Gateway 连接成功
+- Git 提交并打标签 v2-phase1-done（commit: 61cff26）
 
-**遇到的问题**：
+**遇到的问题**：无
 
 ---
 
@@ -118,6 +126,9 @@ v1.0 (2026-03-27) — 见 architecture-blueprint.md
 | 日期 | Phase | 内容 | 结果 |
 |------|-------|------|------|
 | 2026-03-27 | - | 创建迁移规划文档 | ✅ |
+| 2026-03-27 | Phase 0 | 目录结构 + 类型定义 + ChatTab 备份 | ✅ |
+| 2026-03-28 | Phase 0 | Git 提交并打标签 v2-phase0-done | ✅ |
+| 2026-03-28 | Phase 1 | blockRouter + blockAdapter 实现 + 测试 | ✅ |
 
 ---
 

@@ -1,9 +1,9 @@
 # OCT v2 架构迁移 · 总控执行手册
 
-> **角色分工**：Zilong（决策+验收） · Claude（架构+诊断） · Cursor（实现）  
+> **角色分工**：Zilong（决策 + 验收） · Claude（架构 + 诊断） · Cursor（实现）  
 > **预计总工期**：5-6 个工作日  
 > **创建日期**：2026-03-27  
-> **状态**：🟢 已启动
+> **状态**：🟢 Phase 1 已完成，准备 Phase 2
 
 ---
 
@@ -87,53 +87,53 @@ git checkout v2-phase{N}-baseline      # 回到基线
 
 > 每完成一项，把 ⬜ 改为 ✅，记录日期
 
-### Phase 0：准备工作（预计 0.5 天）
-- ⬜ 0.1 创建 `docs/03_migration/` 目录和状态文件
-- ⬜ 0.2 备份 `ChatTab.tsx` → `ChatTab.v1.tsx`
-- ⬜ 0.3 创建 `src/core/` 目录
-- ⬜ 0.4 创建核心类型定义 `src/core/types.ts`
-- ⬜ 0.5 Git 基线：`v2-phase0-baseline` → 完成：`v2-phase0-done`
+### Phase 0：准备工作（预计 0.5 天）✅ 已完成
+- [x] 0.1 创建 `docs/03_migration/` 目录和状态文件
+- [x] 0.2 备份 `ChatTab.tsx` → `ChatTab.v1.tsx`
+- [x] 0.3 创建 `src/core/` 目录
+- [x] 0.4 创建核心类型定义 `src/core/types.ts`
+- [x] 0.5 Git 基线：`v2-phase0-baseline` → 完成：`v2-phase0-done`
 
-### Phase 1：ContentBlock 数据模型（预计 1 天）
-- ⬜ 1.1 实现 `src/core/blockRouter.ts`（文本 → ContentBlock[] 转换器）
-- ⬜ 1.2 写 Vitest 单元测试覆盖 15 种场景
-- ⬜ 1.3 适配层：blockRouter 输出 → 现有 segments 格式
-- ⬜ 1.4 验收：所有现有功能不变，测试全通过
-- ⬜ 1.5 Git：`v2-phase1-baseline` → `v2-phase1-done`
+### Phase 1：ContentBlock 数据模型（预计 1 天）✅ 已完成
+- [x] 1.1 实现 `src/core/blockRouter.ts`（文本 → ContentBlock[] 转换器）
+- [x] 1.2 写 Vitest 单元测试覆盖 15 种场景
+- [x] 1.3 适配层：blockRouter 输出 → 现有 segments 格式
+- [x] 1.4 验收：所有现有功能不变，测试全通过（29 passed）
+- [x] 1.5 Git：`v2-phase1-baseline` → `v2-phase1-done`（commit: 61cff26）
 
-### Phase 2：TurnFSM 状态机（预计 0.5 天）
-- ⬜ 2.1 实现 `src/core/turnFSM.ts`
-- ⬜ 2.2 适配层：FSM → 旧 boolean 变量
-- ⬜ 2.3 验收：状态转换正确，现有功能不变
-- ⬜ 2.4 Git：`v2-phase2-baseline` → `v2-phase2-done`
+### Phase 2：TurnFSM 状态机（预计 0.5 天）⏳ 进行中
+- [ ] 2.1 实现 `src/core/turnFSM.ts`
+- [ ] 2.2 适配层：FSM → 旧 boolean 变量
+- [ ] 2.3 验收：状态转换正确，现有功能不变
+- [ ] 2.4 Git：`v2-phase2-baseline` → `v2-phase2-done`
 
 ### Phase 3：流式 Block Router（预计 1-2 天）⭐
-- ⬜ 3.1 实现 `src/core/streamBlockRouter.ts`
-- ⬜ 3.2 修改 handleIncomingMessage 接入新 Router
-- ⬜ 3.3 CoT 块实时渲染（不走打字机）
-- ⬜ 3.4 正文块流式输出
-- ⬜ 3.5 验收：CoT 立刻出现，正文无跳动
-- ⬜ 3.6 Git：`v2-phase3-baseline` → `v2-phase3-done`
+- [ ] 3.1 实现 `src/core/streamBlockRouter.ts`
+- [ ] 3.2 修改 handleIncomingMessage 接入新 Router
+- [ ] 3.3 CoT 块实时渲染（不走打字机）
+- [ ] 3.4 正文块流式输出
+- [ ] 3.5 验收：CoT 立刻出现，正文无跳动
+- [ ] 3.6 Git：`v2-phase3-baseline` → `v2-phase3-done`
 
 ### Phase 4：增量渲染（预计 1 天）
-- ⬜ 4.1 流式文本用 pre-wrap 直接追加
-- ⬜ 4.2 代码块独立渲染
-- ⬜ 4.3 done 后最终 Markdown 渲染 pass
-- ⬜ 4.4 验收：长回复无闪烁无跳动
-- ⬜ 4.5 Git：`v2-phase4-baseline` → `v2-phase4-done`
+- [ ] 4.1 流式文本用 pre-wrap 直接追加
+- [ ] 4.2 代码块独立渲染
+- [ ] 4.3 done 后最终 Markdown 渲染 pass
+- [ ] 4.4 验收：长回复无闪烁无跳动
+- [ ] 4.5 Git：`v2-phase4-baseline` → `v2-phase4-done`
 
 ### Phase 5：Viewport 锚定（预计 1 天）
-- ⬜ 5.1 实现 ScrollAnchor 类
-- ⬜ 5.2 用户消息锚定 + 补偿滚动
-- ⬜ 5.3 上滑解锁 + 回到底部按钮
-- ⬜ 5.4 验收：发长消息后始终可见
-- ⬜ 5.5 Git：`v2-phase5-baseline` → `v2-phase5-done`
+- [ ] 5.1 实现 ScrollAnchor 类
+- [ ] 5.2 用户消息锚定 + 补偿滚动
+- [ ] 5.3 上滑解锁 + 回到底部按钮
+- [ ] 5.4 验收：发长消息后始终可见
+- [ ] 5.5 Git：`v2-phase5-baseline` → `v2-phase5-done`
 
 ### Phase 6：Agent 就绪（预计 0.5 天）
-- ⬜ 6.1 Gateway 工具调用事件
-- ⬜ 6.2 ToolCallBlock + ToolResultBlock 组件
-- ⬜ 6.3 验收：工具调用可视化
-- ⬜ 6.4 Git：`v2-phase6-baseline` → `v2-phase6-done`
+- [ ] 6.1 Gateway 工具调用事件
+- [ ] 6.2 ToolCallBlock + ToolResultBlock 组件
+- [ ] 6.3 验收：工具调用可视化
+- [ ] 6.4 Git：`v2-phase6-baseline` → `v2-phase6-done`
 
 ---
 
@@ -223,7 +223,7 @@ npm run start
 
 ## 当前阶段
 Phase: 0（准备）
-状态: 未开始
+状态：未开始
 
 ## 架构蓝图版本
 v1.0 (2026-03-27)
@@ -395,6 +395,15 @@ git tag v2-phase0-baseline
 ```
 
 6. 回到 Claude，说"Phase 0 基线已打好，请出 Phase 0 的 Cursor Prompt"
+
+---
+
+## 📝 变更日志
+
+| 日期 | Phase | 内容 | 结果 |
+|------|-------|------|------|
+| 2026-03-27 | Phase 0 | 创建目录结构、类型定义、备份旧文件 | ✅ 完成 |
+| 2026-03-28 | Phase 1 | blockRouter + 单元测试 + 适配层 | ✅ 完成 (29 passed, commit: 61cff26, tag: v2-phase1-done) |
 
 ---
 
