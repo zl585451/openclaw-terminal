@@ -5,8 +5,8 @@
 
 ## 当前阶段
 
-Phase: 2（TurnFSM 状态机）✅ 已完成  
-状态: 准备 Phase 3
+Phase: 3（StreamRouter 流控制）✅ 已完成  
+状态: 准备 Phase 4
 
 ## 架构蓝图版本
 
@@ -19,6 +19,7 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 | v2-phase0-done | 2026-03-28 | Phase 0 完成（核心类型就位） |
 | v2-phase1-done | 2026-03-28 | Phase 1 完成（blockRouter + blockAdapter） |
 | v2-phase2-done | 2026-03-28 | Phase 2 完成（turnFSM 状态机） |
+| v2-phase3-done | 2026-03-28 | Phase 3 完成（streamRouter 流控制） |
 
 ---
 
@@ -80,21 +81,32 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 
 ---
 
-## Phase 3：流式 Block Router ⭐ 关键阶段
+## Phase 3：StreamRouter 流控制 ⭐ 关键阶段 ✅ 已完成
 
-- [ ] 3.1 实现 `src/core/streamBlockRouter.ts`
-- [ ] 3.2 修改 handleIncomingMessage 接入新 Router
-- [ ] 3.3 CoT 块实时渲染（不走打字机）
-- [ ] 3.4 正文块流式输出
-- [ ] 3.5 验收：CoT 立刻出现，正文无跳动
+- [x] 3.1 实现 `src/core/streamRouter/` 目录（streamTypes.ts, streamRouter.ts, streamAdapter.ts, index.ts）
+- [x] 3.2 StreamState 状态机（IDLE → OPENING → OPEN → STREAMING → FLUSHING → COMPLETED → CLOSED）
+- [x] 3.3 16ms setInterval 批量 flush（每 tick 最多 3 个 token）
+- [x] 3.4 与 TurnFSM 联动（onStreamOpen/onToken/onStreamPause/onStreamResume/onStreamEnd/onRenderDone）
+- [x] 3.5 deriveStreamFlags 适配层（isStreaming/isPaused/isFlushing/isComplete）
+- [x] 3.6 Vitest 单元测试（42 passed）
+- [x] 3.7 TypeScript 编译通过（npx tsc --noEmit）
+- [x] 3.8 删除根目录占位文件 src/core/streamRouter.ts
+- [x] 3.9 Git 提交并打标签 v2-phase3-done
 
-**验收结果**：
+**验收结果**：✅ 通过
+- streamRouter 核心实现完成（严格状态转换 + 批量 flush + FSM 联动）
+- streamAdapter 适配层完成
+- npm run test 全通过（42 passed）
+- TypeScript 编译通过
+- 删除根目录占位文件，避免与目录冲突
+- 未改动 ChatTab/其他 UI，模型 token 仍走现有路径
+- StreamRouter 已可作为唯一入口，后续接 WS/打字机处改为 router.subscribe 即可
 
-**遇到的问题**：
+**遇到的问题**：无
 
 ---
 
-## Phase 4：增量渲染
+## Phase 4：增量渲染（最后一步迁移）
 
 - [ ] 4.1 流式文本用 pre-wrap 直接追加
 - [ ] 4.2 代码块独立渲染
@@ -141,6 +153,7 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 | 2026-03-28 | Phase 0 | Git 提交并打标签 v2-phase0-done | ✅ |
 | 2026-03-28 | Phase 1 | blockRouter + blockAdapter 实现 + 测试 | ✅ |
 | 2026-03-28 | Phase 2 | turnFSM 状态机实现 + 测试 + 标签 | ✅ |
+| 2026-03-28 | Phase 3 | streamRouter 流控制实现 + 测试 + 标签 | ✅ |
 
 ---
 

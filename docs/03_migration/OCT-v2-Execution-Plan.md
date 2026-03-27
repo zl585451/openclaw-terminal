@@ -3,7 +3,7 @@
 > **角色分工**：Zilong（决策 + 验收） · Claude（架构 + 诊断） · Cursor（实现）  
 > **预计总工期**：5-6 个工作日  
 > **创建日期**：2026-03-27  
-> **状态**：🟢 Phase 1 已完成，准备 Phase 2
+> **状态**：🟢 Phase 3 已完成，准备 Phase 4
 
 ---
 
@@ -101,21 +101,23 @@ git checkout v2-phase{N}-baseline      # 回到基线
 - [x] 1.4 验收：所有现有功能不变，测试全通过（29 passed）
 - [x] 1.5 Git：`v2-phase1-baseline` → `v2-phase1-done`（commit: 61cff26）
 
-### Phase 2：TurnFSM 状态机（预计 0.5 天）⏳ 进行中
-- [ ] 2.1 实现 `src/core/turnFSM.ts`
-- [ ] 2.2 适配层：FSM → 旧 boolean 变量
-- [ ] 2.3 验收：状态转换正确，现有功能不变
-- [ ] 2.4 Git：`v2-phase2-baseline` → `v2-phase2-done`
+### Phase 2：TurnFSM 状态机（预计 0.5 天）✅ 已完成
+- [x] 2.1 实现 `src/core/turnFSM.ts`
+- [x] 2.2 适配层：FSM → 旧 boolean 变量
+- [x] 2.3 验收：状态转换正确，现有功能不变
+- [x] 2.4 Git：`v2-phase2-baseline` → `v2-phase2-done`
 
-### Phase 3：流式 Block Router（预计 1-2 天）⭐
-- [ ] 3.1 实现 `src/core/streamBlockRouter.ts`
-- [ ] 3.2 修改 handleIncomingMessage 接入新 Router
-- [ ] 3.3 CoT 块实时渲染（不走打字机）
-- [ ] 3.4 正文块流式输出
-- [ ] 3.5 验收：CoT 立刻出现，正文无跳动
-- [ ] 3.6 Git：`v2-phase3-baseline` → `v2-phase3-done`
+### Phase 3：StreamRouter 流控制（预计 1-2 天）✅ 已完成
+- [x] 3.1 实现 `src/core/streamRouter/` 目录（streamTypes.ts, streamRouter.ts, streamAdapter.ts, index.ts）
+- [x] 3.2 StreamState 状态机（IDLE → OPENING → OPEN → STREAMING → FLUSHING → COMPLETED → CLOSED）
+- [x] 3.3 16ms setInterval 批量 flush（每 tick 最多 3 个 token）
+- [x] 3.4 与 TurnFSM 联动（onStreamOpen/onToken/onStreamPause/onStreamResume/onStreamEnd/onRenderDone）
+- [x] 3.5 deriveStreamFlags 适配层（isStreaming/isPaused/isFlushing/isComplete）
+- [x] 3.6 Vitest 单元测试（42 passed）
+- [x] 3.7 TypeScript 编译通过（npx tsc --noEmit）
+- [x] 3.8 Git：`v2-phase3-baseline` → `v2-phase3-done`
 
-### Phase 4：增量渲染（预计 1 天）
+### Phase 4：增量渲染（预计 1 天）⭐ 最后一步迁移
 - [ ] 4.1 流式文本用 pre-wrap 直接追加
 - [ ] 4.2 代码块独立渲染
 - [ ] 4.3 done 后最终 Markdown 渲染 pass
@@ -404,6 +406,8 @@ git tag v2-phase0-baseline
 |------|-------|------|------|
 | 2026-03-27 | Phase 0 | 创建目录结构、类型定义、备份旧文件 | ✅ 完成 |
 | 2026-03-28 | Phase 1 | blockRouter + 单元测试 + 适配层 | ✅ 完成 (29 passed, commit: 61cff26, tag: v2-phase1-done) |
+| 2026-03-28 | Phase 2 | turnFSM 状态机实现 + 测试 + 标签 | ✅ 完成 (35 passed, tag: v2-phase2-done) |
+| 2026-03-28 | Phase 3 | streamRouter 流控制实现 + 测试 + 标签 | ✅ 完成 (42 passed, tag: v2-phase3-done) |
 
 ---
 

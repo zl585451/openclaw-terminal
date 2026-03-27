@@ -174,4 +174,16 @@ export class StreamRouter {
     this.transition(StreamState.CLOSED);
     this.transition(StreamState.IDLE);
   }
+
+  /** Error / cancel: bypass transition table, stop timers and return to IDLE. */
+  abortToIdle(): void {
+    this.stopFlushTimer();
+    this.buffer.length = 0;
+    if (this.state !== StreamState.IDLE) {
+      const from = this.state;
+      this.state = StreamState.IDLE;
+      logState(from, StreamState.IDLE);
+      this.emit({ type: 'state', payload: { state: StreamState.IDLE } });
+    }
+  }
 }
