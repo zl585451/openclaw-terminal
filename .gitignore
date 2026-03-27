@@ -49,4 +49,5 @@ scripts/clear-cursor-cache.bat
 docs/06_release/
 resources/nocturne_server/
 resources/nocturne_memory/
+oct-gateway/tasks_runtime.json
 tasks_runtime.json

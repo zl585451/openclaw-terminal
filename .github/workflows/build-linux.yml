@@ -39,6 +39,9 @@ jobs:
         run: npm run electron:build:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify release safety
+        run: node scripts/verify-release-safety.js
       
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
