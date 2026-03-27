@@ -2,6 +2,9 @@
 
 OCT 独立 AI Gateway，替换 OpenClaw Gateway。
 
+> **最新状态**: Phase 4 已完成 ✅ (2026-03-28)  
+> **版本**: v0.4.0
+
 ## 启动
 
 ```bash
@@ -16,8 +19,8 @@ npm run start
 在项目根目录的 `.env` 中配置：
 
 ```
-DASHSCOPE_API_KEY=你的百炼API Key
-DEEPSEEK_API_KEY=你的DeepSeek Key（可选，百炼失败时备用）
+DASHSCOPE_API_KEY=你的百炼 API Key
+DEEPSEEK_API_KEY=你的 DeepSeek Key（可选，百炼失败时备用）
 OCT_MODEL=qwen-plus
 OCT_GATEWAY_PORT=18789
 OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
@@ -30,6 +33,29 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 - **工具层**：`tool_loader.js` 动态加载 `tools/*.js`，含 http_request、image_gen 等 25+ 工具
 - **OpenClaw Skills**：`skill_adapter.js` 解析 `skills/` 下的 SKILL.md，注入到系统提示词
 - **后台任务**：`task_queue.js` + `worker.js`，任务持久化到 `tasks_runtime.json`，60 秒超时
+
+## Phase 4 新功能 (v0.4.0)
+
+### ✅ 图片分析增强
+- **云端优先**: 阿里云百炼 qwen-vl-max（高精度，识别红框/箭头/标注）
+- **本地降级**: BLIP 模型自动下载（~100MB），云端失败时无感切换
+- **双重保障**: 都失败时友好提示「请少爷描述图片内容」
+
+### ✅ 流式输出优化
+- **打字机效果**: requestAnimationFrame 节流，每帧 10 字符
+- **智能滚动**: 前几行跟随，上翻 300px 后解锁，显示「回到底部」按钮
+- **用户体验**: 对标 ChatGPT 流畅度
+
+### ✅ 任务看板完善
+- **优先级管理**: P0/P1/P2 三级优先级
+- **停车场功能**: 待处理事项暂存区
+- **自动管线**: 对话结束自动检测反馈/停车场/记忆/模式
+
+### ✅ 内存与安全修复
+- **WebSocket 清理**: close/error 事件正确清理定时器和 Set
+- **消息大小限制**: maxPayload 防止内存耗尽
+- **路径遍历防护**: read_file 白名单校验
+- **Session 持久化**: process.on('exit') 强制 flush
 
 ## 图片分析（云端 + 本地降级）
 
@@ -57,7 +83,7 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 }
 ```
 
-- `provider`: `aliyun_vl` 仅云端，`local_blip` 仅本地，`auto` 云端优先+本地降级
+- `provider`: `aliyun_vl` 仅云端，`local_blip` 仅本地，`auto` 云端优先 + 本地降级
 - 关闭本地降级：`local.enabled: false`
 
 ### 测试方法
@@ -82,3 +108,24 @@ main.ts 通过 `spawn('node', ['oct-gateway/index.js'])` 启动。
 ## 网络稳定性（代理环境）
 
 启用 V2RayN 等全局代理时，DashScope API 会自动直连（NO_PROXY），避免流式回复中断。fetch 支持 90 秒超时与重试，工具调用 30 秒超时隔离。
+
+## 下一步行动
+
+### 📦 打包发布
+```bash
+# 1. 生成打包配置（让 Cursor 协助）
+# 2. 本地测试打包
+npm run build
+# 3. 推送 Git（如配置 CI/CD 则自动打包）
+# 4. 更新官网下载链接
+```
+
+### 🚀 Phase 5 规划
+- Gateway 生态扩展（Agent 路由、多模型负载均衡）
+- 定时任务系统（心跳、定期备份）
+- 性能监控与告警
+
+---
+
+> **维护者**: OpenClaw Team  
+> **最后更新**: 2026-03-28 (Phase 4 完成)

@@ -440,5 +440,22 @@
     "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"检查一下我的电脑里面有没有类似的工具  我记得我之前有安装过一款也是这种类似的  但是我找不到了\",\"results\":[{\"title\":\"Uninstall or remove apps and programs in Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98\",\"snippet\":\"Uninstall or remove apps and programs in the Settings app.\"},{\"title\":\"电脑软件列表_批处理查看pc安装的软件清单\",\"url\":\"https://blog.csdn.net/qq_34792438/article/details/114656416\",\"snippet\":\"如何列出特定计算机上已经安装的所有应用？ Win32_Product WMI 类代表通过 Windows Installer 安装的所有应用程序。但是，这个 WMI 类可能不会列出所有出现在‘添加/删除程序’中的程序。 解决该问题的一种方法是从注册表中搜集已安装程序的信息（注意：并不是所有程序在安装的时候都会向注册表写入信息）。本主题给出了达到此目的\"},{\"title\":\"Windows之应用安装程序 —— winget - 避凉闲庭 - 博客园\",\"url\":\"https://www.cnblogs.com/blxt/p/16907530.html\",\"snippet\":\"上面截图里面是我想安装一个nginx，搜索之后是有的，但是这个软件包大家一定看清楚，他并不是一个nginx，只是nginx的一个替程序，他是一个WAMP，大家可以看下下面的截图，最终会安装一个laragon-wamp的程序 所以说现在微软的安装包仓库里面程序并不是很全，大部分还是需要你去官网下载程序然后再来进行安装的，不过可以推荐类似的软件其实也是个很不错的功能，不像linux一样没有就是没有 上面我又搜索了一个xmind的工具，他竟然真的有，很让人意外的 4.查看可以升级的程序并进行升级\"},{\"title\":\"Find your files and apps in Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/find-your-files-and-apps-in-windows-5c7c8cfe-c289-fae4-f5f8-6b3fdba418d2\",\"snippet\":\"Search from the taskbar or File Explorer to find your files.\"},{\"title\":\"Repair apps and programs in Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/repair-apps-and-programs-in-windows-e90eefe4-d0a2-7c1b-dd59-949a9030f317\",\"snippet\":\"Repair programs in Control Panel.\"}]}",
     "error": null,
     "notified": true
+  },
+  "task-1774637766277-c5fe45": {
+    "taskId": "task-1774637766277-c5fe45",
+    "type": "查一下",
+    "instruction": "刚才断开了  检查一下 你更新了文档吗？ 然后指引我下一步",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "刚才断开了  检查一下 你更新了文档吗？ 然后指引我下一步"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774637766277,
+    "startedAt": 1774637766283,
+    "completedAt": 1774637768071,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"刚才断开了  检查一下 你更新了文档吗？ 然后指引我下一步\",\"results\":[{\"title\":\"解决导致 Chrome 无法成功更新的问题 - Google Chrome帮助\",\"url\":\"https://support.google.com/chrome/answer/111996?hl=zh-Hans\",\"snippet\":\"电脑上的更新操作可能尚未完成。请尝试重新启动电脑，然后重新更新 Chrome。\"},{\"title\":\"Troubleshoot problems updating Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/troubleshoot-problems-updating-windows-188c2b0f-10a7-d72f-65b8-32d177eb136c\",\"snippet\":\"Learn how to troubleshoot problems updating Windows. Find answers to common questions and issues installing Windows updates.\"},{\"title\":\"Windows Update Troubleshooter - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/windows-update-troubleshooter-19bc41ca-ad72-ae67-af3c-89ce169755dd\",\"snippet\":\"Learn how to run Windows Update Troubleshooter to resolve errors downloading or installing Windows updates.\"},{\"title\":\"排查Windows 更新问题 - Windows Client | Microsoft Learn\",\"url\":\"https://learn.microsoft.com/zh-cn/troubleshoot/windows-client/installing-updates-features-roles/windows-update-issues-troubleshooting\",\"snippet\":\"了解如何排查Windows 更新、与 HTTP/代理相关的问题，以及提供某些功能的原因，以及其他功能未提供的问题。\"},{\"title\":\"Fix problems that block programs from being installed or removed - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/topic/fix-problems-that-block-programs-from-being-installed-or-removed-cca7d1b6-65a9-3d98-426b-e9f927e1eb4d\",\"snippet\":\"The Program Install and Uninstall troubleshooter helps you automatically repair issues when you&#x27;re blocked from installing or removing programs.\"}]}",
+    "error": null,
+    "notified": true
   }
 }
