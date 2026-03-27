@@ -18,6 +18,8 @@ import HeartbeatWave from './HeartbeatWave';
 import AmyAvatar from './AmyAvatar';
 import SetupGuide from './SetupGuide';
 import LogPanel from './LogPanel';
+import { blockRouter } from '../core/blockRouter';
+import { blocksToSegments } from '../core/blockAdapter';
 import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
@@ -1607,11 +1609,15 @@ const ChatMessageList = function ChatMessageList({
                   if (isStreamingMsg) {
                     const cached = streamingParseCacheRef.current;
                     if (cached && cached.input === fc) return cached.output;
-                    const result = parseOptionBox(fc);
+                    const blocks = blockRouter(fc);
+                    const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
+                    const result = parseOptionBox(bridgedText);
                     streamingParseCacheRef.current = { input: fc, output: result };
                     return result;
                   }
-                  return parseOptionBox(fc);
+                  const blocks = blockRouter(fc);
+                  const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
+                  return parseOptionBox(bridgedText);
                 })()
               : {
                   text: display,
