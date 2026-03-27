@@ -389,5 +389,56 @@
     "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"检查一下git 是推送完成了吗\",\"results\":[{\"title\":\"git查看本地还未推送到远程的提交明细_git查看本地提交没有push的代码-CSDN博客\",\"url\":\"https://blog.csdn.net/zhang197093/article/details/113243871\",\"snippet\":\"本文介绍了如何使用Git命令查看本地分支中未被推送到远程仓库的提交记录。通过使用特定的Git命令组合，可以详细了解哪些提交尚未同步到远程。 · <strong>git status</strong> 只能查看到本地当前有多少个提交还未推送，但看不到具体是...\"},{\"title\":\"git 中怎样查看未传送(git push)到远程代码库的(git commit)提交?_git 怎么查看未推送到远程库的代码-CSDN博客\",\"url\":\"https://blog.csdn.net/tianyafeng123xin/article/details/52635324\",\"snippet\":\"文章浏览阅读2.4w次。总结：可以查看已经commit 但是还没有push 的代码git log master ^origin/mastergit 中怎样查看未传送(git push)到远程代码库的(git commit)提交?1,查看到未传送到远程代码库的提交次数git status显示结果类似于这样：# On branch master# Your branch _git 怎么查看未推送到远程库的代码\"},{\"title\":\"git查看只commit没有push的文件或者提交记录_git 查看commit但未push的-CSDN博客\",\"url\":\"https://blog.csdn.net/u010089432/article/details/85318995\",\"snippet\":\"如果你只记得部分commit ID，Git通常也能找到匹配的提交。但为了确保准确性，至少提供4位以上的字符。 在Git中，还有一个强大的工具可以帮助你追踪你的操作历史，那就是`git reflog`。它记录了你执行的每一个Git... ... git-remind检查您计算机中所有git存储库的状态，并显示状态是否存在未提交的文件和应提交到远程的预先提交。 桌面通知 git-remind使用桌面通知通知您git-commit / git-push状态。 此功能已通过macOS的测试，但可在... git-commit-push-via-github-api：使用GitHub API进行Git提交和推送。 不依赖于Git二进制文件\"},{\"title\":\"什么是 `git status`？——掌握 Git 状态查看的关键命令-阿里云开发者社区\",\"url\":\"https://developer.aliyun.com/article/1587124\",\"snippet\":\"本文全面解析 Git 的关键命令 `git status`，重点剖析其如何展示工作区、暂存区与远程仓库的状态差异，并解读关键输出信息，助您精准掌握仓库状态，高效、自信地进行版本控制。\"},{\"title\":\"git 检查是否有commit到本地但还没push的代码 - ismallboy - 博客园\",\"url\":\"https://www.cnblogs.com/ismallboy/p/6785335.html\",\"snippet\":\"使用git status命令可以得到以下结果$ git statusOn branch dev_getTicketCntYour branch is ahead of &#x27;origin/master&#x27; by 1 commit. (use &quot;git push&quot; to\"}]}",
     "error": null,
     "notified": true
+  },
+  "task-1774588195504-e63ccb": {
+    "taskId": "task-1774588195504-e63ccb",
+    "type": "搜索",
+    "instruction": "网页端没有这个功能  这个目前是个测试功能呢  你上网搜索一下 什么是claude的cowrok",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "网页端没有这个功能  这个目前是个测试功能呢  你上网搜索一下 什么是claude的cowrok"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774588195504,
+    "startedAt": 1774588195509,
+    "completedAt": 1774588196761,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"网页端没有这个功能  这个目前是个测试功能呢  你上网搜索一下 什么是claude的cowrok\",\"results\":[{\"title\":\"免费白嫖 Claude Code，国内也能免费使用（保姆级教程）-腾讯云开发者社区-腾讯云\",\"url\":\"https://cloud.tencent.com/developer/article/2539379\",\"snippet\":\"Claude Code是<strong>Anthropic基于Claude Sonnet模型开发的智能编程工具</strong>，支持多语言及开发环境集成。国内因网络、费用、注册限制难使用，可通过AnyRouter中转免费使用，附详细操作步骤。\"},{\"title\":\"在 Chrome 中使用 Claude Code（测试版） - Claude Code Docs\",\"url\":\"https://code.claude.com/docs/zh-CN/chrome\",\"snippet\":\"将 Claude Code 连接到 Chrome 浏览器，<strong>以测试网络应用、使用控制台日志进行调试、自动填充表单以及从网页中提取数据</strong>。\"},{\"title\":\"claude code 的web search无法使用如何解决？ - 知乎\",\"url\":\"https://www.zhihu.com/question/1938028738714534569\",\"snippet\":\"我将使用 Tavily Search 工具搜索相关内容，因此你需要调用配置好的 MCP 服务器 &quot;tavily-search&quot;。 ... - 若服务器连接失败，检查代理是否覆盖 api.tavily.com （尝试全局代理模式测试）。\"},{\"title\":\"什么是 Cowork？一文介绍\",\"url\":\"https://apifox.com/apiskills/what-is-claude-cowork/\",\"snippet\":\"Anthropic 为 Claude 推出了全新的 Cowork 模式。它不再是简单的聊天机器人，而是能直接访问你电脑文件、自主规划并执行复杂任务的智能助理。本文将详细介绍 Cowork 的工作原理、核心能力、使用方法以及需要注意的安全事项。\"},{\"title\":\"Get started with Claude in Chrome | Claude Help Center\",\"url\":\"https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome\",\"snippet\":\"Claude in Chrome is available in beta for all paid plans (Pro, Max, Team, and Enterprise) on the Chrome web browser · <strong>Claude in Chrome is a browser extension that allows Claude to read, click, and navigate websites alongside you</strong>.\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774594001387-3d066c": {
+    "taskId": "task-1774594001387-3d066c",
+    "type": "查一下",
+    "instruction": "你检查一下项目里面目前用的是什么打字音效 我想添加其他的音效要怎么做?",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "你检查一下项目里面目前用的是什么打字音效 我想添加其他的音效要怎么做?"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774594001387,
+    "startedAt": 1774594001391,
+    "completedAt": 1774594002729,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"你检查一下项目里面目前用的是什么打字音效 我想添加其他的音效要怎么做?\",\"results\":[{\"title\":\"Fix sound or audio problems in Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/fix-sound-or-audio-problems-in-windows-73025246-b61c-40fb-671a-2535c7cd56c8\",\"snippet\":\"Find out how to fix sound or audio problems in Windows.\"},{\"title\":\"FL Studio中的音频设置-FL Studio中文官网\",\"url\":\"https://www.flstudiochina.com/rumen/FL-ypsz.html\",\"snippet\":\"我们的计算机中可能有声卡，主板上有芯片，或者可能是通过USB / FireWire /蓝牙连接的外部设备。音频设备是设备硬件，可以从计算机中听到声音。该音频设备驱动程序是操作系统和音频设备之间的软件接口。驱动程序告诉操作系统，以及FL Studio，音频设备可以支持哪些输入，输出和采样率。而我们通过进行音频设置，找到驱动程序。 ... 要打开音频设置，请从主菜单中选择“ 选项&gt;音频设置 ”，或按键盘上的F10功能键。“音频设置”页面包含音频设备的选项和设置（此处选择的设置会对CPU负载产生很大影响，因此值得花时间了解可用的选项）。请注意，某些选项会根据在“ 输出”选择器中是否选择了ASIO或Direct Sound驱动程序而更改。\"},{\"title\":\"[Windows 11/10] 疑难解答 - 音效(喇叭/麦克风)问题 | 官方支持 | ASUS 中国\",\"url\":\"https://www.asus.com.cn/support/faq/1015070/\",\"snippet\":\"问题1: 为什么我使用某个特定应用程序的时候音量会特别大声、小声或是没有声音? 答案1: 您可以透过音量混音程序调整各个应用程序所合适的音量大小。 · 鼠标右键点击任务栏上的[喇叭图示]，然后点选[打开音量合成器]。 · 在音量混音程序中，使用滑杆调整各个应用程序的音量大小。 · 如果应用程序的音量图标有x，表示目前设定为静音模式，再次点击图标即可开启音量。\"},{\"title\":\"如何使用fl Studio营造双声道立体音效-FL Studio中文官网\",\"url\":\"https://www.flstudiochina.com/jiqiao/fl-ssdlt.html\",\"snippet\":\"对于初学者来说，fl Studio的混音器的使用应该是重中之重，熟练掌握fl Studio混音器的使用方法可为我们创作的音乐添加上各种各样的效果，今天我们便为大家带来使用fl Studio营造双声道立体音效的具体步骤，并在讲解的过程中为大家详细说明fl Studio混音器的使用方法，还等什么呢，快来看看吧：\"},{\"title\":\"Premiere Pro 中的“基本声音”面板\",\"url\":\"https://helpx.adobe.com/cn/premiere-pro/using/premiere-essential-sound-panel.html\",\"snippet\":\"要设置混响效果，请选中“创意”下的“混响”复选框。 · 在“预设”框中，根据需要选择混响预设。 · 使用 SFX 和混响预定义设置增强您的音频。 · 使用 SFX 和混响预定义设置增强您的音频。 · 专业级用户可以创建对用户和项目有益的预设，这些预设可用于一系列相似的音频资源，以确保一致性并节省时间。\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774595945367-b51e4e": {
+    "taskId": "task-1774595945367-b51e4e",
+    "type": "查一下",
+    "instruction": "检查一下我的电脑里面有没有类似的工具  我记得我之前有安装过一款也是这种类似的  但是我找不到了",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "检查一下我的电脑里面有没有类似的工具  我记得我之前有安装过一款也是这种类似的  但是我找不到了"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774595945368,
+    "startedAt": 1774595945372,
+    "completedAt": 1774595946727,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"检查一下我的电脑里面有没有类似的工具  我记得我之前有安装过一款也是这种类似的  但是我找不到了\",\"results\":[{\"title\":\"Uninstall or remove apps and programs in Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98\",\"snippet\":\"Uninstall or remove apps and programs in the Settings app.\"},{\"title\":\"电脑软件列表_批处理查看pc安装的软件清单\",\"url\":\"https://blog.csdn.net/qq_34792438/article/details/114656416\",\"snippet\":\"如何列出特定计算机上已经安装的所有应用？ Win32_Product WMI 类代表通过 Windows Installer 安装的所有应用程序。但是，这个 WMI 类可能不会列出所有出现在‘添加/删除程序’中的程序。 解决该问题的一种方法是从注册表中搜集已安装程序的信息（注意：并不是所有程序在安装的时候都会向注册表写入信息）。本主题给出了达到此目的\"},{\"title\":\"Windows之应用安装程序 —— winget - 避凉闲庭 - 博客园\",\"url\":\"https://www.cnblogs.com/blxt/p/16907530.html\",\"snippet\":\"上面截图里面是我想安装一个nginx，搜索之后是有的，但是这个软件包大家一定看清楚，他并不是一个nginx，只是nginx的一个替程序，他是一个WAMP，大家可以看下下面的截图，最终会安装一个laragon-wamp的程序 所以说现在微软的安装包仓库里面程序并不是很全，大部分还是需要你去官网下载程序然后再来进行安装的，不过可以推荐类似的软件其实也是个很不错的功能，不像linux一样没有就是没有 上面我又搜索了一个xmind的工具，他竟然真的有，很让人意外的 4.查看可以升级的程序并进行升级\"},{\"title\":\"Find your files and apps in Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/find-your-files-and-apps-in-windows-5c7c8cfe-c289-fae4-f5f8-6b3fdba418d2\",\"snippet\":\"Search from the taskbar or File Explorer to find your files.\"},{\"title\":\"Repair apps and programs in Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/repair-apps-and-programs-in-windows-e90eefe4-d0a2-7c1b-dd59-949a9030f317\",\"snippet\":\"Repair programs in Control Panel.\"}]}",
+    "error": null,
+    "notified": true
   }
 }

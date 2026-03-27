@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type StreamSpeed = 'fast' | 'medium' | 'slow';
+export type TypingSoundMode = 'off' | 'typewriter' | 'soft' | 'bubble';
 export type ThemeColor = 'matrix' | 'cyber' | 'sunset' | 'midnight' | 'custom';
 
 export interface ThemeVars {
@@ -76,22 +77,24 @@ export const THEME_PRESETS: Record<Exclude<ThemeColor, 'custom'>, { label: strin
 
 export interface Settings {
   streamSpeed: StreamSpeed;
-  typingSound: boolean;
+  typingSound: TypingSoundMode;
   theme: ThemeColor;
   customTheme?: ThemeVars;
 }
 
 const DEFAULT: Settings = {
   streamSpeed: 'medium',
-  typingSound: false,
+  typingSound: 'off',
   theme: 'matrix',
 };
 
 const STORAGE_KEY = 'claw-terminal-settings';
+// 值 = charDelayMs 的 base delay（毫秒/字）
+// 数值越大，打字越慢
 const SPEED_MS: Record<StreamSpeed, number> = {
-  fast: 20,
-  medium: 50,
-  slow: 100,
+  fast: 50,    // ~20 字/秒，快速浏览
+  medium: 80,  // ~12 字/秒，从容阅读（推荐）
+  slow: 120,   // ~8 字/秒，逐字细读
 };
 
 function applyThemeVars(vars: ThemeVars) {
@@ -134,7 +137,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         const data = JSON.parse(raw);
         return {
           streamSpeed: data.streamSpeed ?? DEFAULT.streamSpeed,
-          typingSound: typeof data.typingSound === 'boolean' ? data.typingSound : DEFAULT.typingSound,
+          typingSound: data.typingSound === true ? 'typewriter'
+            : data.typingSound === false ? 'off'
+            : (['off', 'typewriter', 'soft', 'bubble'].includes(data.typingSound) ? data.typingSound : DEFAULT.typingSound),
           theme: normalizeTheme(data.theme),
           customTheme: data.customTheme,
         };
@@ -167,3 +172,4 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 export function useSettings() {
   return useContext(SettingsContext);
 }
+

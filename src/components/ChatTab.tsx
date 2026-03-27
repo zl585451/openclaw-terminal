@@ -20,7 +20,7 @@ import LogPanel from './LogPanel';
 import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
-import { playClickSound } from '../utils/clickSound';
+import { playClickSound, resetSoundCounter } from '../utils/clickSound';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 
 const ipcRenderer =
@@ -1640,14 +1640,14 @@ const ChatMessageList = function ChatMessageList({
           </div>
         )}
         <div ref={bottomRef as React.Ref<HTMLDivElement>} />
-        <div style={{ minHeight: (isStreaming || awaitingResponse) ? '75vh' : '30px', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
+        <div style={{ minHeight: '75vh', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
       </div>
     </div>
   );
 }
 
 const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange }) => {
-  const { settings, setSettings } = useSettings();
+  const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
 
   // ===== 所有 useState 集中声明 =====
@@ -1725,6 +1725,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const scrollGraceUntilRef = useRef<number>(0);
   // 标记：需要在下次渲染后将最新用户消息滚动到视口顶部
   const needsScrollToUserRef = useRef(false);
+  const typewriterStartTsRef = useRef<number>(0);
   // 用一个稳定的 ref 标记"是否应该运行打字机"
   const shouldRunTypewriterRef = useRef(false);
 
@@ -1822,11 +1823,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   };
 
   const charDelayMs = (ch: string): number => {
-    let d = 60; // base speed — ~15字/秒，接近 Claude.ai 从容阅读节奏
-    if (ch === '\n') d += 180;         // 换行：明显呼吸暂停
-    else if (ch === '。' || ch === '！' || ch === '？' || ch === '…') d += 140;  // 句末：长停顿
-    else if (ch === '.' || ch === '!' || ch === '?') d += 100;    // 英文句末
-    else if (ch === ',' || ch === '，' || ch === '、' || ch === ';' || ch === '；') d += 50;  // 逗号微顿
+    // base delay 来自设置面板的「流式速度」档位
+    // fast=50ms, medium=80ms, slow=120ms
+    let d = streamSpeedMs;
+    // 标点停顿按 base 的比例缩放，保持各档位的节奏感一致
+    if (ch === '\n') d += streamSpeedMs * 2.5;                     // 换行：2.5x 呼吸暂停
+    else if (ch === '。' || ch === '！' || ch === '？' || ch === '…') d += streamSpeedMs * 2;  // 句末：2x 停顿
+    else if (ch === '.' || ch === '!' || ch === '?') d += streamSpeedMs * 1.5;    // 英文句末：1.5x
+    else if (ch === ',' || ch === '，' || ch === '、' || ch === ';' || ch === '；') d += streamSpeedMs * 0.6;  // 逗号：0.6x 微顿
     return d;
   };
 
@@ -1976,7 +1980,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [handleScreenshot]);
 
   useEffect(() => {
-    if (!settings.typingSound && audioRef.current) {
+    if (settings.typingSound === 'off' && audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
       setSpeakingMessageId(null);
@@ -2329,7 +2333,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [messages.length]);
 
   const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
-    if (!settings.typingSound || !msg.content) return;
+    if (settings.typingSound === 'off' || !msg.content) return;
     const plain = stripMarkdown(msg.content);
     const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗口' : plain;
     if (!truncated.trim()) return;
@@ -2688,6 +2692,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       }
     }
 
+    // 启动时给最小预算，刚好显示第一个字
+    typingBudgetMsRef.current = 20;
+    typewriterStartTsRef.current = performance.now();
+    resetSoundCounter();
+
     const tick = (ts: number) => {
       // 如果外部已标记停止，退出
       if (!shouldRunTypewriterRef.current) {
@@ -2704,8 +2713,18 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       let idx = displayedLenRef.current;
       let typedThisFrame = 0;
       const backlog = fullLen - displayedLenRef.current;
-      // 平缓追赶：积压超过 200 字才加速，且力度很轻
-      const catchUpBoost = backlog > 200 ? Math.min(backlog * 0.2, 100) : 0;
+      // 预热期（前 2 秒）：不追赶，保持匀速，避免首行过快
+      const elapsed = ts - typewriterStartTsRef.current;
+      let catchUpBoost = 0;
+      if (elapsed > 2000) {
+        // 预热结束后才启用追赶
+        if (backlog > 30) {
+          catchUpBoost = Math.min((backlog - 30) * 0.3, 20);
+        }
+        if (backlog > 100) {
+          catchUpBoost = 20 + Math.min((backlog - 100) * 0.5, 80);
+        }
+      }
       typingBudgetMsRef.current += dt + catchUpBoost;
 
       while (typedThisFrame < 4 && idx < fullLen) {
@@ -2738,7 +2757,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (idx !== displayedLenRef.current) {
         displayedLenRef.current = idx;
         setDisplayedText(full.slice(0, idx));
-        if (settings.typingSound) playClickSound();
+        if (settings.typingSound !== 'off') playClickSound(settings.typingSound);
         if (followScrollRef.current) scheduleScrollAfterLayout(false);
       }
 
@@ -2884,11 +2903,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           <>
             <button
               type="button"
-              className={`voice-toggle ${settings.typingSound ? 'on' : 'off'}`}
-              onClick={() => setSettings((s) => ({ ...s, typingSound: !s.typingSound }))}
-              title={settings.typingSound ? '点击关闭打字音效' : '点击开启打字音效'}
+              className={`voice-toggle ${settings.typingSound !== 'off' ? 'on' : 'off'}`}
+              onClick={() => setSettings((s) => ({
+                ...s,
+                typingSound: s.typingSound === 'off' ? 'typewriter' : 'off'
+              }))}
+              title={settings.typingSound !== 'off' ? `音效: ${settings.typingSound}（点击关闭）` : '点击开启打字音效'}
             >
-              {settings.typingSound ? '♪ VOICE ON' : '♪ VOICE OFF'}
+              {settings.typingSound !== 'off' ? '♪ VOICE ON' : '♪ VOICE OFF'}
             </button>
             <button
               type="button"
@@ -3336,3 +3358,5 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 };
 
 export default ChatTab;
+
+

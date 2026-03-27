@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSettings, type StreamSpeed } from '../contexts/SettingsContext';
+import { useSettings, type StreamSpeed, type TypingSoundMode } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import { useTheme } from '../themes/ThemeProvider';
@@ -14,10 +14,10 @@ const SCREENSHOT_SHORTCUT_OPTIONS = [
 ] as const;
 
 const FONT_SIZE_OPTIONS = [
-  { value: '12', label: '小 (12px)' },
-  { value: '14', label: '中 (14px)' },
-  { value: '16', label: '大 (16px)' },
-  { value: '18', label: '特大 (18px)' },
+  { value: '13', label: '紧凑 (13px)' },
+  { value: '15', label: '标准 (15px)' },
+  { value: '17', label: '舒适 (17px)' },
+  { value: '19', label: '大字 (19px)' },
 ] as const;
 
 interface SettingsPanelProps {
@@ -260,8 +260,14 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       api.setScreenshotShortcut(shortcut);
     }
     localStorage.setItem('claw-terminal-advanced-settings', JSON.stringify({ fontSize, autoScroll, showNotifications, maxHistory }));
-    document.documentElement.style.setProperty('--text-base', `${fontSize}px`);
-    document.documentElement.style.setProperty('--text-md', `${fontSize}px`);
+    // 按比例联动所有文字尺寸变量
+    const base = parseInt(fontSize, 10);
+    document.documentElement.style.setProperty('--text-sm', `${base - 2}px`);
+    document.documentElement.style.setProperty('--text-base', `${base - 1}px`);
+    document.documentElement.style.setProperty('--text-md', `${base}px`);
+    document.documentElement.style.setProperty('--text-lg', `${base + 2}px`);
+    document.documentElement.style.setProperty('--text-code', `${base - 1}px`);
+    document.documentElement.style.setProperty('--text-code-sm', `${base - 2}px`);
 
     setApplyError('');
     if (api?.saveApiKeys) {
@@ -696,17 +702,19 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <div className="settings-row">
                   <label>流式速度</label>
                   <select value={local.streamSpeed} onChange={(e) => setLocal((s) => ({ ...s, streamSpeed: e.target.value as StreamSpeed }))}>
-                    <option value="fast">快</option>
-                    <option value="medium">中</option>
-                    <option value="slow">慢</option>
+                    <option value="fast">快速 (~20字/秒)</option>
+                    <option value="medium">从容 (~12字/秒)</option>
+                    <option value="slow">细读 (~8字/秒)</option>
                   </select>
                 </div>
                 <div className="settings-row">
                   <label>打字音效</label>
-                  <label className="toggle-wrap">
-                    <input type="checkbox" checked={local.typingSound} onChange={(e) => setLocal((s) => ({ ...s, typingSound: e.target.checked }))} />
-                    <span className="toggle-slider" />
-                  </label>
+                  <select value={local.typingSound} onChange={(e) => setLocal((s) => ({ ...s, typingSound: e.target.value as TypingSoundMode }))}>
+                    <option value="off">关闭</option>
+                    <option value="typewriter">键盘 (清脆)</option>
+                    <option value="soft">轻柔 (气泡)</option>
+                    <option value="bubble">水泡 (低频)</option>
+                  </select>
                 </div>
               </section>
               <section className="settings-section">
@@ -1147,3 +1155,4 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
     </div>
   );
 }
+
