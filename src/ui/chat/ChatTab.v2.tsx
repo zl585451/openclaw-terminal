@@ -767,7 +767,7 @@ interface ChatMessageItemProps {
   currentPage: number;
   onPageChange: (msgId: number, page: number) => void;
   isStreamingMsg: boolean;
-  agentPhase: 'idle' | 'thinking' | 'typing';
+  agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
   speakingMessageId: number | null;
   wsConnected: boolean;
   quickSend: (text: string) => void;
@@ -811,7 +811,7 @@ const MessageHeader = memo(
   }: {
     msg: ChatMessage;
     isStreamingMsg: boolean;
-    agentPhase: 'idle' | 'thinking' | 'typing';
+    agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
   }) {
     return (
       <div className="msg-header">
@@ -831,7 +831,9 @@ const MessageHeader = memo(
               AMY
             </span>
             {isStreamingMsg && agentPhase !== 'idle' && (
-              <span className="agent-status-badge">{agentPhase === 'thinking' ? '思考中' : '打字中'}</span>
+              <span className="agent-status-badge">
+                {agentPhase === 'thinking' ? '思考中' : agentPhase === 'tool_executing' ? '调用工具中' : '打字中'}
+              </span>
             )}
           </div>
         )}
@@ -1528,7 +1530,7 @@ interface ChatMessageListProps {
   streamingContent: string;
   displayedText: string;
   speakingMessageId: number | null;
-  agentPhase: 'idle' | 'thinking' | 'typing';
+  agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
   thinkingElapsed: number;
   wsConnected: boolean;
   quickSend: (text: string) => void;
@@ -1538,6 +1540,13 @@ interface ChatMessageListProps {
   onQuoteQuestion: (text: string) => void;
   pendingPills?: string[] | null;
   messagesContainerRef: React.MutableRefObject<HTMLDivElement | null>;
+  activeTools?: Array<{
+    callId: string;
+    tool: string;
+    state: 'executing' | 'done' | 'error';
+    resultPreview?: string;
+  }>;
+  getToolDisplayName?: (tool: string) => string;
 }
 
 const ChatMessageList = function ChatMessageList({
@@ -1558,6 +1567,8 @@ const ChatMessageList = function ChatMessageList({
   onQuoteQuestion,
   pendingPills,
   messagesContainerRef,
+  activeTools = [],
+  getToolDisplayName = (t) => t,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
   const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
@@ -1590,6 +1601,7 @@ const ChatMessageList = function ChatMessageList({
               </>
             )}
             {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
+            {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
             <span className="processing-blocks typing-dots">
               <span className="block" />
               <span className="block" />
@@ -1601,17 +1613,10 @@ const ChatMessageList = function ChatMessageList({
         const raw = typeof msg.content === 'string'
           ? msg.content
           : String((msg.content as any)?.text ?? (msg.content as any)?.content ?? msg.content ?? '');
-        try {
-          if (msg.role === 'assistant' && (!raw || raw.trim().length === 0)) {
-            console.warn('[ChatTab] render assistant with empty raw content. msg=', {
-              id: msg.id,
-              role: msg.role,
-              isStreaming: msg.isStreaming,
-              isSystemReply: msg.isSystemReply,
-              ts: msg.timestamp,
-            });
-          }
-        } catch {}
+        // 占位消息（isStreamingRaw + 空内容）：跳过渲染，等首 token 到来
+        if (msg.role === 'assistant' && msg.isStreamingRaw && (!raw || raw.trim().length === 0)) {
+          return null;
+        }
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
         const fullContent =
           isStreamingMsg && msg.isStreamingRaw
@@ -1733,6 +1738,30 @@ const ChatMessageList = function ChatMessageList({
               onQuoteQuestion={onQuoteQuestion}
               isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
             />
+            {/* 工具调用卡片：紧跟当前 streaming assistant 消息之后 */}
+            {isStreamingMsg && activeTools.length > 0 && (
+              <div className="tool-calls-container">
+                {activeTools.map((tool) => (
+                  <div
+                    key={tool.callId}
+                    className={`tool-call-card tool-call-card--${tool.state}`}
+                  >
+                    <div className="tool-call-card__icon">
+                      {tool.state === 'executing' && <span className="tool-call-card__spinner" />}
+                      {tool.state === 'done' && <span>✅</span>}
+                      {tool.state === 'error' && <span>❌</span>}
+                    </div>
+                    <div className="tool-call-card__content">
+                      <span className="tool-call-card__text">
+                        {tool.state === 'executing' && <>🔧 正在调用 {getToolDisplayName(tool.tool)}...</>}
+                        {tool.state === 'done' && <>✅ {getToolDisplayName(tool.tool)} 完成</>}
+                        {tool.state === 'error' && <>❌ {getToolDisplayName(tool.tool)} 失败</>}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </React.Fragment>
         );
         })}
@@ -1821,8 +1850,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: number; text: string } | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
-  const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
+  const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
+  // 工具调用状态
+  const [activeTools, setActiveTools] = useState<Array<{
+    callId: string;
+    tool: string;
+    state: 'executing' | 'done' | 'error';
+    resultPreview?: string;
+  }>>([]);
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
   const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE_MESSAGES);
   const [pendingPills, setPendingPills] = useState<string[] | null>(null);
@@ -2354,17 +2390,69 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     return '';
   };
 
+  // 工具名映射
+  const getToolDisplayName = (tool: string): string => {
+    const map: Record<string, string> = {
+      web_search: '网页搜索',
+      exec_command: '执行命令',
+      read_file: '读取文件',
+      write_file: '写入文件',
+    };
+    return map[tool] || tool;
+  };
+
   const handleIncomingMessage = (
     data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean; elapsed?: number }
   ) => {
     if (!data || data.type === 'status' || data.connected !== undefined) return;
-    if (data.type === 'agent-phase') {
+
+    // P6 调试：记录工具相关消息
+    if (data.type === 'event' && (data.event === 'tool' || data.event === 'agent-phase')) {
+      console.log('[P6] incoming event:', data.event, JSON.stringify(data).slice(0, 300));
+    }
+
+    // agent-phase: 旧格式 {type:'agent-phase'} 或新格式 {type:'event', event:'agent-phase'}
+    if (data.type === 'agent-phase' || (data.type === 'event' && data.event === 'agent-phase')) {
       const phase = data.phase;
-      if (phase === 'thinking' || phase === 'typing' || phase === 'idle') setAgentPhase(phase);
+      if (phase === 'thinking' || phase === 'typing' || phase === 'idle' || phase === 'tool_executing') {
+        setAgentPhase(phase);
+      }
       if (phase === 'thinking' && data.elapsed != null) setThinkingElapsed(data.elapsed);
       if (phase === 'idle' || phase === 'typing') setThinkingElapsed(0);
       return;
     }
+
+    // 处理工具调用事件
+    if (data.type === 'event' && data.event === 'tool' && data.payload) {
+      const payload = data.payload;
+      console.log('[P6] tool event payload:', JSON.stringify(payload).slice(0, 300));
+      if (payload.type === 'tool_call') {
+        // 新工具调用开始
+        setActiveTools((prev) => {
+          console.log('[P6] adding tool to activeTools:', payload.tool, payload.callId);
+          return [
+            ...prev,
+            {
+              callId: payload.callId,
+              tool: payload.tool,
+              state: 'executing' as const,
+            },
+          ];
+        });
+      } else if (payload.type === 'tool_result') {
+        // 工具调用完成：更新为 done/error 状态，保留显示直到 AI 完成回复
+        const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
+        setActiveTools((prev) =>
+          prev.map((t) =>
+            t.callId === payload.callId
+              ? { ...t, state: finalState, resultPreview: payload.resultPreview }
+              : t
+          )
+        );
+      }
+      return;
+    }
+
     // 新格式：{type: 'event', event: 'chat', payload: {...}}
     // 旧格式：{type: 'chat', ...}
     if (data.type !== 'chat' && !(data.type === 'event' && data.event === 'chat')) return;
@@ -2411,6 +2499,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setAwaitingResponse(false);
       setAgentPhase('idle');
       userScrolledUp.current = false;
+      // AI 最终回复完成时清空所有工具卡片
+      setActiveTools([]);
       const currentRequestId = lastSentRequestId.current;
       const systemReply = pendingSystemReplyMap.current.get(currentRequestId) ?? false;
       pendingSystemReplyMap.current.delete(currentRequestId);
@@ -3248,6 +3338,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           onQuoteQuestion={(text: string) => setInjectInputText(text)}
           pendingPills={pendingPills}
           messagesContainerRef={messagesContainerRef}
+          activeTools={activeTools}
+          getToolDisplayName={getToolDisplayName}
         />
         {showScrollBtn && (
           <div

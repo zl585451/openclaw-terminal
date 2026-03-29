@@ -37,7 +37,7 @@ const TASK_TOOL_MAP = {
   }},
 };
 
-function tryDispatchAsTask(userMessage, sessionKey) {
+function tryDispatchAsTask(userMessage, sessionKey, onToolEvent) {
   const ASYNC_TRIGGERS = [
     '后台', '帮我查', '帮我搜', '查一下', '搜索一下',
     '顺便', '同时', '另外帮我', '后台执行', '读取文件',
@@ -58,7 +58,7 @@ function tryDispatchAsTask(userMessage, sessionKey) {
           toolArgs,
           sessionKey
         });
-        worker.dispatch(taskId);
+        worker.dispatch(taskId, onToolEvent);
         return taskId;
       } catch (e) {
         console.error('[Orchestrator] 任务派发失败:', e.message);
@@ -158,11 +158,11 @@ function analyzeIntent(userMessage) {
  * 现阶段：只分析和记录，不实际切换 Agent
  * 未来：shouldDelegate=true 时路由到对应 Agent
  */
-async function dispatch(userMessage, sessionKey) {
+async function dispatch(userMessage, sessionKey, onToolEvent) {
   const analysis = analyzeIntent(userMessage);
 
-  // 尝试异步任务派发
-  const taskId = tryDispatchAsTask(userMessage, sessionKey);
+  // 尝试异步任务派发（传入 onToolEvent 以向前端推送工具调用事件）
+  const taskId = tryDispatchAsTask(userMessage, sessionKey, onToolEvent);
 
   if (taskId) {
     console.log(`[Orchestrator] 已派发后台任务 ${taskId}`);

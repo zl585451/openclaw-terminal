@@ -310,7 +310,18 @@ wss.on('connection', (ws) => {
       const userMessage = params?.message || '';
       const attachments = params?.attachments || [];
 
-      const orchResult = await orchestrator.dispatch(userMessage, sessionKey);
+      // 工具事件回调：Worker 执行后台任务时向前端推送工具调用卡片
+      const sendToolEvent = (evt) => {
+        if (ws.readyState !== ws.OPEN) return;
+        ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
+        if (evt.type === 'tool_call') {
+          ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool }));
+        }
+        if (evt.type === 'tool_result') {
+          ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
+        }
+      };
+      const orchResult = await orchestrator.dispatch(userMessage, sessionKey, sendToolEvent);
       // orchResult 包含 intent/agent/shouldDelegate 信息，日志已在 orchestrator 内打印
       // 现阶段不改变后续流程，预留为未来 Agent 路由扩展点
 
@@ -613,6 +624,16 @@ wss.on('connection', (ws) => {
       await streamChat({
         messages,
         onDelta: merge.onDelta,
+        onToolEvent: (evt) => {
+          if (cancelled || ws.readyState !== ws.OPEN) return;
+          ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
+          if (evt.type === 'tool_call') {
+            ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool }));
+          }
+          if (evt.type === 'tool_result') {
+            ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
+          }
+        },
         onDone: (_text, usage, responseModel) => {
           if (cancelled) return;
           currentAbort = null;
