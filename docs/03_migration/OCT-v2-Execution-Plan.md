@@ -118,11 +118,11 @@ git checkout v2-phase{N}-baseline      # 回到基线
 - [x] 3.8 Git：`v2-phase3-baseline` → `v2-phase3-done`
 
 ### Phase 4：增量渲染（预计 1 天）⭐ 最后一步迁移
-- [ ] 4.1 流式文本用 pre-wrap 直接追加
-- [ ] 4.2 代码块独立渲染
-- [ ] 4.3 done 后最终 Markdown 渲染 pass
-- [ ] 4.4 验收：长回复无闪烁无跳动
-- [ ] 4.5 Git：`v2-phase4-baseline` → `v2-phase4-done`
+- [x] 4.1 流式文本用 pre-wrap 直接追加
+- [x] 4.2 代码块独立渲染
+- [x] 4.3 done 后最终 Markdown 渲染 pass
+- [x] 4.4 验收：长回复无闪烁无跳动
+- [x] 4.5 Git：`v2-phase4-baseline` → `v2-phase4-done`
 
 ### Phase 5：Viewport 锚定（预计 1 天）
 - [ ] 5.1 实现 ScrollAnchor 类
