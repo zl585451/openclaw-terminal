@@ -760,6 +760,9 @@ function handleMessage(msg: any) {
       } else if (msg.event === 'task-board-update') {
         mainWindow?.webContents.send('task-board-update');
         mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
+      } else if (msg.event === 'tool' || msg.event === 'agent-phase') {
+        // 工具调用事件和 agent 阶段事件：直接透传，不经过 forwardChatToFrontend（避免 state:'done' 被误判为 chat done）
+        sendMessage(msg);
       } else if (msg.event === 'chat' && msg.payload) {
         const isDelta = msg.payload?.state === 'delta';
         forwardChatToFrontend(msg.payload, msg.event, isDelta);

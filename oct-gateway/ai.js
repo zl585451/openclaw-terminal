@@ -417,9 +417,16 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
 
     // 从 provider 或 MODEL_REGISTRY 获取模型能力
     const modelDef = provider.models.find(m => m.id === model);
+    // modelDef.tools 可能为 undefined（loadAvailableModels 返回的简化对象没有 tools 字段）
+    // 此时 fallback 到 MODEL_REGISTRY（getModelCaps）获取真实能力
+    const registryCaps = config.getModelCaps(model);
     const caps = modelDef
-      ? { supportsTools: modelDef.tools, supportsStreamOptions: provider.supportsStreamOptions, maxTokens: 4096 }
-      : config.getModelCaps(model);
+      ? {
+          supportsTools: modelDef.tools !== undefined ? modelDef.tools : registryCaps.supportsTools,
+          supportsStreamOptions: provider.supportsStreamOptions,
+          maxTokens: modelDef.maxTokens || registryCaps.maxTokens || 4096,
+        }
+      : registryCaps;
     log.info('model caps', { model, supportsTools: caps.supportsTools, supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions });
 
     const requestBody = {
@@ -534,6 +541,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
         }
 
         const finishReason = parsed?.choices?.[0]?.finish_reason;
+        if (finishReason) log.info('finishReason', { finishReason, toolCallsLen: toolCalls.filter(Boolean).length });
         if (finishReason === 'stop') sawDone = true;
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
           stopHeartbeat();
