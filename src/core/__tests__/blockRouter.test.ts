@@ -18,3 +18,11 @@ test('mixed content', () => {
 
   expect(blocks.length).toBe(3);
 });
+
+test('block IDs start from 0 on each call', () => {
+  const blocks1 = blockRouter('first call');
+  const blocks2 = blockRouter('second call');
+
+  expect(blocks1[0].id).toBe('block_0');
+  expect(blocks2[0].id).toBe('block_0');
+});

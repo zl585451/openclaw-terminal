@@ -61,7 +61,7 @@ export class StreamRouter {
 
   private emit(event: StreamRouterEvent): void {
     for (const fn of this.listeners) {
-      fn(event);
+      try { fn(event); } catch { /* subscriber errors must not break StreamRouter */ }
     }
   }
 
@@ -157,11 +157,15 @@ export class StreamRouter {
   }
 
   end(): void {
+    if (this.state === StreamState.OPENING) {
+      this.transition(StreamState.OPEN);
+      this.transition(StreamState.STREAMING);
+      this.fsm.onToken();
+    }
     if (this.state !== StreamState.STREAMING) {
       throw new Error(INVALID);
     }
     this.transition(StreamState.FLUSHING);
-    // Keep timer running so FLUSHING drains via flushTick; empty buffer completes on next tick(s).
     this.startFlushTimer();
   }
 

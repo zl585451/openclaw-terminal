@@ -208,8 +208,12 @@ export interface MessageMetadata {
 // Turn FSM（轮次状态机）
 // ════════════════════════════════════════
 
-/** 轮次阶段 */
-export type TurnPhase =
+/**
+ * @deprecated 蓝图草案阶段的 TurnPhase 定义，与实际实现不一致。
+ * 实际使用的 TurnPhase 定义在 `src/core/turnFSM/turnTypes.ts`（enum 形式）。
+ * 保留此类型仅供文档参考，请勿在新代码中引用。
+ */
+export type TurnPhaseLegacy =
   | 'idle'           // 等待用户输入
   | 'submitted'      // 用户消息已发送，等待 AI 响应
   | 'thinking'       // AI 在思考（CoT 阶段）
@@ -222,8 +226,12 @@ export type TurnPhase =
   | 'error'          // 出错
   | 'cancelled';     // 用户取消
 
-/** 轮次状态转换事件 */
-export type TurnEvent =
+/**
+ * @deprecated 蓝图草案阶段的 TurnEvent 定义。
+ * 实际 FSM 使用语义 API（onUserTyping, onStreamEnd 等），不使用事件对象。
+ * 保留仅供文档参考。
+ */
+export type TurnEventLegacy =
   | { type: 'USER_SUBMIT' }
   | { type: 'STREAM_START' }
   | { type: 'COT_START' }

@@ -1,11 +1,11 @@
 import { ContentBlock } from './types';
 
-let id = 0;
-const nextId = () => `block_${id++}`;
-
 export function blockRouter(raw: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   const codeRegex = /```(\w+)?\n([\s\S]*?)```/g;
+
+  let blockIndex = 0;
+  const nextId = () => `block_${blockIndex++}`;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;

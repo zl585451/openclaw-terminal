@@ -148,6 +148,37 @@ describe('StreamRouter', () => {
     vi.advanceTimersByTime(16);
     expect(fn).not.toHaveBeenCalled();
   });
+
+  it('end() from OPENING handles empty AI response gracefully', () => {
+    const fsm = fsmReadyForStream();
+    const router = new StreamRouter(fsm);
+
+    router.open();
+    expect(router.getState()).toBe(StreamState.OPENING);
+
+    router.end();
+    expect(router.getState()).toBe(StreamState.FLUSHING);
+
+    vi.advanceTimersByTime(16);
+    expect(router.getState()).toBe(StreamState.COMPLETED);
+
+    router.close();
+    expect(router.getState()).toBe(StreamState.IDLE);
+  });
+
+  it('subscriber errors do not break StreamRouter', () => {
+    const router = new StreamRouter(fsmReadyForStream());
+    router.subscribe(() => { throw new Error('bad'); });
+    const good = vi.fn();
+    router.subscribe(good);
+
+    router.open();
+    router.pushToken('a');
+    vi.advanceTimersByTime(16);
+
+    expect(good).toHaveBeenCalled();
+    expect(router.getState()).toBe(StreamState.STREAMING);
+  });
 });
 
 describe('deriveStreamFlags', () => {

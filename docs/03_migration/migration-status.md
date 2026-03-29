@@ -108,35 +108,30 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 
 ---
 
-## Phase 4：增量渲染（UI 集成）⭐ 最后一步迁移 ✅ 已完成
+## Phase 4：UI 集成 ⚠️ 部分完成
 
+**已完成**（StreamRouter 集成）：
 - [x] 4.1 创建 `src/core/blockIngest.ts`（BlockIngest 类，负责累积原文 + 路由到 blockRouter）
 - [x] 4.2 StreamRouter 新增 `abortToIdle()` 方法（异常/发送失败时清定时器、清空 buffer、回到 IDLE）
 - [x] 4.3 创建 `src/ui/chat/ChatTab.v2.tsx`（从 ChatTab.tsx 复制，集成新核心）
-  - [x] 单次 TurnFSM + StreamRouter(fsm) + BlockIngest（useRef 懒初始化）
-  - [x] FSM subscribe：更新 fsmPhase，在 USER_COMMITTED / REQUEST_DISPATCHED 打 needsScrollToUserRef，在 TURN_FINISHED / IDLE 清 userScrolledUp
-  - [x] StreamRouter.subscribe：tokens → BlockIngest → 更新 streamingMessageRef / fullTextRef / displayedText（走 bridged + parseOptionBox）→ setMessages
-  - [x] state === COMPLETED：close() → fsm.onTurnFinish() → 落盘最终内容、ingest.reset()、助手 isStreaming: false
-  - [x] 去掉 useState(isStreaming)，改为 deriveLegacyFlags(fsmPhase) + 最后一条助手 msg.isStreaming 的 useMemo
-  - [x] 普通对话：delta → oct.stream.pushToken；done → oct.stream.end()；系统命令仍走原拼接 + 打字机
-  - [x] OCT_V2_DISABLE_TYPEWRITER = true：普通流式不再用 RAF 打字机，节奏交给 StreamRouter 16ms 批处理
-  - [x] sendMessage / quickSend：非系统命令时 abortToIdle → onUserTyping（若 IDLE）→ onUserSubmit → onRequestStart → ingest.reset → stream.open()；发送失败则 abortToIdle + recoverOctStreamFromEndFailure
 - [x] 4.4 更新 `src/App.tsx` 聊天入口改为 `import ChatTab from './ui/chat/ChatTab.v2'`
 - [x] 4.5 ChatTab.v2 内样式与组件改为 `../../styles`、`../../components` 等相对路径
 - [x] 4.6 验收：npx tsc --noEmit 通过，npm run test 42 passed
 - [x] 4.7 本地测试通过（用户确认功能正常）
 
-**验收结果**：✅ 通过
-- BlockIngest 实现完成（增量 ingest(batch) → 累积原文 → blockRouter + blocksToSegments → getBridgedText()）
-- StreamRouter.abortToIdle() 实现完成（异常处理）
-- ChatTab.v2.tsx 完成集成（单次 TurnFSM + StreamRouter + BlockIngest）
-- App.tsx 入口已切换为 ChatTab.v2
-- TypeScript 编译通过
-- 单元测试通过（42 passed）
-- 用户本地测试确认功能正常
-- 保留 ChatTab.tsx 作回滚备用
+**未完成**（蓝图中 Phase 4 的核心目标——增量渲染）：
+- [ ] 4.8 流式文本用 `pre-wrap` 直接追加，不每帧跑 ReactMarkdown
+- [ ] 4.9 代码块独立 `<pre>` 元素，token 追加到 textContent
+- [ ] 4.10 `done` 信号后做一次最终 Markdown 渲染 pass
+- [ ] 4.11 验收：长回复无闪烁无跳动
 
-**遇到的问题**：无
+**实际状态说明**：
+Phase 4 完成了 StreamRouter 与 ChatTab.v2 的集成，打字机改为 16ms 批处理。但蓝图中"流式阶段不再每帧跑 ReactMarkdown"的核心目标**尚未实现**——每次 token batch 仍触发 setMessages → React 重渲染 → ReactMarkdown 全量解析。流式体验的根本性能问题待 4.8-4.11 解决。
+
+**验收结果**：⚠️ StreamRouter 集成通过，增量渲染待实现
+
+**遇到的问题**：
+- 流式打字机"逐行飞出"，AI 输出完成后渲染"弹一下"——根因是每 token 仍触发全量 Markdown 解析
 
 **回滚方式**：
 - 把 `src/App.tsx` 的 import 改回 `./components/ChatTab` 即可切回旧版
@@ -178,7 +173,8 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 | 2026-03-28 | Phase 1 | blockRouter + blockAdapter 实现 + 测试 | ✅ |
 | 2026-03-28 | Phase 2 | turnFSM 状态机实现 + 测试 + 标签 | ✅ |
 | 2026-03-28 | Phase 3 | streamRouter 流控制实现 + 测试 + 标签 | ✅ |
-| 2026-03-28 | Phase 4 | UI 集成（ChatTab.v2）+ 测试 + 用户验收 | ✅ |
+| 2026-03-28 | Phase 4 | UI 集成（ChatTab.v2）+ 测试 + 用户验收 | ⚠️ 部分 |
+| 2026-03-29 | 审计修复 | P0 问题修复：TurnPhase 冲突、ERROR/CANCELLED 状态、blockRouter ID、subscriber 保护、空响应处理 | ✅ |
 
 ---
 

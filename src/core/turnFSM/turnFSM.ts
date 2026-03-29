@@ -12,18 +12,21 @@ export const allowedTransitions: Record<TurnPhase, TurnPhase[]> = {
   [TurnPhase.IDLE]: [TurnPhase.USER_TYPING],
   [TurnPhase.USER_TYPING]: [TurnPhase.USER_SUBMIT],
   [TurnPhase.USER_SUBMIT]: [TurnPhase.USER_COMMITTED],
-  [TurnPhase.USER_COMMITTED]: [TurnPhase.REQUEST_DISPATCHED],
+  [TurnPhase.USER_COMMITTED]: [TurnPhase.REQUEST_DISPATCHED, TurnPhase.ERROR],
 
-  [TurnPhase.REQUEST_DISPATCHED]: [TurnPhase.MODEL_THINKING],
-  [TurnPhase.MODEL_THINKING]: [TurnPhase.STREAM_OPEN],
+  [TurnPhase.REQUEST_DISPATCHED]: [TurnPhase.MODEL_THINKING, TurnPhase.ERROR],
+  [TurnPhase.MODEL_THINKING]: [TurnPhase.STREAM_OPEN, TurnPhase.ERROR],
 
-  [TurnPhase.STREAM_OPEN]: [TurnPhase.STREAMING],
-  [TurnPhase.STREAMING]: [TurnPhase.STREAM_PAUSED, TurnPhase.STREAM_COMPLETE],
-  [TurnPhase.STREAM_PAUSED]: [TurnPhase.STREAMING],
+  [TurnPhase.STREAM_OPEN]: [TurnPhase.STREAMING, TurnPhase.ERROR, TurnPhase.CANCELLED],
+  [TurnPhase.STREAMING]: [TurnPhase.STREAM_PAUSED, TurnPhase.STREAM_COMPLETE, TurnPhase.ERROR, TurnPhase.CANCELLED],
+  [TurnPhase.STREAM_PAUSED]: [TurnPhase.STREAMING, TurnPhase.ERROR, TurnPhase.CANCELLED],
 
   [TurnPhase.STREAM_COMPLETE]: [TurnPhase.RENDER_COMPLETE],
   [TurnPhase.RENDER_COMPLETE]: [TurnPhase.TURN_FINISHED],
   [TurnPhase.TURN_FINISHED]: [TurnPhase.IDLE],
+
+  [TurnPhase.ERROR]: [TurnPhase.IDLE],
+  [TurnPhase.CANCELLED]: [TurnPhase.IDLE],
 };
 
 function logTransition(from: TurnPhase, to: TurnPhase): void {
@@ -53,7 +56,7 @@ export class TurnFSM {
     this.phase = next;
     logTransition(from, next);
     for (const fn of this.listeners) {
-      fn(this.phase);
+      try { fn(this.phase); } catch { /* subscriber errors must not break FSM */ }
     }
   }
 
@@ -111,5 +114,30 @@ export class TurnFSM {
   onTurnFinish(): void {
     this.transition(TurnPhase.TURN_FINISHED);
     this.transition(TurnPhase.IDLE);
+  }
+
+  /** Transition to ERROR from any active phase, then back to IDLE. */
+  onError(): void {
+    if (this.phase === TurnPhase.IDLE || this.phase === TurnPhase.ERROR) return;
+    this.transition(TurnPhase.ERROR);
+    this.transition(TurnPhase.IDLE);
+  }
+
+  /** Transition to CANCELLED from streaming phases, then back to IDLE. */
+  onCancel(): void {
+    if (this.phase === TurnPhase.IDLE || this.phase === TurnPhase.CANCELLED) return;
+    this.transition(TurnPhase.CANCELLED);
+    this.transition(TurnPhase.IDLE);
+  }
+
+  /** Force-reset to IDLE bypassing transition table (emergency use only). */
+  resetToIdle(): void {
+    if (this.phase === TurnPhase.IDLE) return;
+    const from = this.phase;
+    this.phase = TurnPhase.IDLE;
+    logTransition(from, TurnPhase.IDLE);
+    for (const fn of this.listeners) {
+      try { fn(this.phase); } catch { /* subscriber errors must not break FSM */ }
+    }
   }
 }

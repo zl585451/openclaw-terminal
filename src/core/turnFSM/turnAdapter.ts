@@ -41,6 +41,10 @@ export function deriveLegacyFlags(phase: TurnPhase): LegacyTurnFlags {
       return { isStreaming: false, isThinking: false, isRendering: true, hasResponse: true };
     case TurnPhase.TURN_FINISHED:
       return { isStreaming: false, isThinking: false, isRendering: false, hasResponse: true };
+    case TurnPhase.ERROR:
+      return { isStreaming: false, isThinking: false, isRendering: false, hasResponse: false };
+    case TurnPhase.CANCELLED:
+      return { isStreaming: false, isThinking: false, isRendering: false, hasResponse: true };
     default: {
       const _exhaustive: never = phase;
       return _exhaustive;

@@ -77,6 +77,69 @@ describe('TurnFSM', () => {
     fsm.onStreamPause();
     expect(() => fsm.onStreamEnd()).toThrow('Invalid TurnPhase transition');
   });
+
+  it('onError from STREAMING transitions through ERROR to IDLE', () => {
+    const fsm = new TurnFSM();
+    fsm.onUserTyping();
+    fsm.onUserSubmit();
+    fsm.onRequestStart();
+    fsm.onStreamOpen();
+    fsm.onToken();
+    expect(fsm.getPhase()).toBe(TurnPhase.STREAMING);
+
+    fsm.onError();
+    expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
+  });
+
+  it('onError from MODEL_THINKING works', () => {
+    const fsm = new TurnFSM();
+    fsm.onUserTyping();
+    fsm.onUserSubmit();
+    fsm.onRequestStart();
+    expect(fsm.getPhase()).toBe(TurnPhase.MODEL_THINKING);
+
+    fsm.onError();
+    expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
+  });
+
+  it('onError from IDLE is a no-op', () => {
+    const fsm = new TurnFSM();
+    fsm.onError();
+    expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
+  });
+
+  it('onCancel from STREAMING transitions through CANCELLED to IDLE', () => {
+    const fsm = new TurnFSM();
+    fsm.onUserTyping();
+    fsm.onUserSubmit();
+    fsm.onRequestStart();
+    fsm.onStreamOpen();
+    fsm.onToken();
+    fsm.onCancel();
+    expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
+  });
+
+  it('resetToIdle force-resets from any phase', () => {
+    const fsm = new TurnFSM();
+    fsm.onUserTyping();
+    fsm.onUserSubmit();
+    fsm.onRequestStart();
+    expect(fsm.getPhase()).toBe(TurnPhase.MODEL_THINKING);
+
+    fsm.resetToIdle();
+    expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
+  });
+
+  it('subscriber errors do not break FSM transitions', () => {
+    const fsm = new TurnFSM();
+    fsm.subscribe(() => { throw new Error('bad subscriber'); });
+    const good = vi.fn();
+    fsm.subscribe(good);
+
+    fsm.onUserTyping();
+    expect(fsm.getPhase()).toBe(TurnPhase.USER_TYPING);
+    expect(good).toHaveBeenCalledWith(TurnPhase.USER_TYPING);
+  });
 });
 
 describe('deriveLegacyFlags', () => {
