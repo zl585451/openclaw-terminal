@@ -702,9 +702,9 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <div className="settings-row">
                   <label>流式速度</label>
                   <select value={local.streamSpeed} onChange={(e) => setLocal((s) => ({ ...s, streamSpeed: e.target.value as StreamSpeed }))}>
-                    <option value="fast">快速 (~20字/秒)</option>
-                    <option value="medium">从容 (~12字/秒)</option>
-                    <option value="slow">细读 (~8字/秒)</option>
+                    <option value="fast">快速 (~15字/秒)</option>
+                    <option value="medium">从容 (~7字/秒，推荐)</option>
+                    <option value="slow">细读 (~4字/秒)</option>
                   </select>
                 </div>
                 <div className="settings-row">

@@ -89,12 +89,15 @@ const DEFAULT: Settings = {
 };
 
 const STORAGE_KEY = 'claw-terminal-settings';
-// 值 = charDelayMs 的 base delay（毫秒/字）
-// 数值越大，打字越慢
+// 打字机速度：毫秒/字（时间驱动，不依赖帧率）
+// 研究依据：中文舒适阅读 300-400字/分 ≈ 5-7字/秒
+// fast:   ~15字/秒（65ms/字）  - 快速浏览，仍有流动感
+// medium: ~7字/秒（140ms/字）  - 贴近自然阅读节奏（推荐）
+// slow:   ~4字/秒（240ms/字）  - 慢节奏，逐字细读
 const SPEED_MS: Record<StreamSpeed, number> = {
-  fast: 50,    // ~20 字/秒，快速浏览
-  medium: 80,  // ~12 字/秒，从容阅读（推荐）
-  slow: 120,   // ~8 字/秒，逐字细读
+  fast: 65,
+  medium: 140,
+  slow: 240,
 };
 
 function applyThemeVars(vars: ThemeVars) {

@@ -525,5 +525,22 @@
     "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"查一下 Pro 和 Pro+ 的区别\",\"results\":[{\"title\":\"iphone的plus和pro什么区别-汽车之家\",\"url\":\"https://www.autohome.com.cn/ask/6692310.html\",\"snippet\":\"iPhone Plus 和 iPhone Pro 是苹果公司对其不同型号 iPhone 的两种称呼。以下是这两款手机的主要区别： 1. 屏幕尺寸： - <strong>iPhone Plus：通常指的是屏幕尺寸较大的 iPhone</strong>，如 iPhone 6 P\"},{\"title\":\"华为Pura 70标准、Pro+版即将开售，一文看懂差别，教你怎么选！ - OFweek数字生活网\",\"url\":\"https://ce.ofweek.com/2024-04/ART-202211-8110-30632532.html\",\"snippet\":\"在外观方面Pura 70采用的...要差距在于长焦镜头。 · <strong>Pura 70标准版长焦镜头像素为1200万，且只支持100倍变焦，而Pro+长焦镜头像素为4800万，是前者的3倍，且支持200倍变焦和35x超级微距</strong>，也就是说Pro+在拍摄远景时...\"},{\"title\":\"PRO和PRO+有什么区别？PRO本身就是视觉方案。_阿维塔07\",\"url\":\"https://club.m.autohome.com.cn/bbs/thread/68b9242a6d233dd4/110682400-1.html\",\"snippet\":\"查看更多车型更低报价 &gt;&gt; 立即打开 · 删除 推荐精华 置顶 取消置顶 关闭回复 打开回复 推荐编辑 楼主禁言 移动帖子 重置头像 操作记录 · 德阳车友5644715 · 0浏览 · 2025-02-14 21:10· 发布于四川 关注 · PRO和PRO+有什么区别？PRO本身就是视觉方案。 ·\"},{\"title\":\"手机加个pro是什么意思-汽车之家\",\"url\":\"https://www.autohome.com.cn/ask/8206355.html\",\"snippet\":\"通常，手机厂商会先发布标准版，然后推出Pro版本，这种区分意味着Pro版在配置上有所升级。尽管基础配置可能相似，但Pro版往往提供更高的性能参数和更先进的技术，定位为专业级或旗舰级别。比如，Pro版可以被视为标准版的强化升级版，而不包含在Pro系列内的则多为中端型号。\"},{\"title\":\"pro和plus的区别_ZNDS资讯\",\"url\":\"https://n.znds.com/article/63922.html\",\"snippet\":\"ZNDS资讯 茶则 2023-07-19 20:13 · <strong>plus来自法语，是“+”的意思，指的是比普通版看起来更大；Pro 就是Professional的缩写，意为专业，plus外观上看体积更大；pro一般功能更多，价格、配置更高</strong>。\"}]}",
     "error": null,
     "notified": true
+  },
+  "task-1774800506861-d63361": {
+    "taskId": "task-1774800506861-d63361",
+    "type": "查一下",
+    "instruction": "你上网查一下  流式打字机推荐速度是多少",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "你上网查一下  流式打字机推荐速度是多少"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774800506861,
+    "startedAt": 1774800506866,
+    "completedAt": 1774800509305,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"你上网查一下  流式打字机推荐速度是多少\",\"results\":[{\"title\":\"在线打字测试（dazi.kukuw.com）\",\"url\":\"https://dazi.kukuw.com/\",\"snippet\":\"在线打字测试 · 欢迎您访问本站，本站可进行打字速度测试、打字练习！ · 速度测试 键位练习 打字排名 成绩查询 更多文章 我的打字 · 简体中文 / 繁體中文 / English · 关于我们 / 问题反馈 / 辅助功能 · 加入收藏夹 清除Cookie ...\"},{\"title\":\"有哪些值得买来玩的机械打字机品牌？ - 知乎\",\"url\":\"https://www.zhihu.com/question/21448078\",\"snippet\":\"在淘宝上还能找到不少二手打字机。看到有兄弟、英雄、飞鱼等等品牌，哪个品牌的做工和口碑比较好？ 比如这样的看起来好像很不错： [图片] via http…显示全部 ​\"},{\"title\":\"计算机一级一分钟要打多少字,打字速度分几个等级，一分钟打多少个字算较快？...-CSDN博客\",\"url\":\"https://blog.csdn.net/weixin_31321851/article/details/118865587\",\"snippet\":\"一、以速录师为例，其打字速度分三级，分别为： · 1、<strong>初级(五级)：140字/分</strong>，准确率98%以上\"},{\"title\":\"dazidazi-在线打字练习-提高打字速度-打字测试-标准指法\",\"url\":\"https://dazidazi.com/\",\"snippet\":\"1）打字练习时，每个键都有手势图提示，让你轻松完成标准指法手势纠正。 · 2）目标式练习：通过测试当前的打字速度，定制适合用户当前情况的目标速度，然后进行游戏式闯关。全部通关后，可以提示目标速度，重复练习。\"},{\"title\":\"中文速录机，两排20个按键对应双手十指，打字速度最高可达674字每分钟_风闻\",\"url\":\"https://user.guancha.cn/main/content?id=767883&s=fwzwyzzwzbt\",\"snippet\":\"以前拼音不好用主要是因为需要选词，会打断思路。而现在的拼音输入法已经是典型的横向联邦学习应用，通过AI记录你的输入习惯，再结合互联网上的高频热词大数据，基本不需要频繁的选词了，所以基本可以很顺畅的跟上思路。\"}]}",
+    "error": null,
+    "notified": true
   }
 }
