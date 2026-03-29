@@ -195,6 +195,8 @@
   width: 100%;
   /* scrollIntoView({ block: 'start' }) 对齐位置 */
   scroll-padding-top: 4px;
+  /* 禁用浏览器自动滚动锚定，由 ScrollAnchor 系统手动管理，避免与 reconcile() 冲突 */
+  overflow-anchor: none;
 }
 
 /* 内容容器：负责居中排版，不负责滚动 */

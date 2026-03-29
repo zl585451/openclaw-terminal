@@ -31,7 +31,7 @@ import { stripThinkModeMarker } from '../../utils/socraticTemplates';
 import { ScrollAnchor } from '../../core/viewport';
 
 /** ChatTab.v2：禁用逐字打字机，由 StreamRouter 控制流出节奏 */
-const OCT_V2_DISABLE_TYPEWRITER = true;
+const OCT_V2_DISABLE_TYPEWRITER = false;
 
 function recoverOctStreamFromEndFailure(oct: { stream: StreamRouter; fsm: TurnFSM }): void {
   try {
@@ -251,6 +251,8 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
             borderRadius: '8px',
             overflow: 'hidden',
             background: 'var(--bg-code)',
+            maxWidth: '100%',
+            minWidth: 0,
           }}
           data-oct-block-code={__octBlockCode ? '1' : undefined}
         >
@@ -633,22 +635,6 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
   return <span className="cursor-blink">▋</span>;
 });
 
-/** 流式阶段：纯文本尾段，不走 ReactMarkdown / 预处理 / 代码高亮 */
-const StreamingTail = memo(
-  function StreamingTail({ text, domRef }: { text: string; domRef?: React.RefObject<HTMLSpanElement | null> }) {
-    return (
-      <span
-        ref={domRef}
-        className="msg-content markdown-body msg-content-streaming-root"
-        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-      >
-        {text}
-      </span>
-    );
-  },
-  (a, b) => a.text === b.text && a.domRef === b.domRef
-);
-
 /** 流式结束后的正文：预处理 + ReactMarkdown，结果按 messageId+段键缓存 */
 const FinalizedMarkdownContent = memo(
   function FinalizedMarkdownContent({
@@ -902,32 +888,40 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   onQuoteQuestion,
   segments,
   isLastAssistant,
-  streamingDomRef,
+  streamingDomRef: _streamingDomRef,
 }: AssistantMessageBodyProps) {
+  // Layout Lock：流式开始时记录高度并锁定 minHeight，防止结束时收缩跳动
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const lockedHeightRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (isStreamingMsg && bubbleRef.current) {
+      lockedHeightRef.current = bubbleRef.current.offsetHeight;
+      if (lockedHeightRef.current > 0) {
+        bubbleRef.current.style.minHeight = `${lockedHeightRef.current}px`;
+      }
+    }
+  }, [isStreamingMsg]);
+
+  useEffect(() => {
+    if (!isStreamingMsg && bubbleRef.current) {
+      const el = bubbleRef.current;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.style.minHeight = '';
+        });
+      });
+    }
+  }, [isStreamingMsg]);
+
   if (msg.isSystemReply) {
     return <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />;
   }
 
-  if (msg.isStreamingRaw && isStreamingMsg) {
-    return (
-      <div
-        className="msg-assistant-body"
-        style={{ display: 'flex', flexDirection: 'column' }}
-      >
-        {/* 打字机直接写 textContent，不放 children 避免 React reconciler 覆盖 */}
-        <pre
-          ref={streamingDomRef}
-          style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'inherit' }}
-          className="msg-content markdown-body"
-          suppressHydrationWarning
-        />
-        <TypewriterCursor show />
-      </div>
-    );
-  }
 
   return (
     <div
+      ref={bubbleRef}
       className="msg-assistant-body"
       style={isStreamingMsg ? { display: 'flex', flexDirection: 'column' } : undefined}
     >
@@ -946,11 +940,18 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
             switch (seg.type) {
               case 'text':
                 if (isStreamingMsg) {
-                  // 流式：文本段按顺序消耗 displayedText 前缀；组件始终挂载（即使 text 为空）
+                  // 流式：统一用 FinalizedMarkdownContent，与结束后相同的渲染树，消除切换跳动
                   const fullSegText = stripRenderAndPillsMarkers(seg.content, isLastAssistant);
                   const take = remaining.slice(0, fullSegText.length);
                   remaining = remaining.slice(take.length);
-                  return <StreamingTail key={idx} text={take} />;
+                  return (
+                    <FinalizedMarkdownContent
+                      key={idx}
+                      messageId={msg.id}
+                      segmentKey={`seg-${idx}-stream`}
+                      content={take}
+                    />
+                  );
                 }
                 return (
                   <FinalizedMarkdownContent
@@ -1017,8 +1018,15 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         <>
           {(() => {
             if (isStreamingMsg) {
-              // 流式阶段：只做纯文本打字，不渲染 pills/options（避免换行闪跳）
-              return <StreamingTail text={textToShow || ''} />;
+              // 流式阶段：统一用 FinalizedMarkdownContent，消除流式结束时的渲染切换跳动
+              // 不渲染 pills/options，避免换行闪跳
+              return (
+                <FinalizedMarkdownContent
+                  messageId={msg.id}
+                  segmentKey="streaming-main"
+                  content={textToShow || ''}
+                />
+              );
             }
 
             const cleanedText = filterExpectedEffect(textToShow, isLastAssistant);
@@ -1032,12 +1040,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
               const showPillsHere = !isLastAssistant || !forcePills;
               return (
                 <>
-                  {before &&
-                    (isStreamingMsg ? (
-                      <StreamingTail text={before} />
-                    ) : (
-                      <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-before" content={before} />
-                    ))}
+                  {before && (
+                    <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-before" content={before} />
+                  )}
                   {showPillsHere && (
                     <OptionBox
                       messageId={msg.id}
@@ -1051,12 +1056,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                       forcePills={forcePills}
                     />
                   )}
-                  {after &&
-                    (isStreamingMsg ? (
-                      <StreamingTail text={after} />
-                    ) : (
-                      <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-after" content={after} />
-                    ))}
+                  {after && (
+                    <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-after" content={after} />
+                  )}
                 </>
               );
             }
@@ -1667,25 +1669,13 @@ const ChatMessageList = function ChatMessageList({
         // 打字机只对非 CoT 的正文部分生效（displayedText 已来自解析后的“可见正文”）
         const mainTextFull =
           streamingCotContent !== null ? (contentBeforeCot + '\n' + contentAfterCot).trim() : fullContent;
-        const display = isStreamingMsg && displayedLength > 0 ? mainTextFull.slice(0, displayedLength) : mainTextFull;
+        const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
         const parsed =
           msg.role === 'user'
             ? USER_ROW_PARSE_PLACEHOLDER
             : msg.role === 'assistant'
               ? (() => {
                   const fc = typeof fullContent === 'string' ? fullContent : '';
-                  // OCT 流式原始文本阶段：跳过 blockRouter / parseOptionBox，完成后一次性解析
-                  if (isStreamingMsg && msg.isStreamingRaw) {
-                    return {
-                      text: '',
-                      options: STABLE_EMPTY_OPTIONS,
-                      totalPages: undefined,
-                      isTaskList: false,
-                      isReflectiveQuestions: false,
-                      forcePills: undefined,
-                      segments: undefined,
-                    };
-                  }
                   // 流式阶段（非 raw）：缓存解析结果，避免每帧重跑解析器
                   if (isStreamingMsg) {
                     const cached = streamingParseCacheRef.current;
@@ -1798,7 +1788,7 @@ const ChatMessageList = function ChatMessageList({
         )}
         <div ref={bottomRef as React.Ref<HTMLDivElement>} style={{ height: 0, margin: 0, padding: 0 }} />
         {/* 流式输出时需要额外空间让用户消息保持在顶部，完成后移除 */}
-        <div style={{ minHeight: isStreaming ? '75vh' : '0vh', flexShrink: 0, pointerEvents: 'none', transition: 'min-height 0.3s ease' }} aria-hidden />
+        <div style={{ minHeight: isStreaming ? '75vh' : '0vh', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
       </div>
     </div>
   );
@@ -1905,6 +1895,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const pendingFullTextSyncRafRef = useRef<number | null>(null);
   const userScrolledUp = useRef<boolean>(false);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const snapJustFiredRef = useRef<boolean>(false);
+  // 待顶置的用户消息 ID：发送后由 useLayoutEffect 消费，确保 DOM 已提交后执行滚动
+  const pendingSnapMsgIdRef = useRef<number | null>(null);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
   const streamDoneReceived = useRef<boolean>(false);
@@ -1917,6 +1910,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const shouldRunTypewriterRef = useRef(false);
 
   const scrollToBottom = useCallback((force = false) => {
+    if (snapJustFiredRef.current) return;
     const el = messagesContainerRef.current;
     if (!el) return;
     if (!force && !scrollAnchorRef.current.isLocked()) return;
@@ -1929,13 +1923,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     // 当 bottomRef 还在视口内（AI 刚开始输出），不滚动，保持用户消息在顶部
     if (bottomRect.top <= containerRect.bottom + 10) return;
 
-    scrollAnchorRef.current.release();
+    // 不 release anchor — 只有 scrollBtn 点击时 force=true 才应 release
+    if (force) scrollAnchorRef.current.release();
     bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
   }, []);
 
   /** 布局稳定后再滚动（ResizeObserver / 流式 tick 共用） */
   const scheduleScrollAfterLayout = useCallback(
     (force = false) => {
+      if (snapJustFiredRef.current) return;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           scrollToBottom(force);
@@ -1945,20 +1941,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     [scrollToBottom]
   );
 
-  /** 发送后双 rAF：等 DOM 布局完成再锚定最新用户消息到视口顶部 */
+  /** 发送后标记需要顶置，由 useLayoutEffect 在 DOM 提交后执行 */
   const scrollAfterUserSend = useCallback(() => {
-    // 双 rAF 确保 DOM 布局稳定
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const el = messagesContainerRef.current;
-        if (!el) return;
-        const userMsgs = el.querySelectorAll('.chat-message.user');
-        const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement | undefined;
-        if (lastUserMsg) {
-          scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 8);
-        }
-      });
-    });
+    pendingSnapMsgIdRef.current = -1; // -1 表示"在下次 messages.length 变化时顶置最后一条用户消息"
   }, []);
 
   const scheduleFullTextSync = useCallback(() => {
@@ -1978,6 +1963,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           displayedLenRef.current = clamped;
           setDisplayedText(visible.slice(0, clamped));
         }
+        // System A (driveTypewriter) 已移除 — 打字节奏统一由主 tick 循环 (System B) 控制，
+        // 避免双系统竞态写 displayedLenRef 导致的跳变
       } catch {
         visibleFullTextRef.current = buf || '';
       }
@@ -2015,9 +2002,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setFsmPhase(phase);
       if (phase === TurnPhase.TURN_FINISHED || phase === TurnPhase.IDLE) {
         userScrolledUp.current = false;
+        // 如果刚刚 snap 过（用户刚发消息），不释放锚点也不回拽 scrollTop
+        // snap 需要保持锚定，让用户消息留在顶部
+        if (snapJustFiredRef.current || pendingSnapMsgIdRef.current !== null) return;
         scrollAnchorRef.current.release();
         // 限制 scrollTop 不超过最大可滚动范围，防止底部出现空白
         requestAnimationFrame(() => {
+          if (snapJustFiredRef.current) return;
           const el = messagesContainerRef.current;
           if (el) {
             const maxScroll = el.scrollHeight - el.clientHeight;
@@ -2031,87 +2022,70 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [oct.fsm]);
 
   useEffect(() => {
-    const { stream, ingest, fsm } = oct;
-    return stream.subscribe((event) => {
+    const { stream, ingest } = oct;
+
+    // 直接将每次 tokens 事件转化为 setMessages 更新
+    // StreamRouter 本身已以 FLUSH_MS=16ms 节流输出，自然提供约 60fps 的增量更新节奏
+    const applyRawToMessages = (raw: string) => {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant' && last?.isStreaming) {
+          if (last.content === raw && last.isStreamingRaw) return prev;
+          return prev.map((m, idx) =>
+            idx === prev.length - 1 ? { ...m, content: raw, isStreamingRaw: true } : m
+          );
+        }
+        if (!raw.trim()) return prev;
+        return [
+          ...prev,
+          {
+            id: getNextMessageId(),
+            role: 'assistant' as const,
+            content: raw,
+            isStreaming: true,
+            isStreamingRaw: true,
+            timestamp: Date.now(),
+          },
+        ];
+      });
+      // 流式期间不调用 reconcile()：AI 内容在用户消息下方自然增长，锚点本身未漂移，
+      // 不需要补偿 scrollTop（否则会把视口往上拽，让 AI 内容跑出视窗）
+    };
+
+    const unsubscribe = stream.subscribe((event) => {
       if (event.type === 'tokens') {
         ingest.ingest(event.payload.batch);
         const raw = ingest.getAccumulatedRaw();
         streamingMessageRef.current = raw;
         fullTextRef.current = raw;
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant' && last?.isStreaming) {
-            if (last.content === raw && last.isStreamingRaw) return prev;
-            return prev.map((m, idx) =>
-              idx === prev.length - 1 ? { ...m, content: raw, isStreamingRaw: true } : m
-            );
-          }
-          if (!raw.trim()) return prev;
-          return [
-            ...prev,
-            {
-              id: getNextMessageId(),
-              role: 'assistant' as const,
-              content: raw,
-              isStreaming: true,
-              isStreamingRaw: true,
-              timestamp: Date.now(),
-            },
-          ];
-        });
-        // ScrollAnchor: DOM 变化后补偿滚动位置
-        if (scrollAnchorRef.current.isLocked()) {
-          scrollAnchorRef.current.reconcile();
-        }
+        // 直接触发 React 状态更新：StreamRouter 已节流（16ms/batch），无需额外批处理
+        applyRawToMessages(raw);
       }
       if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
         queueMicrotask(() => {
-          // 停止打字机
+          // 只发信号，让主 tick 循环加速打完剩余文字后再做清零
+          // 不直接快进 / 清零 / 设 isStreaming:false，避免打字机中途被强杀导致闪现
+          streamDoneReceived.current = true;
+          // 停止 System A（如果还在跑）
           if (rafFlushRef.current !== null) {
-            cancelAnimationFrame(rafFlushRef.current);
+            clearTimeout(rafFlushRef.current);
             rafFlushRef.current = null;
           }
+          // 关闭流式基础设施（不影响显示状态）
           try {
             stream.close();
           } catch (e) {
             console.warn('[ChatTab.v2] stream.close', e);
           }
-          try {
-            fsm.onTurnFinish();
-          } catch (e) {
-            console.warn('[ChatTab.v2] fsm.onTurnFinish', e);
-          }
-          streamDoneReceived.current = false;
-          const finalRaw = stripThinkModeMarker(streamingMessageRef.current || '');
-          setDisplayedText('');
-          setFullText('');
-          fullTextRef.current = '';
-          visibleFullTextRef.current = '';
-          displayedLenRef.current = 0;
-          // 重置打字机状态（必须在 streamingMessageRef 清空前，且不能设成 finalRaw.length）
-          displayedCharsRef.current = 0;
-          frameCountRef.current = 0;
-          streamingMessageRef.current = '';
-          ingest.reset();
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant' && last.isStreaming) {
-              return prev.map((msg, i) =>
-                i === prev.length - 1
-                  ? {
-                      ...msg,
-                      content: finalRaw || msg.content,
-                      isStreaming: false,
-                      isStreamingRaw: false,
-                    }
-                  : msg
-              );
-            }
-            return prev;
-          });
+          // fsm.onTurnFinish 和 ingest.reset 移至主 tick 循环的收尾段，
+          // 等打字机自然追完后再执行，保证过渡平滑
         });
       }
     });
+
+    return () => {
+      unsubscribe();
+    };
   }, [oct, getNextMessageId, setMessages]);
 
   const getNextCharIndex = (text: string, idx: number): number => {
@@ -2126,14 +2100,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   };
 
   const charDelayMs = (ch: string): number => {
-    // base delay 来自设置面板的「流式速度」档位
-    // fast=50ms, medium=80ms, slow=120ms
-    let d = streamSpeedMs;
-    // 标点停顿按 base 的比例缩放，保持各档位的节奏感一致
-    if (ch === '\n') d += streamSpeedMs * 2.5;                     // 换行：2.5x 呼吸暂停
-    else if (ch === '。' || ch === '！' || ch === '？' || ch === '…') d += streamSpeedMs * 2;  // 句末：2x 停顿
-    else if (ch === '.' || ch === '!' || ch === '?') d += streamSpeedMs * 1.5;    // 英文句末：1.5x
-    else if (ch === ',' || ch === '，' || ch === '、' || ch === ';' || ch === '；') d += streamSpeedMs * 0.6;  // 逗号：0.6x 微顿
+    // Enforce minimum base of 40ms so even "fast" setting feels natural
+    let d = Math.max(streamSpeedMs, 40);
+    if (ch === '\n') d += d * 2.5;
+    else if (ch === '。' || ch === '！' || ch === '？' || ch === '…') d += d * 2;
+    else if (ch === '.' || ch === '!' || ch === '?') d += d * 1.5;
+    else if (ch === ',' || ch === '，' || ch === '、' || ch === ';' || ch === '；') d += d * 0.6;
     return d;
   };
 
@@ -2542,6 +2514,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           oct.stream.end();
         } catch {
           recoverOctStreamFromEndFailure(oct);
+          // 错误恢复：COMPLETED 没有触发，手动设信号让 tick 循环收尾
+          streamDoneReceived.current = true;
           const fb = String(content || '').trim();
           if (fb) {
             streamingMessageRef.current = fb;
@@ -2549,10 +2523,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             scheduleFullTextSync();
           }
         }
-        // ScrollAnchor: DOM 变化后补偿滚动位置
-        if (scrollAnchorRef.current.isLocked()) {
-          scrollAnchorRef.current.reconcile();
-        }
+        // ScrollAnchor: 流结束时不需要 reconcile，用户消息已锚定，内容在其下方自然增长
         return;
       }
 
@@ -2638,10 +2609,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         return prev;
       });
       // 不立即 setIsStreaming(false)，等打字机跑完再结束
-      // ScrollAnchor: DOM 变化后补偿滚动位置
-      if (scrollAnchorRef.current.isLocked()) {
-        scrollAnchorRef.current.reconcile();
-      }
       return;
     }
 
@@ -2680,54 +2647,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           try { oct.fsm.onToken(); } catch {}
         }
 
-        // ── 打字机核心 ──────────────────────────────────────────────────
-        // streamSpeedMs = 每个字符的目标显示间隔（毫秒）
-        // 研究依据：中文舒适阅读 300-400字/分 ≈ 5-6字/秒 ≈ 160-200ms/字
-        // 60fps rAF 每帧 ~16.7ms；每字 N ms → 每字需 N/16.7 帧
-        // 打字机循环：用 performance.now() 做时间驱动，不依赖帧计数
-        if (rafFlushRef.current === null) {
-          const tick = (lastTickTime: number) => {
-            rafFlushRef.current = requestAnimationFrame((now) => {
-              const full = streamingMessageRef.current;
-              const elapsed = now - lastTickTime;
-
-              // 本帧应前进几个字符（elapsed / ms-per-char，最少1最多4）
-              const charsToAdd = displayedCharsRef.current < full.length
-                ? Math.max(1, Math.min(4, Math.floor(elapsed / streamSpeedMs)))
-                : 0;
-
-              const el = streamingDomRef.current;
-
-              if (charsToAdd > 0) {
-                if (el) {
-                  // DOM 已挂载：推进进度 + 直接写 textContent
-                  displayedCharsRef.current = Math.min(displayedCharsRef.current + charsToAdd, full.length);
-                  const visible = full.slice(0, displayedCharsRef.current);
-                  el.textContent = visible;
-                  // 声音：每 tick 最多一声
-                  if (settings.typingSound !== 'off') {
-                    try { playClickSound(settings.typingSound); } catch {}
-                  }
-                }
-                // DOM 未挂载时不推进 displayedCharsRef，等 ref attach 后下一帧继续
-              }
-
-              // 还有字符未显示（或 DOM 还未 attach），继续循环
-              const notDone = !el || displayedCharsRef.current < full.length;
-              if (notDone) {
-                tick(now);
-              } else {
-                rafFlushRef.current = null;
-              }
-            });
-          };
-          tick(performance.now());
-        }
-      }
-
-      // ScrollAnchor: DOM 变化后补偿滚动位置
-      if (scrollAnchorRef.current.isLocked()) {
-        scrollAnchorRef.current.reconcile();
+        // 把最新全文推给 scheduleFullTextSync，由顶层打字机（系统B）负责控速显示
+        scheduleFullTextSync();
       }
     }
   };
@@ -3082,8 +3003,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     [messages.length, visibleCount, isStreaming]
   );
 
-  // ScrollAnchor: 初始化 attach 容器
-  useEffect(() => {
+  // ScrollAnchor: 初始化 attach 容器（useLayoutEffect 确保 attach 早于 snap useLayoutEffect）
+  useLayoutEffect(() => {
     const el = messagesContainerRef.current;
     if (el) {
       scrollAnchorRef.current.attach(el);
@@ -3097,16 +3018,45 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const target = inner ?? wrap;
     const ro = new ResizeObserver(() => {
       // ScrollAnchor: DOM 变化时补偿滚动位置
-      if (scrollAnchorRef.current.isLocked()) {
+      // 流式打字机期间跳过：AI 内容在锚点下方自然增长，不需要补偿 scrollTop，
+      // 否则每帧高度变化都会把 scrollTop 往上推，导致 AI 内容跑出视窗底部
+      if (!isStreaming && scrollAnchorRef.current.isLocked()) {
         scrollAnchorRef.current.reconcile();
       }
     });
     ro.observe(target);
     return () => ro.disconnect();
-  }, [scheduleScrollAfterLayout, messages.length, displayedText.length, fullText.length]);
+  }, [scheduleScrollAfterLayout, isStreaming, messages.length, displayedText.length, fullText.length]);
+
+  // 用户发送消息后，在 DOM 提交时执行顶置滚动（useLayoutEffect 确保 DOM 已更新）
+  useLayoutEffect(() => {
+    if (pendingSnapMsgIdRef.current === null) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const userMsgs = container.querySelectorAll('.chat-message.user');
+    if (userMsgs.length === 0) return;
+
+    const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement;
+    pendingSnapMsgIdRef.current = null;
+
+    // snapAndAnchor 内部会计算 drift 并设置 scrollTop + 锁定锚点
+    // 不再手动设 scrollTop，避免两次滚动操作
+    snapJustFiredRef.current = true;
+    scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
+
+    // 延长 snapJustFired 保护窗口：覆盖 FSM rAF 和 ResizeObserver 的干扰
+    // 用两层 rAF 确保下一帧的 rAF 回调也被保护
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        snapJustFiredRef.current = false;
+      });
+    });
+  }, [messages.length]);
 
   // assistant 新流式消息启动时：仅记录锚定 ID，保持跟随滚动开启
-  // 初始定位由 scrollAfterUserSend 完成（用户消息顶部对齐），此处不再覆盖
+  // 初始定位由上方 useLayoutEffect 完成（用户消息顶部对齐），此处不再覆盖
   useLayoutEffect(() => {
     const last = messages[messages.length - 1];
     const isAssistantStreaming = !!last && last.role === 'assistant' && last.isStreaming;
@@ -3178,13 +3128,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // 预热期（前 2 秒）：不追赶，保持匀速，避免首行过快
       const elapsed = ts - typewriterStartTsRef.current;
       let catchUpBoost = 0;
-      if (elapsed > 2000) {
-        // 预热结束后才启用追赶
-        if (backlog > 30) {
-          catchUpBoost = Math.min((backlog - 30) * 0.3, 20);
+      if (elapsed > 2000 && !streamDoneReceived.current) {
+        // 预热结束后启用追赶，用更平缓的曲线避免中途突然加速
+        // streamDone 后由上面的 +300 接管，不再叠加
+        if (backlog > 60) {
+          catchUpBoost = Math.min((backlog - 60) * 0.12, 10);
         }
-        if (backlog > 100) {
-          catchUpBoost = 20 + Math.min((backlog - 100) * 0.5, 80);
+        if (backlog > 200) {
+          catchUpBoost = 10 + Math.min((backlog - 200) * 0.15, 20);
         }
       }
       typingBudgetMsRef.current += dt + catchUpBoost;
@@ -3220,10 +3171,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         displayedLenRef.current = idx;
         setDisplayedText(full.slice(0, idx));
         if (settings.typingSound !== 'off') playClickSound(settings.typingSound);
-        // ScrollAnchor: DOM 变化后补偿滚动位置
-        if (scrollAnchorRef.current.isLocked()) {
-          scrollAnchorRef.current.reconcile();
-        }
+      }
+
+      // stream 已结束但文字还没追完：每帧额外给 300ms 预算，加速收尾（约 0.5-1 秒打完）
+      if (streamDoneReceived.current && displayedLenRef.current < fullLen) {
+        typingBudgetMsRef.current += 300;
       }
 
       if (displayedLenRef.current >= fullLen && streamDoneReceived.current) {
@@ -3232,17 +3184,25 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         streamDoneReceived.current = false;
         lastTypingTsRef.current = 0;
         typingBudgetMsRef.current = 0;
+        // FSM + ingest 清理（从 COMPLETED handler 移至此处，等打字机自然追完后执行）
+        try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[ChatTab.v2] fsm.onTurnFinish', e); }
+        oct.ingest.reset();
+        const finalRaw = stripThinkModeMarker(streamingMessageRef.current || '');
         setDisplayedText('');
         setFullText('');
         fullTextRef.current = '';
         visibleFullTextRef.current = '';
         displayedLenRef.current = 0;
+        displayedCharsRef.current = 0;
+        frameCountRef.current = 0;
         streamingMessageRef.current = '';
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'assistant' && last?.isStreaming) {
             return prev.map((msg, i) =>
-              i === prev.length - 1 ? { ...msg, isStreaming: false, isStreamingRaw: false } : msg
+              i === prev.length - 1
+                ? { ...msg, content: finalRaw || msg.content, isStreaming: false, isStreamingRaw: false }
+                : msg
             );
           }
           return prev;
