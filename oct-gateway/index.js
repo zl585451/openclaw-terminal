@@ -613,6 +613,16 @@ wss.on('connection', (ws) => {
       await streamChat({
         messages,
         onDelta: merge.onDelta,
+        onToolEvent: (evt) => {
+          if (cancelled || ws.readyState !== ws.OPEN) return;
+          ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
+          if (evt.type === 'tool_call') {
+            ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool }));
+          }
+          if (evt.type === 'tool_result') {
+            ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
+          }
+        },
         onDone: (_text, usage, responseModel) => {
           if (cancelled) return;
           currentAbort = null;

@@ -457,5 +457,22 @@
     "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"刚才断开了  检查一下 你更新了文档吗？ 然后指引我下一步\",\"results\":[{\"title\":\"解决导致 Chrome 无法成功更新的问题 - Google Chrome帮助\",\"url\":\"https://support.google.com/chrome/answer/111996?hl=zh-Hans\",\"snippet\":\"电脑上的更新操作可能尚未完成。请尝试重新启动电脑，然后重新更新 Chrome。\"},{\"title\":\"Troubleshoot problems updating Windows - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/troubleshoot-problems-updating-windows-188c2b0f-10a7-d72f-65b8-32d177eb136c\",\"snippet\":\"Learn how to troubleshoot problems updating Windows. Find answers to common questions and issues installing Windows updates.\"},{\"title\":\"Windows Update Troubleshooter - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/windows/windows-update-troubleshooter-19bc41ca-ad72-ae67-af3c-89ce169755dd\",\"snippet\":\"Learn how to run Windows Update Troubleshooter to resolve errors downloading or installing Windows updates.\"},{\"title\":\"排查Windows 更新问题 - Windows Client | Microsoft Learn\",\"url\":\"https://learn.microsoft.com/zh-cn/troubleshoot/windows-client/installing-updates-features-roles/windows-update-issues-troubleshooting\",\"snippet\":\"了解如何排查Windows 更新、与 HTTP/代理相关的问题，以及提供某些功能的原因，以及其他功能未提供的问题。\"},{\"title\":\"Fix problems that block programs from being installed or removed - Microsoft Support\",\"url\":\"https://support.microsoft.com/en-us/topic/fix-problems-that-block-programs-from-being-installed-or-removed-cca7d1b6-65a9-3d98-426b-e9f927e1eb4d\",\"snippet\":\"The Program Install and Uninstall troubleshooter helps you automatically repair issues when you&#x27;re blocked from installing or removing programs.\"}]}",
     "error": null,
     "notified": true
+  },
+  "task-1774781791350-78add2": {
+    "taskId": "task-1774781791350-78add2",
+    "type": "搜索",
+    "instruction": "请帮我搜索一下今天柳州的天气",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "请帮我搜索一下今天柳州的天气"
+    },
+    "sessionKey": "tool-test",
+    "status": "done",
+    "createdAt": 1774781791350,
+    "startedAt": 1774781791353,
+    "completedAt": 1774781791502,
+    "result": "{\"success\":true,\"engine\":\"duckduckgo\",\"query\":\"请帮我搜索一下今天柳州的天气\",\"results\":[],\"hint\":\"DuckDuckGo 无即时结果（国内可能无法访问），建议用 Brave 或 Tavily\"}",
+    "error": null,
+    "notified": false
   }
 }

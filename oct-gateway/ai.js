@@ -387,7 +387,7 @@ AI · Cursor · Claude 三角协作：
   return prompt;
 }
 
-async function streamChat({ messages, onDelta, onDone, onError }) {
+async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
   const provider = config.getProviderConfig();
   const apiKey = provider.apiKey;
   const baseUrl = provider.baseUrl;
@@ -544,6 +544,9 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
             try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
             log.info('tool call', { name: tc.function.name, args });
             const toolName = tc.function.name;
+            if (onToolEvent) {
+              try { onToolEvent({ type: 'tool_call', tool: toolName, args, callId: tc.id, state: 'executing' }); } catch {}
+            }
             const result = await Promise.race([
               toolLoader.executeTool(toolName, args),
               new Promise((_, reject) =>
@@ -551,8 +554,14 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
               )
             ]).catch(e => {
               log.error(`工具 ${toolName} 执行失败: ${e.message}`);
+              if (onToolEvent) {
+                try { onToolEvent({ type: 'tool_result', tool: toolName, callId: tc.id, state: 'error', error: e.message }); } catch {}
+              }
               return `工具执行失败: ${e.message}，请稍后重试或换个方式表达需求。`;
             });
+            if (onToolEvent) {
+              try { onToolEvent({ type: 'tool_result', tool: toolName, callId: tc.id, state: 'done', resultPreview: JSON.stringify(result).slice(0, 200) }); } catch {}
+            }
             toolResults.push({
               tool_call_id: tc.id,
               role: 'tool',
@@ -565,7 +574,7 @@ async function streamChat({ messages, onDelta, onDone, onError }) {
             { role: 'assistant', content: fullText || null, tool_calls: toolCalls.filter(Boolean) },
             ...toolResults,
           ];
-          await streamChat({ messages: continuedMessages, onDelta, onDone, onError });
+          await streamChat({ messages: continuedMessages, onDelta, onDone, onError, onToolEvent });
           return;
         }
       }
