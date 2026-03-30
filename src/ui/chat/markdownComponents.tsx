@@ -2,7 +2,8 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from '../../components/CodeBlock';
 
-export const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+export function createMarkdownComponents(openCanvas?: (content: string, mode: 'markdown' | 'code' | 'html', title?: string, language?: string) => void): React.ComponentProps<typeof ReactMarkdown>['components'] {
+  return {
   a: ({ href, children }) => (
     <a
       href={href}
@@ -110,6 +111,25 @@ export const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['com
                   {expanded ? 'Collapse' : 'Expand'}
                 </button>
               )}
+              {openCanvas && (
+                <button
+                  onClick={() => openCanvas(code, 'code', className?.replace('language-', '') || 'code', className?.replace('language-', '') || 'text')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-tertiary)',
+                    fontSize: '12px',
+                    fontFamily: 'var(--font-sans)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; }}
+                >
+                  Open
+                </button>
+              )}
               <button
                 onClick={handleCopy}
                 style={{
@@ -176,4 +196,8 @@ export const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['com
     }
     return <pre>{children}</pre>;
   },
-};
+  };
+}
+
+// 为了向后兼容，导出默认的 markdownComponents
+export const markdownComponents = createMarkdownComponents();

@@ -5,6 +5,7 @@ import ChatTab, { ChatMessage } from './ui/chat/ChatTab.v2';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
 import { ThemeProvider } from './themes/ThemeProvider';
+import { CanvasProvider } from './contexts/CanvasContext';
 import './styles/App.css';
 
 
@@ -56,7 +57,8 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <div className="app-container">
+      <CanvasProvider>
+        <div className="app-container">
         {/* 扫描线效果 */}
         <div className="scanlines" />
         
@@ -95,7 +97,8 @@ const App: React.FC = () => {
           {activeTab === 'sound' && <SoundTab />}
           {activeTab === 'reaper' && <ReaperTab />}
         </div>
-      </div>
+        </div>
+      </CanvasProvider>
     </ThemeProvider>
   );
 };

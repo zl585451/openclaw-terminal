@@ -27,12 +27,14 @@ import { StreamRouter, StreamState } from '../../core/streamRouter';
 import { BlockIngest } from '../../core/blockIngest';
 import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
+import { useCanvas } from '../../contexts/CanvasContext';
 import { checkPermission, getDangerMatch } from '../../utils/permissionCheck';
+import CanvasPanel from '../../components/CanvasPanel';
 // playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
 import { ScrollAnchor } from '../../core/viewport';
 import { getCachedPreprocessedMarkdown, clearProcessedMarkdownCache } from '../../utils/markdownPreprocess';
-import { markdownComponents } from './markdownComponents';
+import { createMarkdownComponents } from './markdownComponents';
 
 /** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
 // const OCT_V2_DISABLE_TYPEWRITER = false; // 已不再需要
@@ -205,10 +207,12 @@ const FinalizedMarkdownContent = memo(
     messageId,
     segmentKey,
     content,
+    markdownComponents,
   }: {
     messageId: number;
     segmentKey?: string;
     content: string;
+    markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
   }) {
     const processedText = useMemo(
       () => {
@@ -240,7 +244,8 @@ const FinalizedMarkdownContent = memo(
   (prev, next) =>
     prev.messageId === next.messageId &&
     prev.segmentKey === next.segmentKey &&
-    prev.content === next.content
+    prev.content === next.content &&
+    prev.markdownComponents === next.markdownComponents
 );
 
 const UI_CTRL_PATTERNS = [/\[上一页\]/, /\[下一页\]/, /\[第\d+\/\d+页\]/, /\[确认导入\]/, /\[取消\]/];
@@ -348,6 +353,8 @@ interface ChatMessageItemProps {
   isLastAssistant?: boolean;
   /** 打字机 DOM ref，供 AssistantMessageBody 直接写 textContent */
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
+  /** Markdown 组件配置 */
+  markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
 }
 
 const MessageMeta = memo(function MessageMeta({ timestamp }: { timestamp: string | number | undefined }) {
@@ -468,7 +475,8 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   segments,
   isLastAssistant,
   streamingDomRef: _streamingDomRef,
-}: AssistantMessageBodyProps) {
+  markdownComponents,
+}: AssistantMessageBodyProps & { markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] }) {
   // Layout Lock：流式开始时记录高度并锁定 minHeight，防止结束时收缩跳动
   const bubbleRef = useRef<HTMLDivElement>(null);
   const lockedHeightRef = useRef<number>(0);
@@ -529,6 +537,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                       messageId={msg.id}
                       segmentKey={`seg-${idx}-stream`}
                       content={take}
+                      markdownComponents={markdownComponents}
                     />
                   );
                 }
@@ -538,6 +547,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                     messageId={msg.id}
                     segmentKey={`seg-${idx}`}
                     content={stripRenderAndPillsMarkers(seg.content, isLastAssistant)}
+                    markdownComponents={markdownComponents}
                   />
                 );
               case 'pills':
@@ -604,6 +614,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                   messageId={msg.id}
                   segmentKey="streaming-main"
                   content={textToShow || ''}
+                  markdownComponents={markdownComponents}
                 />
               );
             }
@@ -620,7 +631,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
               return (
                 <>
                   {before && (
-                    <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-before" content={before} />
+                    <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-before" content={before} markdownComponents={markdownComponents} />
                   )}
                   {showPillsHere && (
                     <OptionBox
@@ -636,7 +647,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                     />
                   )}
                   {after && (
-                    <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-after" content={after} />
+                    <FinalizedMarkdownContent messageId={msg.id} segmentKey="opt-after" content={after} markdownComponents={markdownComponents} />
                   )}
                 </>
               );
@@ -644,7 +655,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
 
             return (
               <>
-                <FinalizedMarkdownContent messageId={msg.id} content={cleanedText} />
+                <FinalizedMarkdownContent messageId={msg.id} content={cleanedText} markdownComponents={markdownComponents} />
                 {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (
                   <OptionBox
                     messageId={msg.id}
@@ -729,6 +740,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     segments,
     isLastAssistant,
     streamingDomRef,
+    markdownComponents,
   } = props;
 
   return (
@@ -760,6 +772,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             segments={segments}
             isLastAssistant={isLastAssistant}
             streamingDomRef={streamingDomRef}
+            markdownComponents={markdownComponents}
           />
         ) : (
           <UserMessageBody imageDataUrl={msg.imageDataUrl} textToShow={textToShow} />
@@ -1138,6 +1151,7 @@ interface ChatMessageListProps {
   }>;
   getToolDisplayName?: (tool: string) => string;
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
+  markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
 }
 
 const ChatMessageList = function ChatMessageList({
@@ -1161,6 +1175,7 @@ const ChatMessageList = function ChatMessageList({
   activeTools = [],
   getToolDisplayName = (t) => t,
   streamingDomRef,
+  markdownComponents,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
   const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
@@ -1349,6 +1364,7 @@ const ChatMessageList = function ChatMessageList({
               onQuoteQuestion={onQuoteQuestion}
               isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
               streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
+              markdownComponents={markdownComponents}
             />
             {/* 工具调用卡片：紧跟当前 streaming assistant 消息之后 */}
             {isStreamingMsg && activeTools.length > 0 && (
@@ -1404,6 +1420,13 @@ const ChatMessageList = function ChatMessageList({
 const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange }) => {
   const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
+  const canvas = useCanvas();
+  const [rightPanelTab, setRightPanelTab] = useState<'dashboard' | 'canvas'>('dashboard');
+
+  const mdComponents = useMemo(
+    () => createMarkdownComponents(canvas.openCanvas),
+    [canvas.openCanvas]
+  );
 
   const octRuntimeRef = useRef<{ fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest } | null>(null);
   if (!octRuntimeRef.current) {
@@ -1435,6 +1458,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   });
 
   const gateway = useGateway();
+
+  // 当 Canvas 打开时自动切换到 canvas 标签
+  useEffect(() => {
+    if (canvas.isOpen) setRightPanelTab('canvas');
+  }, [canvas.isOpen]);
 
   const getToolDisplayName = (tool: string): string => {
     const map: Record<string, string> = {
@@ -2541,6 +2569,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           activeTools={activeTools}
           getToolDisplayName={getToolDisplayName}
           streamingDomRef={streamingDomRef}
+          markdownComponents={mdComponents}
         />
         {showScrollBtn && (
           <div
@@ -2635,6 +2664,53 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           flexDirection: 'column',
           height: '100%',
         }}>
+        {/* 右侧面板标签栏 */}
+        <div style={{
+          display: 'flex',
+          borderBottom: '1px solid var(--border-subtle)',
+          padding: '0 8px',
+          flexShrink: 0,
+        }}>
+          <button
+            onClick={() => setRightPanelTab('dashboard')}
+            style={{
+              flex: 1,
+              padding: '8px 0',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: rightPanelTab === 'dashboard' ? '2px solid var(--accent-primary)' : '2px solid transparent',
+              color: rightPanelTab === 'dashboard' ? 'var(--accent-primary)' : 'var(--text-tertiary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)',
+              letterSpacing: '1px',
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            DASHBOARD
+          </button>
+          <button
+            onClick={() => setRightPanelTab('canvas')}
+            style={{
+              flex: 1,
+              padding: '8px 0',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: rightPanelTab === 'canvas' ? '2px solid var(--accent-primary)' : '2px solid transparent',
+              color: rightPanelTab === 'canvas' ? 'var(--accent-primary)' : 'var(--text-tertiary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)',
+              letterSpacing: '1px',
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            CANVAS {canvas.isOpen && '●'}
+          </button>
+        </div>
+
+        {rightPanelTab === 'dashboard' && (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         {/* 1. 顶部状态行：GW/MEM 信号+ 时间 */}
         <div
           style={{
@@ -2891,6 +2967,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           />
         </div>
         {/* 内容区域结束 */}
+          </div>
+        )}
+        
+        {rightPanelTab === 'canvas' && (
+          <CanvasPanel onSendToChat={(text) => {
+            // 把 canvas 内容作为消息发送
+            sendMessage(text, null);
+          }} />
+        )}
       </div>
       {/* right-panel 结束 */}
       </div>
