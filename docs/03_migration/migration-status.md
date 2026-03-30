@@ -1,7 +1,7 @@
 # OCT v2 迁移状态
 
-> **上次更新**：2026-03-28 02:56  
-> **更新人**：AMY
+> **上次更新**：2026-03-30  
+> **更新人**：维护记录（ChatTab 四步抽离已归档）
 
 ## 当前阶段
 
@@ -22,6 +22,20 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 | v2-phase3-done | 2026-03-28 | Phase 3 完成（streamRouter 流控制） |
 | v2-phase4-done | 2026-03-28 | Phase 4 完成（UI 集成） |
 | v2-migration-complete | 2026-03-28 | v2 迁移完成 |
+| v2-websocket-hook-done | 2026-03-30 | `useWebSocket` 抽离（第四步） |
+| v2-refactor-4step-done | 2026-03-30 | ChatTab.v2 四步模块化收尾（见 REFACTOR_4STEP_CHATTAB.md） |
+
+---
+
+## ChatTab.v2 四步抽离（模块化）✅
+
+> 详单见 **`docs/REFACTOR_4STEP_CHATTAB.md`**
+
+- [x] 步骤 1：`src/utils/markdownPreprocess.ts`
+- [x] 步骤 2：`src/ui/chat/markdownComponents.tsx`
+- [x] 步骤 3：`src/hooks/useGateway.ts`
+- [x] 步骤 4：`src/hooks/useWebSocket.ts`
+- [x] 主文件 `ChatTab.v2.tsx` 改为组合 hooks + 子组件；体量约 **3578 → 2985** 行（以提交说明为准）
 
 ---
 
@@ -175,6 +189,7 @@ Phase 4 完成了 StreamRouter 与 ChatTab.v2 的集成，打字机改为 16ms �
 | 2026-03-28 | Phase 3 | streamRouter 流控制实现 + 测试 + 标签 | ✅ |
 | 2026-03-28 | Phase 4 | UI 集成（ChatTab.v2）+ 测试 + 用户验收 | ⚠️ 部分 |
 | 2026-03-29 | 审计修复 | P0 问题修复：TurnPhase 冲突、ERROR/CANCELLED 状态、blockRouter ID、subscriber 保护、空响应处理 | ✅ |
+| 2026-03-30 | ChatTab 四步抽离 | markdown 工具 / markdown 组件 / useGateway / useWebSocket；tool_loader 跳过非工具脚本 | ✅ 详见 REFACTOR_4STEP_CHATTAB.md |
 
 ---
 

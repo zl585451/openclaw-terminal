@@ -4,6 +4,9 @@ const shared = require('./tools/shared');
 
 const TOOLS_DIR = path.join(__dirname, 'tools');
 
+/** 供其他工具 require 的模块，非 ToolLoader 注册项（无 name/definition/execute） */
+const TOOL_LOADER_SKIP = new Set(['shared.js', 'ai_library.js']);
+
 let _definitions = [];
 let _executors = {};
 
@@ -15,6 +18,7 @@ function loadTools() {
     const files = fs.readdirSync(TOOLS_DIR).filter(f => f.endsWith('.js'));
 
     for (const file of files) {
+      if (TOOL_LOADER_SKIP.has(file)) continue;
       try {
         const toolPath = path.join(TOOLS_DIR, file);
         delete require.cache[require.resolve(toolPath)]; // 支持热重载

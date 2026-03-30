@@ -213,8 +213,13 @@ const FinalizedMarkdownContent = memo(
     const processedText = useMemo(
       () => {
         const result = getCachedPreprocessedMarkdown(messageId, segmentKey, content || '');
-        // DEBUG: 只在非流式阶段（最终渲染）且有多个表格分隔符时打印
-        if (content && !segmentKey?.includes('stream') && (content.match(/\|---/g) || []).length >= 2) {
+        // DEBUG：开发环境始终打印；生产环境仅在多表格最终渲染时打印（减少噪声）
+        const multiTable = (content.match(/\|---/g) || []).length >= 2;
+        if (
+          content &&
+          !segmentKey?.includes('stream') &&
+          (import.meta.env.DEV || multiTable)
+        ) {
           console.log('[TABLE-FINAL] messageId:', messageId, 'segmentKey:', segmentKey);
           console.log('[TABLE-FINAL] raw content length:', content.length);
           console.log('[TABLE-FINAL] raw content:\n', content);
@@ -1265,8 +1270,10 @@ const ChatMessageList = function ChatMessageList({
                   const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
                   const finalParsed = parseOptionBox(bridgedText);
 
-                  // DEBUG: 多表格最终解析结果
-                  if (fc.includes('|---') && (fc.match(/\|---/g) || []).length >= 2) {
+                  // DEBUG：开发环境始终打印；生产环境仅多表格时打印
+                  const parseDebugMultiTable =
+                    fc.includes('|---') && (fc.match(/\|---/g) || []).length >= 2;
+                  if (import.meta.env.DEV || parseDebugMultiTable) {
                     console.log('[PARSE-FINAL] fc length:', fc.length);
                     console.log('[PARSE-FINAL] bridgedText length:', bridgedText.length);
                     console.log('[PARSE-FINAL] bridgedText preview:', bridgedText.slice(0, 500));
