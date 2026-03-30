@@ -220,7 +220,8 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
   th: ({ children }) => <th>{children}</th>,
   td: ({ children }) => <td>{children}</td>,
   code: ({ children, className, inline }: { children?: React.ReactNode; className?: string; inline?: boolean }) => {
-    // react-markdown v10 提供 inline prop，优先使用它判断
+    // 恢复 inline 参数检查作为首要判断，react-markdown 对 fenced code block 会设 inline=false
+    // 某些 react-markdown 版本/组合下 inline 标记不稳定，容易把 fenced code block 误判成 inline，导致“代码框消失”。
     const isBlock = !inline && (className?.includes('language-') || String(children).includes('\n'));
     if (!isBlock) {
       return (
@@ -648,7 +649,17 @@ const FinalizedMarkdownContent = memo(
     content: string;
   }) {
     const processedText = useMemo(
-      () => getCachedPreprocessedMarkdown(messageId, segmentKey, content || ''),
+      () => {
+        const result = getCachedPreprocessedMarkdown(messageId, segmentKey, content || '');
+        // DEBUG: 只在非流式阶段（最终渲染）且有多个表格分隔符时打印
+        if (content && !segmentKey?.includes('stream') && (content.match(/\|---/g) || []).length >= 2) {
+          console.log('[TABLE-FINAL] messageId:', messageId, 'segmentKey:', segmentKey);
+          console.log('[TABLE-FINAL] raw content length:', content.length);
+          console.log('[TABLE-FINAL] raw content:\n', content);
+          console.log('[TABLE-FINAL] processed:\n', result);
+        }
+        return result;
+      },
       [messageId, segmentKey, content]
     );
     return (
@@ -1687,9 +1698,35 @@ const ChatMessageList = function ChatMessageList({
                     streamingParseCacheRef.current = { input: fc, output: result };
                     return result;
                   }
+                  // 非流式（最终渲染）
                   const blocks = blockRouter(fc);
                   const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
-                  return parseOptionBox(bridgedText);
+                  const finalParsed = parseOptionBox(bridgedText);
+
+                  // DEBUG: 多表格最终解析结果
+                  if (fc.includes('|---') && (fc.match(/\|---/g) || []).length >= 2) {
+                    console.log('[PARSE-FINAL] fc length:', fc.length);
+                    console.log('[PARSE-FINAL] bridgedText length:', bridgedText.length);
+                    console.log('[PARSE-FINAL] bridgedText preview:', bridgedText.slice(0, 500));
+                    console.log('[PARSE-FINAL] segments count:', finalParsed.segments?.length ?? 0);
+                    console.log(
+                      '[PARSE-FINAL] segments:',
+                      JSON.stringify(
+                        finalParsed.segments?.map((s) => ({
+                          type: s.type,
+                          contentLen: s.content?.length ?? 0,
+                          contentPreview: s.content?.slice(0, 100) ?? '',
+                          optionsCount: s.options?.length ?? 0,
+                        })),
+                        null,
+                        2
+                      )
+                    );
+                    console.log('[PARSE-FINAL] text length:', finalParsed.text?.length ?? 0);
+                    console.log('[PARSE-FINAL] text preview:', finalParsed.text?.slice(0, 500));
+                  }
+
+                  return finalParsed;
                 })()
               : {
                   text: display,
@@ -1810,6 +1847,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     baseDelayMs: streamSpeedMs,
     typingSound: settings.typingSound,
     onFinished: (finalText) => {
+      console.log('[MSG-FINALIZE] finalText length:', finalText?.length, 'preview:', finalText?.slice(0, 200));
       const finalRaw = stripThinkModeMarker(finalText || '');
       try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[ChatTab.v2] fsm.onTurnFinish', e); }
       oct.ingest.reset();

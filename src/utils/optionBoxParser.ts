@@ -721,12 +721,46 @@ function _parseOptionBox(content: string): ParsedContent {
     const symbolOpts = parseSymbolOptions(textForDetection);
     if (symbolOpts.length >= 1) {
       const totalPages = parseTotalPages(contentWithoutHint);
-      const symbolLineRx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*[^\\n]*$`, 'gm');
-      let replaced = false;
-      const withPlaceholder = contentWithoutHint.replace(symbolLineRx, (_match) => {
-        if (!replaced) { replaced = true; return OPTIONS_PLACEHOLDER; }
-        return '';
-      });
+      // 只移除选项行（■ 开头），保留所有其他内容（表格、代码块等）
+      // 在第一个选项行位置插入占位符，其余选项行删除
+      const lines = contentWithoutHint.split('\n');
+      const symbolLineRx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*.+$`);
+      const codeRanges = getCodeBlockRanges(contentWithoutHint);
+      let placeholderInserted = false;
+      const resultLines: string[] = [];
+      let charOffset = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineStart = charOffset;
+        charOffset += line.length + 1; // +1 for \\n
+
+        // 跳过代码块内的行
+        if (isInsideCodeBlock(lineStart, codeRanges)) {
+          resultLines.push(line);
+          continue;
+        }
+
+        // 跳过表格行（| 开头）
+        if (/^\s*\|/.test(line)) {
+          resultLines.push(line);
+          continue;
+        }
+
+        // 匹配选项行
+        if (symbolLineRx.test(line)) {
+          if (!placeholderInserted) {
+            resultLines.push(OPTIONS_PLACEHOLDER);
+            placeholderInserted = true;
+          }
+          // 选项行不加入 resultLines（被移除）
+          continue;
+        }
+
+        resultLines.push(line);
+      }
+
+      const withPlaceholder = resultLines.join('\n');
       const text = filterExpectedEffect(withPlaceholder.replace(/\n{3,}/g, '\n\n').trim());
       return finalCleanup({ text, options: symbolOpts, totalPages, forcePills: true });
     }
@@ -798,12 +832,46 @@ function _parseOptionBox(content: string): ParsedContent {
   const symbolOpts = parseSymbolOptions(textForDetection);
   if (symbolOpts.length >= 1) {
     const totalPages = parseTotalPages(contentWithoutHint);
-    const symbolLineRx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*[^\\n]*$`, 'gm');
-    let replaced = false;
-    const withPlaceholder = contentWithoutHint.replace(symbolLineRx, (_match) => {
-      if (!replaced) { replaced = true; return OPTIONS_PLACEHOLDER; }
-      return '';
-    });
+    // 只移除选项行（■ 开头），保留所有其他内容（表格、代码块等）
+    // 在第一个选项行位置插入占位符，其余选项行删除
+    const lines = contentWithoutHint.split('\n');
+    const symbolLineRx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*.+$`);
+    const codeRanges = getCodeBlockRanges(contentWithoutHint);
+    let placeholderInserted = false;
+    const resultLines: string[] = [];
+    let charOffset = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineStart = charOffset;
+      charOffset += line.length + 1; // +1 for \\n
+
+      // 跳过代码块内的行
+      if (isInsideCodeBlock(lineStart, codeRanges)) {
+        resultLines.push(line);
+        continue;
+      }
+
+      // 跳过表格行（| 开头）
+      if (/^\s*\|/.test(line)) {
+        resultLines.push(line);
+        continue;
+      }
+
+      // 匹配选项行
+      if (symbolLineRx.test(line)) {
+        if (!placeholderInserted) {
+          resultLines.push(OPTIONS_PLACEHOLDER);
+          placeholderInserted = true;
+        }
+        // 选项行不加入 resultLines（被移除）
+        continue;
+      }
+
+      resultLines.push(line);
+    }
+
+    const withPlaceholder = resultLines.join('\n');
     const text = filterExpectedEffect(withPlaceholder.replace(/\n{3,}/g, '\n\n').trim());
     return finalCleanup({ text, options: symbolOpts, totalPages, forcePills: true });
   }

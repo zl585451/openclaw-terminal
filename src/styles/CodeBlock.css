@@ -151,6 +151,13 @@
 }
 
 /* ChatTab CodeBlockWithCopy：强制覆盖，避免污染 CodeBlock */
+[data-oct-block-code] {
+  overflow: hidden;      /* 关键：保持子元素在圆角内，避免 header/body 视觉断裂 */
+  border-radius: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
 [data-oct-block-code] .md-codeblock-pre,
 [data-oct-block-code] pre[class*="language-"] {
   margin: 0 !important;
