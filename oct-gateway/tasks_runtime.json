@@ -576,5 +576,22 @@
     "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"amy检查一下我们最后打的标叫什么\",\"results\":[{\"title\":\"amy是什么意？amy是什么意思 – 手机爱问\",\"url\":\"https://m.iask.sina.com.cn/b/4FfKNfoBgO.html\",\"snippet\":\"amy是什么意？amy是什么意思： Amy 英[ˈeɪmɪ]美[ˈemɪ] n. 艾米（女子名，涵义：最心爱的人） 网络 安美; 淀粉酶\"},{\"title\":\"Amy这个名字怎么样，外国人怎么看，土不土啊？ - 知乎\",\"url\":\"https://www.zhihu.com/question/312146958\",\"snippet\":\"有着诗情画意的名字反倒很土，就类似于中文名字叫 <strong>慕容春雪</strong>，王嫣嫣一样。 话说中国某演员天使宝贝的名字在美国都是色情女星之类的人在用。\"},{\"title\":\"Amy的中文名字怎么读？ - 喜马拉雅手机版\",\"url\":\"https://m.ximalaya.com/ask/q5806965\",\"snippet\":\"Amy是英文中常见的女子名字，一般音译为艾米，其拉丁文意思为”被深爱的“。 英[ˈeɪmɪ] 美[ˈemɪ] 来源语种：拉丁语、古英语 名字寓意：爱，圆融，自己的价值观非常牢固。 A · Amy [英][ˈeɪmɪ][美][ˈemɪ] n.艾米（女子名...\"},{\"title\":\"淀粉酶（amylase，AMY/AMS）检测试验- 检验 - 人卫助手\",\"url\":\"http://117.107.141.233/jeesitede/pc/clinicalExam/getClinicalExamDetail?articleId=8229\",\"snippet\":\"We cannot provide a description for this page right now\"},{\"title\":\"Amy这个英文名的起源是什么？ - 知乎\",\"url\":\"https://www.zhihu.com/question/25655756\",\"snippet\":\"amy 拉丁文意思是&quot;被深爱的&quot;.amy给人的印象是个玲珑,纤细的女孩,并有著安静,沉著,有文化素养及宛雅的特质。 · Amy，是所罗门王72柱魔神中排第58位的魔神。 远古传说形容魔神亚米（Amy是一个伟大的统领，全身着火的男性人...\"}]}",
     "error": null,
     "notified": true
+  },
+  "task-1774852328297-be613f": {
+    "taskId": "task-1774852328297-be613f",
+    "type": "搜索",
+    "instruction": "帮我搜索一下cursor如何对模型调用做优化省钱",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "帮我搜索一下cursor如何对模型调用做优化省钱"
+    },
+    "sessionKey": "main",
+    "status": "done",
+    "createdAt": 1774852328297,
+    "startedAt": 1774852328301,
+    "completedAt": 1774852329504,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我搜索一下cursor如何对模型调用做优化省钱\",\"results\":[{\"title\":\"模型管理 - Cursor 官方文档中文版\",\"url\":\"https://cursor-docs.apifox.cn/%E6%A8%A1%E5%9E%8B%E7%AE%A1%E7%90%86-6358331m0\",\"snippet\":\"1 工具调用像请求一样收费 (Tool calls charged like requests) 2 1/3 请求 (1/3 request) 3 付费计划包含 10 个请求/天 (10 requests/day included with paid plan) 4 免费计划包含 500 个请求/天 (500 requests/day with free plan) 5 高推理工作量 (High reasoning effort) 6 价格对于 长上下文窗口 (long context window) 请求更高\"},{\"title\":\"Cursor 模型设置 | 菜鸟教程\",\"url\":\"https://www.runoob.com/cursor/cursor-set-models.html\",\"snippet\":\"Cursor 模型设置 Cursor 强大之处就是充分利用了大模型的能力。 Cursor 内置了很多大模型，当然我们可以自定义设置模型，设置也非常简单。 1、打开设置 点击右上角的齿轮图标，打开设置界面。 选择 Models (模型)，可以看到...\"},{\"title\":\"一文搞懂所有模型，Cursor 模型选择终极指南：从入门到精通 - 苏米客\",\"url\":\"https://xmsumi.com/detail/955\",\"snippet\":\"<strong>禁用 Auto 模式：避免系统自动切换模型带来的不确定性，确保对每次调用的完全掌控</strong>。\"},{\"title\":\"Cursor哪个模型最好用？年最全模型选择与组合指南\",\"url\":\"https://cursor-vip.pro/blog/cursor-best-model-guide\",\"snippet\":\"除了关心Cursor哪个模型好用，如何省钱也是大家关注的重点： · 引入免费或低价模型 你可以<strong>在 Cursor 的设置里添加自己的 DeepSeek V3.1 或 Gemini 2.5 Flash API Key</strong>。这些模型完全免费或有免费...\"},{\"title\":\"Cursor 完全上手指南：从模式选择到模型调优，一文解锁10个核心技巧_cursor 选什么模型-CSDN博客\",\"url\":\"https://blog.csdn.net/qq_44870477/article/details/159114595\",\"snippet\":\"摘要：本文深入探讨了在前端开发中如何选择Cursor的AI模型，对比了GPT-4、GPT-4 Turbo、GPT-3.5 Turbo等主流模型在代码理解、生成质量和响应速度上的差异。针对不同开发场景（日常组件、复杂业务、代码重构等）提供了模型选择建议和参数配置方案，并分享了成本优化与性能平衡策略。文章还包含实战配置案例和监控方法，强调应根据具体需求动态选择模型，而非一味追求最强性能。最后提供了快速参考卡片，帮助开发者高效匹配模型与任务类型，实现智能开发。\"}]}",
+    "error": null,
+    "notified": true
   }
 }

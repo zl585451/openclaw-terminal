@@ -1,0 +1,37 @@
+# OCT (OpenClaw-Terminal) — 项目级 AI 说明
+
+更完整的运维与排障说明见仓库根目录 `AGENTS.md`；改代码前先扫一眼对应小节。
+
+## 项目是什么
+
+- 基于 **Electron** 的 AI 桌面助手。
+- **前端**：`src/`，React + Vite，开发时常用端口 **5176**（在项目根目录运行 `npx vite`）。
+- **网关后端**：`oct-gateway/`，Node.js，**WebSocket 18789**、**HTTP 18790**（在 `oct-gateway/` 下运行 `node --watch index.js`）。
+
+## 改代码时的习惯
+
+- 只改任务需要的文件，避免顺手大重构或改无关文件。
+- 新代码风格与周边文件保持一致（命名、imports、少而准的注释）。
+- 用户偏好中文解释时，用简体中文回复；代码与标识符仍遵循仓库现有语言（多为英文）。
+
+## 配置与密钥（网关）
+
+- API Key 放在**项目根目录**的 `.env`（`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY` 等）。仅靠系统环境变量往往不够，网关通过 `getProviderConfig()` 等读取 `.env`、`oct-gateway/config.json`、`~/.openclaw/openclaw.json`。
+- 默认模型等在 `oct-gateway/config.json`（如 `OCT_MODEL`）。
+- 无 Key 时网关能启动，但对话会报「API Key 未配置」一类错误。
+
+## 常用命令（根目录）
+
+- 单测：`npm test` 或 `npx vitest run`
+- 前端类型检查：`npx tsc --noEmit`
+- Electron 相关类型检查：`npx tsc -p tsconfig.electron.json --noEmit`
+- 构建：`npm run build`
+
+## 常见坑（简述）
+
+- `oct-gateway` 使用 **CommonJS**（`require`），不是 ES modules。
+- 仅在浏览器里跑前端、没有 Electron 时，`ipcRenderer` 可能是空实现，聊天不一定能连上网关；测网关 AI 可用 WebSocket 连 `ws://127.0.0.1:18789`。
+- **Nocturne Memory**（Python 8000）可选，离线时网关一般只告警继续跑。
+- `email_reader` 工具可能因依赖问题加载失败，已知非阻断。
+- `postinstall` 会跳过部分 native 重建；纯前端 + 网关开发通常可接受。
+- Windows 上若 18789 被占用，需先结束旧网关进程再重启。

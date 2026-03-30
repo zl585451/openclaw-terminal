@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import '../../styles/ChatTab.css';
 import '../../components/ResponseTray.css';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
+import { useTypewriter } from '../../hooks/useTypewriter';
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
 import TaskBoard from '../../components/TaskBoard';
@@ -26,12 +27,12 @@ import { BlockIngest } from '../../core/blockIngest';
 import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { checkPermission, getDangerMatch } from '../../utils/permissionCheck';
-import { playClickSound, resetSoundCounter } from '../../utils/clickSound';
+// playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
 import { ScrollAnchor } from '../../core/viewport';
 
-/** ChatTab.v2：禁用逐字打字机，由 StreamRouter 控制流出节奏 */
-const OCT_V2_DISABLE_TYPEWRITER = false;
+/** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
+// const OCT_V2_DISABLE_TYPEWRITER = false; // 已不再需要
 
 function recoverOctStreamFromEndFailure(oct: { stream: StreamRouter; fsm: TurnFSM }): void {
   try {
@@ -1805,6 +1806,27 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }
   const oct = octRuntimeRef.current;
 
+  const typewriter = useTypewriter({
+    baseDelayMs: streamSpeedMs,
+    typingSound: settings.typingSound,
+    onFinished: (finalText) => {
+      const finalRaw = stripThinkModeMarker(finalText || '');
+      try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[ChatTab.v2] fsm.onTurnFinish', e); }
+      oct.ingest.reset();
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant' && last.isStreaming) {
+          return prev.map((msg, i) =>
+            i === prev.length - 1
+              ? { ...msg, content: finalRaw || msg.content, isStreaming: false, isStreamingRaw: false }
+              : msg
+          );
+        }
+        return prev;
+      });
+    },
+  });
+
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
   const isStreaming = useMemo(() => {
     const lf = deriveLegacyFlags(fsmPhase);
@@ -1824,8 +1846,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // typing scheduler 双状态：fullText（真实流式内容） / displayedText（UI可见）
-  const [fullText, setFullText] = useState('');
-  const [displayedText, setDisplayedText] = useState('');
+  // 已迁移到 useTypewriter hook
   const [modelName, setModelName] = useState('--');
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
   const [localTime, setLocalTime] = useState('');
@@ -1879,19 +1900,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingMessageRef = useRef(''); // 仍保留：用于与现有消息 content 合并/落盘，不改 schema
-  const typewriterRafRef = useRef<number | null>(null);
-  // 打字机：直接操作 DOM 的 span 节点，完全绕过 React setMessages
   const streamingDomRef = useRef<HTMLPreElement | null>(null);
-  const rafFlushRef = useRef<number | null>(null);
-  // 打字机：当前已渲染到 DOM 的字符数
-  const displayedCharsRef = useRef<number>(0);
-  // 速度控制：帧计数器
-  const frameCountRef = useRef<number>(0);
   const fullTextRef = useRef<string>('');
-  const visibleFullTextRef = useRef<string>(''); // 用于打字展示的“可见正文”（从 fullText 解析得到）
-  const displayedLenRef = useRef<number>(0);
-  const typingBudgetMsRef = useRef<number>(0);
-  const lastTypingTsRef = useRef<number>(0);
+  // typingBudgetMsRef, lastTypingTsRef 已迁移到 useTypewriter hook
   const pendingFullTextSyncRafRef = useRef<number | null>(null);
   const userScrolledUp = useRef<boolean>(false);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1900,14 +1911,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const pendingSnapMsgIdRef = useRef<number | null>(null);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
-  const streamDoneReceived = useRef<boolean>(false);
   const streamUiRafRef = useRef<number | null>(null);
   const anchoredStreamingMsgIdRef = useRef<number | null>(null);
   // ScrollAnchor: 新的滚动锚定系统
   const scrollAnchorRef = useRef(new ScrollAnchor());
-  const typewriterStartTsRef = useRef<number>(0);
-  // 用一个稳定的 ref 标记"是否应该运行打字机"
-  const shouldRunTypewriterRef = useRef(false);
+  // typewriterStartTsRef, shouldRunTypewriterRef 已迁移到 useTypewriter hook
 
   const scrollToBottom = useCallback((force = false) => {
     if (snapJustFiredRef.current) return;
@@ -1951,24 +1959,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
       pendingFullTextSyncRafRef.current = null;
       const buf = fullTextRef.current;
-      setFullText(buf);
-      // 打字展示用的可见正文：始终从 fullContent 解析而来（不依赖 displayedText）
-      try {
-        const parsed = parseOptionBox(buf || '');
-        const visible = (parsed.text ?? '').toString();
-        visibleFullTextRef.current = visible;
-        // 若 visible 变短（例如标签被剥离），夹紧 displayedLen，避免 slice 越界/回退抖动
-        const clamped = Math.min(displayedLenRef.current, visible.length);
-        if (clamped !== displayedLenRef.current) {
-          displayedLenRef.current = clamped;
-          setDisplayedText(visible.slice(0, clamped));
-        }
-        // System A (driveTypewriter) 已移除 — 打字节奏统一由主 tick 循环 (System B) 控制，
-        // 避免双系统竞态写 displayedLenRef 导致的跳变
-      } catch {
-        visibleFullTextRef.current = buf || '';
-      }
-      // 仅保证“流式气泡存在”，不驱动可见文本（可见文本由 typing scheduler 输出）
+      // 仅同步 message.content（复制/落盘）；可见逐字由 useTypewriter + typewriter.feed 负责
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
@@ -2060,25 +2051,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         fullTextRef.current = raw;
         // 直接触发 React 状态更新：StreamRouter 已节流（16ms/batch），无需额外批处理
         applyRawToMessages(raw);
+        typewriter.feed(raw);
       }
       if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
         queueMicrotask(() => {
-          // 只发信号，让主 tick 循环加速打完剩余文字后再做清零
-          // 不直接快进 / 清零 / 设 isStreaming:false，避免打字机中途被强杀导致闪现
-          streamDoneReceived.current = true;
-          // 停止 System A（如果还在跑）
-          if (rafFlushRef.current !== null) {
-            clearTimeout(rafFlushRef.current);
-            rafFlushRef.current = null;
-          }
-          // 关闭流式基础设施（不影响显示状态）
-          try {
-            stream.close();
-          } catch (e) {
-            console.warn('[ChatTab.v2] stream.close', e);
-          }
-          // fsm.onTurnFinish 和 ingest.reset 移至主 tick 循环的收尾段，
-          // 等打字机自然追完后再执行，保证过渡平滑
+          typewriter.finish();
+          try { stream.close(); } catch (e) { console.warn('[ChatTab.v2] stream.close', e); }
         });
       }
     });
@@ -2088,70 +2066,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     };
   }, [oct, getNextMessageId, setMessages]);
 
-  const getNextCharIndex = (text: string, idx: number): number => {
-    if (idx >= text.length) return idx;
-    const code = text.charCodeAt(idx);
-    // 高代理项 + 低代理项视为一个字符
-    if (code >= 0xd800 && code <= 0xdbff && idx + 1 < text.length) {
-      const next = text.charCodeAt(idx + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) return idx + 2;
-    }
-    return idx + 1;
-  };
+  // getNextCharIndex 已迁移到 useTypewriter hook
 
-  const charDelayMs = (ch: string): number => {
-    // Enforce minimum base of 40ms so even "fast" setting feels natural
-    let d = Math.max(streamSpeedMs, 40);
-    if (ch === '\n') d += d * 2.5;
-    else if (ch === '。' || ch === '！' || ch === '？' || ch === '…') d += d * 2;
-    else if (ch === '.' || ch === '!' || ch === '?') d += d * 1.5;
-    else if (ch === ',' || ch === '，' || ch === '、' || ch === ';' || ch === '；') d += d * 0.6;
-    return d;
-  };
+  // charDelayMs 已迁移到 useTypewriter hook
 
-  const isWordChar = (ch: string): boolean => {
-    // ASCII word-ish; CJK/其它无空格语言按“单字符”自然显示
-    return /^[A-Za-z0-9_]+$/.test(ch);
-  };
+  // isWordChar 已迁移到 useTypewriter hook
 
-  const computeRangeCostMs = (text: string, start: number, end: number): number => {
-    let cost = 0;
-    let i = start;
-    while (i < end) {
-      const ni = getNextCharIndex(text, i);
-      const ch = text.slice(i, ni);
-      cost += charDelayMs(ch);
-      i = ni;
-    }
-    return cost;
-  };
+  // computeRangeCostMs 已迁移到 useTypewriter hook
 
-  const pickPreferredNextIndex = (text: string, idx: number, maxChars: number): number => {
-    if (idx >= text.length) return idx;
-    // 先看第一个字符；非 word（空白/标点/CJK 等）则按“单字符”推进
-    const firstEnd = getNextCharIndex(text, idx);
-    const firstCh = text.slice(idx, firstEnd);
-    if (!isWordChar(firstCh)) return firstEnd;
-
-    // 在 maxChars 范围内尽量推进到 word 边界（包含可选的 1 个尾随空格）
-    let i = idx;
-    let used = 0;
-    while (used < maxChars && i < text.length) {
-      const ni = getNextCharIndex(text, i);
-      const ch = text.slice(i, ni);
-      if (!isWordChar(ch)) break;
-      i = ni;
-      used += 1;
-    }
-
-    // 若后面紧跟空格且仍有容量，则把空格也带上，观感更“按词组”流出
-    if (used < maxChars && i < text.length) {
-      const ni = getNextCharIndex(text, i);
-      const ch = text.slice(i, ni);
-      if (ch === ' ') return ni;
-    }
-    return i;
-  };
+  // pickPreferredNextIndex 已迁移到 useTypewriter hook
 
   // ===== 所有 useEffect 放在 useState/useRef 之后 =====
   // pendingPills 已停用：pills 现在始终在消息体内渲染，不再需要底部 ResponseTray 重复显示
@@ -2507,19 +2430,18 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       const systemReply = pendingSystemReplyMap.current.get(currentRequestId) ?? false;
       pendingSystemReplyMap.current.delete(currentRequestId);
 
-      // OCT v2：普通对话走 StreamRouter.end()，收尾在 COMPLETED + onTurnFinish
+      // OCT v2：普通对话走 StreamRouter.end()，收尾在 COMPLETED + typewriter.finish → onTurnFinish
       if (!systemReply) {
-        streamDoneReceived.current = false;
         try {
           oct.stream.end();
         } catch {
           recoverOctStreamFromEndFailure(oct);
-          // 错误恢复：COMPLETED 没有触发，手动设信号让 tick 循环收尾
-          streamDoneReceived.current = true;
+          typewriter.finish();
           const fb = String(content || '').trim();
           if (fb) {
             streamingMessageRef.current = fb;
             fullTextRef.current = fb;
+            typewriter.feed(fullTextRef.current);
             scheduleFullTextSync();
           }
         }
@@ -2527,11 +2449,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         return;
       }
 
-      streamDoneReceived.current = true; // 系统回复仍走打字机收尾
       let finalStreamContent = streamingMessageRef.current || content;
       if (finalStreamContent) {
         streamingMessageRef.current = finalStreamContent;
         fullTextRef.current = finalStreamContent;
+        typewriter.feed(fullTextRef.current);
         scheduleFullTextSync();
       }
 
@@ -2620,7 +2542,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setAwaitingResponse(false);
       if (isDelta) {
         setAgentPhase('typing');
-        streamDoneReceived.current = false;
       }
 
       const pendingSysDelta = pendingSystemReplyMap.current.get(lastSentRequestId.current) ?? false;
@@ -2632,6 +2553,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           streamingMessageRef.current = content;
           fullTextRef.current = content;
         }
+        typewriter.feed(fullTextRef.current);
         scheduleFullTextSync();
       } else {
         // 全文立即追加到 ref（不触发渲染）
@@ -2647,7 +2569,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           try { oct.fsm.onToken(); } catch {}
         }
 
-        // 把最新全文推给 scheduleFullTextSync，由顶层打字机（系统B）负责控速显示
+        typewriter.feed(fullTextRef.current);
         scheduleFullTextSync();
       }
     }
@@ -2766,17 +2688,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
     streamingMessageRef.current = '';
     fullTextRef.current = '';
-    visibleFullTextRef.current = '';
-    displayedLenRef.current = 0;
-    // 重置打字机状态（每轮对话开始时清零）
-    if (rafFlushRef.current !== null) {
-      cancelAnimationFrame(rafFlushRef.current);
-      rafFlushRef.current = null;
-    }
-    displayedCharsRef.current = 0;
-    frameCountRef.current = 0;
-    setFullText('');
-    setDisplayedText('');
+    typewriter.reset();
     oct.ingest.reset();
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
@@ -2877,17 +2789,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     pendingSystemReplyMap.current.set(newRequestId, isSystem);
     streamingMessageRef.current = '';
     fullTextRef.current = '';
-    visibleFullTextRef.current = '';
-    displayedLenRef.current = 0;
-    // 重置打字机状态
-    if (rafFlushRef.current !== null) {
-      cancelAnimationFrame(rafFlushRef.current);
-      rafFlushRef.current = null;
-    }
-    displayedCharsRef.current = 0;
-    frameCountRef.current = 0;
-    setFullText('');
-    setDisplayedText('');
+    typewriter.reset();
     oct.ingest.reset();
     if (!isSystem) {
       setAwaitingResponse(true);
@@ -3026,7 +2928,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     });
     ro.observe(target);
     return () => ro.disconnect();
-  }, [scheduleScrollAfterLayout, isStreaming, messages.length, displayedText.length, fullText.length]);
+  }, [scheduleScrollAfterLayout, isStreaming, messages.length, typewriter.displayedText.length]);
 
   // 用户发送消息后，在 DOM 提交时执行顶置滚动（useLayoutEffect 确保 DOM 已更新）
   useLayoutEffect(() => {
@@ -3072,158 +2974,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     // ScrollAnchor: 保持锁定状态，ResizeObserver 会通过 reconcile 保持用户消息位置
   }, [messages.length]);
 
-  // 仅用于启动/停止打字机的 effect —— 依赖精简为启停条件
-  useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    const shouldRun = !!lastMsg?.isStreaming && lastMsg.role === 'assistant';
-    shouldRunTypewriterRef.current = shouldRun && !OCT_V2_DISABLE_TYPEWRITER;
-
-    if (OCT_V2_DISABLE_TYPEWRITER && shouldRun) {
-      return;
-    }
-
-    if (!shouldRun) {
-      if (typewriterRafRef.current != null) {
-        cancelAnimationFrame(typewriterRafRef.current);
-        typewriterRafRef.current = null;
-      }
-      streamDoneReceived.current = false;
-      return;
-    }
-
-    // 已在运行，不重复启动
-    if (typewriterRafRef.current != null) return;
-
-    // 兜底初始化
-    if (!fullTextRef.current) fullTextRef.current = streamingMessageRef.current || '';
-    if (!visibleFullTextRef.current) {
-      try {
-        visibleFullTextRef.current = (parseOptionBox(fullTextRef.current || '').text ?? '').toString();
-      } catch {
-        visibleFullTextRef.current = fullTextRef.current || '';
-      }
-    }
-
-    // 启动时给最小预算，刚好显示第一个字
-    typingBudgetMsRef.current = 20;
-    typewriterStartTsRef.current = performance.now();
-    resetSoundCounter();
-
-    const tick = (ts: number) => {
-      // 如果外部已标记停止，退出
-      if (!shouldRunTypewriterRef.current) {
-        typewriterRafRef.current = null;
-        return;
-      }
-
-      if (!lastTypingTsRef.current) lastTypingTsRef.current = ts;
-      const dt = Math.min(80, ts - lastTypingTsRef.current);
-      lastTypingTsRef.current = ts;
-
-      const full = visibleFullTextRef.current || '';
-      const fullLen = full.length;
-      let idx = displayedLenRef.current;
-      let typedThisFrame = 0;
-      const backlog = fullLen - displayedLenRef.current;
-      // 预热期（前 2 秒）：不追赶，保持匀速，避免首行过快
-      const elapsed = ts - typewriterStartTsRef.current;
-      let catchUpBoost = 0;
-      if (elapsed > 2000 && !streamDoneReceived.current) {
-        // 预热结束后启用追赶，用更平缓的曲线避免中途突然加速
-        // streamDone 后由上面的 +300 接管，不再叠加
-        if (backlog > 60) {
-          catchUpBoost = Math.min((backlog - 60) * 0.12, 10);
-        }
-        if (backlog > 200) {
-          catchUpBoost = 10 + Math.min((backlog - 200) * 0.15, 20);
-        }
-      }
-      typingBudgetMsRef.current += dt + catchUpBoost;
-
-      while (typedThisFrame < 4 && idx < fullLen) {
-        const remain = 4 - typedThisFrame;
-        let targetIdx = pickPreferredNextIndex(full, idx, remain);
-        if (targetIdx <= idx) targetIdx = getNextCharIndex(full, idx);
-
-        const cost = computeRangeCostMs(full, idx, targetIdx);
-        if (typingBudgetMsRef.current < cost) {
-          const singleIdx = getNextCharIndex(full, idx);
-          const singleCost = computeRangeCostMs(full, idx, singleIdx);
-          if (typingBudgetMsRef.current < singleCost) break;
-          typingBudgetMsRef.current -= singleCost;
-          idx = singleIdx;
-          typedThisFrame += 1;
-          continue;
-        }
-
-        typingBudgetMsRef.current -= cost;
-        let count = 0;
-        let j = idx;
-        while (j < targetIdx && count < remain) {
-          j = getNextCharIndex(full, j);
-          count += 1;
-        }
-        idx = targetIdx;
-        typedThisFrame += count;
-      }
-
-      if (idx !== displayedLenRef.current) {
-        displayedLenRef.current = idx;
-        setDisplayedText(full.slice(0, idx));
-        if (settings.typingSound !== 'off') playClickSound(settings.typingSound);
-      }
-
-      // stream 已结束但文字还没追完：每帧额外给 300ms 预算，加速收尾（约 0.5-1 秒打完）
-      if (streamDoneReceived.current && displayedLenRef.current < fullLen) {
-        typingBudgetMsRef.current += 300;
-      }
-
-      if (displayedLenRef.current >= fullLen && streamDoneReceived.current) {
-        typewriterRafRef.current = null;
-        shouldRunTypewriterRef.current = false;
-        streamDoneReceived.current = false;
-        lastTypingTsRef.current = 0;
-        typingBudgetMsRef.current = 0;
-        // FSM + ingest 清理（从 COMPLETED handler 移至此处，等打字机自然追完后执行）
-        try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[ChatTab.v2] fsm.onTurnFinish', e); }
-        oct.ingest.reset();
-        const finalRaw = stripThinkModeMarker(streamingMessageRef.current || '');
-        setDisplayedText('');
-        setFullText('');
-        fullTextRef.current = '';
-        visibleFullTextRef.current = '';
-        displayedLenRef.current = 0;
-        displayedCharsRef.current = 0;
-        frameCountRef.current = 0;
-        streamingMessageRef.current = '';
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant' && last?.isStreaming) {
-            return prev.map((msg, i) =>
-              i === prev.length - 1
-                ? { ...msg, content: finalRaw || msg.content, isStreaming: false, isStreamingRaw: false }
-                : msg
-            );
-          }
-          return prev;
-        });
-        return;
-      }
-
-      typewriterRafRef.current = requestAnimationFrame(tick);
-    };
-
-    typewriterRafRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      if (typewriterRafRef.current != null) {
-        cancelAnimationFrame(typewriterRafRef.current);
-        typewriterRafRef.current = null;
-      }
-    };
-    // ✅ 关键：移除 fullText 和 messages，只在"流式开始/结束"时真正启停
-    // messages.length 变化时检查是否需要启动，但不会 cancel 正在运行的循环
-  }, [messages.length, settings.typingSound, scheduleScrollAfterLayout]);
+  // 打字机逻辑已迁移到 useTypewriter hook
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -3372,8 +3123,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           displayMessages={messages.length > visibleCount ? messages.slice(-visibleCount) : messages}
           isStreaming={isStreaming}
           awaitingResponse={awaitingResponse}
-          streamingContent={fullText}
-          displayedText={displayedText}
+          streamingContent={fullTextRef.current}
+          displayedText={typewriter.displayedText}
           speakingMessageId={speakingMessageId}
           agentPhase={agentPhase}
           thinkingElapsed={thinkingElapsed}
