@@ -5,8 +5,8 @@
 
 ## 当前阶段
 
-Phase: 4（增量渲染 / UI 集成）✅ 已完成  
-状态: 准备 Git 提交 + 打包发布
+Phase: 6（Agent 就绪）✅ 全部完成  
+状态: Phase 0-6 迁移完成，流式体验优化进行中
 
 ## 架构蓝图版本
 
@@ -21,7 +21,10 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 | v2-phase2-done | 2026-03-28 | Phase 2 完成（turnFSM 状态机） |
 | v2-phase3-done | 2026-03-28 | Phase 3 完成（streamRouter 流控制） |
 | v2-phase4-done | 2026-03-28 | Phase 4 完成（UI 集成） |
-| v2-migration-complete | 2026-03-28 | v2 迁移完成 |
+| v2-migration-complete | 2026-03-28 | v2 核心迁移完成 |
+| — | 2026-03-29 | P0 审计修复（云端 7fd04b7） |
+| — | 2026-03-29 | Phase 5 完成（云端 935f5c4 + 本地 8f8942b） |
+| — | 2026-03-29 | Phase 6 完成（云端 b4079ec + 本地 c4e2c0c） |
 
 ---
 
@@ -138,28 +141,44 @@ Phase 4 完成了 StreamRouter 与 ChatTab.v2 的集成，打字机改为 16ms �
 
 ---
 
-## Phase 5：Viewport 锚定
+## Phase 5：Viewport 锚定 ✅ 已完成
 
-- [ ] 5.1 实现 ScrollAnchor 类
-- [ ] 5.2 用户消息锚定 + 补偿滚动
-- [ ] 5.3 上滑解锁 + 回到底部按钮
-- [ ] 5.4 验收：发长消息后始终可见
+- [x] 5.1 实现 ScrollAnchor 类（`src/core/viewport/scrollAnchor.ts`）
+  - [x] snapAndAnchor：用户消息 snap 到视口顶部并锁定
+  - [x] reconcile：DOM 变化后补偿滚动位置
+  - [x] followBottom：跟随内容增长自动滚底
+  - [x] onUserScroll：用户手动滚动时解锁
+- [x] 5.2 用户消息锚定 + 补偿滚动（本地 Cursor 集成）
+- [x] 5.3 上滑解锁 + 回到底部按钮
+- [x] 5.4 验收：发长消息后始终可见 ✅
+- [x] 5.5 修复：AI 输出完成后底部无多余空白
 
-**验收结果**：
+**验收结果**：✅ 通过
+- ScrollAnchor 核心类在云端实现 + 8 个单元测试
+- 本地 Cursor 完成 ChatTab.v2 集成
+- 用户消息顶置、AI 回复向下生长、完成后无空白
+- Git 提交：云端 935f5c4，本地 8f8942b
 
 **遇到的问题**：
+- AI 输出完后底部有多余可滚动空白 → 已修复（release 后限制 scrollTop）
 
 ---
 
-## Phase 6：Agent 就绪
+## Phase 6：Agent 就绪 ✅ 已完成
 
-- [ ] 6.1 Gateway 工具调用事件结构化
-- [ ] 6.2 ToolCallBlock + ToolResultBlock 组件
-- [ ] 6.3 验收：工具调用可视化
+- [x] 6.1 Gateway 工具调用事件结构化（`ai.js` 新增 `onToolEvent` 回调）
+  - [x] tool_call 事件：工具名 + 参数 + 状态 executing
+  - [x] tool_result 事件：结果预览 + 状态 done/error
+  - [x] agent-phase: tool_executing 阶段事件
+- [x] 6.2 前端工具调用卡片（本地 Cursor 实现）
+- [x] 6.3 验收：工具调用可视化 ✅
 
-**验收结果**：
+**验收结果**：✅ 通过
+- Gateway onToolEvent 在云端实现并通过 WebSocket 实际测试（web_search 工具）
+- 前端工具卡片在本地 Cursor 实现
+- Git 提交：云端 b4079ec，本地 c4e2c0c
 
-**遇到的问题**：
+**遇到的问题**：无
 
 ---
 
@@ -175,6 +194,8 @@ Phase 4 完成了 StreamRouter 与 ChatTab.v2 的集成，打字机改为 16ms �
 | 2026-03-28 | Phase 3 | streamRouter 流控制实现 + 测试 + 标签 | ✅ |
 | 2026-03-28 | Phase 4 | UI 集成（ChatTab.v2）+ 测试 + 用户验收 | ⚠️ 部分 |
 | 2026-03-29 | 审计修复 | P0 问题修复：TurnPhase 冲突、ERROR/CANCELLED 状态、blockRouter ID、subscriber 保护、空响应处理 | ✅ |
+| 2026-03-29 | Phase 5 | ScrollAnchor 视口控制器（云端核心类 + 本地集成） | ✅ |
+| 2026-03-29 | Phase 6 | Gateway 工具调用事件 + 前端工具卡片可视化 | ✅ |
 
 ---
 
@@ -184,8 +205,10 @@ Phase 4 完成了 StreamRouter 与 ChatTab.v2 的集成，打字机改为 16ms �
 
 ---
 
-## 下一步：打包发布
+## 下一步
 
-Phase 4 完成后，接下来处理停车场事项：
-- [ ] 生成 Windows/Mac/Linux 三个系统安装包
+Phase 0-6 迁移全部完成，待处理事项：
+- [ ] 流式体验优化：去掉 Gateway stream_merge 和前端 StreamRouter 缓冲层，实现 0 延迟直通
+- [ ] Phase 4.8-4.11：真正的增量渲染（流式阶段 pre-wrap 纯文本 + done 后一次性 Markdown 渲染）
+- [ ] 打包发布 v0.1.9：Windows/Mac/Linux 三平台安装包
 - [ ] 更新主页（README / 官网下载链接）
