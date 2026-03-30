@@ -8,6 +8,7 @@ import '../../components/ResponseTray.css';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { useGateway } from '../../hooks/useGateway';
+import { useWebSocket } from '../../hooks/useWebSocket';
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
 import TaskBoard from '../../components/TaskBoard';
@@ -1428,6 +1429,234 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   const gateway = useGateway();
 
+  const getToolDisplayName = (tool: string): string => {
+    const map: Record<string, string> = {
+      'read_file': '📖 读取文件',
+      'write_file': '✏️ 写入文件',
+      'list_files': '📂 列出文件',
+      'run_bash': '💻 执行命令',
+      'str_replace_editor': '🔧 编辑文件',
+      'create_folder': '📁 创建文件夹',
+      'move_file': '🔄 移动文件',
+      'search_files': '🔍 搜索文件',
+    };
+    return map[tool] || tool;
+  };
+
+  const ws = useWebSocket({
+    onChatDelta: (content, isDelta) => {
+      // 保留现有的 delta 处理逻辑
+      if (!content) return;
+      
+      setAwaitingResponse(false);
+      if (isDelta) {
+        setAgentPhase('typing');
+      }
+
+      const pendingSysDelta = pendingSystemReplyMap.current.get(lastSentRequestId.current) ?? false;
+      if (pendingSysDelta) {
+        if (isDelta) {
+          streamingMessageRef.current += content;
+          fullTextRef.current += content;
+        } else {
+          streamingMessageRef.current = content;
+          fullTextRef.current = content;
+        }
+        typewriter.feed(fullTextRef.current);
+        scheduleFullTextSync();
+      } else {
+        // 全文立即追加到 ref（不触发渲染）
+        if (isDelta) {
+          streamingMessageRef.current += content;
+        } else {
+          streamingMessageRef.current = content;
+        }
+        fullTextRef.current = streamingMessageRef.current;
+
+        // FSM 状态推进
+        if (isDelta && oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
+          try { oct.fsm.onToken(); } catch {}
+        }
+
+        typewriter.feed(fullTextRef.current);
+        scheduleFullTextSync();
+      }
+
+      // 更新消息状态
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant' && last?.isStreaming) {
+          // 累积到现有流式消息
+          const newContent = (last.content || '') + content;
+          return prev.map((msg, idx) =>
+            idx === prev.length - 1
+              ? { ...msg, content: newContent }
+              : msg
+          );
+        } else {
+          // 创建新的流式消息
+          return [
+            ...prev,
+            {
+              id: getNextMessageId(),
+              role: 'assistant' as const,
+              content,
+              isStreaming: true,
+              timestamp: Date.now(),
+            },
+          ];
+        }
+      });
+    },
+    onChatDone: (content) => {
+      // 保留现有的 done 处理逻辑
+      setAwaitingResponse(false);
+      setAgentPhase('idle');
+      userScrolledUp.current = false;
+      // AI 最终回复完成时清空所有工具卡片
+      setActiveTools([]);
+      const currentRequestId = lastSentRequestId.current;
+      const systemReply = pendingSystemReplyMap.current.get(currentRequestId) ?? false;
+      pendingSystemReplyMap.current.delete(currentRequestId);
+
+      // OCT v2：普通对话走 StreamRouter.end()，收尾在 COMPLETED + typewriter.finish → onTurnFinish
+      if (!systemReply) {
+        try {
+          oct.stream.end();
+        } catch {
+          recoverOctStreamFromEndFailure(oct);
+          typewriter.finish();
+          const fb = String(content || '').trim();
+          if (fb) {
+            streamingMessageRef.current = fb;
+            fullTextRef.current = fb;
+            typewriter.feed(fullTextRef.current);
+            scheduleFullTextSync();
+          }
+        }
+        return;
+      }
+
+      let finalStreamContent = streamingMessageRef.current || content;
+      if (finalStreamContent) {
+        streamingMessageRef.current = finalStreamContent;
+        fullTextRef.current = finalStreamContent;
+        typewriter.feed(fullTextRef.current);
+        scheduleFullTextSync();
+      }
+
+      // 解析 /status 系统回复，更新状态栏
+      const isSystem = systemReply;
+      const text = finalStreamContent;
+      if (isSystem && text.startsWith('🦞')) {
+        const modelMatch = text.match(/Model:\s*(.+)/);
+        const tokensMatch = text.match(/Tokens:\s*([\d.]+)k?\s*\/\s*([\d.]+)k/i);
+        const ctxMatch1 = text.match(/Context:\s*([\d.]+)\s*\/\s*([\d.]+)k\s*\((\d+)%\)/i);
+        const ctxMatch2 = text.match(/Context:\s*([\d.]+)k\s*tokens/i);
+
+        if (modelMatch) setModelName(modelMatch[1].trim());
+        if (tokensMatch) {
+          setTokenIn(parseFloat(tokensMatch[1]) * 1000);
+          setCtxMax(parseFloat(tokensMatch[2]) * 1000);
+        }
+        if (ctxMatch1) {
+          setCtxUsed(parseFloat(ctxMatch1[1]) * 1000);
+          setCtxMax(parseFloat(ctxMatch1[2]) * 1000);
+        } else if (ctxMatch2) {
+          setCtxUsed(parseFloat(ctxMatch2[1]) * 1000);
+        }
+
+        const apiKeyMatch = text.match(/api-key\s*\(([^)]+)\)/i);
+        const thinkMatch = text.match(/(?:Reasoning|Think):\s*(\S+)/i);
+        const runtimeMatch = text.match(/Runtime:\s*(\S+)/i);
+        const compactMatch = text.match(/Compactions:\s*(\d+)/i);
+        const queueMatch = text.match(/Queue:\s*(.+)/i);
+
+        if (apiKeyMatch) setApiKeyInfo(`api-key (${apiKeyMatch[1]})`);
+        if (thinkMatch) setThinkMode(thinkMatch[1]);
+        if (runtimeMatch) setRuntimeMode(runtimeMatch[1]);
+        if (compactMatch) setCompactions(parseInt(compactMatch[1]));
+        if (queueMatch) setQueueInfo(queueMatch[1].trim());
+      }
+
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant' && last?.isStreaming) {
+          return prev.map((msg, idx) =>
+            idx === prev.length - 1
+              ? { ...msg, content: finalStreamContent }
+              : msg
+          );
+        }
+        if (finalStreamContent) {
+          const textContent = finalStreamContent.trim();
+          if (!textContent) return prev;
+          if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: getNextMessageId(),
+              role: 'assistant' as const,
+              content: textContent,
+              isStreaming: true,
+              isSystemReply: systemReply,
+              timestamp: Date.now(),
+            },
+          ];
+        }
+        return prev;
+      });
+    },
+    onAgentPhase: (phase, elapsed) => {
+      setAgentPhase(phase);
+      if (phase === 'thinking' && elapsed != null) setThinkingElapsed(elapsed);
+      if (phase === 'idle' || phase === 'typing') setThinkingElapsed(0);
+    },
+    onToolEvent: (payload) => {
+      // 处理工具调用事件
+      if (payload.type === 'tool_call') {
+        setActiveTools((prev) => [
+          ...prev,
+          {
+            callId: payload.callId,
+            tool: payload.tool,
+            state: 'executing' as const,
+          },
+        ]);
+      } else if (payload.type === 'tool_result') {
+        const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
+        setActiveTools((prev) =>
+          prev.map((t) =>
+            t.callId === payload.callId
+              ? { ...t, state: finalState, resultPreview: payload.resultPreview }
+              : t
+          )
+        );
+      }
+    },
+    onUsage: (usage, isSnapshot) => {
+      // 保留现有的 usage 更新逻辑
+      if (usage.inputTokens != null) {
+        if (isSnapshot) setTokenIn(usage.inputTokens);
+        else setTokenIn((v) => (v ?? 0) + usage.inputTokens);
+      }
+      if (usage.outputTokens != null) {
+        if (isSnapshot) setTokenOut(usage.outputTokens);
+        else setTokenOut((v) => (v ?? 0) + usage.outputTokens);
+      }
+      if (usage.cost != null) {
+        if (isSnapshot) setCost(Number(usage.cost));
+        else setCost((v) => (v ?? 0) + Number(usage.cost));
+      }
+      if (usage.ctxUsed != null) setCtxUsed(usage.ctxUsed);
+      if (usage.ctxMax != null) setCtxMax(usage.ctxMax);
+      if (usage.session != null) setSession(usage.session);
+    },
+    onModelName: (name) => setModelName(name),
+  });
+
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
   const isStreaming = useMemo(() => {
     const lf = deriveLegacyFlags(fsmPhase);
@@ -1440,10 +1669,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [fsmPhase, messages]);
 
   // ===== 所有 useState 集中声明 =====
-  const [wsConnected, setWsConnected] = useState(false);
-  const [nocturneOnline, setNocturneOnline] = useState(false);
-  const [wsReconnecting, setWsReconnecting] = useState(false);
-  const [wsError, setWsError] = useState<string | null>(null);
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // typing scheduler 双状态：fullText（真实流式内容） / displayedText（UI可见）
@@ -1680,8 +1905,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   // 通知父组件状态变化
   useEffect(() => {
-    onStatusChange?.(wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
-  }, [wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
+    onStatusChange?.(ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
+  }, [ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
 
   useEffect(() => {
     return () => {
@@ -1738,23 +1963,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
   }, []);
 
-  // 周期性检查 Nocturne 记忆系统健康状态
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const checkNocturne = async () => {
-      try {
-        const result = await ipcRenderer.invoke('nocturne-health');
-        setNocturneOnline(result?.ok === true);
-      } catch {
-        setNocturneOnline(false);
-      }
-    };
-    checkNocturne();
-    timer = setInterval(checkNocturne, 30000);
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1804,372 +2012,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    ipcRenderer.invoke('openclaw-status').then((r: { connected?: boolean; sessionKey?: string }) => {
-      if (r?.connected === true) {
-        setWsConnected(true);
-      }
-      if (r?.sessionKey) setSession(r.sessionKey);
-    });
 
-    const handleStatus = (_: any, status: { connected?: boolean; error?: string; model?: string; reconnecting?: boolean }) => {
-      try {
-        setWsConnected(!!status?.connected);
-        setWsReconnecting(status?.reconnecting ?? false);
-        setWsError(status?.error ?? null);
-        if (status?.model) setModelName(String(status.model));
-        if (!status?.connected) {
-          setAwaitingResponse(false);
-          setAgentPhase('idle');
-          userScrolledUp.current = false;
-        }
-      } catch (e) {
-        console.error('[ChatTab] handleStatus error:', e);
-      }
-    };
-
-    const handleMessage = (_: any, msg: any) => {
-      try {
-        // 只有明确的 status 类型消息才允许更新连接状态，
-        // 避免含有 connected 字段的普通消息误触发 UI 假断开
-        if (msg && msg.type === 'status') {
-          const connected = msg.connected === true;
-          setWsConnected(connected);
-          if (!connected) {
-            setAwaitingResponse(false);
-            setAgentPhase('idle');
-            userScrolledUp.current = false;
-          }
-        }
-        handleIncomingMessage(msg);
-      } catch (e) {
-        console.error('[ChatTab] handleMessage error:', e);
-      }
-    };
-
-    ipcRenderer.on('openclaw-status', handleStatus);
-    ipcRenderer.on('openclaw-message', handleMessage);
-
-    return () => {
-      ipcRenderer.removeListener('openclaw-status', handleStatus);
-      ipcRenderer.removeListener('openclaw-message', handleMessage);
-    };
-  }, []);
-
-  const isDeltaPayload = (data: any): boolean => {
-    if (!data) return false;
-    const src = data.data ?? data.payload;
-    // 检state 字段delta 字段
-    if (src?.state === 'delta') return true;
-    if (data.delta !== undefined && data.delta !== null) return true;
-    return src?.delta !== undefined && src?.delta !== null;
-  };
-
-  const extractContent = (data: any): string => {
-    if (!data) return '';
-    
-    // 新格式：{ type: 'event', event: 'chat', payload: { delta: '...', text: '...' } }
-    if (data.payload) {
-      const payloadContent = data.payload.delta ?? data.payload.text ?? data.payload.content;
-      if (typeof payloadContent === 'string') return payloadContent;
-    }
-    
-    // 旧格式兼容
-    const raw = data.text ?? data.delta ?? data.content;
-    if (typeof raw === 'string') return raw;
-    const src = data.data ?? data.payload;
-    if (src?.delta !== undefined && src?.delta !== null) return String(src.delta);
-    if (src?.text) return String(src.text);
-    if (src?.message?.content && Array.isArray(src.message.content)) {
-      const parts: string[] = [];
-      for (const b of src.message.content) {
-        if (!b) continue;
-        if (typeof b === 'string') { parts.push(b); continue; }
-        const t = (b.type || '').toString().toLowerCase();
-        const rawText =
-          (typeof b.text === 'string' ? b.text : '') ||
-          (typeof b.content === 'string' ? b.content : '') ||
-          (typeof b.value === 'string' ? b.value : '') ||
-          (typeof b.text?.value === 'string' ? b.text.value : '') ||
-          (typeof b.text?.text === 'string' ? b.text.text : '');
-        if (!rawText) continue;
-        if (!t || t === 'text' || t === 'output_text' || t === 'output-text') {
-          parts.push(String(rawText));
-        }
-      }
-      return parts.join('');
-    }
-    if (typeof src?.message === 'string') return src.message;
-    if (src?.message?.text) return String(src.message.text);
-    if (src?.message?.content && typeof src.message.content === 'string') return src.message.content;
-    if (Array.isArray(src?.blocks)) {
-      return src.blocks
-        .map((b: any) => String(b?.text ?? b?.content ?? b?.value ?? b?.text?.value ?? ''))
-        .filter(Boolean)
-        .join('');
-    }
-    return '';
-  };
-
-  // 工具名映射
-  const getToolDisplayName = (tool: string): string => {
-    const map: Record<string, string> = {
-      web_search: '网页搜索',
-      exec_command: '执行命令',
-      read_file: '读取文件',
-      write_file: '写入文件',
-    };
-    return map[tool] || tool;
-  };
-
-  const handleIncomingMessage = (
-    data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean; elapsed?: number }
-  ) => {
-    if (!data || data.type === 'status' || data.connected !== undefined) return;
-
-    // P6 调试：记录工具相关消息
-    if (data.type === 'event' && (data.event === 'tool' || data.event === 'agent-phase')) {
-      console.log('[P6] incoming event:', data.event, JSON.stringify(data).slice(0, 300));
-    }
-
-    // agent-phase: 旧格式 {type:'agent-phase'} 或新格式 {type:'event', event:'agent-phase'}
-    if (data.type === 'agent-phase' || (data.type === 'event' && data.event === 'agent-phase')) {
-      const phase = data.phase;
-      if (phase === 'thinking' || phase === 'typing' || phase === 'idle' || phase === 'tool_executing') {
-        setAgentPhase(phase);
-      }
-      if (phase === 'thinking' && data.elapsed != null) setThinkingElapsed(data.elapsed);
-      if (phase === 'idle' || phase === 'typing') setThinkingElapsed(0);
-      return;
-    }
-
-    // 处理工具调用事件
-    if (data.type === 'event' && data.event === 'tool' && data.payload) {
-      const payload = data.payload;
-      console.log('[P6] tool event payload:', JSON.stringify(payload).slice(0, 300));
-      if (payload.type === 'tool_call') {
-        // 新工具调用开始
-        setActiveTools((prev) => {
-          console.log('[P6] adding tool to activeTools:', payload.tool, payload.callId);
-          return [
-            ...prev,
-            {
-              callId: payload.callId,
-              tool: payload.tool,
-              state: 'executing' as const,
-            },
-          ];
-        });
-      } else if (payload.type === 'tool_result') {
-        // 工具调用完成：更新为 done/error 状态，保留显示直到 AI 完成回复
-        const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
-        setActiveTools((prev) =>
-          prev.map((t) =>
-            t.callId === payload.callId
-              ? { ...t, state: finalState, resultPreview: payload.resultPreview }
-              : t
-          )
-        );
-      }
-      return;
-    }
-
-    // 新格式：{type: 'event', event: 'chat', payload: {...}}
-    // 旧格式：{type: 'chat', ...}
-    if (data.type !== 'chat' && !(data.type === 'event' && data.event === 'chat')) return;
-
-    const u = data.usage;
-    if (u) {
-      // snapshot=true 时直接覆盖（来自 session.status 查询），否则累加
-      const isSnapshot = data.snapshot === true || (data.text === '' && data.done === true && !data.delta);
-      if (u.inputTokens != null) {
-        if (isSnapshot) setTokenIn(u.inputTokens);
-        else setTokenIn((v) => (v ?? 0) + u.inputTokens);
-      }
-      if (u.outputTokens != null) {
-        if (isSnapshot) setTokenOut(u.outputTokens);
-        else setTokenOut((v) => (v ?? 0) + u.outputTokens);
-      }
-      if (u.cost != null) {
-        if (isSnapshot) setCost(Number(u.cost));
-        else setCost((v) => (v ?? 0) + Number(u.cost));
-      }
-      if (u.ctxUsed != null) setCtxUsed(u.ctxUsed);
-      if (u.ctxMax != null) setCtxMax(u.ctxMax);
-      if (u.session != null) setSession(u.session);
-      if (u.model != null) setModelName(String(u.model));
-    }
-
-    let content = extractContent(data);
-    content = (content || '').replace(/\u200B/g, ''); // 过滤流式心跳字符（零宽空格）
-    const done = (data.done === true) || (data.payload?.done === true);
-    const isDelta = isDeltaPayload(data);
-
-    // DEBUG: 当收到 chat 事件但提取到的文本为空时，打印原始结构（截断）
-    try {
-      const empty = !content || String(content).trim().length === 0;
-      if (empty) {
-        const src = data.payload ?? data;
-        console.warn('[ChatTab] empty extracted content. type/event=', data.type, data.event);
-        console.warn('[ChatTab] empty extracted content. payload keys=', Object.keys(src || {}));
-        console.warn('[ChatTab] empty extracted content. raw snippet=', JSON.stringify(data).slice(0, 1200));
-      }
-    } catch {}
-
-    if (done) {
-      setAwaitingResponse(false);
-      setAgentPhase('idle');
-      userScrolledUp.current = false;
-      // AI 最终回复完成时清空所有工具卡片
-      setActiveTools([]);
-      const currentRequestId = lastSentRequestId.current;
-      const systemReply = pendingSystemReplyMap.current.get(currentRequestId) ?? false;
-      pendingSystemReplyMap.current.delete(currentRequestId);
-
-      // OCT v2：普通对话走 StreamRouter.end()，收尾在 COMPLETED + typewriter.finish → onTurnFinish
-      if (!systemReply) {
-        try {
-          oct.stream.end();
-        } catch {
-          recoverOctStreamFromEndFailure(oct);
-          typewriter.finish();
-          const fb = String(content || '').trim();
-          if (fb) {
-            streamingMessageRef.current = fb;
-            fullTextRef.current = fb;
-            typewriter.feed(fullTextRef.current);
-            scheduleFullTextSync();
-          }
-        }
-        // ScrollAnchor: 流结束时不需要 reconcile，用户消息已锚定，内容在其下方自然增长
-        return;
-      }
-
-      let finalStreamContent = streamingMessageRef.current || content;
-      if (finalStreamContent) {
-        streamingMessageRef.current = finalStreamContent;
-        fullTextRef.current = finalStreamContent;
-        typewriter.feed(fullTextRef.current);
-        scheduleFullTextSync();
-      }
-
-      // 解析 /status 系统回复，更新状态栏
-      const isSystem = systemReply;
-      const text = finalStreamContent;
-      if (isSystem && text.startsWith('🦞')) {
-        const modelMatch = text.match(/Model:\s*(.+)/);
-        // 格式1: Tokens: 14.8k / 200k (7%)
-        const tokensMatch = text.match(/Tokens:\s*([\d.]+)k?\s*\/\s*([\d.]+)k/i);
-        // 格式1: Context: 0/262k (0%)
-        const ctxMatch1 = text.match(/Context:\s*([\d.]+)\s*\/\s*([\d.]+)k\s*\((\d+)%\)/i);
-        // 格式2: Context: 14.8k tokens
-        const ctxMatch2 = text.match(/Context:\s*([\d.]+)k\s*tokens/i);
-
-        if (modelMatch) setModelName(modelMatch[1].trim());
-
-        if (tokensMatch) {
-          setTokenIn(parseFloat(tokensMatch[1]) * 1000);
-          setCtxMax(parseFloat(tokensMatch[2]) * 1000);
-        }
-
-        if (ctxMatch1) {
-          setCtxUsed(parseFloat(ctxMatch1[1]) * 1000);
-          setCtxMax(parseFloat(ctxMatch1[2]) * 1000);
-        } else if (ctxMatch2) {
-          setCtxUsed(parseFloat(ctxMatch2[1]) * 1000);
-        }
-
-        const apiKeyMatch = text.match(/api-key\s*\(([^)]+)\)/i);
-        const thinkMatch = text.match(/(?:Reasoning|Think):\s*(\S+)/i);
-        const runtimeMatch = text.match(/Runtime:\s*(\S+)/i);
-        const compactMatch = text.match(/Compactions:\s*(\d+)/i);
-        const queueMatch = text.match(/Queue:\s*(.+)/i);
-
-        if (apiKeyMatch) setApiKeyInfo(`api-key (${apiKeyMatch[1]})`);
-        if (thinkMatch) setThinkMode(thinkMatch[1]);
-        if (runtimeMatch) setRuntimeMode(runtimeMatch[1]);
-        if (compactMatch) setCompactions(parseInt(compactMatch[1]));
-        if (queueMatch) setQueueInfo(queueMatch[1].trim());
-      }
-
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          // done 时：保存最终内容，但继续让打字机跑完
-          // isStreaming 保持 true，让打字机继续跑
-          return prev.map((msg, idx) =>
-            idx === prev.length - 1
-              ? { ...msg, content: finalStreamContent }
-              : msg
-          );
-        }
-        if (finalStreamContent || data.text) {
-          const rawText = (finalStreamContent || String(data.text || ''));
-          const textContent = rawText.trim();
-          // done 包可能只有空白（例如 "\n\n"），此时不新建气泡
-          if (!textContent) return prev;
-          // 去重：最后一条已是助手消息且内容相同，避免 Gateway 多路转发（如 chat + agent）导致重复
-          if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
-            return prev;
-          }
-          return [
-            ...prev,
-            {
-              id: getNextMessageId(),
-              role: 'assistant' as const,
-              content: textContent,
-              isStreaming: true, // 保持 true，让打字机跑完
-              isSystemReply: systemReply,
-              timestamp: Date.now(),
-            },
-          ];
-        }
-        return prev;
-      });
-      // 不立即 setIsStreaming(false)，等打字机跑完再结束
-      return;
-    }
-
-    // delta 阶段：忽略纯空白增量（例如 "\n\n"），避免创建“空白流式消息”导致后续正文合并异常
-    const isWhitespaceOnlyDelta = isDelta && typeof content === 'string' && content.trim().length === 0;
-    if (isWhitespaceOnlyDelta) return;
-
-    if (content) {
-      setAwaitingResponse(false);
-      if (isDelta) {
-        setAgentPhase('typing');
-      }
-
-      const pendingSysDelta = pendingSystemReplyMap.current.get(lastSentRequestId.current) ?? false;
-      if (pendingSysDelta) {
-        if (isDelta) {
-          streamingMessageRef.current += content;
-          fullTextRef.current += content;
-        } else {
-          streamingMessageRef.current = content;
-          fullTextRef.current = content;
-        }
-        typewriter.feed(fullTextRef.current);
-        scheduleFullTextSync();
-      } else {
-        // 全文立即追加到 ref（不触发渲染）
-        if (isDelta) {
-          streamingMessageRef.current += content;
-        } else {
-          streamingMessageRef.current = content;
-        }
-        fullTextRef.current = streamingMessageRef.current;
-
-        // FSM 状态推进
-        if (isDelta && oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
-          try { oct.fsm.onToken(); } catch {}
-        }
-
-        typewriter.feed(fullTextRef.current);
-        scheduleFullTextSync();
-      }
-    }
-  };
 
   useEffect(() => {
     const updateFocus = () => setWindowFocused(document.hasFocus());
@@ -2336,14 +2179,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
 
     // 发送到 OpenClaw，包含图片和文件（content 含路径引用，AMY 用 read_file 读取）
-    const result = await ipcRenderer.invoke('openclaw-send', {
-      content: fullContentForAMY,
-      imageDataUrl: imageDataUrl,
-      files: files,
-    });
+    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files);
     if (!result?.success && !cmdIsSystem) {
       setAwaitingResponse(false);
-      console.warn('[ChatTab] Send failed:', result?.error);
+      console.warn('[ChatTab] Send failed:', result);
       try {
         oct.stream.abortToIdle();
         recoverOctStreamFromEndFailure(oct);
@@ -2351,7 +2190,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         console.warn('[ChatTab.v2] send failed cleanup', e);
       }
     }
-  }, [wsConnected, getNextMessageId, permissions, scrollAfterUserSend, oct]);
+  }, [ws.wsConnected, getNextMessageId, permissions, scrollAfterUserSend, oct]);
 
   const handleFileAttach = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -2426,7 +2265,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         console.warn('[ChatTab.v2] oct runtime (quickSend)', e);
       }
     }
-    ipcRenderer.invoke('openclaw-send', content.trim()).then((result: { success?: boolean } | null) => {
+    ws.send(content.trim()).then((result: { success?: boolean } | null) => {
       if (!result?.success && !isSystem) {
         setAwaitingResponse(false);
         try {
@@ -2437,7 +2276,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         }
       }
     });
-  }, [wsConnected, getNextMessageId, permissions, scrollAfterUserSend, oct]);
+  }, [ws.wsConnected, getNextMessageId, permissions, scrollAfterUserSend, oct]);
 
   const handleClearHistory = useCallback(() => {
     if (!window.confirm('确认清空所有聊天记录？')) return;
@@ -2659,16 +2498,16 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             >
               ⚙ SETTINGS
             </button>
-            <span className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`} style={{ fontSize: '11px' }}>
-              {wsConnected && <span className="status-dot" />}
-              {wsConnected ? 'CONNECTED' : wsReconnecting ? '重连..' : wsError || 'DISCONNECTED'}
+            <span className={`ws-status ${ws.wsConnected ? 'connected' : 'disconnected'}`} style={{ fontSize: '11px' }}>
+              {ws.wsConnected && <span className="status-dot" />}
+              {ws.wsConnected ? 'CONNECTED' : ws.wsReconnecting ? '重连..' : ws.wsError || 'DISCONNECTED'}
             </span>
           </>,
           document.getElementById('chat-header-portal')!
         )}
 
         <SetupGuide
-          wsConnected={wsConnected}
+          wsConnected={ws.wsConnected}
           gatewayRunning={gateway.gatewayRunning || gateway.gatewayPortInUse}
           onStartGateway={gateway.startGateway}
           onOpenSettings={() => setShowSettings(true)}
@@ -2684,7 +2523,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           speakingMessageId={speakingMessageId}
           agentPhase={agentPhase}
           thinkingElapsed={thinkingElapsed}
-          wsConnected={wsConnected}
+          wsConnected={ws.wsConnected}
           quickSend={quickSend}
           bottomRef={bottomRef}
           onScroll={handleChatScroll}
@@ -2744,7 +2583,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           uploadedFiles={uploadedFiles}
           setUploadedFiles={setUploadedFiles}
           onSend={sendMessage}
-          wsConnected={wsConnected}
+          wsConnected={ws.wsConnected}
           isStreaming={isStreaming}
           inputRef={inputRef}
           injectInputText={injectInputText}
@@ -2807,8 +2646,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                background: wsConnected ? 'var(--status-success)' : 'var(--status-error)',
-                animation: wsConnected ? 'pulse-green 2s infinite' : 'pulse-red 1s infinite',
+                background: ws.wsConnected ? 'var(--status-success)' : 'var(--status-error)',
+                animation: ws.wsConnected ? 'pulse-green 2s infinite' : 'pulse-red 1s infinite',
               }}
             />
             <span
@@ -2829,8 +2668,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                background: nocturneOnline ? 'var(--status-info)' : 'var(--status-error)',
-                animation: nocturneOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite',
+                background: ws.nocturneOnline ? 'var(--status-info)' : 'var(--status-error)',
+                animation: ws.nocturneOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite',
               }}
             />
             <span
@@ -2895,7 +2734,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           overflow: 'visible',
           flexShrink: 0,
         }}>
-          <HeartbeatWave connected={wsConnected} pulse={heartbeatPulse} />
+          <HeartbeatWave connected={ws.wsConnected} pulse={heartbeatPulse} />
         </div>
 
         {/* 3. 系统信息 MODEL/TOK/CTX */}
@@ -3038,7 +2877,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             lines={gateway.logLines}
             bodyRef={gateway.logContainerRef}
             emptyText="[LOG] 等待 Gateway 日志..."
-            nocturneOnline={nocturneOnline}
+            nocturneOnline={ws.nocturneOnline}
             modelName={modelName}
             onExport={gateway.exportLogs}
             onClear={gateway.clearLogs}
