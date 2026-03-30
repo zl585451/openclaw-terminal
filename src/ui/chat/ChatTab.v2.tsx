@@ -1421,7 +1421,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
   const canvas = useCanvas();
-  const [rightPanelTab, setRightPanelTab] = useState<'dashboard' | 'canvas'>('dashboard');
 
   const mdComponents = useMemo(
     () => createMarkdownComponents(canvas.openCanvas),
@@ -1458,11 +1457,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   });
 
   const gateway = useGateway();
-
-  // 当 Canvas 打开时自动切换到 canvas 标签
-  useEffect(() => {
-    if (canvas.isOpen) setRightPanelTab('canvas');
-  }, [canvas.isOpen]);
 
   const getToolDisplayName = (tool: string): string => {
     const map: Record<string, string> = {
@@ -2478,7 +2472,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         </>
       )}
     <div
-      className="chat-tab"
+      className={`chat-tab${canvas.isOpen ? ' canvas-active' : ''}`}
       onPaste={handlePaste}
       onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types?.includes('Files')) setDragging(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
@@ -2664,53 +2658,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           flexDirection: 'column',
           height: '100%',
         }}>
-        {/* 右侧面板标签栏 */}
-        <div style={{
-          display: 'flex',
-          borderBottom: '1px solid var(--border-subtle)',
-          padding: '0 8px',
-          flexShrink: 0,
-        }}>
-          <button
-            onClick={() => setRightPanelTab('dashboard')}
-            style={{
-              flex: 1,
-              padding: '8px 0',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: rightPanelTab === 'dashboard' ? '2px solid var(--accent-primary)' : '2px solid transparent',
-              color: rightPanelTab === 'dashboard' ? 'var(--accent-primary)' : 'var(--text-tertiary)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-xs)',
-              letterSpacing: '1px',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            DASHBOARD
-          </button>
-          <button
-            onClick={() => setRightPanelTab('canvas')}
-            style={{
-              flex: 1,
-              padding: '8px 0',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: rightPanelTab === 'canvas' ? '2px solid var(--accent-primary)' : '2px solid transparent',
-              color: rightPanelTab === 'canvas' ? 'var(--accent-primary)' : 'var(--text-tertiary)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-xs)',
-              letterSpacing: '1px',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            CANVAS {canvas.isOpen && '●'}
-          </button>
-        </div>
-
-        {rightPanelTab === 'dashboard' && (
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         {/* 1. 顶部状态行：GW/MEM 信号+ 时间 */}
         <div
           style={{
@@ -2967,19 +2914,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           />
         </div>
         {/* 内容区域结束 */}
-          </div>
-        )}
-        
-        {rightPanelTab === 'canvas' && (
-          <CanvasPanel onSendToChat={(text) => {
-            // 把 canvas 内容作为消息发送
-            sendMessage(text, null);
-          }} />
-        )}
       </div>
       {/* right-panel 结束 */}
       </div>
     {/* chat-tab 结束 */}
+    </div>
+
+    <div
+      className={`canvas-drawer${canvas.isOpen ? ' canvas-drawer--open' : ''}`}
+    >
+      <div className="canvas-drawer-shadow" aria-hidden />
+      <CanvasPanel onSendToChat={(text) => sendMessage(text, null)} />
     </div>
 
     {screenshotFlash && (

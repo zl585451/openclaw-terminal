@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useCanvas } from '../contexts/CanvasContext';
 import { markdownComponents } from '../ui/chat/markdownComponents';
+import { highlightCode } from '../utils/codeHighlight';
 import './CanvasPanel.css';
 
 export default function CanvasPanel({ onSendToChat }: { onSendToChat: (text: string) => void }) {
@@ -90,7 +91,12 @@ export default function CanvasPanel({ onSendToChat }: { onSendToChat: (text: str
       return (
         <div className="canvas-preview">
           <pre className="canvas-code-preview">
-            <code>{canvas.content}</code>
+            <code
+              className="oct-prism-code"
+              dangerouslySetInnerHTML={{
+                __html: highlightCode(canvas.content, canvas.language || 'text'),
+              }}
+            />
           </pre>
         </div>
       );

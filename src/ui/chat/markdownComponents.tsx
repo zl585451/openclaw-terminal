@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from '../../components/CodeBlock';
+import { highlightCode } from '../../utils/codeHighlight';
 
 export function createMarkdownComponents(openCanvas?: (content: string, mode: 'markdown' | 'code' | 'html', title?: string, language?: string) => void): React.ComponentProps<typeof ReactMarkdown>['components'] {
   return {
@@ -161,14 +162,18 @@ export function createMarkdownComponents(openCanvas?: (content: string, mode: 'm
             transition: 'max-height 0.3s ease',
             position: 'relative',
           }}>
-            <code style={{
-              color: 'var(--text-code)',
-              fontSize: '13px',
-              fontFamily: 'var(--font-mono)',
-              lineHeight: '1.6',
-            }}>
-              {code}
-            </code>
+            <code
+              className="oct-prism-code"
+              style={{
+                color: 'var(--text-code)',
+                fontSize: '13px',
+                fontFamily: 'var(--font-mono)',
+                lineHeight: '1.6',
+              }}
+              dangerouslySetInnerHTML={{
+                __html: highlightCode(code, className?.replace('language-', '') || 'text'),
+              }}
+            />
             {isLong && !expanded && (
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,

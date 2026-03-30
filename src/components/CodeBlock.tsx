@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { highlightCode } from '../utils/codeHighlight';
 import '../styles/CodeBlock.css';
 
 interface CodeBlockProps {
@@ -28,6 +27,7 @@ export default function CodeBlock({ language = 'text', children }: CodeBlockProp
   const handleExpand = () => setExpanded((e) => !e);
 
   const langLabel = language && language !== 'text' ? language : 'code';
+  const html = highlightCode(code, language);
 
   return (
     <div
@@ -57,10 +57,9 @@ export default function CodeBlock({ language = 'text', children }: CodeBlockProp
         </div>
       </header>
       <div className="code-block-body">
-        <SyntaxHighlighter
-          language={language}
-          style={oneDark}
-          customStyle={{
+        <div
+          className="code-block-syntax"
+          style={{
             margin: 0,
             padding: '14px 16px',
             fontSize: '13px',
@@ -68,13 +67,20 @@ export default function CodeBlock({ language = 'text', children }: CodeBlockProp
             background: 'var(--bg-code)',
             borderRadius: 0,
             border: 'none',
+            maxHeight: needExpand && !expanded ? '220px' : 'none',
+            overflow: 'auto',
+            transition: 'max-height 0.3s ease',
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--text-code)',
           }}
-          codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
-          showLineNumbers={false}
-          PreTag="div"
         >
-          {code}
-        </SyntaxHighlighter>
+          <pre style={{ margin: 0, whiteSpace: 'pre', fontFamily: 'inherit' }}>
+            <code
+              className="oct-prism-code"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </pre>
+        </div>
         {needExpand && !expanded && (
           <div className="code-block-fade" aria-hidden />
         )}
