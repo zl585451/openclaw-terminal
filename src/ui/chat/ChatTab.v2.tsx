@@ -7,6 +7,7 @@ import '../../styles/ChatTab.css';
 import '../../components/ResponseTray.css';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
 import { useTypewriter } from '../../hooks/useTypewriter';
+import { useGateway } from '../../hooks/useGateway';
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
 import TaskBoard from '../../components/TaskBoard';
@@ -1425,6 +1426,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     },
   });
 
+  const gateway = useGateway();
+
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
   const isStreaming = useMemo(() => {
     const lf = deriveLegacyFlags(fsmPhase);
@@ -1461,10 +1464,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [, setCompactions] = useState<number | null>(null);
   const [, setQueueInfo] = useState<string>('--');
   const [, setLogPath] = useState('');
-  const [logLines, setLogLines] = useState<string[]>([]);
-  const [gatewayRunning, setGatewayRunning] = useState(false);
-  const [gatewayManaged, setGatewayManaged] = useState(false);
-  const [gatewayPortInUse, setGatewayPortInUse] = useState(false);
   const [windowFocused, setWindowFocused] = useState(true);
   const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -1492,7 +1491,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const scheduleFullTextSyncRef = useRef<(() => void) | null>(null);
   const scheduleScrollAfterLayoutRef = useRef<((force?: boolean) => void) | null>(null);
   // ===== 所有 useRef 集中声明 =====
-  const logContainerRef = useRef<HTMLDivElement>(null);
   // xterm 相关 ref 已移除
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -2448,38 +2446,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     (window as any).electronAPI?.chatHistorySave?.([]);
   }, []);
 
-  useEffect(() => {
-    // 查询 Gateway 初始状态
-    ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
-      setGatewayRunning(s.running);
-      setGatewayManaged(s.managed);
-      setGatewayPortInUse(s.portInUse ?? false);
-    });
-    const onGwStatus = (_: any, s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
-      setGatewayRunning(s.running);
-      setGatewayManaged(s.managed);
-      setGatewayPortInUse(s.portInUse ?? false);
-    };
-    ipcRenderer.on('gateway-status', onGwStatus);
-    
-    // 监听日志更新（纯 DOM 方式）
-    const onLogLines = (_: any, lines: string[]) => {
-      setLogLines((prev) => {
-        const updated = [...prev, ...lines];
-        return updated.slice(-100); // 只保留最新100条
-      });
-      // 自动滚动到底部
-      if (logContainerRef.current) {
-        logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-      }
-    };
-    ipcRenderer.on('openclaw-log-lines', onLogLines);
-    
-    return () => {
-      ipcRenderer.removeListener('gateway-status', onGwStatus);
-      ipcRenderer.removeListener('openclaw-log-lines', onLogLines);
-    };
-  }, []);
 
   const handleChatScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
@@ -2703,16 +2669,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
         <SetupGuide
           wsConnected={wsConnected}
-          gatewayRunning={gatewayRunning || gatewayPortInUse}
-          onStartGateway={() => {
-            ipcRenderer.invoke('start-gateway').then(() => {
-              ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
-                setGatewayRunning(s.running);
-                setGatewayManaged(s.managed);
-                setGatewayPortInUse(s.portInUse ?? false);
-              });
-            });
-          }}
+          gatewayRunning={gateway.gatewayRunning || gateway.gatewayPortInUse}
+          onStartGateway={gateway.startGateway}
           onOpenSettings={() => setShowSettings(true)}
         />
 
@@ -2983,23 +2941,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           <button
             type="button"
             onClick={() => {
-              if (gatewayRunning) {
-                if (gatewayManaged) {
-                  ipcRenderer.invoke('stop-gateway');
-                  ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
-                    setGatewayRunning(s.running);
-                    setGatewayManaged(s.managed);
-                    setGatewayPortInUse(s.portInUse ?? false);
-                  });
-                }
+              if (gateway.gatewayRunning) {
+                gateway.stopGateway();
               } else {
-                ipcRenderer.invoke('start-gateway').then(() => {
-                  ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
-                    setGatewayRunning(s.running);
-                    setGatewayManaged(s.managed);
-                    setGatewayPortInUse(s.portInUse ?? false);
-                  });
-                });
+                gateway.startGateway();
               }
             }}
             style={{
@@ -3012,23 +2957,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               cursor: 'pointer',
               letterSpacing: '1px',
               transition: 'all 0.15s',
-              border: `1px solid ${gatewayRunning ? 'var(--status-error)' : 'var(--status-success)'}`,
-              color: gatewayRunning ? 'var(--status-error)' : 'var(--status-success)',
+              border: `1px solid ${gateway.gatewayRunning ? 'var(--status-error)' : 'var(--status-success)'}`,
+              color: gateway.gatewayRunning ? 'var(--status-error)' : 'var(--status-success)',
             }}
           >
-            {gatewayRunning ? '■ 停止' : '▶ 启动'}
+            {gateway.gatewayRunning ? '■ 停止' : '▶ 启动'}
           </button>
           <button
             type="button"
-            onClick={() => {
-              ipcRenderer.invoke('gateway-clear-port-and-start').then(() => {
-                ipcRenderer.invoke('gateway-status').then((s: { running: boolean; managed: boolean; portInUse?: boolean }) => {
-                  setGatewayRunning(s.running);
-                  setGatewayManaged(s.managed);
-                  setGatewayPortInUse(s.portInUse ?? false);
-                });
-              });
-            }}
+            onClick={gateway.restartGateway}
             style={{
               flex: 1,
               padding: '4px 0',
@@ -3098,23 +3035,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         <div className="gateway-log-section">
           <LogPanel
             title="Gateway 日志"
-            lines={logLines}
-            bodyRef={logContainerRef}
+            lines={gateway.logLines}
+            bodyRef={gateway.logContainerRef}
             emptyText="[LOG] 等待 Gateway 日志..."
             nocturneOnline={nocturneOnline}
             modelName={modelName}
-            onExport={async () => {
-              if (logLines.length === 0) return;
-              const content = logLines.join('\n');
-              const blob = new Blob([content], { type: 'text/plain' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `gateway-log-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.txt`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-            onClear={() => setLogLines([])}
+            onExport={gateway.exportLogs}
+            onClear={gateway.clearLogs}
           />
         </div>
         {/* 内容区域结束 */}
