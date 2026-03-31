@@ -10,23 +10,14 @@ interface CoTBlockProps {
   defaultExpanded?: boolean;  // 挂载时的初始展开状态，finalized 传 false
 }
 
-const CoTBlock: React.FC<CoTBlockProps> = ({ content, isStreaming = false, isPlaceholder = false, defaultExpanded = true }) => {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const [autoCollapsed, setAutoCollapsed] = useState(false);
+const CoTBlock: React.FC<CoTBlockProps> = ({ content, isStreaming = false, isPlaceholder = false, defaultExpanded: _defaultExpanded = true }) => {
+  // 流式期间默认折叠（只显示标题行），避免推走正文
+  // 用户可以手动点击展开看思考内容
+  const [expanded, setExpanded] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const prevStreamingRef = useRef(isStreaming);
 
-  // 流式结束后自动折叠
-  useEffect(() => {
-    if (prevStreamingRef.current && !isStreaming && !autoCollapsed) {
-      const timer = setTimeout(() => {
-        setExpanded(false);
-        setAutoCollapsed(true);
-      }, 800);
-      return () => clearTimeout(timer);
-    }
-    prevStreamingRef.current = isStreaming;
-  }, [isStreaming, autoCollapsed]);
+  // 流式期间保持折叠，不做任何自动展开/折叠操作
+  // 用户手动控制展开状态
 
   // 流式时自动滚到底部
   useEffect(() => {

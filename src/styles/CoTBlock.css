@@ -124,8 +124,13 @@
 }
 
 .cot-body-open {
-  max-height: 400px;
+  max-height: 200px;   /* 折叠后再展开的最大高度 */
   opacity: 1;
+}
+
+/* 流式期间：强制小窗口，不推正文 */
+.cot-streaming .cot-body-open {
+  max-height: 80px;
 }
 
 .cot-body-closed {
