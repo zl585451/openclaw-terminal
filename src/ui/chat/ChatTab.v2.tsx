@@ -1209,24 +1209,28 @@ const ChatMessageList = function ChatMessageList({
           </div>
         )}
         {showTypingIndicator && (
-          <div className="chat-thinking">
-            <span className="msg-label">◆ AMY</span>
-            {agentPhase === 'thinking' && (
-              <>
-                <span className="agent-status-badge">深度思考中</span>
-                {thinkingElapsed > 0 && (
-                  <span className="thinking-elapsed">{thinkingElapsed}s</span>
-                )}
-              </>
-            )}
-            {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
-            {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
-            <span className="processing-blocks typing-dots">
-              <span className="block" />
-              <span className="block" />
-              <span className="block" />
-            </span>
-          </div>
+          agentPhase === 'thinking' ? (
+            // 思考阶段：用 CoTBlock 占位面板替代 chat-thinking 条
+            <div className="cot-stream-wrapper">
+              <CoTBlock
+                content=""
+                isStreaming={true}
+                isPlaceholder={true}
+              />
+            </div>
+          ) : (
+            // 其他等待阶段（typing / tool_executing）：保持原有样式
+            <div className="chat-thinking">
+              <span className="msg-label">◆ AMY</span>
+              {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
+              {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
+              <span className="processing-blocks typing-dots">
+                <span className="block" />
+                <span className="block" />
+                <span className="block" />
+              </span>
+            </div>
+          )
         )}
         {displayMessages.map((msg) => {
         const raw = typeof msg.content === 'string'

@@ -118,7 +118,9 @@
 /* ── 内容区（展开/折叠动画） ── */
 .cot-body-wrapper {
   overflow: hidden;
-  transition: max-height 0.3s ease, opacity 0.25s ease;
+  /* cubic-bezier 让收起动作更平滑，视觉上"轻轻落下"而不是"被抽走" */
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s ease;
 }
 
 .cot-body-open {
@@ -133,11 +135,19 @@
 
 .cot-body {
   padding: 2px 0 8px 0;
-  font-size: var(--text-sm);
+  font-size: 12px;            /* 比正文小一号，草稿感 */
   color: var(--text-secondary);
-  line-height: 1.7;
+  line-height: 1.65;
   max-height: 380px;
   overflow-y: auto;
+  opacity: 0.82;              /* 思考内容比正文稍暗 */
+  font-style: italic;         /* 倾斜：这是内部推理，不是最终结论 */
+}
+
+/* 流式进行中：内容亮一点，更有"活跃感" */
+.cot-streaming .cot-body {
+  opacity: 0.95;
+  font-style: normal;         /* 流式时不斜体，方便阅读 */
 }
 
 /* 思考内容排版 */
