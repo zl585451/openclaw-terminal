@@ -124,13 +124,8 @@
 }
 
 .cot-body-open {
-  max-height: 200px;   /* 折叠后再展开的最大高度 */
+  max-height: 300px;   /* 用户手动展开时最大高度 */
   opacity: 1;
-}
-
-/* 流式期间：强制小窗口，不推正文 */
-.cot-streaming .cot-body-open {
-  max-height: 80px;
 }
 
 .cot-body-closed {
@@ -189,22 +184,6 @@
   border-radius: var(--radius-sm);
 }
 
-/* 流式时内容逐行淡入效果 */
-.cot-streaming .cot-body p,
-.cot-streaming .cot-body li {
-  animation: cot-fade-in 0.3s ease-out;
-}
-
-@keyframes cot-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 /* 思考结束后的静态样式 */
 .cot-done .cot-accent-bar {

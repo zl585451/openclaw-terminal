@@ -6,34 +6,30 @@ import '../styles/CoTBlock.css';
 interface CoTBlockProps {
   content: string;
   isStreaming?: boolean;
-  isPlaceholder?: boolean;  // 占位态：内容还没来，只显示标题行
-  defaultExpanded?: boolean;  // 挂载时的初始展开状态，finalized 传 false
+  isPlaceholder?: boolean;
+  defaultExpanded?: boolean;
 }
 
-const CoTBlock: React.FC<CoTBlockProps> = ({ content, isStreaming = false, isPlaceholder = false, defaultExpanded: _defaultExpanded = true }) => {
-  // 流式期间默认折叠（只显示标题行），避免推走正文
-  // 用户可以手动点击展开看思考内容
-  const [expanded, setExpanded] = useState(false);
+const CoTBlock: React.FC<CoTBlockProps> = ({
+  content,
+  isStreaming = false,
+  isPlaceholder = false,
+  defaultExpanded = false,   // 默认折叠，和 Claude 一致
+}) => {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // 流式期间保持折叠，不做任何自动展开/折叠操作
-  // 用户手动控制展开状态
-
-  // 流式时自动滚到底部
+  // 流式时自动滚到底部（仅用户手动展开时生效）
   useEffect(() => {
     if (isStreaming && expanded && bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
   }, [content, isStreaming, expanded]);
 
-  // stepCount 不再需要，因为我们改用时间显示
-  // const steps = content.split('\n').filter((l) => l.trim().length > 0);
-  // const stepCount = steps.length;
-
-  // 计时器：流式中实时计数；结束时保存最终秒数
+  // 计时器
   const [elapsed, setElapsed] = useState(0);
   const [finalElapsed, setFinalElapsed] = useState(0);
-  const prevStreamingRef2 = useRef(isStreaming); // 独立 ref 避免命名冲突
+  const prevStreamingRef = useRef(isStreaming);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -44,63 +40,59 @@ const CoTBlock: React.FC<CoTBlockProps> = ({ content, isStreaming = false, isPla
     return () => clearInterval(interval);
   }, [isStreaming]);
 
-  // 流式结束时锁定 finalElapsed
   useEffect(() => {
-    if (prevStreamingRef2.current && !isStreaming) {
+    if (prevStreamingRef.current && !isStreaming) {
       setFinalElapsed(elapsed);
     }
-    prevStreamingRef2.current = isStreaming;
+    prevStreamingRef.current = isStreaming;
   }, [isStreaming, elapsed]);
 
-  return (
-    <div className={`cot-block ${expanded ? 'cot-expanded' : 'cot-collapsed'} ${isStreaming ? 'cot-streaming' : 'cot-done'}`}>
-      {/* 左侧装饰条 */}
-      <div className="cot-accent-bar" />
+  const label = isPlaceholder
+    ? '思考中...'
+    : isStreaming
+      ? `思考中 · ${elapsed}s`
+      : `已思考 · ${finalElapsed || elapsed}s`;
 
+  return (
+    <div className={`cot-block ${isStreaming ? 'cot-streaming' : 'cot-done'} ${expanded ? 'cot-expanded' : 'cot-collapsed'}`}>
+      <div className="cot-accent-bar" />
       <div className="cot-content-area">
+
+        {/* 标题行：始终显示，点击展开/折叠 */}
         <div
           className="cot-header"
-          onClick={() => setExpanded((prev) => !prev)}
+          onClick={() => !isPlaceholder && setExpanded(p => !p)}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') setExpanded((prev) => !prev);
-          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(p => !p); }}
         >
           <span className="cot-icon">
-            {isStreaming ? (
-              <span className="cot-spinner">
-                <span /><span /><span />
-              </span>
-            ) : (
-              '💭'
-            )}
-          </span>
-          <span className="cot-label">
-            {isPlaceholder
-              ? '思考中...'
-              : isStreaming
-                ? `思考中 · ${elapsed}s`
-                : `已思考 · ${finalElapsed || elapsed}s`   /* 不再显示"步"数 */
+            {isStreaming
+              ? <span className="cot-spinner"><span /><span /><span /></span>
+              : '💭'
             }
           </span>
-          <span className={`cot-chevron ${expanded ? 'cot-chevron-up' : ''}`}>
-            {expanded ? '▴' : '▾'}
-          </span>
+          <span className="cot-label">{label}</span>
+          {/* 只有有内容且非占位时才显示箭头 */}
+          {!isPlaceholder && content && (
+            <span className={`cot-chevron ${expanded ? 'cot-chevron-up' : ''}`}>
+              {expanded ? '▴' : '▾'}
+            </span>
+          )}
         </div>
 
-        {/* 占位态：不渲染内容区，只显示标题动画 */}
-        {!isPlaceholder && (
+        {/* 内容区：仅在展开且有内容时显示 */}
+        {!isPlaceholder && content && (
           <div className={`cot-body-wrapper ${expanded ? 'cot-body-open' : 'cot-body-closed'}`}>
             <div className="cot-body" ref={bodyRef}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
 };
 
 export default CoTBlock;
-
