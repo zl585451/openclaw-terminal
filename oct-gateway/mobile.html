@@ -2,60 +2,316 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="OCT">
+<meta name="mobile-web-app-capable" content="yes">
 <title>OCT Terminal</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-:root { --green: #00ff41; --green-dim: #00ff4133; --green-bg: #001510; --bg: #020c06; --bg2: #030e07; --cyan: #00e5ff; --text: #e0ffe0; --text-dim: #a8ffcf; }
-html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; overflow: hidden; }
-.app { display: flex; flex-direction: column; height: 100vh; height: -webkit-fill-available; }
-.header { background: var(--bg2); border-bottom: 1px solid var(--green-dim); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; padding-top: max(12px, env(safe-area-inset-top)); }
-.header-title { color: var(--green); font-size: 14px; letter-spacing: 2px; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; display: inline-block; margin-right: 6px; }
-.status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+:root {
+  --green: #00ff41;
+  --green-dim: #00ff4133;
+  --green-bg: #001510;
+  --bg: #020c06;
+  --bg2: #030e07;
+  --cyan: #00e5ff;
+  --text: #dfffe8;
+  --text-dim: #b8e8cc;
+  --font-ui: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --messages-pad-bottom: 100px;
+}
+html, body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  max-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+.header {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--green-dim);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: max(10px, env(safe-area-inset-top));
+}
+.header-title {
+  color: var(--green);
+  font-size: 15px;
+  letter-spacing: 1px;
+  font-family: var(--font-mono);
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #555;
+  display: inline-block;
+  margin-right: 6px;
+}
+.status-dot.connected {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 2s infinite;
+}
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-.status-text { color: var(--green); font-size: 11px; display: flex; align-items: center; }
-.messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
-.msg { max-width: 88%; display: flex; flex-direction: column; gap: 4px; }
-.msg.user { align-self: flex-end; }
+.status-text {
+  color: var(--green);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 12px;
+  padding-bottom: var(--messages-pad-bottom);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: var(--messages-pad-bottom);
+}
+.msg {
+  max-width: 94%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.msg.user { align-self: flex-end; max-width: 88%; }
 .msg.assistant { align-self: flex-start; }
-.bubble { padding: 10px 13px; border-radius: 4px; font-size: 14px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
-.msg.user .bubble { background: #001a0d; border-right: 3px solid var(--cyan); color: var(--text-dim); border-radius: 8px 0 0 8px; }
-.msg.assistant .bubble { background: var(--green-bg); border-left: 3px solid var(--green); color: var(--text); border-radius: 0 8px 8px 0; }
-.timestamp { font-size: 10px; color: var(--green-dim); }
+.bubble {
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 16px;
+  line-height: 1.65;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+.bubble-text {
+  white-space: pre-wrap;
+  font-size: 16px;
+  line-height: 1.7;
+  letter-spacing: 0.02em;
+}
+.msg.user .bubble {
+  background: #001a0d;
+  border-right: 3px solid var(--cyan);
+  color: var(--text-dim);
+  border-radius: 14px 4px 4px 14px;
+  font-size: 16px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.msg.assistant .bubble {
+  background: var(--green-bg);
+  border-left: 3px solid var(--green);
+  color: var(--text);
+  border-radius: 4px 14px 14px 4px;
+}
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 10px 0;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--green-dim);
+  background: #000a06;
+  scrollbar-width: thin;
+}
+.table-scroll::-webkit-scrollbar { height: 6px; }
+.table-scroll::-webkit-scrollbar-thumb {
+  background: var(--green-dim);
+  border-radius: 3px;
+}
+.md-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.45;
+  min-width: 100%;
+  font-family: var(--font-ui);
+}
+.md-table th,
+.md-table td {
+  border: 1px solid var(--green-dim);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  max-width: 56vw;
+  word-break: break-word;
+}
+.md-table th {
+  background: #002818;
+  color: var(--cyan);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md-table tr:nth-child(even) td { background: #000d08; }
+.timestamp { font-size: 11px; color: var(--green-dim); }
 .msg.user .timestamp { text-align: right; }
-.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.pill-btn { background: #00ff4115; border: 1px solid var(--green-dim); color: #00ff88; font-family: monospace; font-size: 12px; padding: 5px 12px; border-radius: 14px; cursor: pointer; -webkit-appearance: none; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pill-btn {
+  background: #00ff4115;
+  border: 1px solid var(--green-dim);
+  color: #00ff88;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  min-height: 40px;
+}
 .pill-btn:active { background: #00ff4130; }
-.checkbox-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.checkbox-item { display: flex; align-items: center; gap: 8px; background: #00ff4108; border: 1px solid var(--green-dim); padding: 7px 10px; border-radius: 6px; cursor: pointer; }
-.checkbox-item input { accent-color: var(--green); width: 16px; height: 16px; cursor: pointer; }
-.checkbox-item label { color: var(--text); font-size: 13px; cursor: pointer; flex: 1; }
-.checkbox-send { margin-top: 6px; background: transparent; border: 1px solid var(--green); color: var(--green); font-family: monospace; font-size: 12px; padding: 6px 16px; border-radius: 4px; cursor: pointer; width: 100%; }
-.tasklist { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
-.task-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; border-left: 2px solid var(--green-dim); }
-.task-item input { accent-color: var(--green); width: 16px; height: 16px; cursor: pointer; }
-.task-item label { color: var(--text); font-size: 13px; cursor: pointer; flex: 1; }
+.checkbox-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #00ff4108;
+  border: 1px solid var(--green-dim);
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.checkbox-item input { accent-color: var(--green); width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
+.checkbox-item label { color: var(--text); font-size: 15px; cursor: pointer; flex: 1; }
+.checkbox-send {
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid var(--green);
+  color: var(--green);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  min-height: 44px;
+}
+.tasklist { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 2px solid var(--green-dim);
+}
+.task-item input { accent-color: var(--green); width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
+.task-item label { color: var(--text); font-size: 15px; cursor: pointer; flex: 1; }
 .task-item.done label { text-decoration: line-through; color: #00ff4155; }
-.system-msg { align-self: center; background: #001a0d; border: 1px solid #ffaa0033; border-left: 3px solid #ffaa00; padding: 8px 12px; border-radius: 4px; max-width: 90%; }
-.system-msg p { color: #ffaa00; font-size: 12px; line-height: 1.5; }
-.thinking { display: flex; align-items: center; gap: 8px; padding: 10px 13px; background: var(--green-bg); border-left: 3px solid var(--green); border-radius: 0 8px 8px 0; align-self: flex-start; }
-.thinking span { color: var(--green); font-size: 13px; }
+.system-msg {
+  align-self: center;
+  background: #001a0d;
+  border: 1px solid #ffaa0033;
+  border-left: 3px solid #ffaa00;
+  padding: 10px 14px;
+  border-radius: 8px;
+  max-width: 92%;
+}
+.system-msg p { color: #ffaa00; font-size: 14px; line-height: 1.55; }
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--green-bg);
+  border-left: 3px solid var(--green);
+  border-radius: 4px 14px 14px 4px;
+  align-self: flex-start;
+}
+.thinking span { color: var(--green); font-size: 14px; }
 .dot-anim { display: inline-flex; gap: 3px; }
-.dot-anim i { width: 5px; height: 5px; background: var(--green); border-radius: 50%; animation: bounce 0.8s infinite; display: inline-block; }
+.dot-anim i {
+  width: 5px;
+  height: 5px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: bounce 0.8s infinite;
+  display: inline-block;
+}
 .dot-anim i:nth-child(2){animation-delay:.15s} .dot-anim i:nth-child(3){animation-delay:.3s}
 @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
-.input-area { background: var(--bg); border-top: 1px solid var(--green-dim); padding: 10px 12px; display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
-.input-wrap { flex: 1; background: #001a0d; border: 1px solid var(--green-dim); border-left: 2px solid var(--green); padding: 8px 12px; border-radius: 4px; }
-textarea { background: transparent; border: none; outline: none; color: var(--text); font-family: monospace; font-size: 14px; width: 100%; resize: none; min-height: 20px; max-height: 100px; line-height: 1.4; }
-textarea::placeholder { color: var(--green-dim); }
-.send-btn { background: transparent; border: 1px solid var(--text); color: var(--text); font-family: monospace; font-size: 12px; padding: 8px 14px; border-radius: 4px; cursor: pointer; white-space: nowrap; height: 38px; }
+.input-area {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-top: 1px solid var(--green-dim);
+  padding: 8px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.45);
+}
+.input-wrap {
+  flex: 1;
+  background: #001a0d;
+  border: 1px solid var(--green-dim);
+  border-left: 2px solid var(--green);
+  padding: 10px 12px;
+  border-radius: 10px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+textarea {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  width: 100%;
+  resize: none;
+  min-height: 24px;
+  max-height: min(120px, 28vh);
+  line-height: 1.45;
+}
+textarea::placeholder { color: var(--green-dim); opacity: 0.85; }
+.send-btn {
+  background: transparent;
+  border: 1px solid var(--text);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 0 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 44px;
+  min-width: 72px;
+  flex-shrink: 0;
+}
 .send-btn:active { background: var(--text); color: var(--bg); }
 .cursor-blink { display: inline-block; color: var(--cyan); animation: blink 1s step-end infinite; }
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.streaming-text { white-space: pre-wrap; word-break: break-word; font-size: 16px; line-height: 1.65; }
 </style>
 </head>
 <body>
@@ -68,12 +324,12 @@ textarea::placeholder { color: var(--green-dim); }
     </span>
   </div>
   <div class="messages" id="messages"></div>
-  <div class="input-area">
-    <div class="input-wrap">
-      <textarea id="input" placeholder="// 输入消息..." rows="1"></textarea>
-    </div>
-    <button class="send-btn" id="sendBtn">SEND</button>
+</div>
+<div class="input-area" id="inputArea">
+  <div class="input-wrap">
+    <textarea id="input" placeholder="输入消息，Shift+Enter 换行" rows="1" enterkeyhint="send" autocomplete="off" autocorrect="on"></textarea>
   </div>
+  <button type="button" class="send-btn" id="sendBtn">发送</button>
 </div>
 <script>
 const WS_PORT = location.port ? parseInt(location.port) - 1 : 18789;
@@ -87,6 +343,37 @@ const input = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
 const statusDot = document.getElementById('statusDot');
 const statusLabel = document.getElementById('statusLabel');
+const inputArea = document.getElementById('inputArea');
+
+/** 键盘遮挡高度：布局视口底部到可视视口底部的距离，用于把输入条顶到键盘上方 */
+function getKeyboardOverlap() {
+  var vv = window.visualViewport;
+  if (!vv) return 0;
+  return Math.max(0, window.innerHeight - vv.offsetTop - vv.height);
+}
+
+function updateInputBarAndMessagePadding() {
+  var kb = getKeyboardOverlap();
+  inputArea.style.bottom = kb + 'px';
+  var barH = inputArea.offsetHeight;
+  var pad = barH + kb + 16;
+  document.documentElement.style.setProperty('--messages-pad-bottom', pad + 'px');
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', updateInputBarAndMessagePadding);
+  window.visualViewport.addEventListener('scroll', updateInputBarAndMessagePadding);
+}
+window.addEventListener('resize', updateInputBarAndMessagePadding);
+window.addEventListener('orientationchange', function() {
+  setTimeout(updateInputBarAndMessagePadding, 200);
+});
+
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(function() {
+    updateInputBarAndMessagePadding();
+  }).observe(inputArea);
+}
 
 function setStatus(connected, text) {
   statusDot.className = 'status-dot' + (connected ? ' connected' : '');
@@ -94,7 +381,12 @@ function setStatus(connected, text) {
 }
 
 function scrollBottom() {
-  setTimeout(function() { messages.scrollTop = messages.scrollHeight; }, 50);
+  requestAnimationFrame(function() {
+    messages.scrollTop = messages.scrollHeight;
+    requestAnimationFrame(function() {
+      messages.scrollTop = messages.scrollHeight;
+    });
+  });
 }
 
 function formatTime() {
@@ -126,11 +418,120 @@ function extractTag(text, tag) {
   return m ? m[1].trim() : null;
 }
 
+function isTableRow(line) {
+  var t = line.trim();
+  if (!t || t.indexOf('|') < 0) return false;
+  var parts = t.split('|').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+  return parts.length >= 2;
+}
+
+function isTableSeparator(line) {
+  var t = line.trim();
+  if (!t || t.indexOf('|') < 0) return false;
+  var cells = t.split('|').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+  if (cells.length < 2) return false;
+  return cells.every(function(c) {
+    return /^:?[-]{2,}:?$/.test(c);
+  });
+}
+
+function parseTableCells(line) {
+  var t = line.trim();
+  if (t.charAt(0) === '|') t = t.slice(1).trim();
+  if (t.charAt(t.length - 1) === '|') t = t.slice(0, -1).trim();
+  return t.split('|').map(function(c) { return c.trim(); });
+}
+
+function splitContentWithTables(text) {
+  var lines = text.split('\n');
+  var segments = [];
+  var buf = [];
+  function flushBuf() {
+    if (buf.length) {
+      segments.push({ type: 'text', content: buf.join('\n') });
+      buf = [];
+    }
+  }
+  var i = 0;
+  while (i < lines.length) {
+    if (isTableRow(lines[i])) {
+      var j = i;
+      var tableLines = [];
+      while (j < lines.length && isTableRow(lines[j])) {
+        tableLines.push(lines[j]);
+        j++;
+      }
+      if (tableLines.length >= 2 && isTableSeparator(tableLines[1])) {
+        flushBuf();
+        segments.push({ type: 'table', lines: tableLines });
+        i = j;
+        continue;
+      }
+    }
+    buf.push(lines[i]);
+    i++;
+  }
+  flushBuf();
+  return segments;
+}
+
+function buildTableElement(tableLines) {
+  var headerCells = parseTableCells(tableLines[0]);
+  var bodyRows = tableLines.slice(2);
+  var wrap = document.createElement('div');
+  wrap.className = 'table-scroll';
+  wrap.setAttribute('role', 'region');
+  wrap.setAttribute('aria-label', '表格，可左右滑动');
+  var table = document.createElement('table');
+  table.className = 'md-table';
+  var thead = document.createElement('thead');
+  var trh = document.createElement('tr');
+  headerCells.forEach(function(cell) {
+    var th = document.createElement('th');
+    th.textContent = cell;
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  bodyRows.forEach(function(rowLine) {
+    var cells = parseTableCells(rowLine);
+    var tr = document.createElement('tr');
+    cells.forEach(function(cell) {
+      var td = document.createElement('td');
+      td.textContent = cell;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function appendFormattedAssistantText(bubble, plainText) {
+  var stripped = plainText.replace(new RegExp('\\[' + 'THINK' + '_MODE:[^\\]]+\\]', 'g'), '').trim();
+  if (!stripped) return;
+  var parts = splitContentWithTables(stripped);
+  parts.forEach(function(part) {
+    if (part.type === 'text' && part.content.trim()) {
+      var div = document.createElement('div');
+      div.className = 'bubble-text';
+      div.textContent = part.content;
+      bubble.appendChild(div);
+    } else if (part.type === 'table') {
+      bubble.appendChild(buildTableElement(part.lines));
+    }
+  });
+}
+
 function renderMessage(role, content, isSystem) {
   if (isSystem) {
     var div = document.createElement('div');
     div.className = 'system-msg';
-    div.innerHTML = '<p>' + content + '</p>';
+    var p = document.createElement('p');
+    p.textContent = content;
+    div.appendChild(p);
     messages.appendChild(div);
     scrollBottom();
     return null;
@@ -146,9 +547,9 @@ function renderMessage(role, content, isSystem) {
     var pillsContent = extractTag(content, 'pills');
     var checkboxContent = extractTag(content, 'checkbox');
     var tasklistContent = extractTag(content, 'tasklist');
-    var plainText = stripTags(content).replace(new RegExp('\\[' + 'THINK' + '_MODE:[^\\]]+\\]', 'g'), '').trim();
+    var plainText = stripTags(content);
 
-    if (plainText) bubble.textContent = plainText;
+    appendFormattedAssistantText(bubble, plainText);
 
     if (pillsContent) {
       var pills = parsePills(pillsContent);
@@ -157,6 +558,7 @@ function renderMessage(role, content, isSystem) {
         pillsDiv.className = 'pills';
         pills.forEach(function(p) {
           var btn = document.createElement('button');
+          btn.type = 'button';
           btn.className = 'pill-btn';
           btn.textContent = p;
           btn.onclick = function() { sendMessage(p); };
@@ -182,10 +584,14 @@ function renderMessage(role, content, isSystem) {
           listDiv.appendChild(row);
         });
         var sendBtn2 = document.createElement('button');
+        sendBtn2.type = 'button';
         sendBtn2.className = 'checkbox-send';
         sendBtn2.textContent = '✓ 确认发送';
         sendBtn2.onclick = function() {
-          var checked = Array.from(listDiv.querySelectorAll('input:checked')).map(function(c) { return c.nextSibling.textContent; });
+          var checked = Array.from(listDiv.querySelectorAll('input:checked')).map(function(c) {
+            var el = c.nextElementSibling;
+            return el && el.textContent ? el.textContent : '';
+          }).filter(Boolean);
           if (checked.length > 0) sendMessage(checked.join('，'));
         };
         listDiv.appendChild(sendBtn2);
@@ -279,20 +685,22 @@ function connect() {
           sMsgDiv.className = 'msg assistant';
           var sBubble = document.createElement('div');
           sBubble.className = 'bubble';
+          var streamDiv = document.createElement('div');
+          streamDiv.className = 'streaming-text';
           var cursor = document.createElement('span');
           cursor.className = 'cursor-blink';
           cursor.textContent = '\u258B';
+          sBubble.appendChild(streamDiv);
           sBubble.appendChild(cursor);
           sMsgDiv.appendChild(sBubble);
           messages.appendChild(sMsgDiv);
           streamingEl = sBubble;
+          streamingEl._streamDiv = streamDiv;
           scrollBottom();
         }
         streamingText += payload.delta;
-        var cur = streamingEl.querySelector('.cursor-blink');
-        if (cur) {
-          streamingEl.textContent = streamingText;
-          streamingEl.appendChild(cur);
+        if (streamingEl._streamDiv) {
+          streamingEl._streamDiv.textContent = streamingText;
         }
         scrollBottom();
       }
@@ -329,6 +737,7 @@ function connect() {
 function sendMessage(text) {
   if (!text.trim() || !ws || ws.readyState !== WebSocket.OPEN) return;
   renderMessage('user', text);
+  input.blur();
   ws.send(JSON.stringify({
     type: 'req', id: 'msg-' + Date.now(), method: 'chat.send',
     params: { sessionKey: 'mobile', message: text, idempotencyKey: '' + Date.now() }
@@ -336,9 +745,44 @@ function sendMessage(text) {
   showThinking();
 }
 
-input.addEventListener('input', function() {
+function autoGrowTextarea() {
   input.style.height = 'auto';
-  input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+  var maxH = Math.min(120, Math.floor(window.innerHeight * 0.28));
+  input.style.height = Math.min(input.scrollHeight, maxH) + 'px';
+}
+
+input.addEventListener('input', function() {
+  autoGrowTextarea();
+  updateInputBarAndMessagePadding();
+});
+
+function resetPageScroll() {
+  try {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  } catch (e) {}
+}
+
+input.addEventListener('focus', function() {
+  resetPageScroll();
+  setTimeout(function() {
+    resetPageScroll();
+    updateInputBarAndMessagePadding();
+    scrollBottom();
+  }, 50);
+  setTimeout(function() {
+    updateInputBarAndMessagePadding();
+    scrollBottom();
+  }, 200);
+  setTimeout(function() {
+    updateInputBarAndMessagePadding();
+    scrollBottom();
+  }, 450);
+});
+
+input.addEventListener('blur', function() {
+  setTimeout(updateInputBarAndMessagePadding, 80);
 });
 
 input.addEventListener('keydown', function(e) {
@@ -354,6 +798,7 @@ sendBtn.addEventListener('click', function() {
   if (text) { sendMessage(text); input.value = ''; input.style.height = 'auto'; }
 });
 
+updateInputBarAndMessagePadding();
 connect();
 </script>
 </body>

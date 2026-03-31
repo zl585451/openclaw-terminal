@@ -227,14 +227,21 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
           setIsTyping(false);
           // 回调：让 ChatTab 做 FSM/ingest 清理和 isStreaming:false
           onFinishedRef.current(fullTextRef.current);
-          // 内部重置
+          // 内部重置 refs（不触发渲染）
           fullTextRef.current = '';
           visibleTextRef.current = '';
           displayedLenRef.current = 0;
           streamDoneRef.current = false;
           budgetRef.current = 0;
           lastTsRef.current = 0;
-          setDisplayedText('');
+          // 关键：延迟两帧再清空 displayedText
+          // onFinished 触发 setMessages isStreaming:false，React 需要一帧提交
+          // 过早 setDisplayedText('') 会导致内容消失一帧再出现（末尾抖动）
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              setDisplayedText('');
+            });
+          });
           return;
         }
 

@@ -226,17 +226,15 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: 0;
+  /* display: block 而非 flex：flex 容器在子元素高度变化时会触发额外 layout pass，
+     导致 scrollTop 被浏览器 flex 重排逻辑轻微调整，造成消息上移。
+     block 容器高度变化只影响 scrollHeight，不影响 scrollTop。 */
+  display: block;
   background: var(--bg-base);
   font-family: var(--font-sans);
   min-height: 0;
   width: 100%;
-  /* scrollIntoView({ block: 'start' }) 对齐位置 */
   scroll-padding-top: 4px;
-  /* 禁用浏览器自动滚动锚定，由 ScrollAnchor 系统手动管理，避免与 reconcile() 冲突 */
   overflow-anchor: none;
 }
 
@@ -1122,6 +1120,9 @@
   font-size: var(--text-md);
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  /* 提升为独立合成层，避免 box-shadow 动画触发周边内容重绘 */
+  will-change: box-shadow;
+  transform: translateZ(0);
 }
 
 .chat-input-textarea {
@@ -1134,7 +1135,10 @@
 
 .chat-input.focused {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px var(--accent-primary-muted);
+  box-shadow: 0 0 0 2px var(--accent-primary-muted);
+  /* outline 替代方案（可选，更轻量）：
+  outline: 2px solid var(--accent-primary-muted);
+  outline-offset: 1px; */
 }
 
 .chat-input.flash {

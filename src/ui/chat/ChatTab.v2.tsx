@@ -208,30 +208,27 @@ const FinalizedMarkdownContent = memo(
     segmentKey,
     content,
     markdownComponents,
+    streaming = false,
   }: {
     messageId: number;
     segmentKey?: string;
     content: string;
     markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
+    /** 与 segmentKey 解耦：流式时 segmentKey 需与结束后一致，用此标志跳过预处理 */
+    streaming?: boolean;
   }) {
     const processedText = useMemo(
       () => {
-        const result = getCachedPreprocessedMarkdown(messageId, segmentKey, content || '');
-        // DEBUG：开发环境始终打印；生产环境仅在多表格最终渲染时打印（减少噪声）
-        const multiTable = (content.match(/\|---/g) || []).length >= 2;
-        if (
-          content &&
-          !segmentKey?.includes('stream') &&
-          (import.meta.env.DEV || multiTable)
-        ) {
-          console.log('[TABLE-FINAL] messageId:', messageId, 'segmentKey:', segmentKey);
-          console.log('[TABLE-FINAL] raw content length:', content.length);
-          console.log('[TABLE-FINAL] raw content:\n', content);
-          console.log('[TABLE-FINAL] processed:\n', result);
+        // 流式阶段跳过 preprocessMarkdown：
+        // 1. 流式内容每帧都变，无法命中缓存，每帧都重算开销高
+        // 2. 表格从 |---| 文本变成 <table> DOM 时结构突变，造成跳动
+        // 流式阶段 remark-gfm 已能渲染大部分 markdown，不需要预处理
+        if (streaming || segmentKey?.includes('stream')) {
+          return content || '';
         }
-        return result;
+        return getCachedPreprocessedMarkdown(messageId, segmentKey, content || '');
       },
-      [messageId, segmentKey, content]
+      [messageId, segmentKey, content, streaming]
     );
     return (
       <span className="msg-content markdown-body">
@@ -245,6 +242,7 @@ const FinalizedMarkdownContent = memo(
     prev.messageId === next.messageId &&
     prev.segmentKey === next.segmentKey &&
     prev.content === next.content &&
+    prev.streaming === next.streaming &&
     prev.markdownComponents === next.markdownComponents
 );
 
@@ -528,6 +526,8 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
               case 'text':
                 if (isStreamingMsg) {
                   // 流式：统一用 FinalizedMarkdownContent，与结束后相同的渲染树，消除切换跳动
+                  // segmentKey 与结束后保持一致（不加 -stream 后缀），
+                  // 避免流式结束时 key 变化导致组件卸载重挂，代码框闪烁
                   const fullSegText = stripRenderAndPillsMarkers(seg.content, isLastAssistant);
                   const take = remaining.slice(0, fullSegText.length);
                   remaining = remaining.slice(take.length);
@@ -535,9 +535,10 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                     <FinalizedMarkdownContent
                       key={idx}
                       messageId={msg.id}
-                      segmentKey={`seg-${idx}-stream`}
+                      segmentKey={`seg-${idx}`}
                       content={take}
                       markdownComponents={markdownComponents}
+                      streaming
                     />
                   );
                 }
@@ -612,9 +613,10 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
               return (
                 <FinalizedMarkdownContent
                   messageId={msg.id}
-                  segmentKey="streaming-main"
+                  segmentKey="main"
                   content={textToShow || ''}
                   markdownComponents={markdownComponents}
+                  streaming
                 />
               );
             }
@@ -655,7 +657,12 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
 
             return (
               <>
-                <FinalizedMarkdownContent messageId={msg.id} content={cleanedText} markdownComponents={markdownComponents} />
+                <FinalizedMarkdownContent
+                  messageId={msg.id}
+                  segmentKey="main"
+                  content={cleanedText}
+                  markdownComponents={markdownComponents}
+                />
                 {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (
                   <OptionBox
                     messageId={msg.id}
@@ -1285,7 +1292,8 @@ const ChatMessageList = function ChatMessageList({
                   const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
                   const finalParsed = parseOptionBox(bridgedText);
 
-                  // DEBUG：开发环境始终打印；生产环境仅多表格时打印
+                  // DEBUG：已禁用对话内容日志输出
+                  /*
                   const parseDebugMultiTable =
                     fc.includes('|---') && (fc.match(/\|---/g) || []).length >= 2;
                   if (import.meta.env.DEV || parseDebugMultiTable) {
@@ -1309,6 +1317,7 @@ const ChatMessageList = function ChatMessageList({
                     console.log('[PARSE-FINAL] text length:', finalParsed.text?.length ?? 0);
                     console.log('[PARSE-FINAL] text preview:', finalParsed.text?.slice(0, 500));
                   }
+                  */
 
                   return finalParsed;
                 })()
@@ -1410,8 +1419,8 @@ const ChatMessageList = function ChatMessageList({
           </div>
         )}
         <div ref={bottomRef as React.Ref<HTMLDivElement>} style={{ height: 0, margin: 0, padding: 0 }} />
-        {/* 流式输出时需要额外空间让用户消息保持在顶部，完成后移除 */}
-        <div style={{ minHeight: isStreaming ? '75vh' : '0vh', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
+        {/* 底部 spacer：始终保持固定高度，不随 isStreaming 变化，避免开始/结束时跳变 */}
+        <div style={{ height: '60vh', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
       </div>
     </div>
   );
@@ -1438,7 +1447,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     baseDelayMs: streamSpeedMs,
     typingSound: settings.typingSound,
     onFinished: (finalText) => {
-      console.log('[MSG-FINALIZE] finalText length:', finalText?.length, 'preview:', finalText?.slice(0, 200));
+      // 已禁用消息内容日志输出
+      // console.log('[MSG-FINALIZE] finalText length:', finalText?.length, 'preview:', finalText?.slice(0, 200));
       const finalRaw = stripThinkModeMarker(finalText || '');
       try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[ChatTab.v2] fsm.onTurnFinish', e); }
       oct.ingest.reset();
@@ -2351,16 +2361,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const inner = wrap.querySelector('.chat-messages');
     const target = inner ?? wrap;
     const ro = new ResizeObserver(() => {
-      // ScrollAnchor: DOM 变化时补偿滚动位置
-      // 流式打字机期间跳过：AI 内容在锚点下方自然增长，不需要补偿 scrollTop，
-      // 否则每帧高度变化都会把 scrollTop 往上推，导致 AI 内容跑出视窗底部
-      if (!isStreaming && scrollAnchorRef.current.isLocked()) {
-        scrollAnchorRef.current.reconcile();
-      }
+      // 流式期间完全跳过：打字机每帧产生高度变化，reconcile 会把 scrollTop 往上推
+      if (isStreaming) return;
+      // snap 保护窗口内跳过：assistant 气泡正在插入 DOM，此时高度变化是正常内容增长
+      if (snapJustFiredRef.current) return;
+      // 未锁定时跳过
+      if (!scrollAnchorRef.current.isLocked()) return;
+      scrollAnchorRef.current.reconcile();
     });
     ro.observe(target);
     return () => ro.disconnect();
-  }, [scheduleScrollAfterLayout, isStreaming, messages.length, typewriter.displayedText.length]);
+  }, [isStreaming, messages.length]);
 
   // 用户发送消息后，在 DOM 提交时执行顶置滚动（useLayoutEffect 确保 DOM 已更新）
   useLayoutEffect(() => {
@@ -2375,18 +2386,21 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement;
     pendingSnapMsgIdRef.current = null;
 
-    // snapAndAnchor 内部会计算 drift 并设置 scrollTop + 锁定锚点
-    // 不再手动设 scrollTop，避免两次滚动操作
     snapJustFiredRef.current = true;
     scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
 
-    // 延长 snapJustFired 保护窗口：覆盖 FSM rAF 和 ResizeObserver 的干扰
-    // 用两层 rAF 确保下一帧的 rAF 回调也被保护
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    // 用时间戳保护，而不是帧数：
+    // assistant 气泡需要等 StreamRouter 16ms 节流 + React render 才出现，
+    // 2 帧（~32ms）保护窗口太短，改为 400ms，覆盖从发送到第一个 token 渲染的全过程
+    const snapTime = Date.now();
+    const checkRelease = () => {
+      if (Date.now() - snapTime < 400) {
+        requestAnimationFrame(checkRelease);
+      } else {
         snapJustFiredRef.current = false;
-      });
-    });
+      }
+    };
+    requestAnimationFrame(checkRelease);
   }, [messages.length]);
 
   // assistant 新流式消息启动时：仅记录锚定 ID，保持跟随滚动开启

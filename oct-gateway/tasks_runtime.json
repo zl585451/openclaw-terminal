@@ -1,89 +1,4 @@
 {
-  "task-1774332835396-f6f592": {
-    "taskId": "task-1774332835396-f6f592",
-    "type": "搜索",
-    "instruction": "帮我搜索一下今天的AI新闻，我们继续聊别的",
-    "toolName": "web_search",
-    "toolArgs": {
-      "query": "帮我搜索一下今天的AI新闻，我们继续聊别的"
-    },
-    "sessionKey": "main",
-    "status": "done",
-    "createdAt": 1774332835396,
-    "startedAt": 1774332835399,
-    "completedAt": 1774332837619,
-    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我搜索一下今天的AI新闻，我们继续聊别的\",\"results\":[{\"title\":\"每日AI资讯、热点、动态、融资、产品发布 | AI工具集\",\"url\":\"https://ai-bot.cn/daily-ai-news/\",\"snippet\":\"<strong>AI工具集每日实时更新 AI 行业的最新资讯、新闻、热点、融资、产品动态、爆料等</strong>，让你随时了解人工智能领域最新趋势、更新突破和热门大事件。加入AI工具集官方社群，获取最新一...\"},{\"title\":\"每日AI早报，关心 AI 每早来一次就够了｜AI产品榜 aicpb.com\",\"url\":\"https://www.aicpb.com/news\",\"snippet\":\"李榜主 AI产品榜创始人 · 公众号：@AI品榜\"},{\"title\":\"AI News - Get the Latest AGI News | AIbase\",\"url\":\"https://www.aibase.com/news\",\"snippet\":\"AI News gathers top news, videos, and other content related to artificial intelligence, large language models, multimodal models, machine learning, deep learning, computer vision, natural language processing, data science, and big data from both domestic and international sources, providing a one-stop solution for the latest AI news.\"},{\"title\":\"Latest AI News - Artificial Intelligence Headlines & Updates | AIBase\",\"url\":\"https://news.aibase.com/news\",\"snippet\":\"Stay updated with the latest AI news, artificial intelligence headlines, and industry developments. Comprehensive coverage of machine learning, deep learning, LLM updates, and AGI breakthroughs. Your trusted source for AI technology news.\"},{\"title\":\"每日AI资讯 - 猫目\",\"url\":\"https://maomu.com/news\",\"snippet\":\"<strong>Science 最新论文颠覆「技术奇点」叙事：真正的智能爆炸已在发生，但它不是孤独超级大脑的降临，而是人与 AI 深度缠绕的社会性跃迁</strong>。推理模型内部自发涌现出「思想社会」，人机混合的「半人马时代」已然开启。问题...\"}]}",
-    "error": null,
-    "notified": true
-  },
-  "task-1774337910853-5f67f9": {
-    "taskId": "task-1774337910853-5f67f9",
-    "type": "查一下",
-    "instruction": "AMY 帮我查一下 openclaw的技能有多少种类  大致与我说一下",
-    "toolName": "web_search",
-    "toolArgs": {
-      "query": "AMY 帮我查一下 openclaw的技能有多少种类  大致与我说一下"
-    },
-    "sessionKey": "main",
-    "status": "done",
-    "createdAt": 1774337910853,
-    "startedAt": 1774337910856,
-    "completedAt": 1774337912880,
-    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"AMY 帮我查一下 openclaw的技能有多少种类  大致与我说一下\",\"results\":[{\"title\":\"OpenClaw 最强军火库：精选 2868 个 skills - 知乎\",\"url\":\"https://zhuanlan.zhihu.com/p/2010926090475045346\",\"snippet\":\"21.8k Stars、2.2k Forks，从 5705 个社区技能中精选 2868 个——这个 GitHub 仓库，正在重新定义 AI Agent 的能力边界。前言：当 AI 助手拿到了”武器库”2026 年的 AI 圈，如果你还在用”聊天机器人”来定义 AI…\"},{\"title\":\"OpenClaw生态比你想象的要大：15个插件和技能排名 - 极道\",\"url\":\"https://www.jdon.com/90808-openclaw-ecosystem-15-plugins-skills-ranking-guide.html\",\"snippet\":\"深度拆解OpenClaw平台的<strong>15款核心插件与技能</strong>，涵盖语音通话、Microsoft Teams集成、LanceDB记忆增强、Composio OAuth管理等生产级工具，以及Capability Evolver、Self-Improving Agent等热门技能，提供从入...\"},{\"title\":\"OpenClaw 官方 53 个技能完整指南：功能详解 + 风险评估 + 安装建议 - 53AI-AI知识库|企业AI知识库|大模型知识库|AIHub\",\"url\":\"https://www.53ai.com/news/Openclaw/2026022738691.html\",\"snippet\":\"ClawHub 上 5700+ 个技能中，只有这 <strong>53 个</strong>是官方内置的。本文逐一拆解每个技能的功能、平台、风险等级，帮你做出最安全的选择。 · 注意：2026 年 2 月，安全研究团队在 ClawHub 上发现 341 个恶意技能（ClawHavoc 事件），约占总数的 ...\"},{\"title\":\"GitHub - clawdbot-ai/awesome-openclaw-skills-zh: OpenClaw 中文官方技能库 | 翻译自 Clawdbot 官方技能，按场景分类整理，支持中文自然语言调用\",\"url\":\"https://github.com/clawdbot-ai/awesome-openclaw-skills-zh\",\"snippet\":\"OpenClaw 中文官方技能库 | 翻译自 Clawdbot 官方技能，按场景分类整理，支持中文自然语言调用 - clawdbot-ai/awesome-openclaw-skills-zh\"},{\"title\":\"Top 10 OpenClaw Skill Recommendations: The Most Practical AI Agent Skills List for 2026 - Apiyi.com Blog\",\"url\":\"https://help.apiyi.com/en/openclaw-skill-recommendations-2026-en.html\",\"snippet\":\"OpenClaw Skill Recommendations: Why You Need a Curated List OpenClaw (formerly Clawdbot) is an open-source AI Agent framework created by Peter Steinberger. It uses messaging platforms like Telegram, Discord, and WhatsApp as its interface, allowing users to drive various automated tasks through ...\"}]}",
-    "error": null,
-    "notified": true
-  },
-  "task-1774339273888-28ef6e": {
-    "taskId": "task-1774339273888-28ef6e",
-    "type": "查一下",
-    "instruction": "AMY帮我查一下163邮箱有多少邮件",
-    "toolName": "web_search",
-    "toolArgs": {
-      "query": "AMY帮我查一下163邮箱有多少邮件"
-    },
-    "sessionKey": "main",
-    "status": "done",
-    "createdAt": 1774339273888,
-    "startedAt": 1774339273892,
-    "completedAt": 1774339276022,
-    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"AMY帮我查一下163邮箱有多少邮件\",\"results\":[{\"title\":\"网易邮箱大师-高效强大的全平台邮箱客户端\",\"url\":\"https://dashi.163.com/help.html\",\"snippet\":\"浏览器不支持或禁止了网页脚本，您需要开启浏览器脚本运行\"},{\"title\":\"163邮箱存储空间使用情况在哪看_163邮箱容量在哪里看-CSDN博客\",\"url\":\"https://blog.csdn.net/frdevolcqzyxynjds/article/details/114980277\",\"snippet\":\"本文介绍如何查看及清理网易邮箱的存储空间，避免因邮件过多而导致的空间不足问题。通过简单的步骤，用户可以轻松管理自己的邮箱存储。 · 分享一下：查看网易邮箱存储空间 邮件比较多，需要及时清理丫\"},{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"帮助中心_常见问题\",\"url\":\"https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4b8f4f8e49998b374173cfe9171305fa1ce630d7f67ac2c0bc658a48688b13\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 常见问题 · 邮箱入门问题 · 入门问题 · 账号修复专栏 · 账号修复提交引导 · 账号修复结果引导 · 1对1人工服务\"},{\"title\":\"163邮箱_百度百科\",\"url\":\"https://baike.baidu.com/item/163%E9%82%AE%E7%AE%B1/2250159\",\"snippet\":\"163邮箱作为中国最大的电子邮件服务商网易公司经典之作，为用户提供了安全、稳定、快速、便捷的电子邮件服务，2014年已拥有超过2.3亿的用户，是全球使用人数最多的中文邮箱。TomPDA软件评测室就大家盘点一下手机上的邮箱软件，让这些经典的手机邮箱客户端帮助你掌上收发邮件。163邮箱是由网易专为手机用户推出的手机版163邮箱客户端，通过该软件的帮助用户可直接在手机上完成收发邮件等工作，同时，软件还为用户呈现了最简洁、最即时、以及最有效的网易邮箱手机版操作体验。\"}]}",
-    "error": null,
-    "notified": true
-  },
-  "task-1774340729396-ada65a": {
-    "taskId": "task-1774340729396-ada65a",
-    "type": "查一下",
-    "instruction": "好了AMY  我又存了一次 你试试去帮我查一下163邮箱有多少邮件",
-    "toolName": "web_search",
-    "toolArgs": {
-      "query": "好了AMY  我又存了一次 你试试去帮我查一下163邮箱有多少邮件"
-    },
-    "sessionKey": "main",
-    "status": "done",
-    "createdAt": 1774340729396,
-    "startedAt": 1774340729399,
-    "completedAt": 1774340732839,
-    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"好了AMY  我又存了一次 你试试去帮我查一下163邮箱有多少邮件\",\"results\":[{\"title\":\"网易邮箱大师-高效强大的全平台邮箱客户端\",\"url\":\"https://dashi.163.com/help.html\",\"snippet\":\"浏览器不支持或禁止了网页脚本，您需要开启浏览器脚本运行\"},{\"title\":\"帮助中心_常见问题\",\"url\":\"https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4b8f4f8e49998b374173cfe9171305fa1ce630d7f67ac2fa2471480510e7be\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 常见问题 · 邮箱入门问题 · 入门问题 · 账号修复专栏 · 账号修复提交引导 · 账号修复结果引导 · 1对1人工服务\"},{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"网易免费企业邮--帮助中心\",\"url\":\"https://ym.163.com/help/help.html\",\"snippet\":\"A27：对于企业用户而言，比较实用的功能有：邮箱搬家（通过网易免费企业邮，代收其他常用的个人邮箱帐号，方便管理）、自动转发（将到达本邮箱的所有邮件自动转发到指定的邮件地址）、全文搜索（国内首家实现的附件正文搜索，帮助用户迅速定位目标邮件）。\"},{\"title\":\"网易163免费邮箱登录\",\"url\":\"https://smart.mail.163.com/login.htm\",\"snippet\":\"阅读并接受 《服务条款》和 《隐私政策》 · 账号密码登录手机号登录 · 登录iframe\"}]}",
-    "error": null,
-    "notified": true
-  },
-  "task-1774341202309-25272f": {
-    "taskId": "task-1774341202309-25272f",
-    "type": "查一下",
-    "instruction": "AMY 帮我查一下163邮箱有多少邮件",
-    "toolName": "web_search",
-    "toolArgs": {
-      "query": "AMY 帮我查一下163邮箱有多少邮件"
-    },
-    "sessionKey": "main",
-    "status": "done",
-    "createdAt": 1774341202309,
-    "startedAt": 1774341202314,
-    "completedAt": 1774341204233,
-    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"AMY 帮我查一下163邮箱有多少邮件\",\"results\":[{\"title\":\"网易免费邮箱 - 你的专业电子邮局\",\"url\":\"https://email.163.com/\",\"snippet\":\"网易免费邮箱 · 手机App下载 桌面端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 浏览器不支持或禁止了网页脚本， 导致您无法正常登录。 · 如何解除脚本限制 · 账号登录 · 载入中 · 注册新账号 注册VIP · ...\"},{\"title\":\"帮助中心_首页\",\"url\":\"https://help.mail.163.com/\",\"snippet\":\"帮助中心 · 进入邮箱 · 升级VIP · 呼叫小易 · 关于网易 网易VIP邮箱 网易公正邮 隐私政策 网易公司版权所有 © 1997- · 返回顶部\"},{\"title\":\"网易163免费邮箱登录\",\"url\":\"https://smart.mail.163.com/login.htm\",\"snippet\":\"阅读并接受 《服务条款》和 《隐私政策》 · 账号密码登录手机号登录 · 登录iframe\"},{\"title\":\"163网易免费邮-你的专业电子邮局\",\"url\":\"https://mail.163.com/\",\"snippet\":\"163网易邮箱 · 你的专业电子邮局 · 手机App下载 电脑客户端下载 VIP 会员 靓号 企业邮箱 海外登录 安全 帮助 反馈 · 扫码登录 · 账号登录 · 密码登录注册新账号 · 阅读并接受 《服务条款》和 《隐私政策》 · 注册新账号 ...\"},{\"title\":\"网易企业邮箱 - 登录入口\",\"url\":\"https://qy.163.com/login\",\"snippet\":\"下载网易企业邮箱专属客户端 · 客户端无需重复登录，追踪邮件阅读状态，收到邮件实时提醒，重要工作不再错过\"}]}",
-    "error": null,
-    "notified": true
-  },
   "task-1774342290144-d3ca7e": {
     "taskId": "task-1774342290144-d3ca7e",
     "type": "查一下",
@@ -609,6 +524,40 @@
     "completedAt": 1774880997173,
     "result": null,
     "error": "Command failed: chcp 65001 >nul && \n�����﷨����ȷ��\r\n",
+    "notified": true
+  },
+  "task-1774904669481-a535ba": {
+    "taskId": "task-1774904669481-a535ba",
+    "type": "搜索",
+    "instruction": "帮我搜索最的ai新闻",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "帮我搜索最的ai新闻"
+    },
+    "sessionKey": "mobile",
+    "status": "done",
+    "createdAt": 1774904669481,
+    "startedAt": 1774904669526,
+    "completedAt": 1774904670934,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我搜索最的ai新闻\",\"results\":[{\"title\":\"AI News - Get the Latest AGI News | AIbase\",\"url\":\"https://www.aibase.com/news\",\"snippet\":\"<strong>AI News</strong> gathers top news, videos, and other content related to artificial intelligence, large language models, multimodal models, machine learning, deep learning, computer vision, natural language processing, data science, and big data from both domestic and international sources, providing ...\"},{\"title\":\"每日AI资讯、热点、动态、融资、产品发布 | AI工具集\",\"url\":\"https://ai-bot.cn/daily-ai-news/\",\"snippet\":\"AI搜索引擎 · AI开发平台 · AI学习网站 · AI训练模型 · AI内容检测 · AI提示指令 · AI应用集 · 每日AI资讯 · 最新AI项目 · AI工具 · AI项目和框架 · AI教程资源 · AI专栏 · AI问答 · AI百科 · AI名人堂 · 关于我们 · AI快讯2天前更新 AI小集 · 69 1428 · AI工具集每日实时更新 AI 行业的最新资讯、新闻、热点、融资、产品动态、爆料等，让你随时了解人工智能领域最新趋势、更新突破和热门大事件。加入AI工具集官方社群，获取最新一手信息！ ·\"},{\"title\":\"Latest AI News - Artificial Intelligence Headlines & Updates | AIBase\",\"url\":\"https://news.aibase.com/news\",\"snippet\":\"Stay updated with the latest AI news, artificial intelligence headlines, and industry developments. Comprehensive coverage of machine learning, deep learning, LLM updates, and AGI breakthroughs. Your trusted source for AI technology news.\"},{\"title\":\"AI资讯 | 实时追踪人工智能行业最新动态与热点快讯 - AIHub工具导航\",\"url\":\"https://www.aihub.cn/news/\",\"snippet\":\"<strong>2025 年 7 月 28 日，智谱 AI 团队正式发布了新一代旗舰模型 GLM-4.5</strong>，这是一款专为智能体应用打造的基础模型，标志着开源模型在推理、代码生成和智能体能力上达到了新的高度。 GLM-4.5 ...\"},{\"title\":\"每日AI早报，关心 AI 每早来一次就够了｜AI产品榜 aicpb.com\",\"url\":\"https://www.aicpb.com/news\",\"snippet\":\"李榜主 AI产品榜创始人 · 公众号：@AI品榜\"}]}",
+    "error": null,
+    "notified": true
+  },
+  "task-1774931601933-2e6a74": {
+    "taskId": "task-1774931601933-2e6a74",
+    "type": "搜索",
+    "instruction": "amy 帮我搜索 龙虾自动化",
+    "toolName": "web_search",
+    "toolArgs": {
+      "query": "amy 帮我搜索 龙虾自动化"
+    },
+    "sessionKey": "mobile",
+    "status": "done",
+    "createdAt": 1774931601933,
+    "startedAt": 1774931601936,
+    "completedAt": 1774931603358,
+    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"amy 帮我搜索 龙虾自动化\",\"results\":[{\"title\":\"OpenClaw 深度解析：一只龙虾凭什么震撼全世界 - 知乎\",\"url\":\"https://zhuanlan.zhihu.com/p/2012694232666760139\",\"snippet\":\"更有意思的是，做完后 Agent 主动说：“要不要我把这个流程封装成一个 Skill？”如此以后直接调用就行了。 · 从执行任务 → 总结经验 → 封装复用，全链条自动化。 · Peter 展示过他让 Agent 攒下来的 CLI 军团 ：访问 Google 全套服务的工具、搜索 emoji 和 GIF 的工具、外卖到达时间查询工具、智能床垫温度控制工具……\"},{\"title\":\"Openclaw和AI代理熱潮拆解：從「養龍蝦」到「卸龍蝦」 - BBC News 中文\",\"url\":\"https://www.bbc.com/zhongwen/articles/c93wvdn91kxo/trad\",\"snippet\":\"圖像來源，AFP via Getty Images · 俗稱「龍蝦」的人工智能助理程式OpenClaw席捲全球，這款免費開源軟件於去年11月推出，今年初爆紅，中國騰訊、百度等巨頭入局，接連舉辦免費安裝活動。\"},{\"title\":\"大学官宣：帮你“养龙虾”！\",\"url\":\"https://www.acabridge.cn/news/202603/t20260311_2721817.shtml\",\"snippet\":\"近日，一个名叫OpenClaw的开源AI助手框架爆火。因其图标是只红色龙虾，所以被称为“龙虾”。它就像一个随叫随到的“数字助手”，不仅能听懂你的指令，还能直接操作电脑帮你把事情干完。从“只说不做”到“使命必达...\"},{\"title\":\"56个超火“养龙虾”玩法，快把你的AI牛马用起来-36氪\",\"url\":\"https://www.36kr.com/p/3717805946205827\",\"snippet\":\"22、语义记忆搜索：在OpenClaw原有记忆文件基础上添加向量语义搜索，可通过内容含义快速查找过往记忆，无需手动翻阅。 · 当然，OpenClaw也可以成为生活助手，帮助你控制智能家电、实时追踪健康数据、日程提醒等。\"},{\"title\":\"“养龙虾”，怎么就火了？ - 求是网\",\"url\":\"https://www.qstheory.cn/20260310/abd7c8e8339e42858e888ec137b003e1/c.html\",\"snippet\":\"此“龙虾”并非餐桌上的美味，而是一款名为OpenClaw的开源AI智能体软件，因其图标酷似一只红色龙虾而得名。用户在设备中安装部署这款软件，被称为“养龙虾”。\"}]}",
+    "error": null,
     "notified": true
   }
 }

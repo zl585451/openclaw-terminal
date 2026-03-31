@@ -65,7 +65,11 @@ export class ScrollAnchor {
     this.anchorTopOffset = topPadding;
     this.locked = true;
 
-    raf(() => { this.programmaticScroll = false; });
+    // 延长保护窗口到 3 帧：
+    // assistant 气泡在下一个 rAF 里插入 DOM，会触发 ResizeObserver → reconcile。
+    // 1 帧保护不够，reconcile 会把 assistant 气泡插入导致的高度变化误判为用户消息漂移，
+    // 将 scrollTop 往上推，造成历史消息上移。
+    raf(() => raf(() => raf(() => { this.programmaticScroll = false; })));
   }
 
   /**
@@ -74,12 +78,19 @@ export class ScrollAnchor {
    */
   reconcile(): void {
     if (!this.locked || !this.anchorEl || !this.container) return;
+    if (this.programmaticScroll) {
+      console.log('[ScrollAnchor] reconcile SKIPPED (programmaticScroll)');
+      return;
+    }
 
     const containerRect = this.container.getBoundingClientRect();
     const currentOffset = this.anchorEl.getBoundingClientRect().top - containerRect.top;
     const drift = currentOffset - this.anchorTopOffset;
 
+    console.log(`[ScrollAnchor] reconcile drift=${drift.toFixed(1)} anchorOffset=${this.anchorTopOffset.toFixed(1)} currentOffset=${currentOffset.toFixed(1)}`);
+
     if (Math.abs(drift) > 1) {
+      console.log(`[ScrollAnchor] reconcile APPLYING drift=${drift.toFixed(1)}`);
       this.programmaticScroll = true;
       this.container.scrollTop += drift;
       raf(() => { this.programmaticScroll = false; });
