@@ -1,38 +1,4 @@
 {
-  "task-1774353282852-6dd7a9": {
-    "taskId": "task-1774353282852-6dd7a9",
-    "type": "查一下",
-    "instruction": "帮我查一下今天美元兑人民币的汇率",
-    "toolName": "web_search",
-    "toolArgs": {
-      "query": "帮我查一下今天美元兑人民币的汇率"
-    },
-    "sessionKey": "main",
-    "status": "done",
-    "createdAt": 1774353282852,
-    "startedAt": 1774353282856,
-    "completedAt": 1774353286956,
-    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我查一下今天美元兑人民币的汇率\",\"results\":[{\"title\":\"中国银行网站_金融市场_外汇牌价\",\"url\":\"https://www.boc.cn/sourcedb/whpj/\",\"snippet\":\"当前位置：首页 &gt; 金融市场 &gt; 外汇牌价 · 网银登录 · 个人客户网银登录 · 个人贵宾网银登录 · iGTB企业网银登录 · 中国银行外汇牌价 · 打印 · 共10页\"},{\"title\":\"无标题文档\",\"url\":\"http://m.safe.gov.cn/safe/rmbhlzjj/index.html\",\"snippet\":\"主页 &gt; 统计数据 &gt; 统计数据列表 &gt; 人民币汇率中间价\"},{\"title\":\"外汇实时汇率-招商银行\",\"url\":\"https://m.cmbchina.com/fxrate.html\",\"snippet\":\"We cannot provide a description for this page right now\"},{\"title\":\"美元兑人民币_概览_行情走势_FinScope-AI让投资更简单\",\"url\":\"https://gushitong.baidu.com/foreign/global-USDCNY\",\"snippet\":\"We cannot provide a description for this page right now\"},{\"title\":\"1 USD to CNY - US Dollars to Chinese Yuan Renminbi Exchange Rate\",\"url\":\"https://www.xe.com/en-us/currencyconverter/convert/?Amount=1&From=USD&To=CNY\",\"snippet\":\"Get the latest 1 US Dollar to Chinese Yuan Renminbi rate for FREE with the original Universal Currency Converter. Set rate alerts for USD to CNY and learn more about US Dollars and Chinese Yuan Renminbi from XE - the Currency Authority.\"}]}",
-    "error": null,
-    "notified": true
-  },
-  "task-1774353676496-da5c1b": {
-    "taskId": "task-1774353676496-da5c1b",
-    "type": "查一下",
-    "instruction": "帮我查一下 有什么免费生图API能调用",
-    "toolName": "web_search",
-    "toolArgs": {
-      "query": "帮我查一下 有什么免费生图API能调用"
-    },
-    "sessionKey": "main",
-    "status": "done",
-    "createdAt": 1774353676496,
-    "startedAt": 1774353676499,
-    "completedAt": 1774353679300,
-    "result": "{\"success\":true,\"engine\":\"brave\",\"query\":\"帮我查一下 有什么免费生图API能调用\",\"results\":[{\"title\":\"免费文生成图（Text-to-Image）API —— StableDiffusionAPI.com、Hugging Face Inference API、Replicat_免费生图api-CSDN博客\",\"url\":\"https://blog.csdn.net/weixin_45934622/article/details/147382782\",\"snippet\":\"文章浏览阅读2.9k次，点赞3次，收藏13次。本文将介绍六种主流且对开发者友好的免费文本生成图像（Text-to-Image）API —— <strong>StableDiffusionAPI.com、Hugging Face Inference API、Replicate、Craiyon、Segmind 及 DeepAI</strong>，并为每种服务提供可直接使用的 ...\"},{\"title\":\"GitHub - LLM-Red-Team/jimeng-free-api: 🚀 即梦3.0逆向API【特长：图像生成顶流】，零配置部署，多路token支持，仅供测试，如需商用请前往官方开放平台。\",\"url\":\"https://github.com/LLM-Red-Team/jimeng-free-api\",\"snippet\":\"🚀 即梦3.0逆向API【特长：图像生成顶流】，零配置部署，多路token支持，仅供测试，如需商用请前往官方开放平台。 - LLM-Red-Team/jimeng-free-api\"},{\"title\":\"3个国产免费AI生图大模型API使用教程（申请流程+源码） - 苏米客\",\"url\":\"https://www.xmsumi.com/detail/1406\",\"snippet\":\"同时现在每天直接白送你 2,000 次免费调用额度，不仅可以用 <strong>Qwen3-Code，Qwen-Image也同样可以调用</strong>，你说这么个大厂的限量白嫖你不用，你还去花那钱干嘛~ 直接在魔塔社区注册账号，应该是需要绑定阿里云账号的，因为我之...\"},{\"title\":\"Gemini API | Google AI for Developers\",\"url\":\"https://ai.google.dev/gemini-api/docs/image-generation\",\"snippet\":\"Get started generating images with the <strong>Gemini API</strong> using Nano Banana and Nano Banana Pro\"},{\"title\":\"万相-文生图V1\",\"url\":\"https://help.aliyun.com/zh/model-studio/text-to-image-api-reference\",\"snippet\":\"如果模型调用失败并返回报错信息，请参见错误信息进行解决。 ... 额度说明：免费额度是指模型成功生成的输出图片数量。输入图片及模型处理失败的情况不占用免费额度。 · 领取方式：开通阿里云百炼大模型服务后自动发放，有效期90天。\"}]}",
-    "error": null,
-    "notified": true
-  },
   "task-1774362552457-3b966f": {
     "taskId": "task-1774362552457-3b966f",
     "type": "查一下",

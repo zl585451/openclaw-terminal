@@ -596,7 +596,12 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                 return seg.options.length > 0 ? <TaskList key={idx} items={seg.options} /> : null;
               case 'cot':
                 return seg.content ? (
-                  <CoTBlock key={idx} content={seg.content} isStreaming={isStreamingMsg} />
+                  <CoTBlock
+                    key={idx}
+                    content={seg.content}
+                    isStreaming={isStreamingMsg}
+                    defaultExpanded={false}   // finalized 挂载时直接折叠，不弹回
+                  />
                 ) : null;
               default:
                 return null;
@@ -1170,7 +1175,7 @@ const ChatMessageList = function ChatMessageList({
   displayedText,
   speakingMessageId,
   agentPhase,
-  thinkingElapsed,
+  thinkingElapsed: _thinkingElapsed, // 不再使用，因为 CoTBlock 有自己的计时器
   wsConnected,
   quickSend,
   bottomRef,
@@ -1195,8 +1200,12 @@ const ChatMessageList = function ChatMessageList({
   const lastMeaningfulMsg = [...messages].reverse().find(m =>
     m.role === 'user' || (m.role === 'assistant' && (m.content as string)?.trim().length > 0)
   );
+  // streamingContent 已有 [cot] 内容时，真实 CoTBlock 已经在消息循环里渲染了
+  // 此时必须隐藏占位 CoTBlock，否则两个同时显示
+  const streamingHasCot = typeof streamingContent === 'string' && streamingContent.includes('[cot]');
   const showTypingIndicator = (awaitingResponse || isStreaming) &&
-    (messages.length === 0 || !lastMeaningfulMsg || lastMeaningfulMsg.role === 'user');
+    (messages.length === 0 || !lastMeaningfulMsg || lastMeaningfulMsg.role === 'user') &&
+    !streamingHasCot;
   const lastAssistantId = [...messages].reverse().find(m => m.role === 'assistant')?.id;
 
   return (

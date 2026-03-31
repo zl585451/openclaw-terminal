@@ -7,11 +7,11 @@ interface CoTBlockProps {
   content: string;
   isStreaming?: boolean;
   isPlaceholder?: boolean;  // 占位态：内容还没来，只显示标题行
+  defaultExpanded?: boolean;  // 挂载时的初始展开状态，finalized 传 false
 }
 
-const CoTBlock: React.FC<CoTBlockProps> = ({ content, isStreaming = false, isPlaceholder = false }) => {
-  // 占位态和流式态都展开；但占位态不显示内容区（避免空白撑开）
-  const [expanded, setExpanded] = useState(true);
+const CoTBlock: React.FC<CoTBlockProps> = ({ content, isStreaming = false, isPlaceholder = false, defaultExpanded = true }) => {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [autoCollapsed, setAutoCollapsed] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const prevStreamingRef = useRef(isStreaming);
@@ -35,8 +35,9 @@ const CoTBlock: React.FC<CoTBlockProps> = ({ content, isStreaming = false, isPla
     }
   }, [content, isStreaming, expanded]);
 
-  const steps = content.split('\n').filter((l) => l.trim().length > 0);
-  const stepCount = steps.length;
+  // stepCount 不再需要，因为我们改用时间显示
+  // const steps = content.split('\n').filter((l) => l.trim().length > 0);
+  // const stepCount = steps.length;
 
   // 计时器：流式中实时计数；结束时保存最终秒数
   const [elapsed, setElapsed] = useState(0);
