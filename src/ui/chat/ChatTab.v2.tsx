@@ -1773,6 +1773,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const lastSentRequestId = useRef<string>('');
   const streamUiRafRef = useRef<number | null>(null);
   const anchoredStreamingMsgIdRef = useRef<number | null>(null);
+  // 标记 assistant 气泡是否刚刚插入（允许首次 reconcile，禁止后续连续 reconcile）
+  const assistantBubbleJustInsertedRef = useRef<boolean>(false);
   // ScrollAnchor: 新的滚动锚定系统
   const scrollAnchorRef = useRef(new ScrollAnchor());
   // typewriterStartTsRef, shouldRunTypewriterRef 已迁移到 useTypewriter hook
@@ -2361,12 +2363,21 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const inner = wrap.querySelector('.chat-messages');
     const target = inner ?? wrap;
     const ro = new ResizeObserver(() => {
-      // 流式期间完全跳过：打字机每帧产生高度变化，reconcile 会把 scrollTop 往上推
-      if (isStreaming) return;
       // snap 保护窗口内跳过：assistant 气泡正在插入 DOM，此时高度变化是正常内容增长
       if (snapJustFiredRef.current) return;
       // 未锁定时跳过
       if (!scrollAnchorRef.current.isLocked()) return;
+      
+      // 流式期间：只允许 assistant 气泡首次插入时的 reconcile，禁止后续内容更新时的 reconcile
+      if (isStreaming) {
+        if (assistantBubbleJustInsertedRef.current) {
+          // assistant 气泡刚插入，允许一次 reconcile 补偿高度变化
+          assistantBubbleJustInsertedRef.current = false;
+          scrollAnchorRef.current.reconcile();
+        }
+        return;
+      }
+      
       scrollAnchorRef.current.reconcile();
     });
     ro.observe(target);
@@ -2411,13 +2422,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     if (!isAssistantStreaming) {
       anchoredStreamingMsgIdRef.current = null;
+      assistantBubbleJustInsertedRef.current = false;
       return;
     }
 
     if (anchoredStreamingMsgIdRef.current === last.id) return;
     anchoredStreamingMsgIdRef.current = last.id;
 
-    // ScrollAnchor: 保持锁定状态，ResizeObserver 会通过 reconcile 保持用户消息位置
+    // 标记 assistant 气泡刚刚插入，ResizeObserver 将允许一次 reconcile 补偿高度变化
+    assistantBubbleJustInsertedRef.current = true;
   }, [messages.length]);
 
   // 打字机逻辑已迁移到 useTypewriter hook
