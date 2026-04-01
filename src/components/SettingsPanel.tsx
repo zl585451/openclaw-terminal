@@ -27,12 +27,14 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [apiKeys, setApiKeys] = useState({
     DASHSCOPE_API_KEY: '',
     DEEPSEEK_API_KEY: '',
+    MINIMAX_API_KEY: '',
     OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
     OPENCLAW_TOKEN: '',
     OCT_PROVIDER: '',
     OCT_MODEL: '',
     DASHSCOPE_BASE_URL: '',
     DEEPSEEK_BASE_URL: '',
+    MINIMAX_BASE_URL: '',
     BRAVE_SEARCH_API_KEY: '',
     TAVILY_API_KEY: '',
   });

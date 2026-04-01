@@ -29,6 +29,8 @@ export function ConnectionTab({}: ConnectionTabProps) {
         return apiKeysHook.apiKeys.DASHSCOPE_API_KEY;
       case 'deepseek':
         return apiKeysHook.apiKeys.DEEPSEEK_API_KEY;
+      case 'minimax':
+        return apiKeysHook.apiKeys.MINIMAX_API_KEY;
       default:
         return '';
     }
@@ -43,25 +45,34 @@ export function ConnectionTab({}: ConnectionTabProps) {
       case 'deepseek':
         apiKeysHook.setApiKeys(k => ({ ...k, DEEPSEEK_API_KEY: value }));
         break;
+      case 'minimax':
+        apiKeysHook.setApiKeys(k => ({ ...k, MINIMAX_API_KEY: value }));
+        break;
     }
   };
 
   const saveGatewayAndReconnect = async () => {
     const currentProviderId = getCurrentProviderId();
     const currentProvider = getCurrentProvider();
-    const baseUrl = currentProviderId === 'deepseek' ? 
-      apiKeysHook.apiKeys.DEEPSEEK_BASE_URL : 
-      apiKeysHook.apiKeys.DASHSCOPE_BASE_URL;
-      
+    const baseUrl = (() => {
+      switch (currentProviderId) {
+        case 'deepseek': return apiKeysHook.apiKeys.DEEPSEEK_BASE_URL;
+        case 'minimax': return apiKeysHook.apiKeys.MINIMAX_BASE_URL;
+        default: return apiKeysHook.apiKeys.DASHSCOPE_BASE_URL;
+      }
+    })();
+
     const keysToSave = {
       OPENCLAW_WS_URL: apiKeysHook.apiKeys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
       OPENCLAW_TOKEN: apiKeysHook.apiKeys.OPENCLAW_TOKEN || '',
       DASHSCOPE_API_KEY: apiKeysHook.apiKeys.DASHSCOPE_API_KEY || '',
       DEEPSEEK_API_KEY: apiKeysHook.apiKeys.DEEPSEEK_API_KEY || '',
+      MINIMAX_API_KEY: apiKeysHook.apiKeys.MINIMAX_API_KEY || '',
       OCT_PROVIDER: currentProviderId || 'bailian-coding',
       OCT_MODEL: apiKeysHook.apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus',
-      DASHSCOPE_BASE_URL: currentProviderId === 'deepseek' ? '' : (baseUrl || currentProvider?.baseUrl || ''),
+      DASHSCOPE_BASE_URL: currentProviderId === 'deepseek' || currentProviderId === 'minimax' ? '' : (baseUrl || currentProvider?.baseUrl || ''),
       DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+      MINIMAX_BASE_URL: currentProviderId === 'minimax' ? (baseUrl || currentProvider?.baseUrl || '') : '',
       BRAVE_SEARCH_API_KEY: apiKeysHook.searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeysHook.apiKeys.BRAVE_SEARCH_API_KEY || '',
       TAVILY_API_KEY: apiKeysHook.searchKeysRef.current.TAVILY_API_KEY || apiKeysHook.apiKeys.TAVILY_API_KEY || '',
     };
