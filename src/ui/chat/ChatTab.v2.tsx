@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import '../../styles/ChatTab.css';
 import '../../components/ResponseTray.css';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
+import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../../utils/cotExtract';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { useGateway } from '../../hooks/useGateway';
 import { useWebSocket } from '../../hooks/useWebSocket';
@@ -1232,12 +1233,12 @@ const ChatMessageList = function ChatMessageList({
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
   }, []);
 
-  // 检查任何来源的 [cot] 内容：streamingContent 或 最后一条 assistant 消息的 content
+  // 检查任何来源的思维链标记：streamingContent 或 最后一条 assistant 消息的 content
   const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
   const msgContentHasCot = lastAssistantMsg?.isStreaming &&
     typeof lastAssistantMsg.content === 'string' &&
-    lastAssistantMsg.content.includes('[cot]');
-  const streamingHasCot = typeof streamingContent === 'string' && streamingContent.includes('[cot]');
+    hasAssistantCotMarkers(lastAssistantMsg.content);
+  const streamingHasCot = typeof streamingContent === 'string' && hasAssistantCotMarkers(streamingContent);
   const hasCotAnywhere = streamingHasCot || msgContentHasCot;
 
   // 当 AI 已经开始输出内容（非空 assistant 消息存在）时，不再显示占位 indicator
@@ -1315,33 +1316,11 @@ const ChatMessageList = function ChatMessageList({
               : raw;
         const displayedLength = displayedText.length;
 
-        // ═══ CoT 分离：从完整流式内容中提取思维链，绕过打字机（避免时序问题） ═══
-        let streamingCotContent: string | null = null;
-        let streamingCotDone = false; // [/cot] 已收到（非流式/流式结束均适用）
-        let contentAfterCot = ''; // [/cot] 之后的正文
-        let contentBeforeCot = ''; // [cot] 之前的正文（通常为空）
-
-        if (msg.role === 'assistant' && fullContent) {
-          const cotOpenIdx = fullContent.indexOf('[cot]');
-          if (cotOpenIdx !== -1) {
-            contentBeforeCot = fullContent.slice(0, cotOpenIdx);
-            const afterOpen = fullContent.slice(cotOpenIdx + 5); // 5 = '[cot]'.length
-            const cotCloseIdx = afterOpen.indexOf('[/cot]');
-            if (cotCloseIdx !== -1) {
-              streamingCotContent = afterOpen.slice(0, cotCloseIdx).trim();
-              streamingCotDone = true;
-              contentAfterCot = afterOpen.slice(cotCloseIdx + 6).trim(); // 6 = '[/cot]'.length
-            } else {
-              streamingCotContent = afterOpen.trim();
-              streamingCotDone = false;
-              contentAfterCot = '';
-            }
-          }
-        }
-
-        // 打字机只对非 CoT 的正文部分生效（displayedText 已来自解析后的“可见正文”）
-        const mainTextFull =
-          streamingCotContent !== null ? (contentBeforeCot + '\n' + contentAfterCot).trim() : fullContent;
+        // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
+        const { cotContent: streamingCotContent, cotDone: streamingCotDone, mainContent: mainTextFull } =
+          msg.role === 'assistant' && fullContent
+            ? extractAssistantCotAndMain(fullContent)
+            : { cotContent: null, cotDone: true, mainContent: fullContent };
         const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
         const parsed =
           msg.role === 'user'
@@ -1353,7 +1332,7 @@ const ChatMessageList = function ChatMessageList({
                   // 就把剥离了 [cot]...[/cot] 的纯正文传给 blockRouter，
                   // 避免 blockRouter 再次把 [cot] 解析成 segment 造成双重渲染
                   const cotStrippedContent = streamingCotContent !== null
-                    ? (contentBeforeCot + '\n' + contentAfterCot).trim()
+                    ? mainTextFull
                     : fc;
                   // 流式阶段（非 raw）：缓存解析结果，避免每帧重跑解析器
                   if (isStreamingMsg) {
@@ -1367,17 +1346,8 @@ const ChatMessageList = function ChatMessageList({
                   }
                   // 非流式（最终渲染）
                   // 同样使用剥离 CoT 的内容，避免 parseOptionBox 重复解析 [cot]
-                  // CoT 统一由消息循环外部的 CoTBlock 渲染
-                  const nonStreamingCotStripped = (() => {
-                    const cotOpen = fc.indexOf('[cot]');
-                    if (cotOpen === -1) return fc;
-                    const before = fc.slice(0, cotOpen);
-                    const afterOpen = fc.slice(cotOpen + 5);
-                    const cotClose = afterOpen.indexOf('[/cot]');
-                    if (cotClose === -1) return before.trim();
-                    const after = afterOpen.slice(cotClose + 6);
-                    return (before + '\n' + after).trim();
-                  })();
+                  // CoT 统一由消息循环外部的 CoTBlock 渲染（使用通用提取器）
+                  const { mainContent: nonStreamingCotStripped } = extractAssistantCotAndMain(fc);
                   const blocks = blockRouter(nonStreamingCotStripped);
                   const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
                   const finalParsed = parseOptionBox(bridgedText);

@@ -4,12 +4,14 @@ import { inferProviderFromBaseUrl } from '../../utils/providerUtils';
 export interface ApiKeysState {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
+  MINIMAX_API_KEY: string;
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
   OCT_PROVIDER: string;
   OCT_MODEL: string;
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
+  MINIMAX_BASE_URL: string;
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
 }
@@ -56,12 +58,14 @@ export function useApiKeys(): UseApiKeysReturn {
   const [apiKeys, setApiKeys] = useState<ApiKeysState>({
     DASHSCOPE_API_KEY: '',
     DEEPSEEK_API_KEY: '',
+    MINIMAX_API_KEY: '',
     OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
     OPENCLAW_TOKEN: '',
     OCT_PROVIDER: '',
     OCT_MODEL: '',
     DASHSCOPE_BASE_URL: '',
     DEEPSEEK_BASE_URL: '',
+    MINIMAX_BASE_URL: '',
     BRAVE_SEARCH_API_KEY: '',
     TAVILY_API_KEY: '',
   });
@@ -131,6 +135,18 @@ export function useApiKeys(): UseApiKeysReturn {
           defaultModel: 'deepseek-chat',
           models: [
             { id: 'deepseek-chat', label: 'DeepSeek Chat', tools: true, thinking: true }
+          ]
+        },
+        'minimax': {
+          id: 'minimax',
+          name: 'MiniMax',
+          baseUrl: 'https://api.minimaxi.com/v1',
+          keyLink: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
+          keyPlaceholder: 'sk-cp-xxx',
+          defaultModel: 'MiniMax-M2.7',
+          models: [
+            { id: 'MiniMax-M2.7', label: 'MiniMax M2.7', tools: true, thinking: false },
+            { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', tools: true, thinking: false }
           ]
         }
       });

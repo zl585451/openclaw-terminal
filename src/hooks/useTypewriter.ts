@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { playClickSound, resetSoundCounter } from '../utils/clickSound';
 import { parseOptionBox } from '../utils/optionBoxParser';
+import { extractAssistantCotAndMain } from '../utils/cotExtract';
 
 export interface UseTypewriterOptions {
   baseDelayMs: number;
@@ -96,12 +97,13 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
   // ── feed：外部每次传入累积全文 ──
   const feed = useCallback((rawFullText: string) => {
     fullTextRef.current = rawFullText;
-    // 解析出可见正文（去掉 [pills]、[cot] 等标签内容）
+    // 提取思维链（支持 [cot] 和 <think> 两种格式），剩余部分为可见正文
+    const { mainContent } = extractAssistantCotAndMain(rawFullText);
     try {
-      const parsed = parseOptionBox(rawFullText || '');
+      const parsed = parseOptionBox(mainContent || '');
       visibleTextRef.current = (parsed.text ?? '').toString();
     } catch {
-      visibleTextRef.current = rawFullText || '';
+      visibleTextRef.current = mainContent || '';
     }
     // 夹紧：如果可见文本因为标签被剥离而变短，避免 slice 越界
     if (displayedLenRef.current > visibleTextRef.current.length) {

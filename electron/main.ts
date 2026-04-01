@@ -2219,12 +2219,14 @@ ipcMain.handle('get-api-keys', async () => {
 ipcMain.handle('save-api-keys', async (_, keys: {
     DASHSCOPE_API_KEY?: string;
     DEEPSEEK_API_KEY?: string;
+    MINIMAX_API_KEY?: string;
     OPENCLAW_WS_URL?: string;
     OPENCLAW_TOKEN?: string;
     OCT_PROVIDER?: string;
     OCT_MODEL?: string;
     DASHSCOPE_BASE_URL?: string;
     DEEPSEEK_BASE_URL?: string;
+    MINIMAX_BASE_URL?: string;
     BRAVE_SEARCH_API_KEY?: string;
     TAVILY_API_KEY?: string;
   }) => {

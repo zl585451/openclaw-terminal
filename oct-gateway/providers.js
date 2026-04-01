@@ -138,6 +138,26 @@ const PROVIDERS = {
     fixedApiKey: 'ollama',
   },
 
+  minimax: {
+    id: 'minimax',
+    name: 'MiniMax',
+    baseUrl: 'https://api.minimaxi.com/v1',
+    keyPlaceholder: 'sk-cp-xxxxxxxxxxxxxxxx',
+    keyLink: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
+    keyEnvVars: ['MINIMAX_API_KEY', 'DASHSCOPE_API_KEY'],
+    defaultModel: 'MiniMax-M2.7',
+    models: [
+      { id: 'MiniMax-M2.7',           label: 'MiniMax M2.7（最新，自我迭代）',        tools: true,  thinking: false },
+      { id: 'MiniMax-M2.7-highspeed', label: 'MiniMax M2.7 极速版（100tps）',        tools: true,  thinking: false },
+      { id: 'MiniMax-M2.5',           label: 'MiniMax M2.5（顶尖性能）',             tools: true,  thinking: false },
+      { id: 'MiniMax-M2.5-highspeed', label: 'MiniMax M2.5 极速版（100tps）',        tools: true,  thinking: false },
+      { id: 'MiniMax-M2.1',           label: 'MiniMax M2.1（多语言编程）',           tools: true,  thinking: false },
+      { id: 'MiniMax-M2.1-highspeed', label: 'MiniMax M2.1 极速版（100tps）',        tools: true,  thinking: false },
+      { id: 'MiniMax-M2',             label: 'MiniMax M2（高效编码）',               tools: true,  thinking: false },
+    ],
+    supportsStreamOptions: true,
+  },
+
   custom: {
     id: 'custom',
     name: '自定义 OpenAI 兼容服务',

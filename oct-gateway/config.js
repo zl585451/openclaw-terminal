@@ -165,6 +165,63 @@ const MODEL_REGISTRY = {
     supportsThinking: false,
     maxTokens: 4096,
   },
+  // ─── MiniMax 独立模型 ───
+  'MiniMax-M2.7': {
+    provider: 'minimax',
+    label: 'MiniMax M2.7（最新，自我迭代）',
+    supportsTools: true,
+    supportsStreamOptions: true,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'MiniMax-M2.7-highspeed': {
+    provider: 'minimax',
+    label: 'MiniMax M2.7 极速版（100tps）',
+    supportsTools: true,
+    supportsStreamOptions: true,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'MiniMax-M2.5-standalone': {
+    provider: 'minimax',
+    label: 'MiniMax M2.5（顶尖性能）',
+    supportsTools: true,
+    supportsStreamOptions: true,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'MiniMax-M2.5-highspeed': {
+    provider: 'minimax',
+    label: 'MiniMax M2.5 极速版（100tps）',
+    supportsTools: true,
+    supportsStreamOptions: true,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'MiniMax-M2.1': {
+    provider: 'minimax',
+    label: 'MiniMax M2.1（多语言编程）',
+    supportsTools: true,
+    supportsStreamOptions: true,
+    supportsThinking: false,
+    maxTokens: 4096,
+  },
+  'MiniMax-M2.1-highspeed': {
+    provider: 'minimax',
+    label: 'MiniMax M2.1 极速版（100tps）',
+    supportsTools: true,
+    supportsStreamOptions: true,
+    supportsThinking: false,
+    maxTokens: 4096,
+  },
+  'MiniMax-M2': {
+    provider: 'minimax',
+    label: 'MiniMax M2（高效编码）',
+    supportsTools: true,
+    supportsStreamOptions: true,
+    supportsThinking: false,
+    maxTokens: 4096,
+  },
   'glm-5': {
     provider: 'bailian',
     label: 'GLM 5（智谱）',
@@ -311,6 +368,7 @@ function getProviderConfig() {
   const preset = PROVIDERS[_currentProvider] || PROVIDERS['bailian-coding'];
   const isBailian = preset.id === 'bailian' || preset.id === 'bailian-coding';
   const isDeepseek = preset.id === 'deepseek';
+  const isMinimax = preset.id === 'minimax';
 
   let apiKey = '';
   if (preset.fixedApiKey) {
@@ -321,6 +379,7 @@ function getProviderConfig() {
       fileConfig[k],
       isBailian ? legacyConfig.DASHSCOPE_API_KEY : null,
       isDeepseek ? legacyConfig.DEEPSEEK_API_KEY : null,
+      isMinimax ? legacyConfig.MINIMAX_API_KEY : null,
     ].filter(Boolean));
     apiKey = pickKey(...sources);
   }
@@ -330,6 +389,8 @@ function getProviderConfig() {
     baseUrl = getEnvOrConfig('DASHSCOPE_BASE_URL') || preset.baseUrl;
   } else if (isDeepseek) {
     baseUrl = getEnvOrConfig('DEEPSEEK_BASE_URL') || preset.baseUrl;
+  } else if (isMinimax) {
+    baseUrl = getEnvOrConfig('MINIMAX_BASE_URL') || preset.baseUrl;
   } else if (preset.id === 'custom') {
     baseUrl = getEnvOrConfig('DASHSCOPE_BASE_URL') || '';
   }
