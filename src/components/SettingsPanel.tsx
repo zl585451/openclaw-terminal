@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../themes/ThemeProvider';
@@ -10,7 +10,9 @@ import { AdvancedTabView } from '../ui/settings/tabs/AdvancedTabView';
 import { ConnectionTabView } from '../ui/settings/tabs/ConnectionTabView';
 import { InterfaceTabView } from '../ui/settings/tabs/InterfaceTabView';
 import { MemoryTabView } from '../ui/settings/tabs/MemoryTabView';
-import { inferProviderFromBaseUrl } from '../utils/providerUtils';
+import { useAiLibrary } from '../hooks/settings/useAiLibrary';
+import { useApiKeys } from '../hooks/settings/useApiKeys';
+import { useNocturneMemory } from '../hooks/settings/useNocturneMemory';
 
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { settings, setSettings } = useSettings();
@@ -26,57 +28,65 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [showNotifications, setShowNotifications] = useState(true);
   const [maxHistory, setMaxHistory] = useState(100);
 
-  const [apiKeys, setApiKeys] = useState({
-    DASHSCOPE_API_KEY: '',
-    DEEPSEEK_API_KEY: '',
-    MINIMAX_API_KEY: '',
-    OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
-    OPENCLAW_TOKEN: '',
-    OCT_PROVIDER: '',
-    OCT_MODEL: '',
-    DASHSCOPE_BASE_URL: '',
-    DEEPSEEK_BASE_URL: '',
-    MINIMAX_BASE_URL: '',
-    BRAVE_SEARCH_API_KEY: '',
-    TAVILY_API_KEY: '',
-  });
-  const searchKeysRef = useRef({ BRAVE_SEARCH_API_KEY: '', TAVILY_API_KEY: '' });
-  const [apiKeysLoaded, setApiKeysLoaded] = useState(false);
-  const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
-  const [providers, setProviders] = useState<Record<string, { id: string; name: string; baseUrl: string; keyLink: string; keyPlaceholder: string; defaultModel: string; models: Array<{ id: string; label: string; tools: boolean; thinking: boolean }> }>>({});
-  const [testConnectionStatus, setTestConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [testConnectionError, setTestConnectionError] = useState<string>('');
-  const [gatewaySaveStatus, setGatewaySaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
+  const {
+    apiKeys,
+    setApiKeys,
+    searchKeysRef,
+    apiKeysLoaded,
+    showApiKey,
+    setShowApiKey,
+    providers,
+    testConnectionStatus,
+    setTestConnectionStatus,
+    testConnectionError,
+    setTestConnectionError,
+    gatewaySaveStatus,
+    apiKeysRefreshing,
+    refetchApiKeys,
+    currentProviderId,
+    currentProvider,
+    saveGatewayAndReconnect,
+  } = useApiKeys();
+
+  const {
+    nocturneStatus,
+    nocturneDetail,
+    setNocturneDetail,
+    nocturneDashboardStatus,
+    setNocturneDashboardStatus,
+    nocturneStarting,
+    setNocturneStarting,
+    nocturneSetupStatus,
+    setNocturneSetupStatus,
+    nocturneSetupError,
+    setNocturneSetupError,
+    restartingBackend,
+    setRestartingBackend,
+    memoryReadContent,
+    setMemoryReadContent,
+    memoryReadLoading,
+    setMemoryReadLoading,
+    amyWorkModeWriting,
+    setAmyWorkModeWriting,
+    refreshNocturneDetail,
+  } = useNocturneMemory();
+
+  const {
+    aiLibAutoStart,
+    setAiLibAutoStart,
+    aiLibPath,
+    setAiLibPath,
+    aiLibPort,
+    setAiLibPort,
+    aiLibStatus,
+    setAiLibStatus,
+    aiLibSaving,
+    setAiLibSaving,
+    refreshAiLibraryStatus,
+  } = useAiLibrary();
+
   const [applyStatus, setApplyStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [applyError, setApplyError] = useState<string>('');
-  const [apiKeysRefreshing, setApiKeysRefreshing] = useState(false);
-  const [nocturneStatus, setNocturneStatus] = useState<{ available: boolean; path: string } | null>(null);
-  const [nocturneDetail, setNocturneDetail] = useState<{
-    available: boolean;
-    path: string;
-    backendAlive?: boolean;
-    frontendAlive?: boolean;
-    domains?: Array<{ domain: string }>;
-    coreMemoryUris?: string[];
-  } | null>(null);
-  const [nocturneSetupStatus, setNocturneSetupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [nocturneSetupError, setNocturneSetupError] = useState<string>('');
-  const [nocturneDashboardStatus, setNocturneDashboardStatus] = useState<{ backendRunning: boolean; frontendRunning: boolean } | null>(null);
-  const [nocturneStarting, setNocturneStarting] = useState(false);
-  const [memoryReadContent, setMemoryReadContent] = useState<string | null>(null);
-  const [memoryReadLoading, setMemoryReadLoading] = useState(false);
-  const [restartingBackend, setRestartingBackend] = useState(false);
-  const [aiLibAutoStart, setAiLibAutoStart] = useState(false);
-  const [aiLibPath, setAiLibPath] = useState('');
-  const [aiLibPort, setAiLibPort] = useState(8001);
-  const [aiLibStatus, setAiLibStatus] = useState<{
-    healthy: boolean;
-    managed: boolean;
-    portInUse: boolean;
-    resolvedGatewayUrl: string;
-  } | null>(null);
-  const [aiLibSaving, setAiLibSaving] = useState(false);
-  const [amyWorkModeWriting, setAmyWorkModeWriting] = useState(false);
   const { themeId, setTheme } = useTheme();
 
   useEffect(() => {
@@ -104,115 +114,19 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         if (data.maxHistory) setMaxHistory(data.maxHistory);
       }
     } catch {}
-
-    if (api?.getApiKeys) {
-      api.getApiKeys().then((result: any) => {
-        if (result.success && result.data) {
-          const data = result.data;
-          searchKeysRef.current = {
-            BRAVE_SEARCH_API_KEY: data.BRAVE_SEARCH_API_KEY ?? '',
-            TAVILY_API_KEY: data.TAVILY_API_KEY ?? '',
-          };
-          setApiKeys((prev) => {
-            const merged = { ...prev, ...data };
-            return merged;
-          });
-        }
-        setApiKeysLoaded(true);
-      }).catch((err: any) => {
-        console.error('[Settings] getApiKeys 错误:', err);
-        setApiKeysLoaded(true);
-      });
-    } else {
-      setApiKeysLoaded(true);
-    }
-    if (api?.getProviderList) {
-      api.getProviderList().then((result: any) => {
-        if (result.success && result.data) setProviders(result.data || {});
-      }).catch(() => {});
-    }
-    if (api?.getNocturneStatus) {
-      api.getNocturneStatus().then((r: any) => {
-        setNocturneStatus(r);
-        setNocturneDetail(r);
-        if (r?.backendAlive !== undefined) {
-          setNocturneDashboardStatus({ backendRunning: r.backendAlive, frontendRunning: !!r.frontendAlive });
-        }
-      }).catch(() => {
-        setNocturneStatus({ available: false, path: '' });
-        setNocturneDetail(null);
-      });
-    }
-    if (api?.getNocturneDashboardStatus) {
-      api.getNocturneDashboardStatus().then((r: { backendRunning: boolean; frontendRunning: boolean }) => setNocturneDashboardStatus(r)).catch(() => {});
-    }
-    if (api?.getAiLibraryPlugin) {
-      api.getAiLibraryPlugin().then((r: any) => {
-        if (r?.success && r.data) {
-          setAiLibAutoStart(!!r.data.OCT_AI_LIBRARY_AUTO_START);
-          setAiLibPath(String(r.data.OCT_AI_LIBRARY_PATH || ''));
-          setAiLibPort(Number(r.data.OCT_AI_LIBRARY_PORT) || 8001);
-          setAiLibStatus({
-            healthy: !!r.data.healthy,
-            managed: !!r.data.managed,
-            portInUse: !!r.data.portInUse,
-            resolvedGatewayUrl: String(r.data.resolvedGatewayUrl || ''),
-          });
-        }
-      }).catch(() => {});
-    }
   }, []);
 
-  const refetchApiKeys = () => {
-    const api = (window as any).electronAPI;
-    if (!api?.getApiKeys) return;
-    setApiKeysRefreshing(true);
-    api.getApiKeys().then((result: any) => {
-      if (result.success && result.data) {
-        const data = result.data;
-        searchKeysRef.current = {
-          BRAVE_SEARCH_API_KEY: data.BRAVE_SEARCH_API_KEY ?? '',
-          TAVILY_API_KEY: data.TAVILY_API_KEY ?? '',
-        };
-        setApiKeys((prev) => ({ ...prev, ...data }));
-      }
-    }).finally(() => setApiKeysRefreshing(false));
-  };
-
-  // 记忆系统 Tab：每 5 秒刷新状态
+  // 记忆系统 Tab：每 5 秒刷新 Nocturne 详情与 AI.library 状态
   useEffect(() => {
     if (activeTab !== 'memory') return;
-    const api = (window as any).electronAPI;
-    const refreshNocturne = () => {
-      if (!api?.getNocturneStatus) return;
-      api.getNocturneStatus().then((r: any) => {
-        setNocturneDetail(r);
-        if (r?.backendAlive !== undefined) {
-          setNocturneDashboardStatus({ backendRunning: r.backendAlive, frontendRunning: !!r.frontendAlive });
-        }
-      }).catch(() => {});
-    };
-    const refreshAiLib = () => {
-      if (!api?.getAiLibraryPlugin) return;
-      api.getAiLibraryPlugin().then((r: any) => {
-        if (r?.success && r.data) {
-          setAiLibStatus({
-            healthy: !!r.data.healthy,
-            managed: !!r.data.managed,
-            portInUse: !!r.data.portInUse,
-            resolvedGatewayUrl: String(r.data.resolvedGatewayUrl || ''),
-          });
-        }
-      }).catch(() => {});
-    };
-    refreshNocturne();
-    refreshAiLib();
+    refreshNocturneDetail();
+    refreshAiLibraryStatus();
     const t = setInterval(() => {
-      refreshNocturne();
-      refreshAiLib();
+      refreshNocturneDetail();
+      refreshAiLibraryStatus();
     }, 5000);
     return () => clearInterval(t);
-  }, [activeTab]);
+  }, [activeTab, refreshNocturneDetail, refreshAiLibraryStatus]);
 
   useEffect(() => {
     setLocalPerm(permissions);
@@ -227,7 +141,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       api.setScreenshotShortcut(shortcut);
     }
     localStorage.setItem('claw-terminal-advanced-settings', JSON.stringify({ fontSize, autoScroll, showNotifications, maxHistory }));
-    // 按比例联动所有文字尺寸变量
     const base = parseInt(fontSize, 10);
     document.documentElement.style.setProperty('--text-sm', `${base - 2}px`);
     document.documentElement.style.setProperty('--text-base', `${base - 1}px`);
@@ -244,7 +157,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         BRAVE_SEARCH_API_KEY: searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
         TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
       };
-      
+
       try {
         const result = await api.saveApiKeys(keysToSave);
         if (result.success) {
@@ -274,31 +187,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       localStorage.clear();
       location.reload();
     }
-  };
-
-  const currentProviderId = apiKeys.OCT_PROVIDER || inferProviderFromBaseUrl(apiKeys.DASHSCOPE_BASE_URL || apiKeys.DEEPSEEK_BASE_URL || '');
-  const currentProvider = providers[currentProviderId];
-
-  const saveGatewayAndReconnect = () => {
-    const api = (window as any).electronAPI;
-    if (!api?.saveApiKeys) return;
-    setGatewaySaveStatus('saving');
-    const baseUrl = currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : apiKeys.DASHSCOPE_BASE_URL;
-    api.saveApiKeys({
-      OPENCLAW_WS_URL: apiKeys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
-      OPENCLAW_TOKEN: apiKeys.OPENCLAW_TOKEN || '',
-      DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY || '',
-      DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
-      OCT_PROVIDER: currentProviderId || 'bailian-coding',
-      OCT_MODEL: apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus',
-      DASHSCOPE_BASE_URL: currentProviderId === 'deepseek' ? '' : (baseUrl || currentProvider?.baseUrl || ''),
-      DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
-      BRAVE_SEARCH_API_KEY: searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
-      TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
-    }).then((result: any) => {
-      setGatewaySaveStatus(result.success ? 'success' : 'idle');
-      if (result.success) setTimeout(() => setGatewaySaveStatus('idle'), 2000);
-    }).catch(() => setGatewaySaveStatus('idle'));
   };
 
   const tabs: { id: TabId; label: string }[] = [
@@ -426,4 +314,3 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     </div>
   );
 }
-
