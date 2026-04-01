@@ -40,7 +40,7 @@ export function useScreenshotShortcut(): UseScreenshotShortcutReturn {
     const api = (window as any).electronAPI;
     if (!api?.setScreenshotShortcut) return;
 
-    const shortcut = shortcutMode === 'custom' ? shortcutCustom : screenshotShortcut;
+    const shortcut = shortcutMode === 'custom' ? shortcutCustom.trim() || 'Alt+A' : screenshotShortcut;
     if (shortcut && shortcut !== '__CUSTOM__') {
       api.setScreenshotShortcut(shortcut);
     }

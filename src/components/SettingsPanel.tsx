@@ -4,7 +4,6 @@ import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../themes/ThemeProvider';
 import '../styles/SettingsPanel.css';
 
-import { SCREENSHOT_SHORTCUT_OPTIONS } from '../ui/settings/constants';
 import type { SettingsPanelProps, TabId } from '../ui/settings/types';
 import { AdvancedTabView } from '../ui/settings/tabs/AdvancedTabView';
 import { ConnectionTabView } from '../ui/settings/tabs/ConnectionTabView';
@@ -13,6 +12,8 @@ import { MemoryTabView } from '../ui/settings/tabs/MemoryTabView';
 import { useAiLibrary } from '../hooks/settings/useAiLibrary';
 import { useApiKeys } from '../hooks/settings/useApiKeys';
 import { useNocturneMemory } from '../hooks/settings/useNocturneMemory';
+import { useScreenshotShortcut } from '../hooks/settings/useScreenshotShortcut';
+import { useAdvancedSettings } from '../hooks/settings/useAdvancedSettings';
 
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { settings, setSettings } = useSettings();
@@ -20,13 +21,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('required');
   const [local, setLocal] = useState(settings);
   const [localPerm, setLocalPerm] = useState(permissions);
-  const [screenshotShortcut, setScreenshotShortcut] = useState('Alt+A');
-  const [shortcutCustom, setShortcutCustom] = useState('');
-  const [shortcutMode, setShortcutMode] = useState<'preset' | 'custom'>('preset');
-  const [fontSize, setFontSize] = useState('14');
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [showNotifications, setShowNotifications] = useState(true);
-  const [maxHistory, setMaxHistory] = useState(100);
 
   const {
     apiKeys,
@@ -85,36 +79,29 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     refreshAiLibraryStatus,
   } = useAiLibrary();
 
+  const {
+    screenshotShortcut,
+    setScreenshotShortcut,
+    shortcutCustom,
+    setShortcutCustom,
+    shortcutMode,
+    setShortcutMode,
+    saveShortcut,
+  } = useScreenshotShortcut();
+
+  const {
+    fontSize,
+    setFontSize,
+    autoScroll,
+    setAutoScroll,
+    maxHistory,
+    setMaxHistory,
+    saveAdvancedSettings,
+  } = useAdvancedSettings();
+
   const [applyStatus, setApplyStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [applyError, setApplyError] = useState<string>('');
   const { themeId, setTheme } = useTheme();
-
-  useEffect(() => {
-    const api = (window as any).electronAPI;
-    if (api?.getScreenshotShortcut) {
-      api.getScreenshotShortcut().then((s: string) => {
-        const preset = SCREENSHOT_SHORTCUT_OPTIONS.find((o) => o.value === s);
-        if (preset) {
-          setScreenshotShortcut(s);
-          setShortcutMode('preset');
-        } else {
-          setScreenshotShortcut('__CUSTOM__');
-          setShortcutCustom(s || '');
-          setShortcutMode('custom');
-        }
-      });
-    }
-    try {
-      const saved = localStorage.getItem('claw-terminal-advanced-settings');
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.fontSize) setFontSize(data.fontSize);
-        if (typeof data.autoScroll === 'boolean') setAutoScroll(data.autoScroll);
-        if (typeof data.showNotifications === 'boolean') setShowNotifications(data.showNotifications);
-        if (data.maxHistory) setMaxHistory(data.maxHistory);
-      }
-    } catch {}
-  }, []);
 
   // 记忆系统 Tab：每 5 秒刷新 Nocturne 详情与 AI.library 状态
   useEffect(() => {
@@ -135,21 +122,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const apply = async () => {
     setSettings(local);
     setPermissions(localPerm);
-    const api = (window as any).electronAPI;
-    if (api?.setScreenshotShortcut) {
-      const shortcut = shortcutMode === 'custom' ? shortcutCustom.trim() || 'Alt+A' : screenshotShortcut;
-      api.setScreenshotShortcut(shortcut);
-    }
-    localStorage.setItem('claw-terminal-advanced-settings', JSON.stringify({ fontSize, autoScroll, showNotifications, maxHistory }));
-    const base = parseInt(fontSize, 10);
-    document.documentElement.style.setProperty('--text-sm', `${base - 2}px`);
-    document.documentElement.style.setProperty('--text-base', `${base - 1}px`);
-    document.documentElement.style.setProperty('--text-md', `${base}px`);
-    document.documentElement.style.setProperty('--text-lg', `${base + 2}px`);
-    document.documentElement.style.setProperty('--text-code', `${base - 1}px`);
-    document.documentElement.style.setProperty('--text-code-sm', `${base - 2}px`);
+    saveShortcut();
+    saveAdvancedSettings();
 
     setApplyError('');
+    const api = (window as any).electronAPI;
     if (api?.saveApiKeys) {
       setApplyStatus('saving');
       const keysToSave = {

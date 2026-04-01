@@ -53,6 +53,14 @@ export function useAdvancedSettings(): UseAdvancedSettingsReturn {
         showNotifications,
         maxHistory,
       }));
+      // 按比例联动所有文字尺寸变量
+      const base = parseInt(fontSize, 10);
+      document.documentElement.style.setProperty('--text-sm', `${base - 2}px`);
+      document.documentElement.style.setProperty('--text-base', `${base - 1}px`);
+      document.documentElement.style.setProperty('--text-md', `${base}px`);
+      document.documentElement.style.setProperty('--text-lg', `${base + 2}px`);
+      document.documentElement.style.setProperty('--text-code', `${base - 1}px`);
+      document.documentElement.style.setProperty('--text-code-sm', `${base - 2}px`);
     } catch (err) {
       console.error('[Settings] 保存高级设置失败:', err);
     }
