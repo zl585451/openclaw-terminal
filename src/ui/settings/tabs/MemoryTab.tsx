@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNocturneMemory } from '../../../hooks/settings/useNocturneMemory';
 import { useAiLibrary } from '../../../hooks/settings/useAiLibrary';
 
@@ -22,12 +22,21 @@ export function MemoryTab({}: MemoryTabProps) {
     await nocturneHook.readMemoryContent();
   };
 
+  const [memoryContent, setMemoryContent] = useState('');
+
+  // Sync with hook when content is loaded
+  useEffect(() => {
+    if (nocturneHook.memoryReadContent !== null) {
+      setMemoryContent(nocturneHook.memoryReadContent);
+    }
+  }, [nocturneHook.memoryReadContent]);
+
   const handleMemoryWrite = async () => {
-    if (!nocturneHook.memoryReadContent) return;
+    if (!memoryContent) return;
     
     setAmyWorkModeWriting(true);
     try {
-      const result = await nocturneHook.writeMemoryContent(nocturneHook.memoryReadContent);
+      const result = await nocturneHook.writeMemoryContent(memoryContent);
       if (!result.success) {
         alert('写入失败：' + (result.error || '未知错误'));
       }
@@ -126,11 +135,8 @@ export function MemoryTab({}: MemoryTabProps) {
           <div className="memory-content">
             <label>记忆内容:</label>
             <textarea
-              value={nocturneHook.memoryReadContent}
-              onChange={() => {
-                // This would need to be handled by the hook
-                // For now, we'll create a simple setter
-              }}
+              value={memoryContent}
+              onChange={(e) => setMemoryContent(e.target.value)}
               rows={10}
               cols={60}
               placeholder="记忆内容将显示在这里..."

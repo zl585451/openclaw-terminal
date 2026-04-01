@@ -1,5 +1,7 @@
 import { useScreenshotShortcut } from '../../../hooks/settings/useScreenshotShortcut';
 import { useAdvancedSettings } from '../../../hooks/settings/useAdvancedSettings';
+import { useTheme } from '../../../themes/ThemeProvider';
+import { allThemes, type ThemeId } from '../../../themes/themes';
 import { FONT_SIZE_OPTIONS, SCREENSHOT_SHORTCUT_OPTIONS, PERMISSION_ITEMS } from '../constants';
 
 interface InterfaceTabProps {
@@ -12,6 +14,7 @@ interface InterfaceTabProps {
 export function InterfaceTab({ local, setLocal, localPerm, setLocalPerm }: InterfaceTabProps) {
   const screenshotHook = useScreenshotShortcut();
   const advancedHook = useAdvancedSettings();
+  const { themeId, setTheme } = useTheme();
 
   return (
     <div className="settings-section">
@@ -87,6 +90,25 @@ export function InterfaceTab({ local, setLocal, localPerm, setLocalPerm }: Inter
               placeholder="自定义快捷键，如 Ctrl+Alt+S"
             />
           )}
+        </div>
+      </div>
+
+      <hr />
+
+      <div className="settings-group">
+        <h4>主题设置</h4>
+        <div className="settings-group">
+          <label>主题</label>
+          <select
+            value={themeId}
+            onChange={(e) => setTheme(e.target.value as ThemeId)}
+          >
+            {Object.entries(allThemes).map(([themeKey, theme]) => (
+              <option key={themeKey} value={themeKey}>
+                {theme.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

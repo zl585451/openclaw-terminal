@@ -21,6 +21,31 @@ export function ConnectionTab({}: ConnectionTabProps) {
     return apiKeysHook.providers[getCurrentProviderId()];
   };
 
+  // Helper functions for API key mapping
+  const getApiKeyForProvider = (providerId: string) => {
+    switch (providerId) {
+      case 'bailian':
+      case 'bailian-coding':
+        return apiKeysHook.apiKeys.DASHSCOPE_API_KEY;
+      case 'deepseek':
+        return apiKeysHook.apiKeys.DEEPSEEK_API_KEY;
+      default:
+        return '';
+    }
+  };
+
+  const updateApiKeyForProvider = (providerId: string, value: string) => {
+    switch (providerId) {
+      case 'bailian':
+      case 'bailian-coding':
+        apiKeysHook.setApiKeys(k => ({ ...k, DASHSCOPE_API_KEY: value }));
+        break;
+      case 'deepseek':
+        apiKeysHook.setApiKeys(k => ({ ...k, DEEPSEEK_API_KEY: value }));
+        break;
+    }
+  };
+
   const saveGatewayAndReconnect = async () => {
     const currentProviderId = getCurrentProviderId();
     const currentProvider = getCurrentProvider();
@@ -51,6 +76,7 @@ export function ConnectionTab({}: ConnectionTabProps) {
     
     await apiKeysHook.testConnection(currentProviderId, model);
   };
+
 
   if (!apiKeysHook.apiKeysLoaded) {
     return (
@@ -133,10 +159,9 @@ export function ConnectionTab({}: ConnectionTabProps) {
                   <div className="api-key-input">
                     <input
                       type={showApiKey[providerId] ? 'text' : 'password'}
-                      value={apiKeysHook.apiKeys[`${providerId.toUpperCase()}_API_KEY` as keyof typeof apiKeysHook.apiKeys] || ''}
+                      value={getApiKeyForProvider(providerId)}
                       onChange={(e) => {
-                        const keyField = `${providerId.toUpperCase()}_API_KEY` as keyof typeof apiKeysHook.apiKeys;
-                        apiKeysHook.setApiKeys(k => ({ ...k, [keyField]: e.target.value }));
+                        updateApiKeyForProvider(providerId, e.target.value);
                       }}
                       placeholder={p.keyPlaceholder}
                     />
