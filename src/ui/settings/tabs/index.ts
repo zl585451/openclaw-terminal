@@ -1,4 +1,6 @@
-export { ConnectionTab } from './ConnectionTab';
-export { InterfaceTab } from './InterfaceTab';
-export { MemoryTab } from './MemoryTab';
-export { AdvancedTab } from './AdvancedTab';
+export { AdvancedTabView } from './AdvancedTabView';
+export { ConnectionTabView } from './ConnectionTabView';
+export type { SettingsApiKeysState, ProviderEntry } from './ConnectionTabView';
+export { InterfaceTabView } from './InterfaceTabView';
+export { MemoryTabView } from './MemoryTabView';
+export type { MemoryTabViewProps, NocturneDetailState } from './MemoryTabView';
