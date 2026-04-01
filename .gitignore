@@ -40,6 +40,13 @@ backups/
 .tmp.drivedownload/
 .DS_Store
 
+# 本机状态 / 不提交（仓库保持干净：单人+AI 本地配置与运行时数据）
+# — Cursor 本地规则与索引；网关任务队列快照；Nocturne 同步生成的 MEMORY 快照
+.cursor/
+docs/01_system_prompts/MEMORY.md
+oct-gateway/tasks_runtime.json
+tasks_runtime.json
+
 # 本地开发文件（不提交）
 启动.bat
 .cursorignore
@@ -49,5 +56,3 @@ scripts/clear-cursor-cache.bat
 docs/06_release/
 resources/nocturne_server/
 resources/nocturne_memory/
-oct-gateway/tasks_runtime.json
-tasks_runtime.json
