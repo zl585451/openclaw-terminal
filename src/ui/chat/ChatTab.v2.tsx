@@ -392,11 +392,18 @@ const MessageHeader = memo(
     msg,
     isStreamingMsg,
     agentPhase,
+    suppressPhaseBadge,
   }: {
     msg: ChatMessage;
     isStreamingMsg: boolean;
     agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+    /** 与头部带内 CoT 并存且 phase 为 thinking 时隐藏，避免与 CoT 标题双「思考中」 */
+    suppressPhaseBadge?: boolean;
   }) {
+    const showBadge =
+      isStreamingMsg &&
+      agentPhase !== 'idle' &&
+      !(suppressPhaseBadge && agentPhase === 'thinking');
     return (
       <div className="msg-header">
         {msg.role === 'user' ? (
@@ -414,7 +421,7 @@ const MessageHeader = memo(
             >
               AMY
             </span>
-            {isStreamingMsg && agentPhase !== 'idle' && (
+            {showBadge && (
               <span className="agent-status-badge">
                 {agentPhase === 'thinking' ? '思考中' : agentPhase === 'tool_executing' ? '调用工具中' : '打字中'}
               </span>
@@ -429,7 +436,8 @@ const MessageHeader = memo(
     a.msg.role === b.msg.role &&
     !!a.msg.isStreaming === !!b.msg.isStreaming &&
     a.isStreamingMsg === b.isStreamingMsg &&
-    a.agentPhase === b.agentPhase
+    a.agentPhase === b.agentPhase &&
+    !!a.suppressPhaseBadge === !!b.suppressPhaseBadge
 );
 
 const UserMessageBody = memo(
@@ -775,7 +783,12 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     >
       {showHeaderBand ? (
         <div className="assistant-header-band assistant-header-band--stable">
-          <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} />
+          <MessageHeader
+            msg={msg}
+            isStreamingMsg={isStreamingMsg}
+            agentPhase={agentPhase}
+            suppressPhaseBadge
+          />
           <div className="cot-stream-wrapper cot-stream-wrapper--header-inline">
             <CoTBlock
               content={showCotInline ? (cotContent ?? '') : ''}
@@ -1219,11 +1232,6 @@ const ChatMessageList = function ChatMessageList({
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
   }, []);
 
-  // 最后一条有实际内容的消息（跳过空的 streaming 占位）
-  const lastMeaningfulMsg = [...messages].reverse().find(m =>
-    m.role === 'user' || (m.role === 'assistant' && (m.content as string)?.trim().length > 0)
-  );
-
   // 检查任何来源的 [cot] 内容：streamingContent 或 最后一条 assistant 消息的 content
   const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
   const msgContentHasCot = lastAssistantMsg?.isStreaming &&
@@ -1237,8 +1245,11 @@ const ChatMessageList = function ChatMessageList({
   const assistantHasContent = lastAssistantMsg?.isStreaming &&
     (lastAssistantMsg.content as string)?.trim().length > 0;
 
+  /** 已有任意 assistant 行（含空占位）时不再画列表顶独立指示器，避免与行内 CoT/徽章双「思考中」 */
+  const hasAnyAssistant = messages.some((m) => m.role === 'assistant');
+
   const showTypingIndicator = (awaitingResponse || isStreaming) &&
-    (messages.length === 0 || !lastMeaningfulMsg || lastMeaningfulMsg.role === 'user') &&
+    !hasAnyAssistant &&
     !hasCotAnywhere &&
     !assistantHasContent;
   const lastAssistantId = [...messages].reverse().find(m => m.role === 'assistant')?.id;
