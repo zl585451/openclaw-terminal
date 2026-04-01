@@ -172,7 +172,7 @@ async function readFileAsBase64(file: File): Promise<string> {
 /** 判断是否Gateway 直接处理的系统命令（不等AMY 回复*/
 function isSystemCommand(text: string): boolean {
   const t = (text || '').trim();
-  return /^\/(status|restart|stop|new|think\s+\w+)\s*$/.test(t);
+  return /^\/(status|restart|stop|new|think\s+\w+|model|provider|memory|help)\b/.test(t);
 }
 
 function MsgCopyButton({ text }: { text: string }) {
@@ -353,6 +353,17 @@ interface ChatMessageItemProps {
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   /** Markdown 组件配置 */
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
+  /** 从 [cot]…[/cot] 提取的思维链；null/undefined 表示本条无 CoT */
+  cotContent?: string | null;
+  /** 思维链是否仍在流式接收 */
+  cotStreaming?: boolean;
+  /**
+   * OCT-LAYOUT-ANCHOR-2026-04-01
+   * 网关仍在 thinking、本条 assistant 尚无任何字符时，把「思考中」CoT 占位画在本条消息头旁，
+   * 避免与独立 cot-stream-wrapper 双行叠放导致头像/列表在首 token 时跳动。
+   * 退回：删此 prop 及相关分支，恢复 ChatMessageList 内独立的 thinking CoT 块（仅改回 TSX 即可）。
+   */
+  inlineThinkingPlaceholder?: boolean;
 }
 
 const MessageMeta = memo(function MessageMeta({ timestamp }: { timestamp: string | number | undefined }) {
@@ -595,14 +606,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
               case 'tasklist':
                 return seg.options.length > 0 ? <TaskList key={idx} items={seg.options} /> : null;
               case 'cot':
-                return seg.content ? (
-                  <CoTBlock
-                    key={idx}
-                    content={seg.content}
-                    isStreaming={isStreamingMsg}
-                    defaultExpanded={false}   // finalized 挂载时直接折叠，不弹回
-                  />
-                ) : null;
+                return null; // 统一由外部 CoTBlock 渲染
               default:
                 return null;
             }
@@ -753,7 +757,13 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     isLastAssistant,
     streamingDomRef,
     markdownComponents,
+    cotContent,
+    cotStreaming,
+    inlineThinkingPlaceholder = false,
   } = props;
+
+  const showCotInline = msg.role === 'assistant' && cotContent != null;
+  const showHeaderBand = showCotInline || inlineThinkingPlaceholder;
 
   return (
     <MessageRow
@@ -763,7 +773,20 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
       isStreamingMsg={isStreamingMsg}
       onContextMenu={onContextMenu}
     >
-      <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} />
+      {showHeaderBand ? (
+        <div className="assistant-header-band assistant-header-band--stable">
+          <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} />
+          <div className="cot-stream-wrapper cot-stream-wrapper--header-inline">
+            <CoTBlock
+              content={showCotInline ? (cotContent ?? '') : ''}
+              isStreaming={inlineThinkingPlaceholder || !!cotStreaming}
+              isPlaceholder={inlineThinkingPlaceholder}
+            />
+          </div>
+        </div>
+      ) : (
+        <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} />
+      )}
       <div className="msg-body">
         {msg.role === 'assistant' ? (
           <AssistantMessageBody
@@ -1200,16 +1223,41 @@ const ChatMessageList = function ChatMessageList({
   const lastMeaningfulMsg = [...messages].reverse().find(m =>
     m.role === 'user' || (m.role === 'assistant' && (m.content as string)?.trim().length > 0)
   );
-  // streamingContent 已有 [cot] 内容时，真实 CoTBlock 已经在消息循环里渲染了
-  // 此时必须隐藏占位 CoTBlock，否则两个同时显示
+
+  // 检查任何来源的 [cot] 内容：streamingContent 或 最后一条 assistant 消息的 content
+  const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
+  const msgContentHasCot = lastAssistantMsg?.isStreaming &&
+    typeof lastAssistantMsg.content === 'string' &&
+    lastAssistantMsg.content.includes('[cot]');
   const streamingHasCot = typeof streamingContent === 'string' && streamingContent.includes('[cot]');
+  const hasCotAnywhere = streamingHasCot || msgContentHasCot;
+
+  // 当 AI 已经开始输出内容（非空 assistant 消息存在）时，不再显示占位 indicator
+  // 真正的状态徽章会显示在消息头部
+  const assistantHasContent = lastAssistantMsg?.isStreaming &&
+    (lastAssistantMsg.content as string)?.trim().length > 0;
+
   const showTypingIndicator = (awaitingResponse || isStreaming) &&
     (messages.length === 0 || !lastMeaningfulMsg || lastMeaningfulMsg.role === 'user') &&
-    !streamingHasCot;
+    !hasCotAnywhere &&
+    !assistantHasContent;
   const lastAssistantId = [...messages].reverse().find(m => m.role === 'assistant')?.id;
 
+  /* OCT-LAYOUT-ANCHOR-2026-04-01：末条已是「空内容的流式 assistant」时，不再画独立的思考/typing 条，避免与该行双叠。退回：删此变量及下方 !emptyStreamingAssistantTail 条件。 */
+  const tailMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  const emptyStreamingAssistantTail =
+    !!tailMsg &&
+    tailMsg.role === 'assistant' &&
+    !!tailMsg.isStreaming &&
+    !(typeof tailMsg.content === 'string' ? tailMsg.content : '').trim();
+
   return (
-    <div className="chat-messages-wrap" onScroll={onScroll} ref={messagesContainerRef}>
+    <div
+      className="chat-messages-wrap"
+      style={{ overflowAnchor: 'none' }}
+      onScroll={onScroll}
+      ref={messagesContainerRef}
+    >
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">
@@ -1217,9 +1265,9 @@ const ChatMessageList = function ChatMessageList({
             <span>输入消息开始对..</span>
           </div>
         )}
-        {showTypingIndicator && (
+        {showTypingIndicator && !emptyStreamingAssistantTail && (
           agentPhase === 'thinking' ? (
-            // 思考阶段：用 CoTBlock 占位面板替代 chat-thinking 条
+            // 思考阶段：用 CoTBlock 占位面板替代 chat-thinking 条（无末条空 assistant 时）
             <div className="cot-stream-wrapper">
               <CoTBlock
                 content=""
@@ -1258,11 +1306,11 @@ const ChatMessageList = function ChatMessageList({
 
         // ═══ CoT 分离：从完整流式内容中提取思维链，绕过打字机（避免时序问题） ═══
         let streamingCotContent: string | null = null;
-        let streamingCotDone = false; // [/cot] 结束标签已收到
+        let streamingCotDone = false; // [/cot] 已收到（非流式/流式结束均适用）
         let contentAfterCot = ''; // [/cot] 之后的正文
         let contentBeforeCot = ''; // [cot] 之前的正文（通常为空）
 
-        if (isStreamingMsg && fullContent) {
+        if (msg.role === 'assistant' && fullContent) {
           const cotOpenIdx = fullContent.indexOf('[cot]');
           if (cotOpenIdx !== -1) {
             contentBeforeCot = fullContent.slice(0, cotOpenIdx);
@@ -1290,18 +1338,36 @@ const ChatMessageList = function ChatMessageList({
             : msg.role === 'assistant'
               ? (() => {
                   const fc = typeof fullContent === 'string' ? fullContent : '';
+                  // 如果已经通过 streamingCotContent 提取了 CoT 内容，
+                  // 就把剥离了 [cot]...[/cot] 的纯正文传给 blockRouter，
+                  // 避免 blockRouter 再次把 [cot] 解析成 segment 造成双重渲染
+                  const cotStrippedContent = streamingCotContent !== null
+                    ? (contentBeforeCot + '\n' + contentAfterCot).trim()
+                    : fc;
                   // 流式阶段（非 raw）：缓存解析结果，避免每帧重跑解析器
                   if (isStreamingMsg) {
                     const cached = streamingParseCacheRef.current;
-                    if (cached && cached.input === fc) return cached.output;
-                    const blocks = blockRouter(fc);
+                    if (cached && cached.input === cotStrippedContent) return cached.output;
+                    const blocks = blockRouter(cotStrippedContent);
                     const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
                     const result = parseOptionBox(bridgedText);
-                    streamingParseCacheRef.current = { input: fc, output: result };
+                    streamingParseCacheRef.current = { input: cotStrippedContent, output: result };
                     return result;
                   }
                   // 非流式（最终渲染）
-                  const blocks = blockRouter(fc);
+                  // 同样使用剥离 CoT 的内容，避免 parseOptionBox 重复解析 [cot]
+                  // CoT 统一由消息循环外部的 CoTBlock 渲染
+                  const nonStreamingCotStripped = (() => {
+                    const cotOpen = fc.indexOf('[cot]');
+                    if (cotOpen === -1) return fc;
+                    const before = fc.slice(0, cotOpen);
+                    const afterOpen = fc.slice(cotOpen + 5);
+                    const cotClose = afterOpen.indexOf('[/cot]');
+                    if (cotClose === -1) return before.trim();
+                    const after = afterOpen.slice(cotClose + 6);
+                    return (before + '\n' + after).trim();
+                  })();
+                  const blocks = blockRouter(nonStreamingCotStripped);
                   const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
                   const finalParsed = parseOptionBox(bridgedText);
 
@@ -1356,14 +1422,14 @@ const ChatMessageList = function ChatMessageList({
         const isReflectiveQuestions = !!parsed.isReflectiveQuestions;
         const forcePills = parsed.forcePills;
         const segmentsToShow = parsed.segments;
+        const inlineThinkingPlaceholder =
+          msg.role === 'assistant' &&
+          msg.id === lastAssistantId &&
+          isStreamingMsg &&
+          !raw.trim() &&
+          agentPhase === 'thinking';
         return (
           <React.Fragment key={msg.id}>
-            {/* 流式阶段的 CoT 面板 —— 绕过打字机，实时显示 */}
-            {isStreamingMsg && streamingCotContent && (
-              <div className="cot-stream-wrapper">
-                <CoTBlock content={streamingCotContent} isStreaming={!streamingCotDone} />
-              </div>
-            )}
             <ChatMessageItem
               key={`item-${msg.id}`}
               msg={msg}
@@ -1387,6 +1453,11 @@ const ChatMessageList = function ChatMessageList({
               isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
               streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
               markdownComponents={markdownComponents}
+              cotContent={msg.role === 'assistant' ? streamingCotContent : undefined}
+              cotStreaming={
+                msg.role === 'assistant' && streamingCotContent != null ? !streamingCotDone : false
+              }
+              inlineThinkingPlaceholder={inlineThinkingPlaceholder}
             />
             {/* 工具调用卡片：紧跟当前 streaming assistant 消息之后 */}
             {isStreamingMsg && activeTools.length > 0 && (
@@ -1786,8 +1857,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const lastSentRequestId = useRef<string>('');
   const streamUiRafRef = useRef<number | null>(null);
   const anchoredStreamingMsgIdRef = useRef<number | null>(null);
-  // 标记 assistant 气泡是否刚刚插入（允许首次 reconcile，禁止后续连续 reconcile）
-  const assistantBubbleJustInsertedRef = useRef<boolean>(false);
   // ScrollAnchor: 新的滚动锚定系统
   const scrollAnchorRef = useRef(new ScrollAnchor());
   // typewriterStartTsRef, shouldRunTypewriterRef 已迁移到 useTypewriter hook
@@ -1797,6 +1866,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const el = messagesContainerRef.current;
     if (!el) return;
     if (!force && !scrollAnchorRef.current.isLocked()) return;
+    // TOP_ANCHORED（locked）+ 流式：不主动改 scrollTop，让内容在视口内自然向下增长
+    if (!force && isStreaming && scrollAnchorRef.current.isLocked()) return;
     if (!bottomRef.current) return;
 
     const containerRect = el.getBoundingClientRect();
@@ -1809,7 +1880,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     // 不 release anchor — 只有 scrollBtn 点击时 force=true 才应 release
     if (force) scrollAnchorRef.current.release();
     bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
-  }, []);
+  }, [isStreaming]);
 
   /** 布局稳定后再滚动（ResizeObserver / 流式 tick 共用） */
   const scheduleScrollAfterLayout = useCallback(
@@ -2380,22 +2451,16 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (snapJustFiredRef.current) return;
       // 未锁定时跳过
       if (!scrollAnchorRef.current.isLocked()) return;
-      
-      // 流式期间：只允许 assistant 气泡首次插入时的 reconcile，禁止后续内容更新时的 reconcile
-      if (isStreaming) {
-        if (assistantBubbleJustInsertedRef.current) {
-          // assistant 气泡刚插入，允许一次 reconcile 补偿高度变化
-          assistantBubbleJustInsertedRef.current = false;
-          scrollAnchorRef.current.reconcile();
-        }
-        return;
-      }
-      
+      // locked（等价 TOP_ANCHORED）+ 流式：不调 reconcile，避免 scrollTop 向上补偿；仅依赖布局自然增高
+      if (isStreaming) return;
+      // 等待响应时（thinking/typing 阶段切换）：跳过 reconcile，避免占位组件切换导致的高度变化被错误补偿
+      if (awaitingResponse) return;
+
       scrollAnchorRef.current.reconcile();
     });
     ro.observe(target);
     return () => ro.disconnect();
-  }, [isStreaming, messages.length]);
+  }, [isStreaming, awaitingResponse, messages.length]);
 
   // 用户发送消息后，在 DOM 提交时执行顶置滚动（useLayoutEffect 确保 DOM 已更新）
   useLayoutEffect(() => {
@@ -2413,12 +2478,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     snapJustFiredRef.current = true;
     scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
 
-    // 用时间戳保护，而不是帧数：
-    // assistant 气泡需要等 StreamRouter 16ms 节流 + React render 才出现，
-    // 2 帧（~32ms）保护窗口太短，改为 400ms，覆盖从发送到第一个 token 渲染的全过程
+    // 延长保护窗口到 800ms：
+    // - 覆盖 thinking → typing 的 agentPhase 切换
+    // - 覆盖占位 CoTBlock 消失导致的高度变化
+    // - 覆盖首个 token 渲染到打字机启动的全过程
     const snapTime = Date.now();
     const checkRelease = () => {
-      if (Date.now() - snapTime < 400) {
+      if (Date.now() - snapTime < 800) {
         requestAnimationFrame(checkRelease);
       } else {
         snapJustFiredRef.current = false;
@@ -2435,15 +2501,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
     if (!isAssistantStreaming) {
       anchoredStreamingMsgIdRef.current = null;
-      assistantBubbleJustInsertedRef.current = false;
       return;
     }
 
     if (anchoredStreamingMsgIdRef.current === last.id) return;
     anchoredStreamingMsgIdRef.current = last.id;
-
-    // 标记 assistant 气泡刚刚插入，ResizeObserver 将允许一次 reconcile 补偿高度变化
-    assistantBubbleJustInsertedRef.current = true;
   }, [messages.length]);
 
   // 打字机逻辑已迁移到 useTypewriter hook

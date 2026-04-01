@@ -415,6 +415,27 @@
   justify-content: flex-start;
 }
 
+/* 思维链与 AMY 头像同一行（头部带），避免落在正文最下方 */
+.assistant-header-band {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+/* OCT-LAYOUT-ANCHOR-2026-04-01：头部行高度略锁定，减少思考占位↔真实 CoT 切换时的垂直微移。退回：删除本规则 */
+.assistant-header-band--stable {
+  min-height: 40px;
+}
+
+.assistant-header-band > .msg-header {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
 .msg-label {
   font-size: var(--text-xs);  /* 11px */
   font-weight: 600;

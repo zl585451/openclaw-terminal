@@ -6,7 +6,9 @@ import '../styles/CoTBlock.css';
 interface CoTBlockProps {
   content: string;
   isStreaming?: boolean;
+  /** 占位模式：等待 AI 首个 token 时显示，不显示"已深度思考"文案，不渲染 body */
   isPlaceholder?: boolean;
+  /** 极少数场景下需要挂载即展开；默认 false（仅手动点击展开） */
   defaultExpanded?: boolean;
 }
 
@@ -14,82 +16,86 @@ const CoTBlock: React.FC<CoTBlockProps> = ({
   content,
   isStreaming = false,
   isPlaceholder = false,
-  defaultExpanded = false,   // 默认折叠，和 Claude 一致
+  defaultExpanded,
 }) => {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [expanded, setExpanded] = useState(() => defaultExpanded === true);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // 流式时自动滚到底部（仅用户手动展开时生效）
+  // 流式时自动滚到底部
   useEffect(() => {
-    if (isStreaming && expanded && bodyRef.current) {
+    if ((isStreaming || isPlaceholder) && expanded && bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
-  }, [content, isStreaming, expanded]);
+  }, [content, isStreaming, expanded, isPlaceholder]);
 
-  // 计时器
+  const steps = content.split('\n').filter((l) => l.trim().length > 0);
+  const stepCount = steps.length;
+
+  // 计算耗时占位（流式时显示动态数字）
   const [elapsed, setElapsed] = useState(0);
-  const [finalElapsed, setFinalElapsed] = useState(0);
-  const prevStreamingRef = useRef(isStreaming);
-
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isStreaming && !isPlaceholder) return;
     const start = Date.now();
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - start) / 1000));
     }, 1000);
     return () => clearInterval(interval);
-  }, [isStreaming]);
+  }, [isStreaming, isPlaceholder]);
 
-  useEffect(() => {
-    if (prevStreamingRef.current && !isStreaming) {
-      setFinalElapsed(elapsed);
-    }
-    prevStreamingRef.current = isStreaming;
-  }, [isStreaming, elapsed]);
-
+  // 占位模式 / 流式：显示"思考中"；完成后：显示"已深度思考"
   const label = isPlaceholder
-    ? '思考中...'
+    ? `思考中 · ${elapsed}s`
     : isStreaming
       ? `思考中 · ${elapsed}s`
-      : `已思考 · ${finalElapsed || elapsed}s`;
+      : `已深度思考（${stepCount}步）`;
 
   return (
-    <div className={`cot-block ${isStreaming ? 'cot-streaming' : 'cot-done'} ${expanded ? 'cot-expanded' : 'cot-collapsed'}`}>
+    <div className={`cot-block ${expanded ? 'cot-expanded' : 'cot-collapsed'} ${isStreaming || isPlaceholder ? 'cot-streaming' : 'cot-done'}`}>
+      {/* 左侧装饰条 */}
       <div className="cot-accent-bar" />
-      <div className="cot-content-area">
 
-        {/* 标题行：始终显示，点击展开/折叠 */}
+      <div className="cot-content-area">
         <div
           className="cot-header"
-          onClick={() => !isPlaceholder && setExpanded(p => !p)}
+          onClick={() => setExpanded((prev) => !prev)}
           role="button"
+          aria-expanded={expanded}
           tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(p => !p); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded((prev) => !prev);
+            }
+          }}
         >
           <span className="cot-icon">
-            {isStreaming
-              ? <span className="cot-spinner"><span /><span /><span /></span>
-              : '💭'
-            }
+            {isStreaming || isPlaceholder ? (
+              <span className="cot-spinner">
+                <span /><span /><span />
+              </span>
+            ) : (
+              '💭'
+            )}
           </span>
           <span className="cot-label">{label}</span>
-          {/* 只有有内容且非占位时才显示箭头 */}
-          {!isPlaceholder && content && (
-            <span className={`cot-chevron ${expanded ? 'cot-chevron-up' : ''}`}>
-              {expanded ? '▴' : '▾'}
-            </span>
-          )}
+          <span className={`cot-chevron ${expanded ? 'cot-chevron-up' : ''}`}>
+            {expanded ? '▴' : '▾'}
+          </span>
         </div>
 
-        {/* 内容区：仅在展开且有内容时显示 */}
-        {!isPlaceholder && content && (
+        {isPlaceholder ? (
+          expanded && (
+            <div className="cot-body-wrapper cot-body-open">
+              <div className="cot-body cot-placeholder-hint">等待思考内容输出…</div>
+            </div>
+          )
+        ) : (
           <div className={`cot-body-wrapper ${expanded ? 'cot-body-open' : 'cot-body-closed'}`}>
             <div className="cot-body" ref={bodyRef}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
