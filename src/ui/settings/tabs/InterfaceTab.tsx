@@ -25,8 +25,11 @@ export function InterfaceTab({ local, setLocal, localPerm, setLocalPerm }: Inter
         <div className="settings-group">
           <label>字体大小</label>
           <select
-            value={advancedHook.fontSize}
-            onChange={(e) => advancedHook.setFontSize(e.target.value)}
+            value={local.fontSize || advancedHook.fontSize}
+            onChange={(e) => {
+              setLocal({ ...local, fontSize: e.target.value });
+              advancedHook.setFontSize(e.target.value);
+            }}
           >
             {FONT_SIZE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>

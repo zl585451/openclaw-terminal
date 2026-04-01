@@ -60,6 +60,12 @@ export function useNocturneMemory(): UseNocturneMemoryReturn {
     if (api?.getNocturneDashboardStatus) {
       api.getNocturneDashboardStatus().then((r: NocturneDashboardStatus) => setNocturneDashboardStatus(r)).catch(() => {});
     }
+    
+    // Provide default status for browser environment if no electronAPI
+    if (!api) {
+      setNocturneStatus({ available: false, path: '' });
+      setNocturneDashboardStatus({ backendRunning: false, frontendRunning: false });
+    }
   }, []);
 
   const refreshNocturneStatus = async () => {

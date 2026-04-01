@@ -108,6 +108,32 @@ export function useApiKeys(): UseApiKeysReturn {
       api.getProviderList().then((result: any) => {
         if (result.success && result.data) setProviders(result.data || {});
       }).catch(() => {});
+    } else {
+      // Provide mock providers for browser environment
+      setProviders({
+        'bailian-coding': {
+          id: 'bailian-coding',
+          name: '百炼编程',
+          baseUrl: 'https://coding.dashscope.aliyuncs.com/compatible-mode/v1',
+          keyLink: 'https://dashscope.console.aliyun.com/',
+          keyPlaceholder: 'sk-xxx',
+          defaultModel: 'qwen3.5-plus',
+          models: [
+            { id: 'qwen3.5-plus', label: 'Qwen3.5 Plus', tools: true, thinking: true }
+          ]
+        },
+        'deepseek': {
+          id: 'deepseek',
+          name: 'DeepSeek',
+          baseUrl: 'https://api.deepseek.com/v1',
+          keyLink: 'https://platform.deepseek.com/',
+          keyPlaceholder: 'sk-xxx',
+          defaultModel: 'deepseek-chat',
+          models: [
+            { id: 'deepseek-chat', label: 'DeepSeek Chat', tools: true, thinking: true }
+          ]
+        }
+      });
     }
   }, []);
 

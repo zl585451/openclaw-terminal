@@ -46,6 +46,14 @@ export function useAiLibrary(): UseAiLibraryReturn {
           });
         }
       }).catch(() => {});
+    } else {
+      // Provide default status for browser environment
+      setAiLibStatus({
+        healthy: false,
+        managed: false,
+        portInUse: false,
+        resolvedGatewayUrl: '',
+      });
     }
   }, []);
 

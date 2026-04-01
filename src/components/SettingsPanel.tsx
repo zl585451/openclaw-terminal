@@ -34,6 +34,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalPerm(permissions);
   }, [permissions]);
 
+  // Sync local settings when context changes
+  useEffect(() => {
+    setLocal(settings);
+  }, [settings]);
+
   // Auto-refresh memory tab status
   useEffect(() => {
     if (activeTab !== 'memory') return;
