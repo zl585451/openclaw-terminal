@@ -294,12 +294,14 @@ function inferProviderFromBaseUrl(baseUrl) {
   return 'bailian-coding';
 }
 
-let _currentProvider = process.env.OCT_PROVIDER || fileConfig.OCT_PROVIDER
+// Prioritize user settings from Electron config over environment variables
+let _currentProvider = fileConfig.OCT_PROVIDER || process.env.OCT_PROVIDER
   || inferProviderFromBaseUrl(
-    process.env.DASHSCOPE_BASE_URL || fileConfig.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL
+    fileConfig.DASHSCOPE_BASE_URL || process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL
   );
 
-let _currentModel = process.env.OCT_MODEL || fileConfig.OCT_MODEL || legacyConfig.DASHSCOPE_MODEL || 'qwen-plus';
+// Prioritize user settings from settings panel over .env file
+let _currentModel = fileConfig.OCT_MODEL || process.env.OCT_MODEL || legacyConfig.DASHSCOPE_MODEL || 'qwen-plus';
 
 function getEnvOrConfig(key) {
   return process.env[key] || fileConfig[key] || legacyConfig[key] || '';

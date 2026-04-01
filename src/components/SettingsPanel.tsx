@@ -241,30 +241,20 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
       };
       
-      // Debug: Log the keys being saved
-      console.log('[Settings] Saving API keys:', {
-        OCT_PROVIDER: keysToSave.OCT_PROVIDER,
-        OCT_MODEL: keysToSave.OCT_MODEL,
-        OPENCLAW_WS_URL: keysToSave.OPENCLAW_WS_URL,
-      });
-      
       try {
         const result = await api.saveApiKeys(keysToSave);
         if (result.success) {
           setApplyStatus('success');
-          console.log('[Settings] API keys saved successfully');
           setTimeout(() => {
             onClose();
           }, 1200);
         } else {
           setApplyStatus('error');
           setApplyError(result.error || '保存失败，请重试');
-          console.error('[Settings] Save failed:', result.error);
         }
       } catch (err: any) {
         setApplyStatus('error');
         setApplyError(err?.message || '保存异常，请重试');
-        console.error('[Settings] Save exception:', err);
       }
     } else {
       setApplyStatus('error');
@@ -483,14 +473,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                       <label>当前模型</label>
                       <select
                         value={apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus'}
-                        onChange={(e) => {
-                          console.log('[Settings] Model changed to:', e.target.value);
-                          setApiKeys((k) => {
-                            const newKeys = { ...k, OCT_MODEL: e.target.value };
-                            console.log('[Settings] Updated apiKeys:', { OCT_PROVIDER: newKeys.OCT_PROVIDER, OCT_MODEL: newKeys.OCT_MODEL });
-                            return newKeys;
-                          });
-                        }}
+                        onChange={(e) => setApiKeys((k) => ({ ...k, OCT_MODEL: e.target.value }))}
                         className="settings-input settings-input-focusable"
                         style={{ maxWidth: '100%' }}
                       >
