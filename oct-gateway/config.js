@@ -21,12 +21,33 @@ if (process.env.HTTPS_PROXY || process.env.HTTP_PROXY) {
 }
 
 function loadConfigFile() {
-  const configFile = process.env.OCT_CONFIG_FILE || path.join(__dirname, 'config.json');
-  if (configFile && fs.existsSync(configFile)) {
-    try {
-      return JSON.parse(fs.readFileSync(configFile, 'utf-8'));
-    } catch {}
+  // Try to load from multiple sources in priority order
+  const configSources = [
+    process.env.OCT_CONFIG_FILE,
+    // Try Electron userData config first (where settings panel saves)
+    // Common Electron userData paths
+    path.join(os.homedir(), 'AppData', 'Roaming', 'openclaw-terminal', 'config.json'), // Windows
+    path.join(os.homedir(), 'Library', 'Application Support', 'openclaw-terminal', 'config.json'), // macOS
+    path.join(os.homedir(), '.config', 'openclaw-terminal', 'config.json'), // Linux
+    // Also try with the exact app name
+    path.join(os.homedir(), 'AppData', 'Roaming', 'OpenClaw Terminal', 'config.json'), // Windows with spaces
+    // Fallback to local config
+    path.join(__dirname, 'config.json')
+  ].filter(Boolean);
+
+  for (const configFile of configSources) {
+    if (fs.existsSync(configFile)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+        console.log(`[Config] Loaded config from: ${configFile}`);
+        return config;
+      } catch (err) {
+        console.warn(`[Config] Failed to parse ${configFile}:`, err.message);
+      }
+    }
   }
+  
+  console.log('[Config] No config file found, using defaults');
   return {};
 }
 
