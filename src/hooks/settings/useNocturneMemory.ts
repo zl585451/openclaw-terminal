@@ -5,6 +5,8 @@ export interface NocturneStatus {
   path: string;
   backendAlive?: boolean;
   frontendAlive?: boolean;
+  domains?: Array<{ domain: string }>;
+  coreMemoryUris?: string[];
 }
 
 export interface NocturneDashboardStatus {

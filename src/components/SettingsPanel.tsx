@@ -3,7 +3,6 @@ import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import '../styles/SettingsPanel.css';
 
-import { FONT_SIZE_OPTIONS, SCREENSHOT_SHORTCUT_OPTIONS } from '../ui/settings/constants';
 import type { SettingsPanelProps, TabId } from '../ui/settings/types';
 import { useApiKeys } from '../hooks/settings/useApiKeys';
 import { useScreenshotShortcut } from '../hooks/settings/useScreenshotShortcut';
@@ -11,13 +10,16 @@ import { useNocturneMemory } from '../hooks/settings/useNocturneMemory';
 import { useAiLibrary } from '../hooks/settings/useAiLibrary';
 import { useAdvancedSettings } from '../hooks/settings/useAdvancedSettings';
 
+// Tab components
+import { ConnectionTab, InterfaceTab, MemoryTab, AdvancedTab } from '../ui/settings/tabs';
+
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { settings, setSettings } = useSettings();
   const { permissions, setPermissions } = usePermissions();
   
   // Local UI state
   const [activeTab, setActiveTab] = useState<TabId>('required');
-  const [local] = useState(settings);
+  const [local, setLocal] = useState(settings);
   const [localPerm, setLocalPerm] = useState(permissions);
   
   // Custom hooks for external system interactions
@@ -110,97 +112,24 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         
         <div className="settings-body">
           {activeTab === 'required' && (
-            <div className="settings-section">
-              <h3>连接配置</h3>
-              {!apiKeysHook.apiKeysLoaded ? (
-                <div>加载中...</div>
-              ) : (
-                <div>
-                  <p>API Keys 配置将在后续步骤中完善</p>
-                  <button onClick={apiKeysHook.refreshApiKeys} disabled={apiKeysHook.apiKeysRefreshing}>
-                    {apiKeysHook.apiKeysRefreshing ? '刷新中...' : '刷新配置'}
-                  </button>
-                </div>
-              )}
-            </div>
+            <ConnectionTab />
           )}
 
           {activeTab === 'interface' && (
-            <div className="settings-section">
-              <h3>界面设置</h3>
-              <div className="settings-group">
-                <label>字体大小</label>
-                <select
-                  value={advancedHook.fontSize}
-                  onChange={(e) => advancedHook.setFontSize(e.target.value)}
-                >
-                  {FONT_SIZE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="settings-group">
-                <label>截图快捷键</label>
-                <select
-                  value={screenshotHook.screenshotShortcut}
-                  onChange={(e) => screenshotHook.setScreenshotShortcut(e.target.value)}
-                >
-                  {SCREENSHOT_SHORTCUT_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                {screenshotHook.shortcutMode === 'custom' && (
-                  <input
-                    type="text"
-                    value={screenshotHook.shortcutCustom}
-                    onChange={(e) => screenshotHook.setShortcutCustom(e.target.value)}
-                    placeholder="自定义快捷键"
-                  />
-                )}
-              </div>
-            </div>
+            <InterfaceTab 
+              local={local}
+              setLocal={setLocal}
+              localPerm={localPerm}
+              setLocalPerm={setLocalPerm}
+            />
           )}
 
           {activeTab === 'memory' && (
-            <div className="settings-section">
-              <h3>记忆系统</h3>
-              <div>
-                <p>Nocturne 状态: {nocturneHook.nocturneStatus?.available ? '可用' : '不可用'}</p>
-                <p>AI Library 状态: {aiLibraryHook.aiLibStatus?.healthy ? '健康' : '不健康'}</p>
-              </div>
-            </div>
+            <MemoryTab />
           )}
 
           {activeTab === 'advanced' && (
-            <div className="settings-section">
-              <h3>高级设置</h3>
-              <div className="settings-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={advancedHook.autoScroll}
-                    onChange={(e) => advancedHook.setAutoScroll(e.target.checked)}
-                  />
-                  自动滚动
-                </label>
-              </div>
-              
-              <div className="settings-group">
-                <label>最大历史记录</label>
-                <input
-                  type="number"
-                  value={advancedHook.maxHistory}
-                  onChange={(e) => advancedHook.setMaxHistory(Number(e.target.value))}
-                  min="10"
-                  max="1000"
-                />
-              </div>
-            </div>
+            <AdvancedTab onClearData={clearData} />
           )}
         </div>
 
