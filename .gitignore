@@ -46,6 +46,7 @@ backups/
 .cursor/
 .cursorignore
 .cursorrules
+AGENTS.md
 docs/01_system_prompts/MEMORY.md
 prompts/MEMORY.md
 oct-gateway/tasks_runtime.json
