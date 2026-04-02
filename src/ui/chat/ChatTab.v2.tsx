@@ -1646,6 +1646,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         streamingMessageRef.current = finalStreamContent;
         fullTextRef.current = finalStreamContent;
         typewriter.feed(fullTextRef.current);
+        typewriter.finish(); // 结束 typewriter 状态，避免影响后续普通消息
         scheduleFullTextSync();
       }
 
@@ -1686,9 +1687,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
+          // 关闭 isStreaming 并更新 content，停止使用流式 displayedText 切片渲染
           return prev.map((msg, idx) =>
             idx === prev.length - 1
-              ? { ...msg, content: finalStreamContent }
+              ? { ...msg, content: finalStreamContent, isStreaming: false }
               : msg
           );
         }
