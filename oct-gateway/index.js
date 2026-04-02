@@ -158,19 +158,18 @@ function createStreamSmoother(onChunk) {
     if (segments.length === 0) return;
 
     const first = segments[0];
-    // segmenter 可能返回空 segment（分隔符等），跳过
+    // segmenter 可能返回空 segment，跳过
     if (!first.segment || !first.segment.length) return;
 
-    const isPunctuation = /^\s+$/.test(first.segment);
-    if (isPunctuation) {
-      // 把标点作为独立词发送
+    // 非词单元（标点、空白等）：作为独立 chunk 发送
+    if (!first.isWordLike) {
       buffer.splice(0, first.segment.length);
       onChunk(first.segment);
       return;
     }
 
-    const consumedLen = first.index + first.segment.length;
-    buffer.splice(0, consumedLen);
+    // 词单元：只移除 segment 本身长度（first.index 相对于原始输入，不适用于已 splice 过的 buffer）
+    buffer.splice(0, first.segment.length);
     onChunk(first.segment);
   }
 
@@ -866,6 +865,7 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     if (currentAbort) currentAbort();
     currentAbort = null;
+    if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
     authenticatedClients.delete(ws);
     log.info('client disconnected', { clientId });
   });

@@ -20,9 +20,17 @@ class McpManager {
   constructor() {
     this._clients = new Map();   // name → McpClient
     this._toolMap = new Map();   // qualifiedName → serverName
+    this._initPromise = null;    // 防止 init 重复调用
+    this._ready = false;         // MCP Provider 是否已完成注册
   }
 
   async init() {
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = this._doInit();
+    return this._initPromise;
+  }
+
+  async _doInit() {
     const cfg = require('../config');
     _fileConfig = cfg.__fileConfig || {};
     _configPath = cfg._configPath || null;
@@ -39,7 +47,14 @@ class McpManager {
       executeTool: (name, args) => this._route(name, args),
     });
 
+    this._ready = true;
     log.info('MCP Provider 已注册');
+  }
+
+  /** 确保 MCP 完成初始化后再执行 tool call */
+  async _waitReady() {
+    if (this._ready) return;
+    await this.init();
   }
 
   async _startServer(name, cfg) {
@@ -84,6 +99,7 @@ class McpManager {
   }
 
   async _route(qualifiedName, args) {
+    await this._waitReady();  // init 未完成时等待，避免工具未注册就被调用
     const serverName = this._toolMap.get(qualifiedName);
     if (!serverName) throw new Error(`未知 MCP 工具: ${qualifiedName}`);
     const client = this._clients.get(serverName);

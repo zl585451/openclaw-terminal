@@ -381,8 +381,9 @@ let _currentProvider = _fileConfig.OCT_PROVIDER || process.env.OCT_PROVIDER
 // Prioritize user settings from settings panel over .env file
 let _currentModel = _fileConfig.OCT_MODEL || process.env.OCT_MODEL || legacyConfig.DASHSCOPE_MODEL || 'qwen-plus';
 
+// 优先级：用户设置(_fileConfig) > 系统环境变量(process.env) > 旧配置
 function getEnvOrConfig(key) {
-  return process.env[key] || _fileConfig[key] || legacyConfig[key] || '';
+  return _fileConfig[key] || process.env[key] || legacyConfig[key] || '';
 }
 
 function getProviderConfig() {

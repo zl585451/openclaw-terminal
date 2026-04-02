@@ -430,7 +430,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     thinkCount: 0,
   };
   let _thinkTagMode = false;
-  /** 在 try 内赋值为 _flushThinkState，catch 里可安全调用 */
+  /** 在 fetch 前赋值，确保 catch 块也可用 */
   let flushThinkAtEnd = () => {};
   try {
     const hasImage = truncatedMessages.some(m =>
@@ -559,6 +559,10 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
      * 流结束时调用：关闭 CoT 块，释放暂存的正文内容
      * 必须在 onDone() 之前调用
      */
+    /**
+     * 流结束时调用：关闭 CoT 块，释放暂存的正文内容
+     * 必须在 onDone() 之前调用
+     */
     function _flushThinkState() {
       if (_thinkState.pendingTag) {
         if (_thinkState.cotOpen) {
@@ -582,6 +586,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
         }
       }
     }
+    // 提前赋值，确保 catch 块中也可正常调用（原来在 fetch 之后才赋值，fetch 抛异常时 catch 里是 no-op）
     flushThinkAtEnd = _flushThinkState;
     // ────────────────────────────────────────────────────────────────
 
