@@ -409,16 +409,16 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
   }
 
   let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用
-  /** MiniMax <redacted_thinking> 流式解析状态（与 caps 同步于 try 内） */
-  const thinkState = { inThink: false, pendingTag: '' };
-  let thinkTagMode = false;
-  function flushThinkPending() {
-    if (thinkTagMode && thinkState.pendingTag) {
-      fullText += thinkState.pendingTag;
-      onDelta(thinkState.pendingTag);
-      thinkState.pendingTag = '';
-    }
-  }
+  const _thinkState = {
+    inThink: false,
+    cotOpen: false,
+    contentBuffer: '',
+    pendingTag: '',
+    thinkCount: 0,
+  };
+  let _thinkTagMode = false;
+  /** 在 try 内赋值为 _flushThinkState，catch 里可安全调用 */
+  let flushThinkAtEnd = () => {};
   try {
     const hasImage = truncatedMessages.some(m =>
       Array.isArray(m.content) &&
@@ -441,72 +441,136 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
       : registryCaps;
     log.info('model caps', { model, supportsTools: caps.supportsTools, supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions });
 
-    thinkTagMode = caps.thinkingFormat === 'think_tags';
-    thinkState.inThink = false;
-    thinkState.pendingTag = '';
+    _thinkTagMode = caps.thinkingFormat === 'think_tags';
+    _thinkState.inThink = false;
+    _thinkState.cotOpen = false;
+    _thinkState.contentBuffer = '';
+    _thinkState.pendingTag = '';
+    _thinkState.thinkCount = 0;
 
+    // ── MiniMax <redacted_thinking> 标签流式解析器 ──────────────────────────────
+    // 适配 MiniMax M2.7 的"交织式思考"：模型在一次回复里多次交替输出
+    // <redacted_thinking>思考</redacted_thinking>正文<redacted_thinking>继续思考</redacted_thinking>继续正文
+    //
+    // 策略：
+    //   1. 第一个 <redacted_thinking> 出现时开启 [cot]，保持 CoT 块持续开放
+    //   2. 多个 <redacted_thinking> 块的内容都流入同一个 CoT，用分隔线隔开
+    //   3. 思考块之间的正文内容暂存到 contentBuffer，不立即输出
+    //   4. 流结束时：发出 [/cot] → 释放 contentBuffer 给前端渲染
+    //
+    // 结果：用户看到思考流式展开 → 思考折叠 → 干净的答案出现
+    // 其他模型（thinkingFormat 不是 'think_tags'）完全不受影响
+    // ─────────────────────────────────────────────────────────────────
     const OPEN_THINK = '<redacted_thinking>';
     const CLOSE_THINK = '</redacted_thinking>';
 
-    /** 返回 s 末尾与 tag 前缀重叠的最长子串（跨 chunk 的部分标签缓冲） */
-    function findPartialTag(s, tag) {
+    /** 返回 s 末尾与 tag 前缀重叠的最长子串（处理跨 chunk 的残缺标签） */
+    function _findPartialTag(s, tag) {
       for (let len = Math.min(s.length, tag.length - 1); len > 0; len--) {
         if (tag.startsWith(s.slice(-len))) return s.slice(-len);
       }
       return '';
     }
 
-    /**
-     * 处理一个 content chunk：
-     * - 非 think_tags 模式：直接写入 fullText 并触发 onDelta
-     * - think_tags 模式：解析 <redacted_thinking>...</redacted_thinking> → [cot]...[/cot]
-     */
-    function processContentChunk(raw) {
-      if (!thinkTagMode) {
+    /** 处理一个 content chunk，区分思考内容和正文内容 */
+    function _processContentChunk(raw) {
+      if (!_thinkTagMode) {
         fullText += raw;
         onDelta(raw);
         return;
       }
 
-      let s = thinkState.pendingTag + raw;
-      thinkState.pendingTag = '';
+      let s = _thinkState.pendingTag + raw;
+      _thinkState.pendingTag = '';
 
       while (s.length > 0) {
-        if (!thinkState.inThink) {
+        if (!_thinkState.inThink) {
           const idx = s.indexOf(OPEN_THINK);
           if (idx === -1) {
-            const tail = findPartialTag(s, OPEN_THINK);
+            const tail = _findPartialTag(s, OPEN_THINK);
             const emit = s.slice(0, s.length - tail.length);
-            if (emit) { fullText += emit; onDelta(emit); }
-            thinkState.pendingTag = tail;
+            if (emit) {
+              if (_thinkState.cotOpen) {
+                _thinkState.contentBuffer += emit;
+              } else {
+                fullText += emit;
+                onDelta(emit);
+              }
+            }
+            _thinkState.pendingTag = tail;
             s = '';
           } else {
             const before = s.slice(0, idx);
-            if (before) { fullText += before; onDelta(before); }
-            fullText += '[cot]';
-            onDelta('[cot]');
-            thinkState.inThink = true;
+            if (before) {
+              if (_thinkState.cotOpen) {
+                _thinkState.contentBuffer += before;
+              } else {
+                fullText += before;
+                onDelta(before);
+              }
+            }
+
+            if (!_thinkState.cotOpen) {
+              fullText += '[cot]';
+              onDelta('[cot]');
+              _thinkState.cotOpen = true;
+            } else {
+              const sep = '\n\n---\n\n';
+              fullText += sep;
+              onDelta(sep);
+            }
+
+            _thinkState.thinkCount++;
+            _thinkState.inThink = true;
             s = s.slice(idx + OPEN_THINK.length);
           }
         } else {
           const idx = s.indexOf(CLOSE_THINK);
           if (idx === -1) {
-            const tail = findPartialTag(s, CLOSE_THINK);
+            const tail = _findPartialTag(s, CLOSE_THINK);
             const emit = s.slice(0, s.length - tail.length);
             if (emit) { fullText += emit; onDelta(emit); }
-            thinkState.pendingTag = tail;
+            _thinkState.pendingTag = tail;
             s = '';
           } else {
             const thinkContent = s.slice(0, idx);
             if (thinkContent) { fullText += thinkContent; onDelta(thinkContent); }
-            fullText += '[/cot]';
-            onDelta('[/cot]');
-            thinkState.inThink = false;
+            _thinkState.inThink = false;
             s = s.slice(idx + CLOSE_THINK.length);
           }
         }
       }
     }
+
+    /**
+     * 流结束时调用：关闭 CoT 块，释放暂存的正文内容
+     * 必须在 onDone() 之前调用
+     */
+    function _flushThinkState() {
+      if (_thinkState.pendingTag) {
+        if (_thinkState.cotOpen) {
+          _thinkState.contentBuffer += _thinkState.pendingTag;
+        } else {
+          fullText += _thinkState.pendingTag;
+          onDelta(_thinkState.pendingTag);
+        }
+        _thinkState.pendingTag = '';
+      }
+
+      if (_thinkState.cotOpen) {
+        fullText += '[/cot]';
+        onDelta('[/cot]');
+        _thinkState.cotOpen = false;
+
+        if (_thinkState.contentBuffer) {
+          fullText += _thinkState.contentBuffer;
+          onDelta(_thinkState.contentBuffer);
+          _thinkState.contentBuffer = '';
+        }
+      }
+    }
+    flushThinkAtEnd = _flushThinkState;
+    // ────────────────────────────────────────────────────────────────
 
     const requestBody = {
       model,
@@ -604,7 +668,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
         }
         if (delta.content) {
           lastChunkTime = Date.now(); // 每次收到真实 chunk 时更新时间
-          processContentChunk(delta.content);
+          _processContentChunk(delta.content);
         }
 
         if (delta.tool_calls) {
@@ -623,6 +687,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
         if (finishReason === 'stop') sawDone = true;
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
           stopHeartbeat();
+          if (_thinkTagMode) _flushThinkState();
           log.info('tool_calls', { count: toolCalls.filter(Boolean).length });
           const toolResults = [];
           for (const tc of toolCalls.filter(Boolean)) {
@@ -673,7 +738,8 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     }
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
-    flushThinkPending();
+    // 关闭 MiniMax CoT 块并释放暂存正文（非 MiniMax 模型此函数直接跳过）
+    if (_thinkTagMode) _flushThinkState();
     onDone(fullText, totalUsage, responseModel);
   } catch (e) {
     stopHeartbeat();
@@ -682,7 +748,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     // 如果已经输出了一部分内容，发送截断提示而不是直接报错
     if (fullText && fullText.length > 10) {
       const truncateMsg = '\n\n---\n⚠️ 网络波动，回复可能不完整。如需继续，请发送「继续」';
-      flushThinkPending();
+      flushThinkAtEnd();
       onDelta(truncateMsg);
       onDone(fullText + truncateMsg, null, null);
       log.warn('已发送截断提示，已输出内容长度:', fullText.length);
