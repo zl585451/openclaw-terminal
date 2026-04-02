@@ -1723,14 +1723,24 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     onToolEvent: (payload) => {
       // 处理工具调用事件
       if (payload.type === 'tool_call') {
-        setActiveTools((prev) => [
-          ...prev,
-          {
-            callId: payload.callId,
-            tool: payload.tool,
-            state: 'executing' as const,
-          },
-        ]);
+        setActiveTools((prev) => {
+          const next = [
+            ...prev,
+            {
+              callId: payload.callId,
+              tool: payload.tool,
+              state: 'executing' as const,
+            },
+          ];
+          // 工具卡片首次出现时（prev 为空），显式触发滚动补偿
+          // 避免因 isStreaming=true 导致 ResizeObserver reconcile 被跳过，造成页面跳动
+          if (prev.length === 0 && next.length > 0) {
+            requestAnimationFrame(() => {
+              scrollAnchorRef.current?.reconcile();
+            });
+          }
+          return next;
+        });
       } else if (payload.type === 'tool_result') {
         const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
         setActiveTools((prev) =>
