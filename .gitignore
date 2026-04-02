@@ -61,3 +61,9 @@ scripts/clear-cursor-cache.bat
 docs/06_release/
 resources/nocturne_server/
 resources/nocturne_memory/
+
+# Cursor/Copilot 技能包（不混入 OCT 代码库）
+skills/minimax-multimodal-toolkit/
+skills/minimax-skills/
+oct-gateway/MiniMax-Skills/
+test-minimax.js
