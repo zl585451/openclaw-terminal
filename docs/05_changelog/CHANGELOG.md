@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-03 | 流式打字机丝滑优化：Gateway 新增 createStreamSmoother（Intl.Segmenter 词边界分词），WebSocket 改用 smoother；恢复 useTypewriter RAF 逐字动画（MAX=6/BATCH=1/追赶提前） | `oct-gateway/index.js`, `src/hooks/useTypewriter.ts`, `oct-gateway/config.json`, `oct-gateway/config.js` | 用户"从容/细读"设置生效；详见 `docs/05_changelog/2026-04-03-流式打字机丝滑优化.md` |
 | 2026-03-30 | ChatTab.v2 四步模块化：Markdown 预处理、markdown 组件、Gateway hook、WebSocket hook；Gateway ToolLoader 跳过 shared/ai_library 辅助脚本 | `markdownPreprocess.ts`, `markdownComponents.tsx`, `useGateway.ts`, `useWebSocket.ts`, `ChatTab.v2.tsx`, `oct-gateway/tool_loader.js` | 详见 `docs/REFACTOR_4STEP_CHATTAB.md`；主文件约 3578→2985 行 |
 | 2026-03-26 | Chat UI 流式滚动热修复：顶部锚定、按需跟底、动态 spacer 收放、标题栏 portal 化 | ChatTab.tsx, ChatTab.css, App.tsx, TabBar.css | 详见 scroll-streaming-hotfix-2026-03-26.md |
 | 2026-03-24 | OCT 握手协议：移除 OpenClaw ECDSA 签名，改为 token 认证 | electron/main.ts, oct-gateway/index.js | sendOctConnectRequest、params.auth.token |
