@@ -245,10 +245,12 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
     }
     try {
       const controller = new AbortController();
+      // MiniMax 模型生成较慢，增加超时时间到 180 秒
+      const timeoutMs = baseUrl.includes('minimaxi.com') ? 180000 : 120000;
       const timeoutId = setTimeout(() => {
         controller.abort();
-        log.warn('请求超时（120秒），触发 abort');
-      }, 120000);
+        log.warn(`请求超时（${timeoutMs / 1000}秒），触发 abort`);
+      }, timeoutMs);
 
       const resp = await fetch(url, {
         ...options,
@@ -474,8 +476,40 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     // 结果：用户看到思考流式展开 → 思考折叠 → 干净的答案出现
     // 其他模型（thinkingFormat 不是 'think_tags'）完全不受影响
     // ─────────────────────────────────────────────────────────────────
-    const OPEN_THINK = '<redacted_thinking>';
-    const CLOSE_THINK = '</redacted_thinking>';
+    // 支持两种标签格式：MiniMax 可能输出 <redacted_thinking> 或标准格式 <think>
+    const OPEN_REDACTED = '<redacted_thinking>';
+    const CLOSE_REDACTED = '</redacted_thinking>';
+    const OPEN_COT = '<think>';
+    const CLOSE_COT = '</think>';
+
+    /**
+     * 规范化标签：将标准 <think> 转换为内部标签格式
+     * @param {string} s - 输入字符串
+     * @returns {{ normalized: string, hadCotOpen: boolean, hadCotClose: boolean }}
+     */
+    function _normalizeThinkTags(s) {
+      let hadCotOpen = false;
+      let hadCotClose = false;
+      let normalized = s;
+
+      // 先检查标准 <think> 标签
+      if (normalized.includes(OPEN_COT)) hadCotOpen = true;
+      if (normalized.includes(CLOSE_COT)) hadCotClose = true;
+
+      // 将标准 <think> 标签转换为 <redacted_thinking> 格式
+      // 避免重复替换（如果已经有 <redacted_thinking> 就不替换）
+      if (hadCotOpen && !normalized.includes(OPEN_REDACTED)) {
+        normalized = normalized.split(OPEN_COT).join(OPEN_REDACTED);
+      }
+      if (hadCotClose && !normalized.includes(CLOSE_REDACTED)) {
+        normalized = normalized.split(CLOSE_COT).join(CLOSE_REDACTED);
+      }
+
+      return { normalized, hadCotOpen, hadCotClose };
+    }
+
+    const OPEN_THINK = OPEN_REDACTED;
+    const CLOSE_THINK = CLOSE_REDACTED;
 
     /** 返回 s 末尾与 tag 前缀重叠的最长子串（处理跨 chunk 的残缺标签） */
     function _findPartialTag(s, tag) {
@@ -496,13 +530,23 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
       const cleaned = _stripToolCallMarkers(raw);
       if (!cleaned) return;
 
+      // 标准化思考标签：将标准 <think> 转换为 <redacted_thinking> 格式
+      const { normalized, hadCotOpen, hadCotClose } = _normalizeThinkTags(cleaned);
+
+      // 如果检测到标准 <think> 标签但 _thinkTagMode 未启用，
+      // 说明模型配置缺少 thinkingFormat，强制启用标签处理
+      if (!_thinkTagMode && (hadCotOpen || hadCotClose)) {
+        log.warn('检测到 <think> 标签但 thinkingFormat 未配置，强制启用标签处理');
+        _thinkTagMode = true;
+      }
+
       if (!_thinkTagMode) {
         fullText += cleaned;
         onDelta(cleaned);
         return;
       }
 
-      let s = _thinkState.pendingTag + cleaned;
+      let s = _thinkState.pendingTag + normalized;
       _thinkState.pendingTag = '';
 
       while (s.length > 0) {
