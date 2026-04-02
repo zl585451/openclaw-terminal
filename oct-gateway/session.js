@@ -103,6 +103,7 @@ function addMessage(sessionKey, role, content) {
 
 function clearSession(sessionKey) {
   sessions.delete(sessionKey);
+  thinkModes.delete(sessionKey); // 清理会话时同步删除思考模式，避免 Map 泄漏
   saveSessions();
 }
 

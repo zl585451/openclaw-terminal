@@ -19,6 +19,18 @@ const App: React.FC = () => {
   const messageIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 消息数量上限：防止 messages 数组无限膨胀，保持内存占用稳定
+  const MAX_MESSAGES = 200;
+
+  // 截断旧消息：超过上限时移除最早的非流式消息
+  useEffect(() => {
+    if (messages.length <= MAX_MESSAGES) return;
+    // 找到最旧的非流式消息的索引
+    const firstNonStreamingIdx = messages.findIndex((m) => !m.isStreaming);
+    if (firstNonStreamingIdx < 0) return; // 全是流式消息，不截断
+    setMessages((prev) => prev.slice(firstNonStreamingIdx));
+  }, [messages.length]);
+
   useEffect(() => {
     const load = window.electronAPI?.chatHistoryLoad;
     if (load) {
