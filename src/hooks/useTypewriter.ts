@@ -34,11 +34,11 @@ function isWordChar(ch: string): boolean {
 }
 
 function charDelayMs(ch: string, base: number): number {
-  const d = Math.max(base, 40);
-  if (ch === '\n') return d + d * 2.5;
-  if ('。！？…'.includes(ch)) return d + d * 2;
-  if ('.!?'.includes(ch)) return d + d * 1.5;
-  if (',，、;；'.includes(ch)) return d + d * 0.6;
+  const d = Math.max(base, 30); // 降低最小延迟：40 → 30
+  if (ch === '\n') return d + d * 1.8; // 减少换行停顿：2.5 → 1.8
+  if ('。！？…'.includes(ch)) return d + d * 1.2; // 减少句号停顿：2 → 1.2
+  if ('.!?'.includes(ch)) return d + d * 1.0; // 减少英文句号停顿：1.5 → 1.0
+  if (',，、;；'.includes(ch)) return d + d * 0.4; // 减少逗号停顿：0.6 → 0.4
   return d;
 }
 

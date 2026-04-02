@@ -5,7 +5,12 @@ const { HttpsProxyAgent } = (() => {
   catch { return { HttpsProxyAgent: null }; }
 })();
 
-function getDirectFetchOptions() {
+function getDirectFetchOptions(baseUrl) {
+  // 只对 DashScope 域名强制直连，其他 API 正常走代理
+  if (!baseUrl || !baseUrl.includes('dashscope')) {
+    return {};
+  }
+
   // 检测系统代理环境变量
   const proxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy ||
                    process.env.HTTP_PROXY || process.env.http_proxy || '';
@@ -242,12 +247,12 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
-        log.warn('请求超时（90秒），触发 abort');
-      }, 90000);
+        log.warn('请求超时（120秒），触发 abort');
+      }, 120000);
 
       const resp = await fetch(url, {
         ...options,
-        ...getDirectFetchOptions(),
+        ...getDirectFetchOptions(url),
         signal: controller.signal,
       });
 
@@ -261,11 +266,15 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
     } catch (e) {
       lastError = e;
       if (e.name === 'AbortError') {
-        log.error('请求被中止（超时）');
+        log.error('请求被中止（超时）', { url: url.replace(/\/v1.*/, '/v1/...') });
         break;
       }
       if (attempt < maxRetries) {
-        log.warn(`请求失败，将重试: ${e.message}`);
+        log.warn(`请求失败，将重试: ${e.message}`, { 
+          url: url.replace(/\/v1.*/, '/v1/...'),
+          errorName: e.name,
+          errorCode: e.code 
+        });
       }
     }
   }
@@ -400,6 +409,10 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
   const canFallbackToDeepseek = !!(config.DEEPSEEK_API_KEY)
     && !baseUrl.includes('deepseek');
+  
+  // MiniMax 官方 API 失败时，fallback 到百炼版 MiniMax
+  const canFallbackToBailian = baseUrl.includes('minimaxi.com') 
+    && !!(config.DASHSCOPE_API_KEY);
 
   log.info('request start', { provider: provider.name, model, messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0 });
 
@@ -732,7 +745,12 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     }
 
     if (!sawDone) {
-      log.warn('stream interrupted', { outputLen: (fullText || '').length });
+      log.warn('stream interrupted', { 
+        outputLen: (fullText || '').length,
+        provider: provider.name,
+        model,
+        baseUrl: baseUrl.replace(/\/v1.*/, '/v1/...')
+      });
     } else {
       log.debug('stream end');
     }
@@ -743,7 +761,12 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     onDone(fullText, totalUsage, responseModel);
   } catch (e) {
     stopHeartbeat();
-    log.error('流中断:', e?.message || String(e));
+    log.error('流中断:', e?.message || String(e), {
+      provider: provider.name,
+      model,
+      errorName: e?.name,
+      errorCode: e?.code
+    });
 
     // 如果已经输出了一部分内容，发送截断提示而不是直接报错
     if (fullText && fullText.length > 10) {
@@ -755,15 +778,27 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
       return;
     }
 
-    // 只有在百炼失败且有 DeepSeek Key 时才 fallback（切换 provider 才能生效）
-    if (canFallbackToDeepseek) {
+    // MiniMax 官方 API 失败时，优先 fallback 到百炼版 MiniMax
+    if (canFallbackToBailian) {
+      log.warn('MiniMax API failed, fallback to Bailian MiniMax', { error: e?.message || String(e) });
+      const prevProvider = config.currentProvider;
+      const prevModel = config.DASHSCOPE_MODEL;
+      config.currentProvider = 'bailian-coding';
+      config.DASHSCOPE_MODEL = 'MiniMax-M2.5';
+      try {
+        await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
+      } finally {
+        config.currentProvider = prevProvider;
+        config.DASHSCOPE_MODEL = prevModel;
+      }
+    } else if (canFallbackToDeepseek) {
       log.warn('primary provider failed, fallback to deepseek', { error: e?.message || String(e) });
       const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;
       config.currentProvider = 'deepseek';
       config.DASHSCOPE_MODEL = 'deepseek-chat';
       try {
-        await streamChat({ messages: truncatedMessages, onDelta, onDone, onError });
+        await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
       } finally {
         config.currentProvider = prevProvider;
         config.DASHSCOPE_MODEL = prevModel;

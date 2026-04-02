@@ -4,13 +4,16 @@ export type SettingsApiKeysState = {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
   OCT_PROVIDER: string;
   OCT_MODEL: string;
+  CUSTOM_MODEL: string; // 自定义模型名称
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
+  CUSTOM_BASE_URL: string; // 自定义 Base URL
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
 };
@@ -22,7 +25,8 @@ export type ProviderEntry = {
   keyLink: string;
   keyPlaceholder: string;
   defaultModel: string;
-  models: Array<{ id: string; label: string; tools: boolean; thinking: boolean }>;
+  models: Array<{ id: string; label: string; tools: boolean; thinking: boolean; custom?: boolean }>;
+  allowCustomModel?: boolean;
 };
 
 export interface ConnectionTabViewProps {
@@ -186,10 +190,17 @@ export function ConnectionTabView({
               <label>API Key</label>
               <div className="settings-input-row">
                 <input
-                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY ? 'text' : 'password'}
-                  value={currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_API_KEY : apiKeys.DASHSCOPE_API_KEY}
+                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY || showApiKey.CUSTOM_API_KEY ? 'text' : 'password'}
+                  value={
+                    currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_API_KEY : 
+                    currentProviderId === 'custom' ? apiKeys.CUSTOM_API_KEY : 
+                    apiKeys.DASHSCOPE_API_KEY
+                  }
                   onChange={(e) => {
-                    const key = (apiKeys.OCT_PROVIDER || 'bailian-coding') === 'deepseek' ? 'DEEPSEEK_API_KEY' : 'DASHSCOPE_API_KEY';
+                    let key: keyof SettingsApiKeysState;
+                    if (apiKeys.OCT_PROVIDER === 'deepseek') key = 'DEEPSEEK_API_KEY';
+                    else if (apiKeys.OCT_PROVIDER === 'custom') key = 'CUSTOM_API_KEY';
+                    else key = 'DASHSCOPE_API_KEY';
                     setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                   }}
                   placeholder={currentProvider?.keyPlaceholder || 'sk-xxxxxxxxxxxxxxxx'}
@@ -200,20 +211,37 @@ export function ConnectionTabView({
                   type="button"
                   className="settings-eye-btn"
                   onClick={() => {
-                    const key = currentProviderId === 'deepseek' ? 'DEEPSEEK_API_KEY' : 'DASHSCOPE_API_KEY';
-                    setShowApiKey((s) => ({ ...s, [key]: !s[key] }));
+                    let key: string;
+                    if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
+                    else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
+                    else key = 'DASHSCOPE_API_KEY';
+                    setShowApiKey((s) => ({ ...s, [key]: !s[key as keyof typeof s] }));
                   }}
                 >
-                  {currentProviderId === 'deepseek' ? (showApiKey.DEEPSEEK_API_KEY ? '🙈' : '👁') : (showApiKey.DASHSCOPE_API_KEY ? '🙈' : '👁')}
+                  {currentProviderId === 'deepseek' 
+                    ? (showApiKey.DEEPSEEK_API_KEY ? '🙈' : '👁') 
+                    : currentProviderId === 'custom'
+                    ? (showApiKey.CUSTOM_API_KEY ? '🙈' : '👁')
+                    : (showApiKey.DASHSCOPE_API_KEY ? '🙈' : '👁')}
                 </button>
               </div>
-              <a href={currentProvider?.keyLink || 'https://bailian.console.aliyun.com/'} target="_blank" rel="noopener noreferrer" className="settings-link">获取 API Key →</a>
+              {currentProvider?.keyLink && (
+                <a href={currentProvider.keyLink} target="_blank" rel="noopener noreferrer" className="settings-link">获取 API Key →</a>
+              )}
             </div>
             <div className="settings-field">
               <label>当前模型</label>
               <select
                 value={apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus'}
-                onChange={(e) => setApiKeys((k) => ({ ...k, OCT_MODEL: e.target.value }))}
+                onChange={(e) => {
+                  const modelId = e.target.value;
+                  setApiKeys((k) => ({ 
+                    ...k, 
+                    OCT_MODEL: modelId,
+                    // 如果选择了自定义模型，使用已保存的自定义模型名称
+                    CUSTOM_MODEL: modelId === '__custom__' ? (k.CUSTOM_MODEL || '') : k.CUSTOM_MODEL
+                  }));
+                }}
                 className="settings-input settings-input-focusable"
                 style={{ maxWidth: '100%' }}
               >
@@ -225,6 +253,28 @@ export function ConnectionTabView({
                 )}
               </select>
             </div>
+            {/* 自定义模型输入框 - 当选择 __custom__ 或 provider 支持自定义模型时显示 */}
+            {(apiKeys.OCT_MODEL === '__custom__' || currentProvider?.allowCustomModel) && (
+              <div className="settings-field">
+                <label>自定义模型名称</label>
+                <input
+                  type="text"
+                  value={apiKeys.CUSTOM_MODEL || ''}
+                  onChange={(e) => setApiKeys((k) => ({ 
+                    ...k, 
+                    CUSTOM_MODEL: e.target.value,
+                    // 如果当前是自定义模式，同步更新 OCT_MODEL
+                    OCT_MODEL: k.OCT_MODEL === '__custom__' ? e.target.value : k.OCT_MODEL
+                  }))}
+                  placeholder="例如：gpt-4o-mini, claude-3-5-sonnet, gemini-pro..."
+                  className="settings-input settings-input-focusable"
+                  autoComplete="off"
+                />
+                <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                  输入任意 OpenAI 兼容格式的模型名称
+                </p>
+              </div>
+            )}
             <details className="settings-details" style={{ marginTop: 8 }}>
               <summary>高级：Base URL</summary>
               <div className="settings-details-content" style={{ marginTop: 8 }}>
@@ -232,15 +282,27 @@ export function ConnectionTabView({
                   <label>Base URL（通常自动填充，自定义时可修改）</label>
                   <input
                     type="text"
-                    value={currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : apiKeys.DASHSCOPE_BASE_URL}
+                    value={
+                      currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : 
+                      currentProviderId === 'custom' ? apiKeys.CUSTOM_BASE_URL :
+                      apiKeys.DASHSCOPE_BASE_URL
+                    }
                     onChange={(e) => {
-                      const key = currentProviderId === 'deepseek' ? 'DEEPSEEK_BASE_URL' : 'DASHSCOPE_BASE_URL';
+                      let key: keyof SettingsApiKeysState;
+                      if (apiKeys.OCT_PROVIDER === 'deepseek') key = 'DEEPSEEK_BASE_URL';
+                      else if (apiKeys.OCT_PROVIDER === 'custom') key = 'CUSTOM_BASE_URL';
+                      else key = 'DASHSCOPE_BASE_URL';
                       setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                     }}
-                    placeholder="https://..."
+                    placeholder={currentProviderId === 'custom' ? 'https://your-api.com/v1' : 'https://...'}
                     className="settings-input settings-input-focusable"
                     autoComplete="off"
                   />
+                  {currentProviderId === 'custom' && (
+                    <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                      输入 OpenAI 兼容格式的 API 地址，通常以 /v1 结尾
+                    </p>
+                  )}
                 </div>
               </div>
             </details>

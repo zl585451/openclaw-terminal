@@ -3,7 +3,8 @@
  *
  * 支持的标记格式：
  * - OCT 约定：[cot]…[/cot]
- * - MiniMax / DeepSeek：<think>…</think>（大小写不敏感，XML 风格）
+ * - MiniMax / DeepSeek：<think>… thinking>（大小写不敏感，XML 风格）
+ * - MiniMax M2.7+：<redacted_thinking>…</redacted_thinking>
  *
  * 若多种标记同时出现，取在字符串中最靠前的一种。
  */
@@ -14,6 +15,10 @@ const BRACKET_CLOSE = '[/cot]';
 /** MiniMax / DeepSeek 的 XML 风格思考标签 */
 const THINK_OPEN = '<think>';
 const THINK_CLOSE = '</think>';
+
+/** MiniMax M2.7+ 实际返回的思考标签 */
+const REDACTED_THINK_OPEN = '<redacted_thinking>';
+const REDACTED_THINK_CLOSE = '</redacted_thinking>';
 
 export type CotExtractResult = {
   cotContent: string | null;
@@ -62,6 +67,26 @@ function extractThinkTags(full: string): CotExtractResult | null {
   };
 }
 
+function extractRedactedThinkTags(full: string): CotExtractResult | null {
+  const openIdx = full.indexOf(REDACTED_THINK_OPEN);
+  if (openIdx === -1) return null;
+  const before = full.slice(0, openIdx);
+  const afterOpen = full.slice(openIdx + REDACTED_THINK_OPEN.length);
+  const closeIdx = afterOpen.indexOf(REDACTED_THINK_CLOSE);
+  if (closeIdx !== -1) {
+    return {
+      cotContent: afterOpen.slice(0, closeIdx).trim(),
+      cotDone: true,
+      mainContent: `${before}\n${afterOpen.slice(closeIdx + REDACTED_THINK_CLOSE.length)}`.trim(),
+    };
+  }
+  return {
+    cotContent: afterOpen.trim(),
+    cotDone: false,
+    mainContent: before.trim(),
+  };
+}
+
 export function extractAssistantCotAndMain(fullContent: string): CotExtractResult {
   if (!fullContent) {
     return { cotContent: null, cotDone: true, mainContent: fullContent };
@@ -69,13 +94,17 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
 
   const bi = fullContent.indexOf(BRACKET_OPEN);
   const ti = fullContent.indexOf(THINK_OPEN);
+  const ri = fullContent.indexOf(REDACTED_THINK_OPEN);
 
   // 取最靠前的标记
-  if (bi !== -1 && (ti === -1 || bi < ti)) {
+  if (bi !== -1 && (ti === -1 || bi < ti) && (ri === -1 || bi < ri)) {
     return extractBracket(fullContent)!;
   }
-  if (ti !== -1) {
+  if (ti !== -1 && (ri === -1 || ti < ri)) {
     return extractThinkTags(fullContent)!;
+  }
+  if (ri !== -1) {
+    return extractRedactedThinkTags(fullContent)!;
   }
 
   return { cotContent: null, cotDone: true, mainContent: fullContent };
@@ -84,5 +113,5 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
 /** 用于 UI：是否应走「行内 CoT」分支（避免双指示器） */
 export function hasAssistantCotMarkers(text: string): boolean {
   if (!text) return false;
-  return text.includes(BRACKET_OPEN) || text.includes(THINK_OPEN);
+  return text.includes(BRACKET_OPEN) || text.includes(THINK_OPEN) || text.includes(REDACTED_THINK_OPEN);
 }

@@ -1,5 +1,5 @@
 {
-  "OCT_MODEL": "kimi-k2.5",
+  "OCT_MODEL": "MiniMax-M2.5",
   "memory": {
     "auto_save_history": true,
     "auto_save_feedback": true,
@@ -28,8 +28,8 @@
   },
   "stream_merge": {
     "min_chars": 1,
-    "max_chars": 20,
-    "idle_ms": 16
+    "max_chars": 15,
+    "idle_ms": 25
   },
   "ai_library": {
     "enabled": true,

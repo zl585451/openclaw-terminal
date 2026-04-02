@@ -164,10 +164,19 @@ const PROVIDERS = {
     baseUrl: '',
     keyPlaceholder: 'your-api-key',
     keyLink: '',
-    keyEnvVars: ['DASHSCOPE_API_KEY'],
-    defaultModel: '',
-    models: [],
-    supportsStreamOptions: false,
+    keyEnvVars: ['CUSTOM_API_KEY', 'DASHSCOPE_API_KEY'],
+    defaultModel: 'gpt-3.5-turbo',
+    models: [
+      { id: '__custom__', label: '✏️ 自定义模型（手动输入）', tools: true, thinking: false, custom: true },
+      { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', tools: true, thinking: false },
+      { id: 'gpt-4', label: 'GPT-4', tools: true, thinking: false },
+      { id: 'gpt-4-turbo', label: 'GPT-4 Turbo', tools: true, thinking: false },
+      { id: 'claude-3-sonnet', label: 'Claude 3 Sonnet', tools: true, thinking: false },
+      { id: 'claude-3-opus', label: 'Claude 3 Opus', tools: true, thinking: false },
+      { id: 'gemini-pro', label: 'Gemini Pro', tools: true, thinking: false },
+    ],
+    supportsStreamOptions: true,
+    allowCustomModel: true, // 允许自定义模型名称
   },
 };
 

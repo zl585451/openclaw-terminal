@@ -5,13 +5,16 @@ export interface ApiKeysState {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
   OCT_PROVIDER: string;
   OCT_MODEL: string;
+  CUSTOM_MODEL: string;
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
+  CUSTOM_BASE_URL: string;
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
 }
@@ -33,13 +36,16 @@ export function useApiKeys() {
     DASHSCOPE_API_KEY: '',
     DEEPSEEK_API_KEY: '',
     MINIMAX_API_KEY: '',
+    CUSTOM_API_KEY: '',
     OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
     OPENCLAW_TOKEN: '',
     OCT_PROVIDER: '',
     OCT_MODEL: '',
+    CUSTOM_MODEL: '',
     DASHSCOPE_BASE_URL: '',
     DEEPSEEK_BASE_URL: '',
     MINIMAX_BASE_URL: '',
+    CUSTOM_BASE_URL: '',
     BRAVE_SEARCH_API_KEY: '',
     TAVILY_API_KEY: '',
   });
@@ -108,8 +114,8 @@ export function useApiKeys() {
   }, []);
 
   const currentProviderId = useMemo(
-    () => apiKeys.OCT_PROVIDER || inferProviderFromBaseUrl(apiKeys.DASHSCOPE_BASE_URL || apiKeys.DEEPSEEK_BASE_URL || ''),
-    [apiKeys.OCT_PROVIDER, apiKeys.DASHSCOPE_BASE_URL, apiKeys.DEEPSEEK_BASE_URL],
+    () => apiKeys.OCT_PROVIDER || inferProviderFromBaseUrl(apiKeys.DASHSCOPE_BASE_URL || apiKeys.DEEPSEEK_BASE_URL || apiKeys.CUSTOM_BASE_URL || ''),
+    [apiKeys.OCT_PROVIDER, apiKeys.DASHSCOPE_BASE_URL, apiKeys.DEEPSEEK_BASE_URL, apiKeys.CUSTOM_BASE_URL],
   );
 
   const currentProvider = providers[currentProviderId];
@@ -118,17 +124,36 @@ export function useApiKeys() {
     const api = (window as any).electronAPI;
     if (!api?.saveApiKeys) return;
     setGatewaySaveStatus('saving');
-    const baseUrl = currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : apiKeys.DASHSCOPE_BASE_URL;
+    
+    // 根据 provider 选择正确的 baseUrl
+    let baseUrl = '';
+    if (currentProviderId === 'deepseek') {
+      baseUrl = apiKeys.DEEPSEEK_BASE_URL;
+    } else if (currentProviderId === 'custom') {
+      baseUrl = apiKeys.CUSTOM_BASE_URL;
+    } else {
+      baseUrl = apiKeys.DASHSCOPE_BASE_URL;
+    }
+    
+    // 处理自定义模型
+    let effectiveModel = apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus';
+    if (currentProviderId === 'custom' && apiKeys.CUSTOM_MODEL) {
+      effectiveModel = apiKeys.CUSTOM_MODEL;
+    }
+    
     api
       .saveApiKeys({
         OPENCLAW_WS_URL: apiKeys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
         OPENCLAW_TOKEN: apiKeys.OPENCLAW_TOKEN || '',
         DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY || '',
         DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
+        CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
         OCT_PROVIDER: currentProviderId || 'bailian-coding',
-        OCT_MODEL: apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus',
-        DASHSCOPE_BASE_URL: currentProviderId === 'deepseek' ? '' : (baseUrl || currentProvider?.baseUrl || ''),
+        OCT_MODEL: effectiveModel,
+        CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
+        DASHSCOPE_BASE_URL: currentProviderId === 'deepseek' || currentProviderId === 'custom' ? '' : (baseUrl || currentProvider?.baseUrl || ''),
         DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+        CUSTOM_BASE_URL: currentProviderId === 'custom' ? (baseUrl || currentProvider?.baseUrl || '') : '',
         BRAVE_SEARCH_API_KEY: searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
         TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
       })

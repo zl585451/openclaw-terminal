@@ -2255,13 +2255,16 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     DASHSCOPE_API_KEY?: string;
     DEEPSEEK_API_KEY?: string;
     MINIMAX_API_KEY?: string;
+    CUSTOM_API_KEY?: string;
     OPENCLAW_WS_URL?: string;
     OPENCLAW_TOKEN?: string;
     OCT_PROVIDER?: string;
     OCT_MODEL?: string;
+    CUSTOM_MODEL?: string;
     DASHSCOPE_BASE_URL?: string;
     DEEPSEEK_BASE_URL?: string;
     MINIMAX_BASE_URL?: string;
+    CUSTOM_BASE_URL?: string;
     BRAVE_SEARCH_API_KEY?: string;
     TAVILY_API_KEY?: string;
   }) => {
@@ -2278,10 +2281,15 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.OPENCLAW_TOKEN !== undefined) cfg.OPENCLAW_TOKEN = keys.OPENCLAW_TOKEN || '';
     if (keys.DASHSCOPE_API_KEY !== undefined) cfg.DASHSCOPE_API_KEY = keys.DASHSCOPE_API_KEY || '';
     if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
+    if (keys.MINIMAX_API_KEY !== undefined) cfg.MINIMAX_API_KEY = keys.MINIMAX_API_KEY || '';
+    if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
     if (keys.OCT_PROVIDER !== undefined) cfg.OCT_PROVIDER = keys.OCT_PROVIDER || '';
     if (keys.OCT_MODEL !== undefined) cfg.OCT_MODEL = keys.OCT_MODEL || '';
+    if (keys.CUSTOM_MODEL !== undefined) cfg.CUSTOM_MODEL = keys.CUSTOM_MODEL || '';
     if (keys.DASHSCOPE_BASE_URL !== undefined) cfg.DASHSCOPE_BASE_URL = keys.DASHSCOPE_BASE_URL || '';
     if (keys.DEEPSEEK_BASE_URL !== undefined) cfg.DEEPSEEK_BASE_URL = keys.DEEPSEEK_BASE_URL || '';
+    if (keys.MINIMAX_BASE_URL !== undefined) cfg.MINIMAX_BASE_URL = keys.MINIMAX_BASE_URL || '';
+    if (keys.CUSTOM_BASE_URL !== undefined) cfg.CUSTOM_BASE_URL = keys.CUSTOM_BASE_URL || '';
     if (keys.BRAVE_SEARCH_API_KEY !== undefined) cfg.BRAVE_SEARCH_API_KEY = keys.BRAVE_SEARCH_API_KEY || '';
     if (keys.TAVILY_API_KEY !== undefined) cfg.TAVILY_API_KEY = keys.TAVILY_API_KEY || '';
     Object.assign(cfg, {
@@ -2312,8 +2320,11 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
     // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
     const aiConfigChanged = keys.OCT_PROVIDER !== undefined || keys.OCT_MODEL !== undefined
+      || keys.CUSTOM_MODEL !== undefined
       || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
+      || keys.CUSTOM_BASE_URL !== undefined
       || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
+      || keys.CUSTOM_API_KEY !== undefined
       || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
       octGatewayProcess.kill();

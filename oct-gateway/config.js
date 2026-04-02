@@ -390,6 +390,7 @@ function getProviderConfig() {
   const isBailian = preset.id === 'bailian' || preset.id === 'bailian-coding';
   const isDeepseek = preset.id === 'deepseek';
   const isMinimax = preset.id === 'minimax';
+  const isCustom = preset.id === 'custom';
 
   let apiKey = '';
   if (preset.fixedApiKey) {
@@ -412,11 +413,26 @@ function getProviderConfig() {
     baseUrl = getEnvOrConfig('DEEPSEEK_BASE_URL') || preset.baseUrl;
   } else if (isMinimax) {
     baseUrl = getEnvOrConfig('MINIMAX_BASE_URL') || preset.baseUrl;
-  } else if (preset.id === 'custom') {
-    baseUrl = getEnvOrConfig('DASHSCOPE_BASE_URL') || '';
+  } else if (isCustom) {
+    // 自定义服务：从配置中读取 Base URL 和 API Key
+    baseUrl = _fileConfig.CUSTOM_BASE_URL || process.env.CUSTOM_BASE_URL || '';
+    apiKey = _fileConfig.CUSTOM_API_KEY || process.env.CUSTOM_API_KEY || '';
+  }
+
+  // 处理自定义模型
+  let effectiveModel = _currentModel;
+  if (isCustom && _fileConfig.CUSTOM_MODEL) {
+    effectiveModel = _fileConfig.CUSTOM_MODEL;
   }
 
   let models = preset.models || [];
+  if (isCustom && effectiveModel && effectiveModel !== '__custom__') {
+    // 如果用户设置了自定义模型，添加到模型列表
+    models = [
+      { id: effectiveModel, label: `${effectiveModel} (自定义)`, tools: true, thinking: false },
+      ...models.filter(m => m.id !== effectiveModel)
+    ];
+  }
   if (models.length === 0 && preset.defaultModel) {
     models = [{ id: preset.defaultModel, label: preset.defaultModel, tools: true, thinking: false }];
   }
@@ -432,6 +448,7 @@ function getProviderConfig() {
     apiKey,
     baseUrl,
     models,
+    customModel: isCustom ? effectiveModel : undefined,
   };
 }
 

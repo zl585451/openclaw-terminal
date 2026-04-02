@@ -36,12 +36,17 @@ const electronAPI = {
   saveApiKeys: (keys: {
         DASHSCOPE_API_KEY?: string;
         DEEPSEEK_API_KEY?: string;
+        MINIMAX_API_KEY?: string;
+        CUSTOM_API_KEY?: string;
         OPENCLAW_WS_URL?: string;
         OPENCLAW_TOKEN?: string;
         OCT_PROVIDER?: string;
         OCT_MODEL?: string;
+        CUSTOM_MODEL?: string;
         DASHSCOPE_BASE_URL?: string;
         DEEPSEEK_BASE_URL?: string;
+        MINIMAX_BASE_URL?: string;
+        CUSTOM_BASE_URL?: string;
         BRAVE_SEARCH_API_KEY?: string;
         TAVILY_API_KEY?: string;
       }) => ipcRenderer.invoke('save-api-keys', keys),

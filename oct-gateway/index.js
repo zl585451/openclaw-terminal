@@ -117,8 +117,8 @@ setInterval(async () => {
 
 /** 流式合并：微批量发送，保持打字机流畅度的同时减少 WebSocket 帧数 */
 function createStreamMergeDelta(cfg, onChunk) {
-  const maxChars = (cfg?.max_chars ?? 60);
-  const idleMs = (cfg?.idle_ms ?? 30);
+  const maxChars = (cfg?.max_chars ?? 15);
+  const idleMs = (cfg?.idle_ms ?? 25);
   let buf = '';
   let idleTimer = null;
 
@@ -133,7 +133,7 @@ function createStreamMergeDelta(cfg, onChunk) {
       buf += delta;
       // 超过上限立即发送
       if (buf.length >= maxChars) { flush(); return; }
-      // 否则用短定时器做微批处理（30ms 内的连续 delta 合并为一帧）
+      // 否则用短定时器做微批处理（25ms 内的连续 delta 合并为一帧）
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(flush, idleMs);
     },
