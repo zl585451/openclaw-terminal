@@ -409,6 +409,16 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
   }
 
   let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用
+  /** MiniMax <redacted_thinking> 流式解析状态（与 caps 同步于 try 内） */
+  const thinkState = { inThink: false, pendingTag: '' };
+  let thinkTagMode = false;
+  function flushThinkPending() {
+    if (thinkTagMode && thinkState.pendingTag) {
+      fullText += thinkState.pendingTag;
+      onDelta(thinkState.pendingTag);
+      thinkState.pendingTag = '';
+    }
+  }
   try {
     const hasImage = truncatedMessages.some(m =>
       Array.isArray(m.content) &&
@@ -424,10 +434,79 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
       ? {
           supportsTools: modelDef.tools !== undefined ? modelDef.tools : registryCaps.supportsTools,
           supportsStreamOptions: provider.supportsStreamOptions,
+          supportsThinking: registryCaps.supportsThinking ?? false,
+          thinkingFormat: registryCaps.thinkingFormat ?? null,
           maxTokens: modelDef.maxTokens || registryCaps.maxTokens || 4096,
         }
       : registryCaps;
     log.info('model caps', { model, supportsTools: caps.supportsTools, supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions });
+
+    thinkTagMode = caps.thinkingFormat === 'think_tags';
+    thinkState.inThink = false;
+    thinkState.pendingTag = '';
+
+    const OPEN_THINK = '<redacted_thinking>';
+    const CLOSE_THINK = '</redacted_thinking>';
+
+    /** 返回 s 末尾与 tag 前缀重叠的最长子串（跨 chunk 的部分标签缓冲） */
+    function findPartialTag(s, tag) {
+      for (let len = Math.min(s.length, tag.length - 1); len > 0; len--) {
+        if (tag.startsWith(s.slice(-len))) return s.slice(-len);
+      }
+      return '';
+    }
+
+    /**
+     * 处理一个 content chunk：
+     * - 非 think_tags 模式：直接写入 fullText 并触发 onDelta
+     * - think_tags 模式：解析 <redacted_thinking>...</redacted_thinking> → [cot]...[/cot]
+     */
+    function processContentChunk(raw) {
+      if (!thinkTagMode) {
+        fullText += raw;
+        onDelta(raw);
+        return;
+      }
+
+      let s = thinkState.pendingTag + raw;
+      thinkState.pendingTag = '';
+
+      while (s.length > 0) {
+        if (!thinkState.inThink) {
+          const idx = s.indexOf(OPEN_THINK);
+          if (idx === -1) {
+            const tail = findPartialTag(s, OPEN_THINK);
+            const emit = s.slice(0, s.length - tail.length);
+            if (emit) { fullText += emit; onDelta(emit); }
+            thinkState.pendingTag = tail;
+            s = '';
+          } else {
+            const before = s.slice(0, idx);
+            if (before) { fullText += before; onDelta(before); }
+            fullText += '[cot]';
+            onDelta('[cot]');
+            thinkState.inThink = true;
+            s = s.slice(idx + OPEN_THINK.length);
+          }
+        } else {
+          const idx = s.indexOf(CLOSE_THINK);
+          if (idx === -1) {
+            const tail = findPartialTag(s, CLOSE_THINK);
+            const emit = s.slice(0, s.length - tail.length);
+            if (emit) { fullText += emit; onDelta(emit); }
+            thinkState.pendingTag = tail;
+            s = '';
+          } else {
+            const thinkContent = s.slice(0, idx);
+            if (thinkContent) { fullText += thinkContent; onDelta(thinkContent); }
+            fullText += '[/cot]';
+            onDelta('[/cot]');
+            thinkState.inThink = false;
+            s = s.slice(idx + CLOSE_THINK.length);
+          }
+        }
+      }
+    }
 
     const requestBody = {
       model,
@@ -524,9 +603,8 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
           // qwen3.5-plus thinking tokens - skip silently
         }
         if (delta.content) {
-          fullText += delta.content;
           lastChunkTime = Date.now(); // 每次收到真实 chunk 时更新时间
-          onDelta(delta.content);
+          processContentChunk(delta.content);
         }
 
         if (delta.tool_calls) {
@@ -595,6 +673,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     }
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
+    flushThinkPending();
     onDone(fullText, totalUsage, responseModel);
   } catch (e) {
     stopHeartbeat();
@@ -603,6 +682,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     // 如果已经输出了一部分内容，发送截断提示而不是直接报错
     if (fullText && fullText.length > 10) {
       const truncateMsg = '\n\n---\n⚠️ 网络波动，回复可能不完整。如需继续，请发送「继续」';
+      flushThinkPending();
       onDelta(truncateMsg);
       onDone(fullText + truncateMsg, null, null);
       log.warn('已发送截断提示，已输出内容长度:', fullText.length);

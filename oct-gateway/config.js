@@ -171,7 +171,8 @@ const MODEL_REGISTRY = {
     label: 'MiniMax M2.7（最新，自我迭代）',
     supportsTools: true,
     supportsStreamOptions: true,
-    supportsThinking: false,
+    supportsThinking: true,
+    thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
   'MiniMax-M2.7-highspeed': {
@@ -179,7 +180,8 @@ const MODEL_REGISTRY = {
     label: 'MiniMax M2.7 极速版（100tps）',
     supportsTools: true,
     supportsStreamOptions: true,
-    supportsThinking: false,
+    supportsThinking: true,
+    thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
   'MiniMax-M2.5-standalone': {
@@ -187,7 +189,8 @@ const MODEL_REGISTRY = {
     label: 'MiniMax M2.5（顶尖性能）',
     supportsTools: true,
     supportsStreamOptions: true,
-    supportsThinking: false,
+    supportsThinking: true,
+    thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
   'MiniMax-M2.5-highspeed': {
@@ -195,7 +198,8 @@ const MODEL_REGISTRY = {
     label: 'MiniMax M2.5 极速版（100tps）',
     supportsTools: true,
     supportsStreamOptions: true,
-    supportsThinking: false,
+    supportsThinking: true,
+    thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
   'MiniMax-M2.1': {
@@ -203,7 +207,8 @@ const MODEL_REGISTRY = {
     label: 'MiniMax M2.1（多语言编程）',
     supportsTools: true,
     supportsStreamOptions: true,
-    supportsThinking: false,
+    supportsThinking: true,
+    thinkingFormat: 'think_tags',
     maxTokens: 4096,
   },
   'MiniMax-M2.1-highspeed': {
@@ -211,7 +216,8 @@ const MODEL_REGISTRY = {
     label: 'MiniMax M2.1 极速版（100tps）',
     supportsTools: true,
     supportsStreamOptions: true,
-    supportsThinking: false,
+    supportsThinking: true,
+    thinkingFormat: 'think_tags',
     maxTokens: 4096,
   },
   'MiniMax-M2': {
@@ -219,7 +225,8 @@ const MODEL_REGISTRY = {
     label: 'MiniMax M2（高效编码）',
     supportsTools: true,
     supportsStreamOptions: true,
-    supportsThinking: false,
+    supportsThinking: true,
+    thinkingFormat: 'think_tags',
     maxTokens: 4096,
   },
   'glm-5': {
@@ -288,6 +295,7 @@ function getModelCaps(modelId) {
     supportsTools: false,
     supportsStreamOptions: false,
     supportsThinking: false,
+    thinkingFormat: null,
     maxTokens: 4096,
   };
 }
