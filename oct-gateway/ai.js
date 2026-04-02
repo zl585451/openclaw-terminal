@@ -485,15 +485,24 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
       return '';
     }
 
+    /** 过滤掉 AI 误输出到 content 中的工具调用标记 */
+    function _stripToolCallMarkers(s) {
+      return s.replace(/\[TOOL_CALLS?\]/gi, '');
+    }
+
     /** 处理一个 content chunk，区分思考内容和正文内容 */
     function _processContentChunk(raw) {
+      // 先过滤掉 [TOOL_CALL] / [TOOL_CALLS] 等误输出的标记
+      const cleaned = _stripToolCallMarkers(raw);
+      if (!cleaned) return;
+
       if (!_thinkTagMode) {
-        fullText += raw;
-        onDelta(raw);
+        fullText += cleaned;
+        onDelta(cleaned);
         return;
       }
 
-      let s = _thinkState.pendingTag + raw;
+      let s = _thinkState.pendingTag + cleaned;
       _thinkState.pendingTag = '';
 
       while (s.length > 0) {
