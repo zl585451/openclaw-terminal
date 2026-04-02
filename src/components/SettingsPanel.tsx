@@ -120,6 +120,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   useEffect(() => { loadMcpStatus(); }, []);
 
+  // 每次切到 MCP Tab 刷新（Gateway 重启后避免仍显示空状态）
+  useEffect(() => {
+    if (activeTab === 'mcp') loadMcpStatus();
+  }, [activeTab]);
+
   // 记忆系统 Tab：每 5 秒刷新 Nocturne 详情与 AI.library 状态
   useEffect(() => {
     if (activeTab !== 'memory') return;

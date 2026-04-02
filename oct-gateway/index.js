@@ -234,8 +234,17 @@ const httpServer = http.createServer((req, res) => {
     req.on('data', d => body += d);
     req.on('end', async () => {
       try {
-        const { name, command, args, env } = JSON.parse(body);
-        const config = { command, args, env };
+        const parsed = JSON.parse(body);
+        const name = parsed.name;
+        let command;
+        let args;
+        let env;
+        if (parsed.config && typeof parsed.config === 'object') {
+          ({ command, args, env } = parsed.config);
+        } else {
+          ({ command, args, env } = parsed);
+        }
+        const config = { command, args, env: env || {} };
         const status = await mcpManager.addServer(name, config);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, status }));

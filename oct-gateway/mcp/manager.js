@@ -54,6 +54,14 @@ class McpManager {
     }
   }
 
+  /** 连接成功后再写入 mcpServers，避免失败时用空 _clients 覆盖磁盘配置 */
+  async _startServerOrThrow(name, cfg) {
+    const client = new McpClient(name, cfg);
+    await client.connect();
+    this._clients.set(name, client);
+    log.info(`Server "${name}" 已连接`, { tools: client.tools.map(t => t.name) });
+  }
+
   _buildDefinitions() {
     this._toolMap.clear();
     const defs = [];
@@ -103,14 +111,15 @@ class McpManager {
   /** 热添加 Server（面板 UI 用） */
   async addServer(name, cfg) {
     if (this._clients.has(name)) {
-      this._clients.get(name).disconnect();
+      const prev = this._clients.get(name);
+      prev.disconnect();
+      this._clients.delete(name);
     }
-    
-    // 先更新内存中的配置
+
+    await this._startServerOrThrow(name, cfg);
+
     if (!_fileConfig.mcpServers) _fileConfig.mcpServers = {};
     _fileConfig.mcpServers[name] = cfg;
-    
-    await this._startServer(name, cfg);
     this._saveConfig();
     return this.getStatus()[name];
   }
@@ -136,15 +145,17 @@ class McpManager {
       log.warn('_saveConfig: 无配置文件路径，跳过保存');
       return;
     }
-    const mcpServers = {};
-    for (const [name, client] of this._clients) {
-      mcpServers[name] = client.config;
-    }
     try {
       const fs = require('fs');
       let existing = {};
       try { existing = JSON.parse(fs.readFileSync(_configPath, 'utf-8')); } catch {}
-      existing.mcpServers = mcpServers;
+      // 以 _fileConfig.mcpServers 为意图源，再用已连接 client 覆盖（避免仅按 _clients 写出导致未连上的项被清空）
+      const merged = { ...(_fileConfig.mcpServers || {}) };
+      for (const [name, client] of this._clients) {
+        merged[name] = client.config;
+      }
+      existing.mcpServers = merged;
+      _fileConfig.mcpServers = merged;
       fs.writeFileSync(_configPath, JSON.stringify(existing, null, 2), 'utf-8');
       log.info('MCP 配置已保存', { path: _configPath });
     } catch (e) {

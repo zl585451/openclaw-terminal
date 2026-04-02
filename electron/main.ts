@@ -1717,10 +1717,17 @@ ipcMain.handle('mcp-get-status', async () => {
 
 ipcMain.handle('mcp-add-server', async (_, name: string, cfg: any) => {
   try {
+    // 与 oct-gateway POST /mcp/server 一致：扁平字段 name + command + args + env（勿包在 config 里）
+    const body = {
+      name,
+      command: cfg?.command,
+      args: cfg?.args,
+      env: cfg?.env && typeof cfg.env === 'object' ? cfg.env : {},
+    };
     const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/server`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, config: cfg }),
+      body: JSON.stringify(body),
     });
     return await res.json();
   } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
