@@ -115,6 +115,98 @@ setInterval(async () => {
   }
 }, heartbeatIntervalMs);
 
+// ═══════════════════════════════════════════════════════════════
+// 流平滑器：让打字机输出更丝滑
+// 参考 Vercel AI SDK smoothStream + Intl.Segmenter 词边界分词
+// ═══════════════════════════════════════════════════════════════
+function createStreamSmoother(onChunk) {
+  const buffer = [];
+  let timer = null;
+  let isEnding = false;
+  let endCallback = null;
+
+  // Intl.Segmenter 按语义词边界分词（中文"你好"作为1个词，英文"world"作为1个词）
+  const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
+
+  const INTERVAL_MS = 10;        // 10ms/词 ≈ Vercel AI SDK 的 delayInMs
+  const CATCHUP_THRESHOLD = 30;  // 积压30字符开始追赶（比原来50更低，更敏感）
+  const CATCHUP_CHARS = 5;       // 追赶时每tick按字符快速消费
+  const END_BOOST_CHARS = 10;    // 结束时加速消化
+
+  function tick() {
+    if (buffer.length === 0) {
+      if (isEnding) {
+        if (timer) { clearInterval(timer); timer = null; }
+        if (endCallback) { endCallback(); endCallback = null; }
+      }
+      return;
+    }
+
+    // 追赶模式：buffer 积压太多，按字符快速消费
+    if (buffer.length > CATCHUP_THRESHOLD) {
+      const chars = buffer.splice(0, CATCHUP_CHARS);
+      if (chars.length > 0) {
+        onChunk(chars.join(''));
+      }
+      return;
+    }
+
+    // 正常模式：按语义词边界切分
+    // 注意：buffer 是字符数组，需要先 join 成字符串再分词
+    const bufferStr = buffer.join('');
+    const segments = [...segmenter.segment(bufferStr)];
+    if (segments.length === 0) return;
+
+    const first = segments[0];
+    // segmenter 可能返回空 segment（分隔符等），跳过
+    if (!first.segment || !first.segment.length) return;
+
+    const isPunctuation = /^\s+$/.test(first.segment);
+    if (isPunctuation) {
+      // 把标点作为独立词发送
+      buffer.splice(0, first.segment.length);
+      onChunk(first.segment);
+      return;
+    }
+
+    const consumedLen = first.index + first.segment.length;
+    buffer.splice(0, consumedLen);
+    onChunk(first.segment);
+  }
+
+  function start() {
+    if (timer) return;
+    timer = setInterval(tick, INTERVAL_MS);
+  }
+
+  function feed(text) {
+    if (!text) return;
+    for (const char of text) {
+      buffer.push(char);
+    }
+    start();
+  }
+
+  function end(callback) {
+    isEnding = true;
+    endCallback = callback;
+    if (buffer.length === 0) {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (endCallback) { endCallback(); endCallback = null; }
+    }
+  }
+
+  function flush() {
+    if (buffer.length > 0) {
+      onChunk(buffer.join(''));
+      buffer.length = 0;
+    }
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  return { feed, end, flush };
+}
+
 /** 流式合并：微批量发送，保持打字机流畅度的同时减少 WebSocket 帧数 */
 function createStreamMergeDelta(cfg, onChunk) {
   const maxChars = (cfg?.max_chars ?? 15);
@@ -655,7 +747,7 @@ wss.on('connection', (ws) => {
       currentAbort = () => { cancelled = true; };
 
       let fullReply = '';
-      const merge = createStreamMergeDelta(config.stream_merge, (chunk) => {
+      const smoother = createStreamSmoother((chunk) => {
         if (cancelled) return;
         fullReply += chunk;
         if (ws.readyState === ws.OPEN) {
@@ -669,7 +761,7 @@ wss.on('connection', (ws) => {
 
       await streamChat({
         messages,
-        onDelta: merge.onDelta,
+        onDelta: smoother.feed,
         onToolEvent: (evt) => {
           if (cancelled || ws.readyState !== ws.OPEN) return;
           ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
@@ -684,7 +776,7 @@ wss.on('connection', (ws) => {
           if (cancelled) return;
           currentAbort = null;
           if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
-          merge.flush();
+          smoother.flush();
           if (fullReply) {
             session.addMessage(sessionKey, 'assistant', fullReply);
 
@@ -725,7 +817,7 @@ wss.on('connection', (ws) => {
             //   'selfEval+maybeDistill'
             // );
           }
-          
+
           if (ws.readyState === ws.OPEN) {
             const donePayload = { text: fullReply, state: 'done', done: true };
             if (usage) donePayload.usage = usage;

@@ -1,11 +1,23 @@
+/**
+ * useTypewriter.ts — RAF-based per-character animation
+ *
+ * 特性：
+ * - useEffect + 16ms polling interval 启动 RAF 循环
+ * - RAF tick() 使用 budgetRef 时间预算决定每帧显示多少字符
+ * - MAX_CHARS_PER_FRAME = 12，CATCHUP_THRESHOLD = 20
+ * - catchUpBoost 在缓冲区积压时加速追赶
+ */
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { playClickSound, resetSoundCounter } from '../utils/clickSound';
 import { parseOptionBox } from '../utils/optionBoxParser';
 import { extractAssistantCotAndMain } from '../utils/cotExtract';
 
+export type TypingSoundMode = 'off' | 'typewriter' | 'soft' | 'bubble';
+
 export interface UseTypewriterOptions {
   baseDelayMs: number;
-  typingSound: 'off' | 'typewriter' | 'soft' | 'bubble';
+  typingSound: TypingSoundMode;
   onFinished: (finalText: string) => void;
 }
 
@@ -16,6 +28,11 @@ export interface UseTypewriterReturn {
   displayedText: string;
   isTyping: boolean;
 }
+
+// ── 常量 ────────────────────────────────────────────────
+
+const MAX_CHARS_PER_FRAME = 6;
+const BATCH_FRAMES = 1;
 
 // ── 字符工具函数 ────────────────────────────────────────
 
@@ -29,17 +46,11 @@ function getNextCharIndex(text: string, idx: number): number {
   return idx + 1;
 }
 
-function isWordChar(ch: string): boolean {
-  return /^[A-Za-z0-9_]+$/.test(ch);
-}
-
 function charDelayMs(ch: string, base: number): number {
-  const d = Math.max(base, 8); // 降低最小延迟，提高整体速度
-  if (ch === '\n') return d + d * 0.15; // 轻微换行停顿
-  if ('。！？…'.includes(ch)) return d + d * 0.1; // 轻微句号停顿
-  if ('.!?'.includes(ch)) return d + d * 0.08; // 轻微英文句号停顿
-  if (',，、;；'.includes(ch)) return d + d * 0.05; // 轻微逗号停顿
-  return d;
+  if (ch === '\n') return base * 2;
+  if ('。！？…'.includes(ch) || '.!?'.includes(ch)) return base * 1.5;
+  if (',，、;；'.includes(ch)) return base * 1.5;
+  return base;
 }
 
 function computeRangeCostMs(text: string, start: number, end: number, base: number): number {
@@ -51,6 +62,10 @@ function computeRangeCostMs(text: string, start: number, end: number, base: numb
     i = ni;
   }
   return cost;
+}
+
+function isWordChar(ch: string): boolean {
+  return /^[A-Za-z0-9_]+$/.test(ch);
 }
 
 function pickPreferredNextIndex(text: string, idx: number, maxChars: number): number {
@@ -78,26 +93,27 @@ function pickPreferredNextIndex(text: string, idx: number, maxChars: number): nu
 
 export function useTypewriter(options: UseTypewriterOptions): UseTypewriterReturn {
   const { baseDelayMs, typingSound, onFinished } = options;
+
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
 
   const [displayedText, setDisplayedText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
-  // ── 内部 refs：只有 hook 内部读写 ──
+  // ── 内部 refs ──
   const fullTextRef = useRef('');           // 累积的原始全文
   const visibleTextRef = useRef('');        // 解析后的可见正文
   const displayedLenRef = useRef(0);        // 当前已显示的字符数
-  const streamDoneRef = useRef(false);      // 流是否已结束
+  const streamDoneRef = useRef(false);       // 流是否已结束
   const rafRef = useRef<number | null>(null);
   const budgetRef = useRef(0);
   const lastTsRef = useRef(0);
   const startTsRef = useRef(0);
+  const frameCountRef = useRef(0);
 
   // ── feed：外部每次传入累积全文 ──
   const feed = useCallback((rawFullText: string) => {
     fullTextRef.current = rawFullText;
-    // 提取思维链（支持 [cot] 和 <think> 两种格式），剩余部分为可见正文
     const { mainContent } = extractAssistantCotAndMain(rawFullText);
     try {
       const parsed = parseOptionBox(mainContent || '');
@@ -105,7 +121,6 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
     } catch {
       visibleTextRef.current = mainContent || '';
     }
-    // 夹紧：如果可见文本因为标签被剥离而变短，避免 slice 越界
     if (displayedLenRef.current > visibleTextRef.current.length) {
       displayedLenRef.current = visibleTextRef.current.length;
     }
@@ -129,18 +144,17 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
     budgetRef.current = 0;
     lastTsRef.current = 0;
     startTsRef.current = 0;
+    frameCountRef.current = 0;
     setDisplayedText('');
     setIsTyping(false);
   }, []);
 
-  // ── 唯一的 tick 循环 ──
+  // ── RAF tick 循环 ──
   useEffect(() => {
-    // 只要有新内容且 tick 未运行，就启动
     const tryStart = () => {
-      if (rafRef.current !== null) return; // 已在运行
+      if (rafRef.current !== null) return;
 
-      // 流已结束但 parseOptionBox 后可见正文为空（仅 CoT/标签内内容等）：不能走 RAF，
-      // 否则永远不触发 onFinished，TurnFSM 会卡在 RENDER_COMPLETE，下次发送报 Invalid transition。
+      // 流已结束但可见正文为空 → 直接完成，避免 FSM 卡住
       if (streamDoneRef.current && visibleTextRef.current.length === 0) {
         setIsTyping(false);
         const raw = fullTextRef.current;
@@ -156,13 +170,14 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
         return;
       }
 
-      if (visibleTextRef.current.length === 0) return; // 流未结束且暂无可显示正文
+      if (visibleTextRef.current.length === 0) return;
       if (displayedLenRef.current >= visibleTextRef.current.length && !streamDoneRef.current) return;
 
       setIsTyping(true);
-      budgetRef.current = 20;
+      budgetRef.current = 30;
       startTsRef.current = performance.now();
       lastTsRef.current = 0;
+      frameCountRef.current = 0;
       resetSoundCounter();
 
       const tick = (ts: number) => {
@@ -174,13 +189,13 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
         const fullLen = full.length;
         let idx = displayedLenRef.current;
 
-        // 追赶：平缓曲线
+        // 追赶加速
         const elapsed = ts - startTsRef.current;
         const backlog = fullLen - idx;
         let catchUpBoost = 0;
-        if (elapsed > 2000 && !streamDoneRef.current) {
-          if (backlog > 60) catchUpBoost = Math.min((backlog - 60) * 0.12, 10);
-          if (backlog > 200) catchUpBoost = 10 + Math.min((backlog - 200) * 0.15, 20);
+        if (elapsed > 1000 && !streamDoneRef.current) {
+          if (backlog > 40) catchUpBoost = Math.min((backlog - 40) * 0.15, 12);
+          if (backlog > 200) catchUpBoost = 12 + Math.min((backlog - 200) * 0.2, 25);
         }
 
         // stream 结束后加速收尾
@@ -190,11 +205,11 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
 
         budgetRef.current += dt + catchUpBoost;
 
-        // 推进字符 - 每帧最多4个字符，平衡流畅感和速度
+        // 推进字符
         let typedThisFrame = 0;
 
-        while (typedThisFrame < 4 && idx < fullLen) {
-          const remain = 4 - typedThisFrame;
+        while (typedThisFrame < MAX_CHARS_PER_FRAME && idx < fullLen) {
+          const remain = MAX_CHARS_PER_FRAME - typedThisFrame;
           let targetIdx = pickPreferredNextIndex(full, idx, remain);
           if (targetIdx <= idx) targetIdx = getNextCharIndex(full, idx);
           const cost = computeRangeCostMs(full, idx, targetIdx, baseDelayMs);
@@ -220,7 +235,12 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
 
         if (idx !== displayedLenRef.current) {
           displayedLenRef.current = idx;
-          setDisplayedText(full.slice(0, idx));
+          frameCountRef.current += 1;
+          // 每 BATCH_FRAMES 帧 flush 一次到 React state
+          if (frameCountRef.current >= BATCH_FRAMES) {
+            setDisplayedText(full.slice(0, idx));
+            frameCountRef.current = 0;
+          }
           if (typingSound !== 'off') playClickSound(typingSound);
         }
 
@@ -228,18 +248,14 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
         if (idx >= fullLen && streamDoneRef.current) {
           rafRef.current = null;
           setIsTyping(false);
-          // 回调：让 ChatTab 做 FSM/ingest 清理和 isStreaming:false
           onFinishedRef.current(fullTextRef.current);
-          // 内部重置 refs（不触发渲染）
           fullTextRef.current = '';
           visibleTextRef.current = '';
           displayedLenRef.current = 0;
           streamDoneRef.current = false;
           budgetRef.current = 0;
           lastTsRef.current = 0;
-          // 关键：延迟两帧再清空 displayedText
-          // onFinished 触发 setMessages isStreaming:false，React 需要一帧提交
-          // 过早 setDisplayedText('') 会导致内容消失一帧再出现（末尾抖动）
+          // 延迟两帧再清空 displayedText，避免末尾抖动
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               setDisplayedText('');
@@ -248,15 +264,13 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
           return;
         }
 
-        // 还没追完或流还没结束 → 继续
         rafRef.current = requestAnimationFrame(tick);
       };
 
       rafRef.current = requestAnimationFrame(tick);
     };
 
-    // 用 interval 轮询是否需要启动（16ms = 约 60fps）
-    // 这比依赖 useEffect deps 更可靠，因为 feed() 只写 ref 不触发重渲染
+    // 16ms polling interval 启动 RAF
     const poll = setInterval(tryStart, 16);
     return () => {
       clearInterval(poll);
