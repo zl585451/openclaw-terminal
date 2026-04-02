@@ -26,10 +26,11 @@ const MCP_PRESETS = [
   {
     id: 'minimax',
     name: 'MiniMax 多模态工具包',
-    description: '支持图片理解、文本生成、编程规划等多模态 AI 工具',
+    description: '官方 Token Plan MCP：web_search、understand_image（见平台文档）',
     command: 'uvx',
-    args: 'minimax-coding-plan-mcp',
-    envTemplate: 'MINIMAX_API_KEY=sk-cp-your-key-here\nMINIMAX_API_HOST=https://api.minimaxi.com',
+    args: 'minimax-coding-plan-mcp -y',
+    envTemplate:
+      'MINIMAX_API_KEY=sk-cp-你的密钥\nMINIMAX_API_HOST=https://api.minimaxi.com\nMINIMAX_MCP_BASE_PATH=C:\\Users\\你的用户名\\Documents\\MinimaxMcpOut',
     icon: '🎯',
     category: 'AI 工具'
   },
@@ -438,7 +439,7 @@ export function McpTabView({
                 color: 'var(--text-secondary)'
               }}>
                 <strong>安装提示：</strong>
-                {selectedPreset === 'minimax' && ' 需要先安装 uvx：pip install uv'}
+                {selectedPreset === 'minimax' && ' 需安装 uv（含 uvx）：https://github.com/astral-sh/uv ；MINIMAX_MCP_BASE_PATH 请改为本机已存在、可写的目录'}
                 {selectedPreset.startsWith('web') && ' 需要 Brave Search API 密钥'}
                 {selectedPreset === 'github' && ' 需要 GitHub Personal Access Token'}
                 {selectedPreset.includes('sql') && ' 确保数据库路径正确且可访问'}

@@ -252,6 +252,22 @@ MCP Server（uvx 进程）: 执行工具，返回 { content: [...] }
 - [MCP Spec - Client Implementation](https://modelcontextprotocol.io/docs)
 - [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/specification)（Python 实现的 Client 端可参考）
 - MiniMax Token Plan MCP：`minimax-coding-plan-mcp`（uvx 启动）
+- [MiniMax 图片理解 & 网络搜索 MCP 官方说明](https://platform.minimaxi.com/docs/token-plan/mcp-guide)（工具 `web_search`、`understand_image`，前置 uv / uvx）
+
+### 附录：在 OCT 中配置 MiniMax MCP
+
+1. 安装 **uv**（自带 `uvx`），见 [uv 仓库](https://github.com/astral-sh/uv)；Windows 若报 `spawn uvx ENOENT`，可在设置里把启动命令改为 `uvx` 的绝对路径。
+2. 启动 **Gateway**（WebSocket `18789` / HTTP `18790`）。
+3. 打开 **设置 → ⑤ MCP 工具**，点 **MiniMax 多模态工具包** 预设，按需填写：
+   - **名称**：建议 `minimax`（唯一标识）。
+   - **启动命令**：`uvx`
+   - **参数**：`minimax-coding-plan-mcp -y`（与官方示例一致，`-y` 用于非交互确认）。
+   - **环境变量**（每行 `KEY=VALUE`）：
+     - `MINIMAX_API_KEY`：Token Plan 的 API Key（勿提交到仓库）。
+     - `MINIMAX_API_HOST`：`https://api.minimaxi.com`
+     - `MINIMAX_MCP_BASE_PATH`：本机**已存在、可写**的目录（官方 Cursor 示例要求；用于本地资源输出等场景）。
+   - 可选：`MINIMAX_API_RESOURCE_MODE`（`url` 或 `local`，见官方文档）。
+4. 点击 **连接并添加**，状态为已连接且列出 `web_search`、`understand_image` 即成功。配置会写入当前生效的 `config.json` 中 `mcpServers` 字段。
 
 ---
 
