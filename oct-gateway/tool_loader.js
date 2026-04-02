@@ -10,6 +10,9 @@ const TOOL_LOADER_SKIP = new Set(['shared.js', 'ai_library.js']);
 let _definitions = [];
 let _executors = {};
 
+/** 动态工具提供者（MCP 等批量工具源） */
+const _providers = [];
+
 function loadTools() {
   _definitions = [];
   _executors = {};
@@ -43,12 +46,40 @@ function loadTools() {
   console.log(`[ToolLoader] 共加载 ${_definitions.length} 个工具`);
 }
 
-function getDefinitions() { return _definitions; }
-function getExecutors() { return _executors; }
+/**
+ * 注册一个动态工具提供者。提供者需实现：
+ *   getDefinitions() → OpenAI tool 格式数组
+ *   executeTool(name, args) → Promise<result>
+ */
+function registerProvider(provider) {
+  if (typeof provider.getDefinitions !== 'function' || typeof provider.executeTool !== 'function') {
+    console.error('[ToolLoader] registerProvider 失败：provider 缺少 getDefinitions 或 executeTool');
+    return;
+  }
+  _providers.push(provider);
+  console.log(`[ToolLoader] 已注册工具提供者，共 ${_providers.length} 个`);
+}
+
+function getDefinitions() {
+  const providerDefs = _providers.flatMap(p => {
+    try { return p.getDefinitions(); } catch { return []; }
+  });
+  return [..._definitions, ...providerDefs];
+}
+
 async function executeTool(name, args) {
-  const fn = _executors[name];
-  if (!fn) throw new Error(`工具 "${name}" 不存在`);
-  return await fn(args);
+  // 优先查静态工具
+  if (_executors[name]) return await _executors[name](args);
+  // 再查动态提供者
+  for (const p of _providers) {
+    try {
+      const defs = p.getDefinitions();
+      if (defs.some(d => d.function?.name === name)) {
+        return await p.executeTool(name, args);
+      }
+    } catch {}
+  }
+  throw new Error(`工具 "${name}" 不存在`);
 }
 
 // 初始化时立即加载
@@ -59,5 +90,6 @@ module.exports = {
   getDefinitions,
   getExecutors,
   executeTool,
+  registerProvider,
   setOnTaskBoardUpdate: shared.setOnTaskBoardUpdate,
 };

@@ -1,4 +1,4 @@
-export type TabId = 'required' | 'interface' | 'memory' | 'advanced';
+export type TabId = 'required' | 'interface' | 'memory' | 'advanced' | 'mcp';
 
 export interface SettingsPanelProps {
   onClose: () => void;

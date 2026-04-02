@@ -54,6 +54,10 @@ const systemPromptReady = (async () => {
   return SYSTEM_PROMPT;
 })();
 
+const mcpManager = require('./mcp/manager');
+// MCP 初始化（非致命，失败不阻断 Gateway 启动）
+mcpManager.init().catch(e => log.warn('MCP 初始化失败（非致命）', { error: e.message }));
+
 // 记忆健康检查
 async function checkMemoryHealth() {
   try {
@@ -215,6 +219,38 @@ const httpServer = http.createServer((req, res) => {
         res.end(JSON.stringify({ success: false, error: e?.message || String(e) }));
       }
     });
+    return;
+  }
+
+  // MCP 管理路由
+  if (req.method === 'GET' && req.url === '/mcp/status') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(mcpManager.getStatus()));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/mcp/server') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      try {
+        const { name, config } = JSON.parse(body);
+        const status = await mcpManager.addServer(name, config);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, status }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'DELETE' && req.url?.startsWith('/mcp/server/')) {
+    const name = req.url.replace('/mcp/server/', '');
+    mcpManager.removeServer(name);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true }));
     return;
   }
 

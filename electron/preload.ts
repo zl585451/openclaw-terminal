@@ -87,6 +87,10 @@ const electronAPI = {
     ipcRenderer.invoke('nocturne-set-intention', { intention }),
   invokeGatewayTool: (toolName: string, args: any) =>
     ipcRenderer.invoke('invoke-gateway-tool', toolName, args),
+  // MCP Server 管理
+  mcpGetStatus: () => ipcRenderer.invoke('mcp-get-status'),
+  mcpAddServer: (name: string, cfg: any) => ipcRenderer.invoke('mcp-add-server', name, cfg),
+  mcpRemoveServer: (name: string) => ipcRenderer.invoke('mcp-remove-server', name),
 };
 
 if (typeof window !== 'undefined') {

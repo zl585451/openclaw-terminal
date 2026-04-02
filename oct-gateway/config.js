@@ -321,7 +321,21 @@ function loadAvailableModels() {
   return models;
 }
 
-const fileConfig = loadConfigFile();
+const _fileConfig = loadConfigFile();
+// 向外暴露原始配置对象和路径（供 mcp/manager.js 使用）
+config.__fileConfig = _fileConfig;
+// 记录第一个命中的配置文件路径，用于 mcp/manager 写入
+const _configSources = [
+  process.env.OCT_CONFIG_FILE,
+  path.join(os.homedir(), 'AppData', 'Roaming', 'openclaw-terminal', 'config.json'),
+  path.join(os.homedir(), 'Library', 'Application Support', 'openclaw-terminal', 'config.json'),
+  path.join(os.homedir(), '.config', 'openclaw-terminal', 'config.json'),
+  path.join(os.homedir(), 'AppData', 'Roaming', 'OpenClaw Terminal', 'config.json'),
+  path.join(__dirname, 'config.json'),
+].filter(Boolean);
+for (const f of _configSources) {
+  if (fs.existsSync(f)) { config._configPath = f; break; }
+}
 const legacyConfig = loadOpenClawLegacyConfig();
 
 function validKey(v) {
@@ -352,16 +366,16 @@ function inferProviderFromBaseUrl(baseUrl) {
 }
 
 // Prioritize user settings from Electron config over environment variables
-let _currentProvider = fileConfig.OCT_PROVIDER || process.env.OCT_PROVIDER
+let _currentProvider = _fileConfig.OCT_PROVIDER || process.env.OCT_PROVIDER
   || inferProviderFromBaseUrl(
-    fileConfig.DASHSCOPE_BASE_URL || process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL
+    _fileConfig.DASHSCOPE_BASE_URL || process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL
   );
 
 // Prioritize user settings from settings panel over .env file
-let _currentModel = fileConfig.OCT_MODEL || process.env.OCT_MODEL || legacyConfig.DASHSCOPE_MODEL || 'qwen-plus';
+let _currentModel = _fileConfig.OCT_MODEL || process.env.OCT_MODEL || legacyConfig.DASHSCOPE_MODEL || 'qwen-plus';
 
 function getEnvOrConfig(key) {
-  return process.env[key] || fileConfig[key] || legacyConfig[key] || '';
+  return process.env[key] || _fileConfig[key] || legacyConfig[key] || '';
 }
 
 function getProviderConfig() {
@@ -376,7 +390,7 @@ function getProviderConfig() {
   } else if (preset.keyEnvVars && preset.keyEnvVars.length > 0) {
     const sources = preset.keyEnvVars.flatMap(k => [
       process.env[k],
-      fileConfig[k],
+      _fileConfig[k],
       isBailian ? legacyConfig.DASHSCOPE_API_KEY : null,
       isDeepseek ? legacyConfig.DEEPSEEK_API_KEY : null,
       isMinimax ? legacyConfig.MINIMAX_API_KEY : null,
@@ -426,27 +440,27 @@ const defaultMemoryConfig = {
   compress_length: { user: 100, amy: 200 },
 };
 
-const memoryConfig = fileConfig.memory && typeof fileConfig.memory === 'object'
-  ? { ...defaultMemoryConfig, ...fileConfig.memory }
+const memoryConfig = _fileConfig.memory && typeof _fileConfig.memory === 'object'
+  ? { ...defaultMemoryConfig, ..._fileConfig.memory }
   : defaultMemoryConfig;
 
 const config = {
   PORT: parseInt(process.env.OCT_GATEWAY_PORT || '18789', 10),
 
-  DASHSCOPE_API_KEY: pickKey(process.env.DASHSCOPE_API_KEY, fileConfig.DASHSCOPE_API_KEY, legacyConfig.DASHSCOPE_API_KEY),
+  DASHSCOPE_API_KEY: pickKey(process.env.DASHSCOPE_API_KEY, _fileConfig.DASHSCOPE_API_KEY, legacyConfig.DASHSCOPE_API_KEY),
   DASHSCOPE_BASE_URL: process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1',
-  DEEPSEEK_API_KEY: pickKey(process.env.DEEPSEEK_API_KEY, fileConfig.DEEPSEEK_API_KEY, legacyConfig.DEEPSEEK_API_KEY),
+  DEEPSEEK_API_KEY: pickKey(process.env.DEEPSEEK_API_KEY, _fileConfig.DEEPSEEK_API_KEY, legacyConfig.DEEPSEEK_API_KEY),
   DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL || legacyConfig.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
 
   // 搜索引擎 API Key（优先从 config.json 读取，与主进程保存一致）
-  BRAVE_SEARCH_API_KEY: fileConfig.BRAVE_SEARCH_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '',
-  TAVILY_API_KEY: fileConfig.TAVILY_API_KEY || process.env.TAVILY_API_KEY || '',
+  BRAVE_SEARCH_API_KEY: _fileConfig.BRAVE_SEARCH_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '',
+  TAVILY_API_KEY: _fileConfig.TAVILY_API_KEY || process.env.TAVILY_API_KEY || '',
 
-  NOCTURNE_BASE_URL: process.env.NOCTURNE_BASE_URL || fileConfig.NOCTURNE_BASE_URL || 'http://127.0.0.1:8000',
+  NOCTURNE_BASE_URL: process.env.NOCTURNE_BASE_URL || _fileConfig.NOCTURNE_BASE_URL || 'http://127.0.0.1:8000',
 
-  AI_LIBRARY_URL: process.env.AI_LIBRARY_URL || fileConfig.AI_LIBRARY_URL || 'http://127.0.0.1:8001',
+  AI_LIBRARY_URL: process.env.AI_LIBRARY_URL || _fileConfig.AI_LIBRARY_URL || 'http://127.0.0.1:8001',
 
-  PROMPTS_DIR: process.env.OCT_PROMPTS_DIR || fileConfig.OCT_PROMPTS_DIR ||
+  PROMPTS_DIR: process.env.OCT_PROMPTS_DIR || _fileConfig.OCT_PROMPTS_DIR ||
     path.join(__dirname, '..', 'docs', '01_system_prompts'),
 
   availableModels: loadAvailableModels(),
@@ -458,12 +472,12 @@ const config = {
       read_retry: { count: 3, interval_ms: 500 },
       write_retry: { count: 3, interval_ms: 500 },
     };
-    const fromFile = fileConfig.nocturne && typeof fileConfig.nocturne === 'object' ? fileConfig.nocturne : {};
+    const fromFile = _fileConfig.nocturne && typeof _fileConfig.nocturne === 'object' ? _fileConfig.nocturne : {};
     return { ...def, ...fromFile };
   })(),
   stream_merge: (() => {
     const def = { min_chars: 1, max_chars: 3, idle_ms: 30 };
-    const fromFile = fileConfig.stream_merge && typeof fileConfig.stream_merge === 'object' ? fileConfig.stream_merge : {};
+    const fromFile = _fileConfig.stream_merge && typeof _fileConfig.stream_merge === 'object' ? _fileConfig.stream_merge : {};
     return { ...def, ...fromFile };
   })(),
   image_analysis: (() => {
@@ -479,8 +493,8 @@ const config = {
       vision_model: 'qwen-vl-max',
       local: defaultLocal,
     };
-    const fromFile = fileConfig.image_analysis && typeof fileConfig.image_analysis === 'object'
-      ? fileConfig.image_analysis : {};
+    const fromFile = _fileConfig.image_analysis && typeof _fileConfig.image_analysis === 'object'
+      ? _fileConfig.image_analysis : {};
     const merged = { ...def, ...fromFile };
     if (fromFile.local && typeof fromFile.local === 'object') {
       merged.local = { ...defaultLocal, ...fromFile.local };
@@ -494,9 +508,12 @@ const config = {
       timeout_ms: 3000,
       default_top_k: 3,
     };
-    const fromFile = fileConfig.ai_library && typeof fileConfig.ai_library === 'object' ? fileConfig.ai_library : {};
+    const fromFile = _fileConfig.ai_library && typeof _fileConfig.ai_library === 'object' ? _fileConfig.ai_library : {};
     return { ...def, ...fromFile };
   })(),
+
+  // MCP Server 配置（由前端设置面板写入 config.json）
+  MCP_SERVERS: _fileConfig.mcpServers || {},
 };
 
 Object.defineProperty(config, 'DASHSCOPE_MODEL', {

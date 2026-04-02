@@ -1707,6 +1707,34 @@ ipcMain.handle(
   }
 );
 
+/** MCP Server 管理 IPC */
+ipcMain.handle('mcp-get-status', async () => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/status`);
+    return await res.json();
+  } catch { return {}; }
+});
+
+ipcMain.handle('mcp-add-server', async (_, name: string, cfg: any) => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/server`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, config: cfg }),
+    });
+    return await res.json();
+  } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
+
+ipcMain.handle('mcp-remove-server', async (_, name: string) => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/server/${name}`, {
+      method: 'DELETE',
+    });
+    return await res.json();
+  } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
+
 ipcMain.handle('seed-nocturne-memories', async (): Promise<{ success: boolean; error?: string; output?: string }> => {
   const base = getNocturnePath();
   if (!base) return { success: false, error: 'Nocturne 未找到' };

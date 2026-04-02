@@ -9,6 +9,7 @@ import { AdvancedTabView } from '../ui/settings/tabs/AdvancedTabView';
 import { ConnectionTabView } from '../ui/settings/tabs/ConnectionTabView';
 import { InterfaceTabView } from '../ui/settings/tabs/InterfaceTabView';
 import { MemoryTabView } from '../ui/settings/tabs/MemoryTabView';
+import { McpTabView } from '../ui/settings/tabs/McpTabView';
 import { useAiLibrary } from '../hooks/settings/useAiLibrary';
 import { useApiKeys } from '../hooks/settings/useApiKeys';
 import { useNocturneMemory } from '../hooks/settings/useNocturneMemory';
@@ -103,6 +104,22 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [applyError, setApplyError] = useState<string>('');
   const { themeId, setTheme } = useTheme();
 
+  // MCP Server 状态
+  const [mcpStatus, setMcpStatus] = useState<Record<string, any>>({});
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const [newServer, setNewServer] = useState({ name: '', command: '', args: '', envText: '' });
+
+  const loadMcpStatus = async () => {
+    setMcpLoading(true);
+    try {
+      const status = await (window as any).electronAPI?.mcpGetStatus?.();
+      setMcpStatus(status || {});
+    } catch { setMcpStatus({}); }
+    setMcpLoading(false);
+  };
+
+  useEffect(() => { loadMcpStatus(); }, []);
+
   // 记忆系统 Tab：每 5 秒刷新 Nocturne 详情与 AI.library 状态
   useEffect(() => {
     if (activeTab !== 'memory') return;
@@ -171,6 +188,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     { id: 'interface', label: '② 界面设置' },
     { id: 'memory', label: '③ 记忆系统' },
     { id: 'advanced', label: '④ 高级' },
+    { id: 'mcp', label: '⑤ MCP 工具' },
   ];
 
   return (
@@ -275,6 +293,35 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               shortcutCustom={shortcutCustom}
               setShortcutCustom={setShortcutCustom}
               clearData={clearData}
+            />
+          )}
+
+          {activeTab === 'mcp' && (
+            <McpTabView
+              mcpStatus={mcpStatus}
+              mcpLoading={mcpLoading}
+              newServer={newServer}
+              setNewServer={setNewServer}
+              onAddServer={async () => {
+                if (!newServer.name || !newServer.command) return;
+                const env: Record<string, string> = {};
+                newServer.envText.split('\n').forEach(line => {
+                  const [k, ...v] = line.split('=');
+                  if (k?.trim()) env[k.trim()] = v.join('=').trim();
+                });
+                await (window as any).electronAPI?.mcpAddServer?.(newServer.name, {
+                  command: newServer.command,
+                  args: newServer.args.split(' ').filter(Boolean),
+                  env,
+                });
+                setNewServer({ name: '', command: '', args: '', envText: '' });
+                loadMcpStatus();
+              }}
+              onRemoveServer={async (name) => {
+                await (window as any).electronAPI?.mcpRemoveServer?.(name);
+                loadMcpStatus();
+              }}
+              onRefresh={loadMcpStatus}
             />
           )}
         </div>

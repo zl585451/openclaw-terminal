@@ -1,6 +1,6 @@
 # MCP Client 实现方案
 
-> 分支：`feature/mcp-client` | 状态：方案待确认
+> 分支：`feature/mcp-client` | 状态：**已完成（P0/P1/P2）**
 
 ---
 

@@ -1,0 +1,589 @@
+完整执行计划
+P0 — 后端基础（3个文件，改2个）
+
+步骤 0-A：扩展 tool_loader.js
+在 oct-gateway/tool_loader.js 找到这一行：
+js// 初始化时立即加载
+loadTools();
+在它上方插入：
+js/** 动态工具提供者（MCP 等批量工具源） */
+const _providers = [];
+
+/**
+ * 注册一个工具提供者。提供者需实现：
+ *   getDefinitions() → OpenAI tool 格式数组
+ *   executeTool(name, args) → Promise<result>
+ */
+function registerProvider(provider) {
+  if (typeof provider.getDefinitions !== 'function' || typeof provider.executeTool !== 'function') {
+    console.error('[ToolLoader] registerProvider 失败：provider 缺少 getDefinitions 或 executeTool');
+    return;
+  }
+  _providers.push(provider);
+  console.log(`[ToolLoader] 已注册工具提供者，共 ${_providers.length} 个`);
+}
+然后把现有的 getDefinitions 和 executeTool 替换为：
+jsfunction getDefinitions() {
+  const providerDefs = _providers.flatMap(p => {
+    try { return p.getDefinitions(); } catch { return []; }
+  });
+  return [..._definitions, ...providerDefs];
+}
+
+async function executeTool(name, args) {
+  // 优先查静态工具
+  if (_executors[name]) return await _executors[name](args);
+  // 再查动态提供者
+  for (const p of _providers) {
+    try {
+      const defs = p.getDefinitions();
+      if (defs.some(d => d.function?.name === name)) {
+        return await p.executeTool(name, args);
+      }
+    } catch {}
+  }
+  throw new Error(`工具 "${name}" 不存在`);
+}
+在 module.exports 里加上 registerProvider：
+jsmodule.exports = {
+  loadTools,
+  getDefinitions,
+  getExecutors,
+  executeTool,
+  registerProvider,  // 新增
+  setOnTaskBoardUpdate: shared.setOnTaskBoardUpdate,
+};
+
+步骤 0-B：新建 oct-gateway/mcp/client.js（完整文件）
+js/**
+ * McpClient — 管理单个 MCP Server 的 stdio 连接
+ * JSON-RPC 2.0 over stdin/stdout
+ */
+const { spawn } = require('child_process');
+const { createLogger } = require('../logger');
+
+class McpClient {
+  constructor(serverName, config) {
+    this.serverName = serverName;
+    this.config = config;   // { command, args, env }
+    this.tools = [];
+    this.status = 'disconnected'; // disconnected | connecting | connected | error
+    this.errorMessage = '';
+
+    this._proc = null;
+    this._buf = '';
+    this._lastId = 0;
+    this._pending = new Map();  // id → { resolve, reject, timer }
+    this._log = createLogger(`mcp:${serverName}`);
+  }
+
+  async connect() {
+    this.status = 'connecting';
+    this._log.info('启动 MCP Server', { command: this.config.command, args: this.config.args });
+
+    this._proc = spawn(this.config.command, this.config.args || [], {
+      env: { ...process.env, ...(this.config.env || {}) },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    this._proc.stdout.on('data', (chunk) => this._onData(chunk));
+    this._proc.stderr.on('data', (d) => this._log.debug('stderr', { msg: d.toString().trim() }));
+    this._proc.on('exit', (code) => {
+      this.status = 'disconnected';
+      this._log.warn('MCP Server 退出', { code });
+      // 拒绝所有 pending 请求
+      for (const { reject, timer } of this._pending.values()) {
+        clearTimeout(timer);
+        reject(new Error(`MCP Server "${this.serverName}" 意外退出`));
+      }
+      this._pending.clear();
+    });
+    this._proc.on('error', (e) => {
+      this.status = 'error';
+      this.errorMessage = e.message;
+      this._log.error('MCP Server 启动失败', { error: e.message });
+    });
+
+    try {
+      // initialize 握手
+      await this._request('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'oct-gateway', version: '1.0.0' },
+      });
+      // 通知 initialized
+      this._notify('notifications/initialized');
+      // 获取工具列表
+      const res = await this._request('tools/list', {});
+      this.tools = res.tools || [];
+      this.status = 'connected';
+      this._log.info('连接成功', { toolCount: this.tools.length });
+    } catch (e) {
+      this.status = 'error';
+      this.errorMessage = e.message;
+      this._log.error('握手失败', { error: e.message });
+      throw e;
+    }
+  }
+
+  async callTool(name, args) {
+    const res = await this._request('tools/call', { name, arguments: args || {} });
+    // MCP 返回 { content: [{ type, text }] }，提取文本
+    if (res?.content) {
+      return res.content.map(c => c.text || JSON.stringify(c)).join('\n');
+    }
+    return JSON.stringify(res);
+  }
+
+  disconnect() {
+    if (this._proc) {
+      this._proc.kill();
+      this._proc = null;
+    }
+    this.status = 'disconnected';
+  }
+
+  // ---------- 内部 ----------
+
+  _onData(chunk) {
+    this._buf += chunk.toString();
+    const lines = this._buf.split('\n');
+    this._buf = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let msg;
+      try { msg = JSON.parse(trimmed); } catch { continue; }
+      this._dispatch(msg);
+    }
+  }
+
+  _dispatch(msg) {
+    if (msg.id !== undefined && this._pending.has(msg.id)) {
+      const { resolve, reject, timer } = this._pending.get(msg.id);
+      clearTimeout(timer);
+      this._pending.delete(msg.id);
+      if (msg.error) reject(new Error(msg.error.message || JSON.stringify(msg.error)));
+      else resolve(msg.result);
+    }
+    // notifications 直接丢弃（未来可扩展）
+  }
+
+  _request(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = ++this._lastId;
+      const msg = JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n';
+      const timer = setTimeout(() => {
+        this._pending.delete(id);
+        reject(new Error(`MCP 请求超时: ${method}`));
+      }, 30000);
+      this._pending.set(id, { resolve, reject, timer });
+      this._proc.stdin.write(msg);
+    });
+  }
+
+  _notify(method, params = {}) {
+    const msg = JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n';
+    this._proc?.stdin?.write(msg);
+  }
+}
+
+module.exports = McpClient;
+
+步骤 0-C：新建 oct-gateway/mcp/manager.js（完整文件）
+js/**
+ * McpManager — 管理多个 MCP Server，实现 tool_loader Provider 接口
+ *
+ * 对外提供：
+ *   init()              启动所有配置的 Server，注册进 tool_loader
+ *   getStatus()         返回各 Server 状态（供 IPC/HTTP 查询）
+ *   addServer(name,cfg) 热添加（写配置 + 连接）
+ *   removeServer(name)  热移除（断连 + 写配置）
+ */
+const McpClient = require('./client');
+const toolLoader = require('../tool_loader');
+const { createLogger } = require('../logger');
+const log = createLogger('mcp:manager');
+
+class McpManager {
+  constructor() {
+    this._clients = new Map();   // name → McpClient
+    this._toolMap = new Map();   // qualifiedName → serverName
+    this._configRef = null;      // 持有 config 引用（延迟 require 避免循环）
+  }
+
+  async init() {
+    this._configRef = require('../config');
+    const servers = this._configRef.MCP_SERVERS || {};
+    log.info('初始化 MCP Manager', { serverCount: Object.keys(servers).length });
+
+    for (const [name, cfg] of Object.entries(servers)) {
+      await this._startServer(name, cfg);
+    }
+
+    // 注册为 tool_loader 的 Provider
+    toolLoader.registerProvider({
+      getDefinitions: () => this._buildDefinitions(),
+      executeTool: (name, args) => this._route(name, args),
+    });
+
+    log.info('MCP Provider 已注册');
+  }
+
+  async _startServer(name, cfg) {
+    try {
+      const client = new McpClient(name, cfg);
+      await client.connect();
+      this._clients.set(name, client);
+      log.info(`Server "${name}" 已连接`, { tools: client.tools.map(t => t.name) });
+    } catch (e) {
+      log.error(`Server "${name}" 启动失败`, { error: e.message });
+      // 失败不中断其他 Server
+    }
+  }
+
+  _buildDefinitions() {
+    this._toolMap.clear();
+    const defs = [];
+    for (const [serverName, client] of this._clients) {
+      if (client.status !== 'connected') continue;
+      for (const tool of client.tools) {
+        const qualifiedName = `mcp_${serverName}_${tool.name}`;
+        this._toolMap.set(qualifiedName, serverName);
+        defs.push({
+          type: 'function',
+          function: {
+            name: qualifiedName,
+            description: `[MCP:${serverName}] ${tool.description || ''}`,
+            parameters: tool.inputSchema || { type: 'object', properties: {} },
+          },
+        });
+      }
+    }
+    return defs;
+  }
+
+  async _route(qualifiedName, args) {
+    const serverName = this._toolMap.get(qualifiedName);
+    if (!serverName) throw new Error(`未知 MCP 工具: ${qualifiedName}`);
+    const client = this._clients.get(serverName);
+    if (!client || client.status !== 'connected') {
+      throw new Error(`MCP Server "${serverName}" 未连接`);
+    }
+    const toolName = qualifiedName.replace(`mcp_${serverName}_`, '');
+    return await client.callTool(toolName, args);
+  }
+
+  /** 返回所有 Server 的状态快照（给前端面板用） */
+  getStatus() {
+    const result = {};
+    for (const [name, client] of this._clients) {
+      result[name] = {
+        status: client.status,
+        errorMessage: client.errorMessage,
+        tools: client.tools.map(t => ({ name: t.name, description: t.description || '' })),
+        config: client.config,
+      };
+    }
+    return result;
+  }
+
+  /** 热添加 Server（面板 UI 用） */
+  async addServer(name, cfg) {
+    if (this._clients.has(name)) {
+      this._clients.get(name).disconnect();
+    }
+    await this._startServer(name, cfg);
+    this._saveConfig();
+    return this.getStatus()[name];
+  }
+
+  /** 热移除 Server（面板 UI 用） */
+  removeServer(name) {
+    const client = this._clients.get(name);
+    if (client) { client.disconnect(); this._clients.delete(name); }
+    this._saveConfig();
+  }
+
+  _saveConfig() {
+    // 把当前 clients 写回 config.json 的 mcpServers 节
+    const cfg = this._configRef || require('../config');
+    const mcpServers = {};
+    for (const [name, client] of this._clients) {
+      mcpServers[name] = client.config;
+    }
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const cfgPath = path.join(cfg.USER_DATA_DIR || '', 'config.json');
+      let existing = {};
+      try { existing = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')); } catch {}
+      existing.mcpServers = mcpServers;
+      fs.writeFileSync(cfgPath, JSON.stringify(existing, null, 2), 'utf-8');
+    } catch (e) {
+      log.error('保存 MCP 配置失败', { error: e.message });
+    }
+  }
+}
+
+module.exports = new McpManager();
+
+步骤 0-D：在 config.js 里加 MCP_SERVERS 读取
+找到 config.js 里 loadConfigFile 或最终 export 的地方，加：
+jsMCP_SERVERS: (() => {
+  try {
+    const raw = fs.readFileSync(path.join(userDataDir, 'config.json'), 'utf-8');
+    return JSON.parse(raw).mcpServers || {};
+  } catch { return {}; }
+})(),
+
+步骤 0-E：在 index.js 里启动 MCP Manager
+找到：
+jsconst systemPromptReady = (async () => {
+  SYSTEM_PROMPT = await loadSystemPrompt(config.PROMPTS_DIR);
+在 loadSystemPrompt 那行上方加：
+jsconst mcpManager = require('./mcp/manager');
+在 loadSystemPrompt 那行下方加：
+js  await mcpManager.init().catch(e => log.warn('MCP 初始化失败（非致命）', { error: e.message }));
+```
+
+> 这里用 `.catch` 包住，是为了确保 MCP 启动失败时 Gateway 不会整体崩掉。
+
+---
+
+### P0 验证
+
+此时启动 Gateway，日志里你应该能看到：
+```
+[mcp:manager] 初始化 MCP Manager { serverCount: 0 }
+[mcp:manager] MCP Provider 已注册
+[ToolLoader] 已注册工具提供者，共 1 个
+serverCount: 0 是因为 config.json 还没有 mcpServers，这是正常的。先有框架，P2 UI 建好后用户才能填入。
+
+P1 — IPC 桥接（给面板用）
+在 electron/main.ts 里加 3 个 IPC handler（找 ipcMain.handle 集中的地方加）：
+ts/** MCP Server 管理 IPC */
+ipcMain.handle('mcp-get-status', async () => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/status`);
+    return await res.json();
+  } catch { return {}; }
+});
+
+ipcMain.handle('mcp-add-server', async (_, name: string, cfg: any) => {
+  const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/server`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, config: cfg }),
+  });
+  return await res.json();
+});
+
+ipcMain.handle('mcp-remove-server', async (_, name: string) => {
+  const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/server/${name}`, {
+    method: 'DELETE',
+  });
+  return await res.json();
+});
+在 electron/preload.ts 的 electronAPI 里加：
+tsmcpGetStatus: () => ipcRenderer.invoke('mcp-get-status'),
+mcpAddServer: (name: string, cfg: any) => ipcRenderer.invoke('mcp-add-server', name, cfg),
+mcpRemoveServer: (name: string) => ipcRenderer.invoke('mcp-remove-server', name),
+在 oct-gateway/index.js 的 HTTP server 路由里加（找处理 /tool 的地方附近）：
+jsif (req.method === 'GET' && req.url === '/mcp/status') {
+  const mcpManager = require('./mcp/manager');
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  return res.end(JSON.stringify(mcpManager.getStatus()));
+}
+
+if (req.method === 'POST' && req.url === '/mcp/server') {
+  let body = '';
+  req.on('data', d => body += d);
+  req.on('end', async () => {
+    try {
+      const { name, config } = JSON.parse(body);
+      const mcpManager = require('./mcp/manager');
+      const status = await mcpManager.addServer(name, config);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, status }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  });
+  return;
+}
+
+if (req.method === 'DELETE' && req.url?.startsWith('/mcp/server/')) {
+  const name = req.url.replace('/mcp/server/', '');
+  const mcpManager = require('./mcp/manager');
+  mcpManager.removeServer(name);
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  return res.end(JSON.stringify({ success: true }));
+}
+
+P2 — MCP 面板 UI
+在 SettingsPanel.tsx 里新增第 ⑤ 个 Tab。
+找到 tabs 数组：
+tsconst tabs: { id: TabId; label: string }[] = [
+  { id: 'required', label: '① 连接配置' },
+  { id: 'interface', label: '② 界面设置' },
+  { id: 'memory', label: '③ 记忆系统' },
+  { id: 'advanced', label: '④ 高级' },
+];
+替换为：
+tsconst tabs: { id: TabId; label: string }[] = [
+  { id: 'required', label: '① 连接配置' },
+  { id: 'interface', label: '② 界面设置' },
+  { id: 'memory', label: '③ 记忆系统' },
+  { id: 'advanced', label: '④ 高级' },
+  { id: 'mcp', label: '⑤ MCP 工具' },
+];
+在 TabId 类型里加 'mcp'：
+tstype TabId = 'required' | 'interface' | 'memory' | 'advanced' | 'mcp';
+在面板 state 里加 MCP 相关 state（找 useState 集中的地方）：
+tsconst [mcpStatus, setMcpStatus] = useState<Record<string, any>>({});
+const [mcpLoading, setMcpLoading] = useState(false);
+const [newServer, setNewServer] = useState({ name: '', command: '', args: '', envText: '' });
+加载 MCP 状态的函数（加在 loadApiKeys 附近）：
+tsconst loadMcpStatus = async () => {
+  setMcpLoading(true);
+  try {
+    const status = await window.electronAPI.mcpGetStatus();
+    setMcpStatus(status || {});
+  } catch {}
+  setMcpLoading(false);
+};
+
+// 在 useEffect 里加：
+useEffect(() => { loadMcpStatus(); }, []);
+在 settings-body 的 tab 渲染区加 MCP Tab 内容：
+tsx{activeTab === 'mcp' && (
+  <div className="settings-tab-content">
+    <section className="settings-section">
+      <h3>MCP 工具服务器</h3>
+      <p className="settings-desc">
+        连接 MCP Server 后，AMY 可以调用 MCP 提供的工具（联网搜索、图片理解等）。
+      </p>
+
+      {/* 已有 Server 列表 */}
+      {Object.keys(mcpStatus).length === 0 && !mcpLoading && (
+        <p className="settings-desc" style={{ color: 'var(--color-text-tertiary)' }}>
+          还没有 MCP Server，在下方添加第一个。
+        </p>
+      )}
+      {Object.entries(mcpStatus).map(([name, info]: [string, any]) => (
+        <div key={name} className="settings-field" style={{ background: 'var(--color-background-secondary)', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <span className="settings-label" style={{ fontWeight: 500 }}>{name}</span>
+              <span style={{
+                marginLeft: 8, fontSize: 12,
+                color: info.status === 'connected' ? 'var(--color-text-success)' : 'var(--color-text-danger)'
+              }}>
+                {info.status === 'connected' ? '● 已连接' : `● ${info.status}`}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="settings-eye-btn"
+              onClick={async () => {
+                await window.electronAPI.mcpRemoveServer(name);
+                loadMcpStatus();
+              }}
+            >删除</button>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            {info.config?.command} {(info.config?.args || []).join(' ')}
+          </div>
+          {info.tools?.length > 0 && (
+            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+              工具：{info.tools.map((t: any) => t.name).join('、')}
+            </div>
+          )}
+          {info.errorMessage && (
+            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-danger)' }}>
+              {info.errorMessage}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* 添加新 Server */}
+      <details className="settings-details" style={{ marginTop: 12 }}>
+        <summary>+ 添加 MCP Server</summary>
+        <div className="settings-details-content" style={{ marginTop: 8 }}>
+          <div className="settings-field">
+            <label>名称（唯一标识，字母+数字）</label>
+            <input className="settings-input settings-input-focusable" value={newServer.name}
+              onChange={e => setNewServer(s => ({ ...s, name: e.target.value }))}
+              placeholder="minimax" />
+          </div>
+          <div className="settings-field">
+            <label>启动命令</label>
+            <input className="settings-input settings-input-focusable" value={newServer.command}
+              onChange={e => setNewServer(s => ({ ...s, command: e.target.value }))}
+              placeholder="uvx" />
+          </div>
+          <div className="settings-field">
+            <label>参数（空格分隔）</label>
+            <input className="settings-input settings-input-focusable" value={newServer.args}
+              onChange={e => setNewServer(s => ({ ...s, args: e.target.value }))}
+              placeholder="minimax-coding-plan-mcp" />
+          </div>
+          <div className="settings-field">
+            <label>环境变量（每行 KEY=VALUE）</label>
+            <textarea className="settings-input settings-input-focusable" value={newServer.envText}
+              onChange={e => setNewServer(s => ({ ...s, envText: e.target.value }))}
+              rows={3}
+              placeholder={"MINIMAX_API_KEY=your-key\nMINIMAX_API_HOST=https://api.minimaxi.com"} />
+          </div>
+          <button
+            type="button"
+            className="settings-save-btn"
+            disabled={!newServer.name || !newServer.command}
+            onClick={async () => {
+              const env: Record<string, string> = {};
+              newServer.envText.split('\n').forEach(line => {
+                const [k, ...v] = line.split('=');
+                if (k?.trim()) env[k.trim()] = v.join('=').trim();
+              });
+              await window.electronAPI.mcpAddServer(newServer.name, {
+                command: newServer.command,
+                args: newServer.args.split(' ').filter(Boolean),
+                env,
+              });
+              setNewServer({ name: '', command: '', args: '', envText: '' });
+              loadMcpStatus();
+            }}
+          >
+            连接并添加
+          </button>
+        </div>
+      </details>
+
+      <button type="button" className="settings-eye-btn" style={{ marginTop: 12 }} onClick={loadMcpStatus}>
+        ↻ 刷新状态
+      </button>
+    </section>
+  </div>
+)}
+```
+
+---
+
+## 回答你的问题
+
+**完成后 OCT 能调用 MCP 工具吗？**
+
+能，而且是完整的 tool_calls 闭环：
+```
+用户说话 → AMY 判断需要用工具 
+  → 模型返回 tool_calls: [{ name: "mcp_minimax_web_search", ... }]
+  → ai.js 调用 toolLoader.executeTool()
+  → tool_loader 路由给 McpManager
+  → McpClient 通过 stdio 调用 uvx 子进程
+  → 结果返回给模型 → 模型继续生成回复
+ai.js 一字不改，因为它只认 toolLoader，不知道下面是静态工具还是 MCP。
+执行顺序建议：
+先跑 P0（后端），让 Gateway 日志出现 MCP Provider 已注册，再做 P1（IPC），再做 P2（UI）。每步都可以独立验证，不会打断彼此。
