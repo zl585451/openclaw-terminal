@@ -34,11 +34,11 @@ function isWordChar(ch: string): boolean {
 }
 
 function charDelayMs(ch: string, base: number): number {
-  const d = Math.max(base, 30); // 降低最小延迟：40 → 30
-  if (ch === '\n') return d + d * 1.8; // 减少换行停顿：2.5 → 1.8
-  if ('。！？…'.includes(ch)) return d + d * 1.2; // 减少句号停顿：2 → 1.2
-  if ('.!?'.includes(ch)) return d + d * 1.0; // 减少英文句号停顿：1.5 → 1.0
-  if (',，、;；'.includes(ch)) return d + d * 0.4; // 减少逗号停顿：0.6 → 0.4
+  const d = Math.max(base, 5); // 降低最小延迟：30 → 5，允许更流畅的快速模式
+  if (ch === '\n') return d + d * 0.8; // 减少换行停顿：1.8 → 0.8
+  if ('。！？…'.includes(ch)) return d + d * 0.5; // 减少句号停顿：1.2 → 0.5
+  if ('.!?'.includes(ch)) return d + d * 0.4; // 减少英文句号停顿：1.0 → 0.4
+  if (',，、;；'.includes(ch)) return d + d * 0.2; // 减少逗号停顿：0.4 → 0.2
   return d;
 }
 
@@ -192,8 +192,15 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
 
         // 推进字符
         let typedThisFrame = 0;
-        while (typedThisFrame < 4 && idx < fullLen) {
-          const remain = 4 - typedThisFrame;
+
+        // 极速模式：baseDelayMs < 15 时直接显示全部内容
+        if (baseDelayMs < 15 && idx < fullLen) {
+          idx = fullLen;
+          typedThisFrame = 8;
+        }
+
+        while (typedThisFrame < 8 && idx < fullLen) {
+          const remain = 8 - typedThisFrame;
           let targetIdx = pickPreferredNextIndex(full, idx, remain);
           if (targetIdx <= idx) targetIdx = getNextCharIndex(full, idx);
           const cost = computeRangeCostMs(full, idx, targetIdx, baseDelayMs);

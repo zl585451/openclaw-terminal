@@ -95,9 +95,9 @@ const STORAGE_KEY = 'claw-terminal-settings';
 // medium: ~7字/秒（140ms/字）  - 贴近自然阅读节奏（推荐）
 // slow:   ~4字/秒（240ms/字）  - 慢节奏，逐字细读
 const SPEED_MS: Record<StreamSpeed, number> = {
-  fast: 45,    // 更快：65 → 45ms（约13字/秒）
-  medium: 80,  // 适中：140 → 80ms（约12字/秒）
-  slow: 140,   // 慢速：240 → 140ms（约7字/秒）
+  fast: 10,    // 极速：45 → 10ms（约100字/秒），触发极速模式直接显示
+  medium: 60,  // 适中：80 → 60ms（约16字/秒）
+  slow: 120,   // 慢速：140 → 120ms（约8字/秒）
 };
 
 function applyThemeVars(vars: ThemeVars) {
