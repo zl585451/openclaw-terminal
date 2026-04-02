@@ -322,8 +322,6 @@ function loadAvailableModels() {
 }
 
 const _fileConfig = loadConfigFile();
-// 向外暴露原始配置对象和路径（供 mcp/manager.js 使用）
-config.__fileConfig = _fileConfig;
 // 记录第一个命中的配置文件路径，用于 mcp/manager 写入
 const _configSources = [
   process.env.OCT_CONFIG_FILE,
@@ -333,8 +331,9 @@ const _configSources = [
   path.join(os.homedir(), 'AppData', 'Roaming', 'OpenClaw Terminal', 'config.json'),
   path.join(__dirname, 'config.json'),
 ].filter(Boolean);
+let _configPath = null;
 for (const f of _configSources) {
-  if (fs.existsSync(f)) { config._configPath = f; break; }
+  if (fs.existsSync(f)) { _configPath = f; break; }
 }
 const legacyConfig = loadOpenClawLegacyConfig();
 
@@ -542,5 +541,9 @@ try {
 
 config.MODEL_REGISTRY = MODEL_REGISTRY;
 config.getModelCaps = getModelCaps;
+
+// 向外暴露原始配置对象和路径（供 mcp/manager.js 使用）
+config.__fileConfig = _fileConfig;
+config._configPath = _configPath;
 
 module.exports = config;

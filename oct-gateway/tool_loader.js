@@ -88,7 +88,6 @@ loadTools();
 module.exports = {
   loadTools,
   getDefinitions,
-  getExecutors,
   executeTool,
   registerProvider,
   setOnTaskBoardUpdate: shared.setOnTaskBoardUpdate,

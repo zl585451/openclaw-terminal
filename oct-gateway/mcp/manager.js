@@ -105,6 +105,11 @@ class McpManager {
     if (this._clients.has(name)) {
       this._clients.get(name).disconnect();
     }
+    
+    // 先更新内存中的配置
+    if (!_fileConfig.mcpServers) _fileConfig.mcpServers = {};
+    _fileConfig.mcpServers[name] = cfg;
+    
     await this._startServer(name, cfg);
     this._saveConfig();
     return this.getStatus()[name];
@@ -113,7 +118,16 @@ class McpManager {
   /** 热移除 Server（面板 UI 用） */
   removeServer(name) {
     const client = this._clients.get(name);
-    if (client) { client.disconnect(); this._clients.delete(name); }
+    if (client) { 
+      client.disconnect(); 
+      this._clients.delete(name); 
+    }
+    
+    // 从内存配置中移除
+    if (_fileConfig.mcpServers && _fileConfig.mcpServers[name]) {
+      delete _fileConfig.mcpServers[name];
+    }
+    
     this._saveConfig();
   }
 
