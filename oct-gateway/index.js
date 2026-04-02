@@ -158,8 +158,11 @@ function createStreamSmoother(onChunk) {
     if (segments.length === 0) return;
 
     const first = segments[0];
-    // segmenter 可能返回空 segment，跳过
-    if (!first.segment || !first.segment.length) return;
+    // segmenter 可能返回空 segment，必须移除至少一个字符避免死循环
+    if (!first.segment || !first.segment.length) {
+      buffer.splice(0, 1);
+      return;
+    }
 
     // 非词单元（标点、空白等）：作为独立 chunk 发送
     if (!first.isWordLike) {
