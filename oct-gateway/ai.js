@@ -537,6 +537,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
               onDelta('[cot]');
               _thinkState.cotOpen = true;
             } else {
+              // 已经在 CoT 块中：先发送分隔符，再继续新的 thinking 内容
               const sep = '\n\n---\n\n';
               fullText += sep;
               onDelta(sep);
@@ -586,7 +587,9 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
       if (_thinkState.cotOpen) {
         fullText += '[/cot]';
         onDelta('[/cot]');
+        // 重置所有状态，避免重复发送 [/cot]
         _thinkState.cotOpen = false;
+        _thinkState.inThink = false;
 
         if (_thinkState.contentBuffer) {
           fullText += _thinkState.contentBuffer;
@@ -609,7 +612,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     if (provider.supportsStreamOptions) {
       requestBody.stream_options = { include_usage: true };
     }
-    if (caps.supportsTools && !hasImage) {
+    if (caps.supportsTools) {
       requestBody.tools = toolLoader.getDefinitions();
       requestBody.tool_choice = 'auto';
     }
@@ -714,7 +717,8 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
         if (finishReason === 'stop') sawDone = true;
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
           stopHeartbeat();
-          if (_thinkTagMode) _flushThinkState();
+          // 不要在这里 flushThinkState！thinking 状态要保持打开，
+          // 等工具返回后继续的 streamChat 会继续处理 thinking 内容
           log.info('tool_calls', { count: toolCalls.filter(Boolean).length });
           const toolResults = [];
           for (const tc of toolCalls.filter(Boolean)) {
