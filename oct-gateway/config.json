@@ -28,8 +28,8 @@
   },
   "stream_merge": {
     "min_chars": 1,
-    "max_chars": 15,
-    "idle_ms": 25
+    "max_chars": 8,
+    "idle_ms": 5
   },
   "ai_library": {
     "enabled": true,

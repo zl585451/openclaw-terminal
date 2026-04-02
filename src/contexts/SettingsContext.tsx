@@ -90,14 +90,11 @@ const DEFAULT: Settings = {
 
 const STORAGE_KEY = 'claw-terminal-settings';
 // 打字机速度：毫秒/字（时间驱动，不依赖帧率）
-// 研究依据：中文舒适阅读 300-400字/分 ≈ 5-7字/秒
-// fast:   ~15字/秒（65ms/字）  - 快速浏览，仍有流动感
-// medium: ~7字/秒（140ms/字）  - 贴近自然阅读节奏（推荐）
-// slow:   ~4字/秒（240ms/字）  - 慢节奏，逐字细读
+// 平衡流畅感和速度：既要有打字机动画，又不能让人着急
 const SPEED_MS: Record<StreamSpeed, number> = {
-  fast: 10,    // 极速：45 → 10ms（约100字/秒），触发极速模式直接显示
-  medium: 60,  // 适中：80 → 60ms（约16字/秒）
-  slow: 120,   // 慢速：140 → 120ms（约8字/秒）
+  fast: 18,    // 快速：约55字/秒，流畅且迅速
+  medium: 28,  // 适中：约35字/秒，舒适不拖沓
+  slow: 45,    // 慢速：约22字/秒，有节奏感
 };
 
 function applyThemeVars(vars: ThemeVars) {
