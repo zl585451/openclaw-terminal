@@ -10,6 +10,10 @@ import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../../utils/
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { useGateway } from '../../hooks/useGateway';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useFileAttachment } from '../../hooks/useFileAttachment';
+import { useTimers } from '../../hooks/useTimers';
+import { useContextMenu } from '../../hooks/useContextMenu';
+import { ContextMenu } from '../../components/ContextMenu';
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
 import TaskBoard from '../../components/TaskBoard';
@@ -128,47 +132,6 @@ export interface UploadedFile {
   path?: string;
 }
 
-/** 将浏览器 File 转为 UploadedFile。Electron 拖入本地文件时 file.path 存在，只存元数据；否则需读内容（大文件体验差） */
-async function fileToUploadedFile(file: File): Promise<UploadedFile> {
-  const ext = (file.name.split('.').pop() || '').toLowerCase();
-  const mimeType = file.type || 'application/octet-stream';
-  const isImage = mimeType.startsWith('image/');
-
-  // Electron 拖入本地文件时有 path，只传元数据，不读内容
-  const filePath = (file as File & { path?: string }).path;
-  if (filePath) {
-    return {
-      name: file.name,
-      size: file.size,
-      ext,
-      mimeType,
-      isText: false,
-      content: null,
-      base64: isImage ? await readFileAsBase64(file) : undefined,
-      path: filePath,
-    };
-  }
-
-  // 无 path（如 Web 或非本地拖入）：仍需读内容，大文件体验差
-  const textExts = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'go', 'rs', 'html', 'css', 'sql', 'xml', 'yaml', 'yml'];
-  const isText = textExts.includes(ext);
-  let content: string | null = null;
-  if (isText) content = await file.text();
-  const base64 = await readFileAsBase64(file);
-  return { name: file.name, size: file.size, ext, mimeType, isText, content, base64 };
-}
-
-async function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => {
-      const dataUrl = r.result as string;
-      res(dataUrl.includes(',') ? dataUrl.split(',')[1]! : '');
-    };
-    r.onerror = rej;
-    r.readAsDataURL(file);
-  });
-}
 
 /** 判断是否Gateway 直接处理的系统命令（不等AMY 回复*/
 function isSystemCommand(text: string): boolean {
@@ -1533,6 +1496,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   const gateway = useGateway();
 
+  const files = useFileAttachment();
+  const timers = useTimers();
+  const { windowFocused } = timers;
+  const ctxMenu = useContextMenu();
+
   const getToolDisplayName = (tool: string): string => {
     const map: Record<string, string> = {
       'read_file': '📖 读取文件',
@@ -1791,8 +1759,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   // 已迁移到 useTypewriter hook
   const [modelName, setModelName] = useState('--');
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
-  const [localTime, setLocalTime] = useState('');
-  const [localDate, setLocalDate] = useState('');
   const [tokenIn, setTokenIn] = useState<number | null>(null);
   const [tokenOut, setTokenOut] = useState<number | null>(null);
   const [ctxUsed, setCtxUsed] = useState<number | null>(null);
@@ -1805,14 +1771,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [, setCompactions] = useState<number | null>(null);
   const [, setQueueInfo] = useState<string>('--');
   const [, setLogPath] = useState('');
-  const [windowFocused, setWindowFocused] = useState(true);
-  const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [screenshotFlash, setScreenshotFlash] = useState(false);
-  const [isDragging, setDragging] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: number; text: string } | null>(null);
+  const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
@@ -2036,68 +1996,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, []);
 
 
-  const handleScreenshot = useCallback(async () => {
-    const req = typeof (window as any).require === 'function' ? (window as any).require : null;
-    if (!req) return;
-    await ipcRenderer.invoke('minimize-for-capture');
-    await new Promise((r) => setTimeout(r, 600));
-    try {
-      const { desktopCapturer } = req('electron');
-      const sources = await desktopCapturer.getSources({ types: ['screen'] });
-      const source = sources[0];
-      if (!source) throw new Error('No screen source');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { mandatory: { chromeMediaSourceId: source.id, chromeMediaSource: 'desktop' } } as any,
-      });
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      video.play();
-      await new Promise((r) => { video.onloadeddata = r; });
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(video, 0, 0);
-      stream.getTracks().forEach((t) => t.stop());
-      await new Promise<void>((resolve) => {
-        canvas.toBlob(async (blob) => {
-          if (blob) {
-            try {
-              await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            } catch (_) {}
-          }
-          resolve();
-        }, 'image/png');
-      });
-      const dataUrl = canvas.toDataURL('image/png');
-      setImagePreview(dataUrl);
-    } catch (e) {
-      console.error('Screenshot failed:', e);
-    } finally {
-      await ipcRenderer.invoke('restore-after-capture');
-      setScreenshotFlash(true);
-      setTimeout(() => setScreenshotFlash(false), 1500);
-    }
-  }, []);
 
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-        e.preventDefault();
-        handleScreenshot();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [handleScreenshot]);
-
-  useEffect(() => {
-    const onTrigger = () => handleScreenshot();
-    ipcRenderer.on('screenshot-trigger', onTrigger);
-    return () => { ipcRenderer.removeListener('screenshot-trigger', onTrigger); };
-  }, [handleScreenshot]);
 
   useEffect(() => {
     if (settings.typingSound === 'off' && audioRef.current) {
@@ -2115,35 +2015,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       });
   }, []);
 
-  useEffect(() => {
-    const tick = () => {
-      const d = new Date();
-      setLocalTime(d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }));
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      const wd = d.toLocaleDateString('zh-CN', { weekday: 'long' });
-      setLocalDate(`${y}.${m}.${day} ${wd}`);
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, []);
 
 
-
-  useEffect(() => {
-    const updateFocus = () => setWindowFocused(document.hasFocus());
-    window.addEventListener('focus', updateFocus);
-    window.addEventListener('blur', updateFocus);
-    document.addEventListener('visibilitychange', updateFocus);
-    updateFocus();
-    return () => {
-      window.removeEventListener('focus', updateFocus);
-      window.removeEventListener('blur', updateFocus);
-      document.removeEventListener('visibilitychange', updateFocus);
-    };
-  }, []);
 
   const prevStreamingRef = useRef(false);
   const lastAssistantMsgIdRef = useRef(0);
@@ -2310,15 +2183,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
   }, [ws.wsConnected, getNextMessageId, permissions, scrollAfterUserSend, oct]);
 
-  const handleFileAttach = useCallback(async (files: File[]) => {
-    if (files.length === 0) return;
-    try {
-      const converted = await Promise.all(files.map(fileToUploadedFile));
-      setUploadedFiles((prev) => [...prev, ...converted]);
-    } catch (e) {
-      console.error('[ChatTab] File attach failed:', e);
-    }
-  }, []);
 
   const quickSend = useCallback((content: string) => {
     if (!content.trim()) return;
@@ -2503,83 +2367,31 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   // 打字机逻辑已迁移到 useTypewriter hook
 
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const blob = item.getAsFile();
-        if (blob) {
-          const r = new FileReader();
-          r.onload = () => setImagePreview(r.result as string);
-          r.readAsDataURL(blob);
-        }
-        break;
-      }
-    }
-  }, []);
 
   return (
     <>
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
-      {contextMenu && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setContextMenu(null)} />
-          <div
-            style={{
-              position: 'fixed',
-              left: contextMenu.x,
-              top: contextMenu.y,
-              zIndex: 100,
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border-light)',
-              borderRadius: '6px',
-              overflow: 'hidden',
-              boxShadow: 'var(--shadow-lg)',
-              minWidth: '160px',
-            }}
-          >
-            {[
-              { icon: '⎘', label: '复制消息', action: () => navigator.clipboard.writeText(contextMenu.text), danger: false },
-              { icon: '↺', label: '重新发送', action: () => { setInjectInputText(contextMenu.text); setContextMenu(null); }, danger: false },
-              { icon: '✕', label: '删除消息', action: () => { setMessages((prev) => prev.filter((m) => m.id !== contextMenu.msgId)); setContextMenu(null); }, danger: true },
-            ].map((item) => (
-              <div
-                key={item.label}
-                onClick={() => { item.action(); setContextMenu(null); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '9px 16px', cursor: 'pointer',
-                  color: item.danger ? 'var(--status-error)' : 'var(--text-primary)',
-                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = item.danger ? 'var(--status-error-bg)' : 'var(--bg-hover)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                <span style={{ fontSize: '14px' }}>{item.icon}</span>
-                {item.label}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      <ContextMenu
+        contextMenu={ctxMenu.contextMenu}
+        onClose={() => ctxMenu.setContextMenu(null)}
+        onCopy={ctxMenu.onCopy}
+        onResend={(text) => { setInjectInputText(text); ctxMenu.setContextMenu(null); }}
+        onDelete={(msgId) => setMessages((prev) => prev.filter((m) => m.id !== msgId))}
+      />
     <div
       className={`chat-tab${canvas.isOpen ? ' canvas-active' : ''}`}
-      onPaste={handlePaste}
-      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types?.includes('Files')) setDragging(true); }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
+      onPaste={files.handlePaste}
+      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types?.includes('Files')) files.setDragging(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) files.setDragging(false); }}
       onDrop={(e) => {
         e.preventDefault();
-        setDragging(false);
-        const files = Array.from(e.dataTransfer?.files ?? []);
-        if (files.length > 0) handleFileAttach(files);
+        files.setDragging(false);
+        const droppedFiles = Array.from(e.dataTransfer?.files ?? []);
+        if (droppedFiles.length > 0) files.handleFileAttach(droppedFiles);
       }}
     >
-      <div className={`chat-section ${isDragging ? 'drag-over' : ''}`} style={{ position: 'relative' }}>
-        {isDragging && (
+      <div className={`chat-section ${files.isDragging ? 'drag-over' : ''}`} style={{ position: 'relative' }}>
+        {files.isDragging && (
           <div style={{
             position: 'absolute', inset: 0,
             background: 'var(--accent-primary-muted)',
@@ -2651,7 +2463,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           quickSend={quickSend}
           bottomRef={bottomRef}
           onScroll={handleChatScroll}
-          onMessageContextMenu={(e, msg, raw) => setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id, text: raw })}
+          onMessageContextMenu={(e, msg, raw) => ctxMenu.onContextMenu(e, msg.id, raw)}
           onQuoteQuestion={(text: string) => setInjectInputText(text)}
           pendingPills={pendingPills}
           messagesContainerRef={messagesContainerRef}
@@ -2703,10 +2515,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           </div>
         )}
         <ChatInputArea
-          imagePreview={imagePreview}
-          setImagePreview={setImagePreview}
-          uploadedFiles={uploadedFiles}
-          setUploadedFiles={setUploadedFiles}
+          imagePreview={files.imagePreview}
+          setImagePreview={files.setImagePreview}
+          uploadedFiles={files.uploadedFiles}
+          setUploadedFiles={files.setUploadedFiles}
           onSend={sendMessage}
           wsConnected={ws.wsConnected}
           isStreaming={isStreaming}
@@ -2828,7 +2640,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 lineHeight: 1,
               }}
             >
-              {localTime || '--:--'}
+              {timers.localTime || '--:--'}
             </div>
             <div
               style={{
@@ -2846,7 +2658,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 lineHeight: 1,
               }}
             >
-              {localDate || ''}
+              {timers.localDate || ''}
             </div>
           </div>
         </div>
@@ -3022,7 +2834,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       <CanvasPanel onSendToChat={(text) => sendMessage(text, null)} />
     </div>
 
-    {screenshotFlash && (
+    {files.screenshotFlash && (
       <div className="screenshot-flash-overlay">
         <span className="screenshot-flash-text">已截图</span>
       </div>
