@@ -1,4 +1,5 @@
 const { execSync } = require('child_process');
+const { convertCommand } = require('./command_converter');
 
 module.exports = {
   name: 'exec_command',
@@ -19,16 +20,33 @@ module.exports = {
   },
   execute: async (args) => {
     const isWindows = process.platform === 'win32';
-    const command = isWindows
-      ? `chcp 65001 >nul && ${args.command}`
-      : args.command;
-    const output = execSync(command, {
-      cwd: args.cwd || process.cwd(),
-      encoding: 'utf-8',
-      timeout: 30000,
-      windowsHide: true,
-      shell: true,
-    });
-    return { success: true, output: output.slice(0, 5000) };
+
+    let command = args.command;
+    if (isWindows) {
+      command = convertCommand(command);
+    }
+
+    const fullCommand = isWindows
+      ? `chcp 65001 >nul && ${command}`
+      : command;
+
+    try {
+      const output = execSync(fullCommand, {
+        cwd: args.cwd || process.cwd(),
+        encoding: 'utf-8',
+        timeout: 30000,
+        windowsHide: true,
+        shell: true,
+      });
+      return { success: true, output: output.slice(0, 5000) };
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString('utf-8') : '';
+      const stdout = e.stdout ? e.stdout.toString('utf-8') : '';
+      const combined = (stdout + stderr).trim().slice(0, 5000);
+      if (combined) {
+        return { success: false, output: `命令执行出错:\n${combined}` };
+      }
+      return { success: false, output: `命令执行失败: ${e.message}` };
+    }
   },
 };

@@ -237,6 +237,10 @@ ${bootMemory}
 }
 
 async function fetchWithRetry(url, options, maxRetries = 2) {
+  // 从 url 中提取 baseUrl，用于判断是否为 MiniMax API
+  const isMiniMax = url.includes('minimaxi.com');
+  const timeoutMs = isMiniMax ? 180000 : 120000;
+
   let lastError;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
@@ -245,8 +249,6 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
     }
     try {
       const controller = new AbortController();
-      // MiniMax 模型生成较慢，增加超时时间到 180 秒
-      const timeoutMs = baseUrl.includes('minimaxi.com') ? 180000 : 120000;
       const timeoutId = setTimeout(() => {
         controller.abort();
         log.warn(`请求超时（${timeoutMs / 1000}秒），触发 abort`);
@@ -434,6 +436,26 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
   let _thinkTagMode = false;
   /** 在 fetch 前赋值，确保 catch 块也可用 */
   let flushThinkAtEnd = () => {};
+
+  // 心跳计时器：移到 try 外，防止 catch 块引用时已超出作用域
+  let heartbeatTimer = null;
+  let lastChunkTime = Date.now();
+  const startHeartbeat = () => {
+    heartbeatTimer = setInterval(() => {
+      const now = Date.now();
+      if (now - lastChunkTime > 12000) {
+        onDelta('\u200B'); // 零宽空格，前端过滤掉不显示
+        console.log('[AI] 发送流心跳，防止连接断开');
+      }
+    }, 5000);
+  };
+  const stopHeartbeat = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  };
+
   try {
     const hasImage = truncatedMessages.some(m =>
       Array.isArray(m.content) &&
@@ -686,25 +708,6 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     let responseModel = null;  // API 返回的实际模型名（用于校验和展示）
     let sawDone = false;
 
-    // 心跳计时器：每 5 秒检查，超过 12 秒无新内容时发零宽空格，防止代理切断连接
-    let heartbeatTimer = null;
-    let lastChunkTime = Date.now();
-    const startHeartbeat = () => {
-      heartbeatTimer = setInterval(() => {
-        const now = Date.now();
-        if (now - lastChunkTime > 12000) {
-          onDelta('\u200B'); // 零宽空格，前端过滤掉不显示
-          console.log('[AI] 发送流心跳，防止连接断开');
-        }
-      }, 5000);
-    };
-    const stopHeartbeat = () => {
-      if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
-    };
-
     startHeartbeat();
     log.debug('stream start');
     for await (const chunk of reader) {
@@ -841,6 +844,22 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     }
 
     // MiniMax 官方 API 失败时，优先 fallback 到百炼版 MiniMax
+    // 注意：工具调用相关错误（400/401/403 表示请求本身有问题，如 tool_id 无效）不 fallback，直接报错
+    const isToolError = e?.message && (
+      e.message.includes('tool id') ||
+      e.message.includes('tool_call_id') ||
+      e.message.includes('invalid params') ||
+      (e.message.includes('HTTP 400') && e.message.includes('tool')) ||
+      (e.message.includes('HTTP 401') && e.message.includes('tool')) ||
+      (e.message.includes('HTTP 403'))
+    );
+
+    if (isToolError) {
+      log.error('工具调用错误，不进行 fallback', { error: e?.message || String(e) });
+      onError(e);
+      return;
+    }
+
     if (canFallbackToBailian) {
       log.warn('MiniMax API failed, fallback to Bailian MiniMax', { error: e?.message || String(e) });
       const prevProvider = config.currentProvider;
