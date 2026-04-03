@@ -119,67 +119,63 @@ setInterval(async () => {
 // 流平滑器：让打字机输出更丝滑
 // 参考 Vercel AI SDK smoothStream + Intl.Segmenter 词边界分词
 // ═══════════════════════════════════════════════════════════════
-function createStreamSmoother(onChunk) {
+/**
+ * 按目标打字速度（pacingMs/字符）均匀释放流式内容的 smoother。
+ * 去掉 catchup，完全由 setInterval 按固定节奏放行，匹配用户设置的打字速度。
+ *
+ * @param {function} onChunk - 每当有字符可释放时调用
+ * @param {number} pacingMs - 每次释放的间隔（毫秒），默认 28ms ≈ 中速 35字/秒
+ */
+function createStreamSmoother(onChunk, pacingMs = 28) {
   const buffer = [];
   let timer = null;
   let isEnding = false;
   let endCallback = null;
 
-  // Intl.Segmenter 按语义词边界分词（中文"你好"作为1个词，英文"world"作为1个词）
   const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
 
-  const INTERVAL_MS = 10;        // 10ms/词 ≈ Vercel AI SDK 的 delayInMs
-  const CATCHUP_THRESHOLD = 100; // 积压100字符才开始追赶（前端 RAF catchup 会先吸收，不会突然加速）
-  const CATCHUP_CHARS = 15;      // 追赶时每tick尽量清空 buffer（让前端 RAF catchup 主导节奏）
-  const END_BOOST_CHARS = 10;    // 结束时加速消化
+  function getNextUnit() {
+    if (buffer.length === 0) return null;
+    const bufferStr = buffer.join('');
+    const segments = [...segmenter.segment(bufferStr)];
+    if (segments.length === 0) return null;
+
+    const first = segments[0];
+    // 空 segment：移除一个原始字符避免死循环
+    if (!first.segment || !first.segment.length) {
+      buffer.splice(0, 1);
+      return null;
+    }
+
+    // 非词单元（标点、空白）：直接发送
+    if (!first.isWordLike) {
+      buffer.splice(0, first.segment.length);
+      return first.segment;
+    }
+
+    // 词单元：发送整个词
+    buffer.splice(0, first.segment.length);
+    return first.segment;
+  }
 
   function tick() {
     if (buffer.length === 0) {
       if (isEnding) {
         if (timer) { clearInterval(timer); timer = null; }
-        if (endCallback) { endCallback(); endCallback = null; }
+        if (endCallback) { const cb = endCallback; endCallback = null; cb(); }
       }
       return;
     }
 
-    // 追赶模式：buffer 积压太多，尽量清空 buffer，让前端 RAF catchup 主导节奏
-    // 不再限制 CATCHUP_CHARS，而是把 buffer 一次性消费完
-    if (buffer.length > CATCHUP_THRESHOLD) {
-      const chars = buffer.splice(0, buffer.length);
-      if (chars.length > 0) {
-        onChunk(chars.join(''));
-      }
-      return;
+    const unit = getNextUnit();
+    if (unit) {
+      onChunk(unit);
     }
-
-    // 正常模式：按语义词边界切分
-    // 注意：buffer 是字符数组，需要先 join 成字符串再分词
-    const bufferStr = buffer.join('');
-    const segments = [...segmenter.segment(bufferStr)];
-    if (segments.length === 0) return;
-
-    const first = segments[0];
-    // segmenter 可能返回空 segment，必须移除至少一个字符避免死循环
-    if (!first.segment || !first.segment.length) {
-      buffer.splice(0, 1);
-      return;
-    }
-
-    // 非词单元（标点、空白等）：作为独立 chunk 发送
-    if (!first.isWordLike) {
-      buffer.splice(0, first.segment.length);
-      onChunk(first.segment);
-      return;
-    }
-
-    // 词单元：只移除 segment 本身长度（first.index 相对于原始输入，不适用于已 splice 过的 buffer）
-    buffer.splice(0, first.segment.length);
-    onChunk(first.segment);
   }
 
   function start() {
     if (timer) return;
-    timer = setInterval(tick, INTERVAL_MS);
+    timer = setInterval(tick, pacingMs);
   }
 
   function feed(text) {
@@ -195,7 +191,7 @@ function createStreamSmoother(onChunk) {
     endCallback = callback;
     if (buffer.length === 0) {
       if (timer) { clearInterval(timer); timer = null; }
-      if (endCallback) { endCallback(); endCallback = null; }
+      if (endCallback) { const cb = endCallback; endCallback = null; cb(); }
     }
   }
 
@@ -750,6 +746,10 @@ wss.on('connection', (ws) => {
       currentAbort = () => { cancelled = true; };
 
       let fullReply = '';
+      // pacingMs：每个字符/词之间的发送间隔（毫秒）
+      // 28ms ≈ 中速 35字/秒；18ms ≈ 快速 55字/秒；45ms ≈ 慢速 22字/秒
+      // 前端通过 params.pacingMs 传入，暂默认 28ms
+      const pacingMs = typeof params?.pacingMs === 'number' ? params.pacingMs : 28;
       const smoother = createStreamSmoother((chunk) => {
         if (cancelled) return;
         fullReply += chunk;

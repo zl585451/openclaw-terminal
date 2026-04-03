@@ -2297,7 +2297,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
 
     // 发送到 OpenClaw，包含图片和文件（content 含路径引用，AMY 用 read_file 读取）
-    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files);
+    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, streamSpeedMs);
     if (!result?.success && !cmdIsSystem) {
       setAwaitingResponse(false);
       console.warn('[ChatTab] Send failed:', result);
@@ -2383,7 +2383,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         console.warn('[ChatTab.v2] oct runtime (quickSend)', e);
       }
     }
-    ws.send(content.trim()).then((result: { success?: boolean } | null) => {
+    ws.send(content.trim(), undefined, undefined, streamSpeedMs).then((result: { success?: boolean } | null) => {
       if (!result?.success && !isSystem) {
         setAwaitingResponse(false);
         try {

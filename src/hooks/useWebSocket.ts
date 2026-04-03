@@ -183,12 +183,13 @@ export function useWebSocket(options: UseWebSocketOptions) {
     };
   }, []);
 
-  const send = async (content: string, imageDataUrl?: string, files?: any[]): Promise<{success?: boolean}> => {
+  const send = async (content: string, imageDataUrl?: string, files?: any[], pacingMs?: number): Promise<{success?: boolean}> => {
     try {
       const result = await ipcRenderer.invoke('openclaw-send', {
         content: content.trim(),
         imageDataUrl,
         files,
+        pacingMs,
       });
       return result || {};
     } catch (error) {

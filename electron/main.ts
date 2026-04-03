@@ -860,7 +860,7 @@ interface UploadedFile {
   base64?: string;
 }
 
-function sendChatMessage(content: string, imageDataUrl?: string | null, files?: UploadedFile[]): { success: boolean; error?: string } {
+function sendChatMessage(content: string, imageDataUrl?: string | null, files?: UploadedFile[], pacingMs?: number): { success: boolean; error?: string } {
   if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
     return { success: false, error: 'WebSocket not connected' };
   }
@@ -876,10 +876,11 @@ function sendChatMessage(content: string, imageDataUrl?: string | null, files?: 
 
   // OpenClaw chat.send: message 必须是字符串，图片放入 attachments；sessionKey 一致则 Gateway 在同一会话内回复
   const finalMessage = message.trim() || (imageDataUrl || (files && files.length > 0) ? '[文件/图片]' : '');
-  const params: { sessionKey: string; idempotencyKey: string; message: string; attachments?: any[] } = {
+  const params: { sessionKey: string; idempotencyKey: string; message: string; attachments?: any[]; pacingMs?: number } = {
     sessionKey: currentSessionKey,
     idempotencyKey,
     message: finalMessage,
+    pacingMs,
   };
 
   // OpenClaw chat.send attachments: Gateway normalizeRpcAttachmentsToChatAttachments 期望 { type, mimeType, content }
@@ -2472,27 +2473,31 @@ ipcMain.handle('openclaw-connect', () => {
   return { success: true };
 });
 
-ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDataUrl?: string | null; files?: UploadedFile[] }) => {
+ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDataUrl?: string | null; files?: UploadedFile[]; pacingMs?: number }) => {
   let content: string;
   let imageDataUrl: string | null | undefined;
   let files: UploadedFile[] | undefined;
-  
+  let pacingMs: number | undefined;
+
   if (typeof payload === 'string') {
     content = payload;
     imageDataUrl = null;
     files = undefined;
+    pacingMs = undefined;
   } else if (payload && typeof payload === 'object') {
     const c = payload.content;
     content = typeof c === 'string' ? c : (c ? String(c) : '');
     imageDataUrl = payload.imageDataUrl;
     files = payload.files;
+    pacingMs = payload.pacingMs;
   } else {
     content = '';
     imageDataUrl = null;
     files = undefined;
+    pacingMs = undefined;
   }
-  
-  return sendChatMessage(content, imageDataUrl, files);
+
+  return sendChatMessage(content, imageDataUrl, files, pacingMs);
 });
 
 ipcMain.handle('openclaw-status', () => {
