@@ -129,8 +129,8 @@ function createStreamSmoother(onChunk) {
   const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
 
   const INTERVAL_MS = 10;        // 10ms/词 ≈ Vercel AI SDK 的 delayInMs
-  const CATCHUP_THRESHOLD = 30;  // 积压30字符开始追赶（比原来50更低，更敏感）
-  const CATCHUP_CHARS = 5;       // 追赶时每tick按字符快速消费
+  const CATCHUP_THRESHOLD = 100; // 积压100字符才开始追赶（前端 RAF catchup 会先吸收，不会突然加速）
+  const CATCHUP_CHARS = 15;      // 追赶时每tick尽量清空 buffer（让前端 RAF catchup 主导节奏）
   const END_BOOST_CHARS = 10;    // 结束时加速消化
 
   function tick() {
@@ -142,9 +142,10 @@ function createStreamSmoother(onChunk) {
       return;
     }
 
-    // 追赶模式：buffer 积压太多，按字符快速消费
+    // 追赶模式：buffer 积压太多，尽量清空 buffer，让前端 RAF catchup 主导节奏
+    // 不再限制 CATCHUP_CHARS，而是把 buffer 一次性消费完
     if (buffer.length > CATCHUP_THRESHOLD) {
-      const chars = buffer.splice(0, CATCHUP_CHARS);
+      const chars = buffer.splice(0, buffer.length);
       if (chars.length > 0) {
         onChunk(chars.join(''));
       }
