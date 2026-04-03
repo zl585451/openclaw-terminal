@@ -388,6 +388,8 @@ wss.on('connection', (ws) => {
 
   // 每个 ws 连接独立维护一个取消令牌，用于中止上一个流
   let currentAbort = null;
+  let thinkingPulseInterval = null;
+  let thinkingSeconds = 0;
 
   try {
     const nonce = crypto.randomBytes(16).toString('hex');
@@ -726,8 +728,7 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
 
       // 思考心跳：每 8 秒向前端发送 thinking 事件，防止假断开
-      let thinkingPulseInterval = null;
-      let thinkingSeconds = 0;
+      thinkingSeconds = 0;
       thinkingPulseInterval = setInterval(() => {
         thinkingSeconds += 8;
         if (ws.readyState === ws.OPEN) {
