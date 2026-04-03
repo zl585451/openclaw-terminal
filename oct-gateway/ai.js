@@ -710,14 +710,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
 
     startHeartbeat();
     log.debug('stream start');
-    let lastChunkArrival = Date.now();
     for await (const chunk of reader) {
-      const now = Date.now();
-      const gap = now - lastChunkArrival;
-      lastChunkArrival = now;
-      if (gap > 500) {
-        log.debug('chunk gap', { gapMs: gap, chunkLen: chunk.length });
-      }
       const raw = decoder.decode(chunk, { stream: true });
       buf += raw;
       const lines = buf.split('\n');
