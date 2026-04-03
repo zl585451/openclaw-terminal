@@ -13,6 +13,7 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useTimers } from '../../hooks/useTimers';
 import { useContextMenu } from '../../hooks/useContextMenu';
+import { useScrollManager } from '../../hooks/useScrollManager';
 import { ContextMenu } from '../../components/ContextMenu';
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
@@ -37,7 +38,6 @@ import { checkPermission, getDangerMatch } from '../../utils/permissionCheck';
 import CanvasPanel from '../../components/CanvasPanel';
 // playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
-import { ScrollAnchor } from '../../core/viewport';
 import { getCachedPreprocessedMarkdown, clearProcessedMarkdownCache } from '../../utils/markdownPreprocess';
 import { createMarkdownComponents } from './markdownComponents';
 
@@ -817,9 +817,6 @@ interface ChatTabProps {
   onStatusChange?: (wsConnected: boolean, isStreaming: boolean, modelName?: string, tokenIn?: number | null, tokenOut?: number | null, ctxUsed?: number | null, ctxMax?: number | null) => void;
 }
 
-const MAX_VISIBLE_MESSAGES = 50;
-const VISIBLE_MESSAGES_STEP = 30;
-const SHOW_SCROLL_BUTTON_THRESHOLD = 300;
 
 // ── STREAK 工具函数 ──────────────────────────────────────────────────────
 function getTodayStr(): string {
@@ -1584,7 +1581,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // 保留现有的 done 处理逻辑
       setAwaitingResponse(false);
       setAgentPhase('idle');
-      userScrolledUp.current = false;
       // AI 最终回复完成时清空所有工具卡片
       setActiveTools([]);
       const currentRequestId = lastSentRequestId.current;
@@ -1704,7 +1700,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           // 避免因 isStreaming=true 导致 ResizeObserver reconcile 被跳过，造成页面跳动
           if (prev.length === 0 && next.length > 0) {
             requestAnimationFrame(() => {
-              scrollAnchorRef.current?.reconcile();
+              scroll.reconcile();
             });
           }
           return next;
@@ -1771,7 +1767,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [, setCompactions] = useState<number | null>(null);
   const [, setQueueInfo] = useState<string>('--');
   const [, setLogPath] = useState('');
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
@@ -1784,74 +1779,31 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     resultPreview?: string;
   }>>([]);
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
-  const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE_MESSAGES);
   const [pendingPills, setPendingPills] = useState<string[] | null>(null);
   // 任务看板显示状态
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const scheduleFullTextSyncRef = useRef<(() => void) | null>(null);
-  const scheduleScrollAfterLayoutRef = useRef<((force?: boolean) => void) | null>(null);
   // ===== 所有 useRef 集中声明 =====
   // xterm 相关 ref 已移除
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingMessageRef = useRef(''); // 仍保留：用于与现有消息 content 合并/落盘，不改 schema
   const streamingDomRef = useRef<HTMLPreElement | null>(null);
   const fullTextRef = useRef<string>('');
   // typingBudgetMsRef, lastTypingTsRef 已迁移到 useTypewriter hook
   const pendingFullTextSyncRafRef = useRef<number | null>(null);
-  const userScrolledUp = useRef<boolean>(false);
-  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const snapJustFiredRef = useRef<boolean>(false);
-  // 待顶置的用户消息 ID：发送后由 useLayoutEffect 消费，确保 DOM 已提交后执行滚动
-  const pendingSnapMsgIdRef = useRef<number | null>(null);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
   const streamUiRafRef = useRef<number | null>(null);
-  const anchoredStreamingMsgIdRef = useRef<number | null>(null);
-  // ScrollAnchor: 新的滚动锚定系统
-  const scrollAnchorRef = useRef(new ScrollAnchor());
   // typewriterStartTsRef, shouldRunTypewriterRef 已迁移到 useTypewriter hook
 
-  const scrollToBottom = useCallback((force = false) => {
-    if (snapJustFiredRef.current) return;
-    const el = messagesContainerRef.current;
-    if (!el) return;
-    if (!force && !scrollAnchorRef.current.isLocked()) return;
-    // TOP_ANCHORED（locked）+ 流式：不主动改 scrollTop，让内容在视口内自然向下增长
-    if (!force && isStreaming && scrollAnchorRef.current.isLocked()) return;
-    if (!bottomRef.current) return;
-
-    const containerRect = el.getBoundingClientRect();
-    const bottomRect = bottomRef.current.getBoundingClientRect();
-
-    // 只向下滚：仅当 bottomRef 在视口下方（内容溢出）时才追
-    // 当 bottomRef 还在视口内（AI 刚开始输出），不滚动，保持用户消息在顶部
-    if (bottomRect.top <= containerRect.bottom + 10) return;
-
-    // 不 release anchor — 只有 scrollBtn 点击时 force=true 才应 release
-    if (force) scrollAnchorRef.current.release();
-    bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
-  }, [isStreaming]);
-
-  /** 布局稳定后再滚动（ResizeObserver / 流式 tick 共用） */
-  const scheduleScrollAfterLayout = useCallback(
-    (force = false) => {
-      if (snapJustFiredRef.current) return;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollToBottom(force);
-        });
-      });
-    },
-    [scrollToBottom]
-  );
-
-  /** 发送后标记需要顶置，由 useLayoutEffect 在 DOM 提交后执行 */
-  const scrollAfterUserSend = useCallback(() => {
-    pendingSnapMsgIdRef.current = -1; // -1 表示"在下次 messages.length 变化时顶置最后一条用户消息"
-  }, []);
+  const scroll = useScrollManager({
+    fsm: oct.fsm,
+    isStreaming,
+    awaitingResponse,
+    messagesLength: messages.length,
+  });
 
   const scheduleFullTextSync = useCallback(() => {
     if (pendingFullTextSyncRafRef.current != null) return;
@@ -1884,30 +1836,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   useLayoutEffect(() => {
     scheduleFullTextSyncRef.current = scheduleFullTextSync;
-    scheduleScrollAfterLayoutRef.current = scheduleScrollAfterLayout;
+    // 让外部代码（handleIncomingMessage）可以通过 ref 调用 scroll 的 scheduleScrollAfterLayout
+    scroll.scheduleScrollAfterLayoutRef.current = scroll.scheduleScrollAfterLayout;
   });
 
   useEffect(() => {
     return oct.fsm.subscribe((phase) => {
       setFsmPhase(phase);
-      if (phase === TurnPhase.TURN_FINISHED || phase === TurnPhase.IDLE) {
-        userScrolledUp.current = false;
-        // 如果刚刚 snap 过（用户刚发消息），不释放锚点也不回拽 scrollTop
-        // snap 需要保持锚定，让用户消息留在顶部
-        if (snapJustFiredRef.current || pendingSnapMsgIdRef.current !== null) return;
-        scrollAnchorRef.current.release();
-        // 限制 scrollTop 不超过最大可滚动范围，防止底部出现空白
-        requestAnimationFrame(() => {
-          if (snapJustFiredRef.current) return;
-          const el = messagesContainerRef.current;
-          if (el) {
-            const maxScroll = el.scrollHeight - el.clientHeight;
-            if (el.scrollTop > maxScroll) {
-              el.scrollTop = maxScroll;
-            }
-          }
-        });
-      }
     });
   }, [oct.fsm]);
 
@@ -2031,11 +1966,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
   }, [messages]);
 
-  useEffect(() => {
-    // 新消息到来时，确保可见窗口至少覆盖最新的 MAX_VISIBLE_MESSAGES
-    setVisibleCount((prev) => Math.max(prev, Math.min(messages.length, MAX_VISIBLE_MESSAGES)));
-  }, [messages.length]);
-
   const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
     if (settings.typingSound === 'off' || !msg.content) return;
     const plain = stripMarkdown(msg.content);
@@ -2124,7 +2054,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
-    userScrolledUp.current = false;
     setStreak(touchStreak());
     setPendingPills(null);
     setMessages((prev) => {
@@ -2152,7 +2081,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       }
       return next;
     });
-    scrollAfterUserSend();
+    scroll.scrollAfterUserSend();
 
     if (!cmdIsSystem) {
       try {
@@ -2181,7 +2110,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         console.warn('[ChatTab.v2] send failed cleanup', e);
       }
     }
-  }, [ws.wsConnected, getNextMessageId, permissions, scrollAfterUserSend, oct]);
+  }, [ws.wsConnected, getNextMessageId, permissions, scroll.scrollAfterUserSend, oct]);
 
 
   const quickSend = useCallback((content: string) => {
@@ -2212,7 +2141,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
-    userScrolledUp.current = false;
     setPendingPills(null);
     setMessages((prev) => {
       const next: ChatMessage[] = [
@@ -2232,7 +2160,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       }
       return next;
     });
-    scrollAfterUserSend();
+    scroll.scrollAfterUserSend();
     if (!isSystem) {
       try {
         oct.stream.abortToIdle();
@@ -2258,7 +2186,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         }
       }
     });
-  }, [ws.wsConnected, getNextMessageId, permissions, scrollAfterUserSend, oct]);
+  }, [ws.wsConnected, getNextMessageId, permissions, scroll.scrollAfterUserSend, oct]);
 
   const handleClearHistory = useCallback(() => {
     if (!window.confirm('确认清空所有聊天记录？')) return;
@@ -2268,104 +2196,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, []);
 
 
-  const handleChatScroll = useCallback(
-    (e: React.UIEvent<HTMLDivElement>) => {
-      const el = e.currentTarget;
-      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowScrollBtn(distFromBottom > SHOW_SCROLL_BUTTON_THRESHOLD);
-
-      // ScrollAnchor: 编程式滚动不改变跟随状态
-      if (scrollAnchorRef.current.isProgrammatic()) return;
-
-      // ScrollAnchor: 用户手动滚动时检测是否解锁
-      scrollAnchorRef.current.onUserScroll(distFromBottom);
-
-      // 更新用户滚动状态
-      userScrolledUp.current = !scrollAnchorRef.current.isLocked();
-
-      if (el.scrollTop < 120 && messages.length > visibleCount) {
-        setVisibleCount((prev) => Math.min(prev + VISIBLE_MESSAGES_STEP, messages.length));
-      }
-    },
-    [messages.length, visibleCount, isStreaming]
-  );
-
-  // ScrollAnchor: 初始化 attach 容器（useLayoutEffect 确保 attach 早于 snap useLayoutEffect）
-  useLayoutEffect(() => {
-    const el = messagesContainerRef.current;
-    if (el) {
-      scrollAnchorRef.current.attach(el);
-    }
-  }, []);
-
-  useLayoutEffect(() => {
-    const wrap = messagesContainerRef.current;
-    if (!wrap) return;
-    const inner = wrap.querySelector('.chat-messages');
-    const target = inner ?? wrap;
-    const ro = new ResizeObserver(() => {
-      // snap 保护窗口内跳过：assistant 气泡正在插入 DOM，此时高度变化是正常内容增长
-      if (snapJustFiredRef.current) return;
-      // 未锁定时跳过
-      if (!scrollAnchorRef.current.isLocked()) return;
-      // locked（等价 TOP_ANCHORED）+ 流式：不调 reconcile，避免 scrollTop 向上补偿；仅依赖布局自然增高
-      if (isStreaming) return;
-      // 等待响应时（thinking/typing 阶段切换）：跳过 reconcile，避免占位组件切换导致的高度变化被错误补偿
-      if (awaitingResponse) return;
-
-      scrollAnchorRef.current.reconcile();
-    });
-    ro.observe(target);
-    return () => ro.disconnect();
-  }, [isStreaming, awaitingResponse, messages.length]);
-
-  // 用户发送消息后，在 DOM 提交时执行顶置滚动（useLayoutEffect 确保 DOM 已更新）
-  useLayoutEffect(() => {
-    if (pendingSnapMsgIdRef.current === null) return;
-
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    const userMsgs = container.querySelectorAll('.chat-message.user');
-    if (userMsgs.length === 0) return;
-
-    const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement;
-    pendingSnapMsgIdRef.current = null;
-
-    snapJustFiredRef.current = true;
-    scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
-
-    // 延长保护窗口到 800ms：
-    // - 覆盖 thinking → typing 的 agentPhase 切换
-    // - 覆盖占位 CoTBlock 消失导致的高度变化
-    // - 覆盖首个 token 渲染到打字机启动的全过程
-    const snapTime = Date.now();
-    const checkRelease = () => {
-      if (Date.now() - snapTime < 800) {
-        requestAnimationFrame(checkRelease);
-      } else {
-        snapJustFiredRef.current = false;
-      }
-    };
-    requestAnimationFrame(checkRelease);
-  }, [messages.length]);
-
-  // assistant 新流式消息启动时：仅记录锚定 ID，保持跟随滚动开启
-  // 初始定位由上方 useLayoutEffect 完成（用户消息顶部对齐），此处不再覆盖
-  useLayoutEffect(() => {
-    const last = messages[messages.length - 1];
-    const isAssistantStreaming = !!last && last.role === 'assistant' && last.isStreaming;
-
-    if (!isAssistantStreaming) {
-      anchoredStreamingMsgIdRef.current = null;
-      return;
-    }
-
-    if (anchoredStreamingMsgIdRef.current === last.id) return;
-    anchoredStreamingMsgIdRef.current = last.id;
-  }, [messages.length]);
-
-  // 打字机逻辑已迁移到 useTypewriter hook
+  // scrollManager: handleChatScroll / useLayoutEffects 已迁移到 useScrollManager hook
 
 
   return (
@@ -2451,7 +2282,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
         <ChatMessageList
           messages={messages}
-          displayMessages={messages.length > visibleCount ? messages.slice(-visibleCount) : messages}
+          displayMessages={messages.length > scroll.visibleCount ? messages.slice(-scroll.visibleCount) : messages}
           isStreaming={isStreaming}
           awaitingResponse={awaitingResponse}
           streamingContent={fullTextRef.current}
@@ -2461,23 +2292,21 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           thinkingElapsed={thinkingElapsed}
           wsConnected={ws.wsConnected}
           quickSend={quickSend}
-          bottomRef={bottomRef}
-          onScroll={handleChatScroll}
+          bottomRef={scroll.bottomRef}
+          onScroll={scroll.handleChatScroll}
           onMessageContextMenu={(e, msg, raw) => ctxMenu.onContextMenu(e, msg.id, raw)}
           onQuoteQuestion={(text: string) => setInjectInputText(text)}
           pendingPills={pendingPills}
-          messagesContainerRef={messagesContainerRef}
+          messagesContainerRef={scroll.messagesContainerRef}
           activeTools={activeTools}
           getToolDisplayName={getToolDisplayName}
           streamingDomRef={streamingDomRef}
           markdownComponents={mdComponents}
         />
-        {showScrollBtn && (
+        {scroll.showScrollBtn && (
           <div
             onClick={() => {
-              scrollAnchorRef.current.release();
-              userScrolledUp.current = false;
-              scheduleScrollAfterLayout(true);
+              scroll.scheduleScrollAfterLayout(true);
             }}
             style={{
               position: 'absolute',
