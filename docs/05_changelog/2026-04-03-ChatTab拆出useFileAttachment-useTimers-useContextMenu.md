@@ -1,64 +1,87 @@
-# 2026-04-03 ChatTab 拆出 useFileAttachment / useTimers / useContextMenu
+# 2026-04-03 ChatTab.v2.tsx 完整拆分重构
 
 ## 概述
 
-按 ChatTab_v2.tsx 架构分层拆分计划，执行 Step 3 和 Step 6，从主文件抽出约 190 行代码到 3 个独立 hooks。
+按 ChatTab_v2.tsx 架构分层拆分计划，执行全部 6 步，从主文件抽出 ~2300 行代码到 9 个独立文件。
 
-## 变更文件
+## 拆分成果
 
-| 文件 | 变化 |
-|------|------|
-| `src/hooks/useFileAttachment.ts` | 新增 (~180 行)，含截图/文件上传/拖拽/粘贴逻辑 |
-| `src/hooks/useTimers.ts` | 新增 (~50 行)，含时钟更新 + window focus 监听 |
-| `src/hooks/useContextMenu.ts` | 新增 (~45 行)，含右键菜单状态 + 操作 |
-| `src/components/ContextMenu.tsx` | 新增 (~60 行)，右键菜单渲染组件 |
-| `src/ui/chat/ChatTab.v2.tsx` | -221 行 / +33 行，净减少 ~188 行 |
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `src/hooks/useMessages.ts` | ~676 | 消息状态 + WebSocket 通信 + FSM 状态机 |
+| `src/hooks/useScrollManager.ts` | ~207 | 滚动管理 + ScrollAnchor |
+| `src/hooks/useFileAttachment.ts` | ~187 | 文件上传/截图/拖拽/粘贴 |
+| `src/hooks/useTimers.ts` | ~50 | 时钟更新 + window focus 监听 |
+| `src/hooks/useContextMenu.ts` | ~46 | 右键菜单状态 + 操作 |
+| `src/components/ContextMenu.tsx` | ~86 | 右键菜单渲染组件 |
+| `src/ui/chat/MessageList.tsx` | ~993 | 消息列表渲染 + 工具调用卡片 |
+| `src/ui/chat/ChatInput.tsx` | ~293 | 输入框组件 |
+| `src/ui/chat/ChatTab.v2.tsx` | **~729行** | 组装协调（原来 ~3000 行） |
 
-## 详细变更
+## 各步骤详细变更
 
-### useFileAttachment (Step 3)
+### Step 1: useMessages (最高风险)
 
-- `handleScreenshot`: Electron desktopCapturer 截图，含 Ctrl+Shift+S 快捷键和 IPC 监听
-- `handleFileAttach`: 文件选择框 + Electron `open-file-dialog` IPC
+- 消息状态管理 (`messages`, `pendingUserMsg`, `pendingAssistantMsg`)
+- WebSocket 连接状态 (`wsConnected`)
+- 入站消息分发 (`handleIncomingMessage`)
+- FSM 状态机 (`TurnFSM`)
+- 工具调用状态 (`activeTools`)
+- 发送消息逻辑 (`sendMessages`)
+- 使用 `scrollBridgeRef` 解决循环依赖
+
+### Step 2: useScrollManager
+
+- ScrollAnchor 组件管理
+- 用户滚动检测 (`userScrolledRef`, `isUserScrolling`)
+- 自动滚动逻辑 (`scrollToBottom`, `scrollToBottomIfAllowed`)
+- 滚动同步
+
+### Step 3: useFileAttachment
+
+- `handleScreenshot`: Electron desktopCapturer 截图
+- `handleFileAttach`: 文件选择框
 - `handlePaste`: 剪贴板图片粘贴
-- 拖拽进入/离开/放置状态
-- 截图闪屏动画状态
-- `UploadedFile[]` 状态 + `imagePreview` 状态
+- 拖拽状态管理 (isDragging)
+- `UploadedFile[]` 和 `imagePreview` 状态
 
-### useTimers (Step 6)
+### Step 4: MessageList
 
-- 每秒更新 `localTime` / `localDate`（带中文 weekday）
+- `ChatMessageList` 组件
+- 分页逻辑 (`pageByMsgId`)
+- 消息解析 (CoT 提取、markdown、option box)
+- 流式渲染状态
+- `ToolCallCard` 工具调用卡片
+- `PendingPillsTray` 待处理药片按钮
+
+### Step 5: ChatInput
+
+- `ChatInputArea` 组件
+- 文本输入框
+- 发送按钮
+- 文件/截图按钮
+- 快捷命令菜单
+
+### Step 6: useTimers + useContextMenu
+
+**useTimers:**
+- 每秒更新 `localTime` / `localDate`
 - window focus / blur / visibilitychange 监听
 
-### useContextMenu (Step 6)
-
-- 右键菜单状态 (`ContextMenuState`)
-- `onContextMenu`: 打开菜单（阻止默认行为）
-- `onCopy`: 复制消息到剪贴板
-- `onResend`: 关闭菜单（重发逻辑由 parent 通过 `setInjectInputText` 处理）
-- `onDelete`: 删除消息后关闭菜单
-
-### ChatTab.v2.tsx 净减少 188 行
-
-- 删除了 4 个 `useState` 声明（imagePreview, uploadedFiles, screenshotFlash, isDragging）
-- 删除了 2 个 `useState` 声明（localTime, localDate）
-- 删除了 1 个 `useState` 声明（windowFocused）
-- 删除了 1 个 `useState` 声明（contextMenu）
-- 删除了 `fileToUploadedFile` / `readFileAsBase64` 工具函数
-- 删除了 `handleScreenshot` / `handleFileAttach` / `handlePaste` 回调
-- 删除了 2 个截图快捷键 effect / 1 个截图 IPC 监听 effect
-- 删除了 1 个时钟 tick effect / 1 个 window focus effect
-- 删除了 50+ 行内联右键菜单 JSX
-- 新增 3 个 hook 调用 + 若干属性访问替换
+**useContextMenu:**
+- 右键菜单状态
+- `onContextMenu`: 打开菜单
+- `onCopy`: 复制消息
+- `onResend`: 重新发送
+- `onDelete`: 删除消息
 
 ## 验证
 
 - `npx tsc --noEmit` 通过
-- 文件行数：3036 → 2848 行（-188 行）
+- 构建正常 (387 modules)
+- 合并到 main 分支
 
-## 待续
+## 后续工作
 
-- Step 1: `useMessages` hook（最高风险）
-- Step 2: `useScrollManager` hook
-- Step 4: `MessageList` 子组件
-- Step 5: `ChatInput` 子组件
+- `MessageList.tsx` (~993行) 超过 500 行警戒线，可进一步拆分
+- `useMessages.ts` (~676行) 超过 500 行警戒线，可考虑拆分消息解析逻辑
