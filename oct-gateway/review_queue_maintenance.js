@@ -48,6 +48,32 @@ async function collectLeafUris(uri, bucket, visited = new Set()) {
   }
 }
 
+async function scanReviewCandidates(options = {}) {
+  const nowIso = options.nowIso || new Date().toISOString();
+  const leafs = [];
+  await collectLeafUris(REVIEW_ROOT_URI, leafs);
+
+  const candidates = [];
+  for (const item of leafs) {
+    const candidate = tryParseCandidate(item.content);
+    if (!candidate) continue;
+    candidates.push({
+      uri: item.uri,
+      priority: item.priority,
+      disclosure: item.disclosure,
+      candidate,
+      isExpired: shouldExpireCandidate(candidate, nowIso),
+    });
+  }
+
+  return {
+    scannedLeafs: leafs.length,
+    candidateCount: candidates.length,
+    candidates,
+    nowIso,
+  };
+}
+
 function tryParseCandidate(content) {
   try {
     const parsed = JSON.parse(String(content || ''));
@@ -74,22 +100,19 @@ function buildExpiredCandidate(candidate, nowIso) {
 
 async function expireStaleReviewCandidates(options = {}) {
   const dryRun = options.dryRun !== false ? true : false;
-  const nowIso = options.nowIso || new Date().toISOString();
-  const leafs = [];
-  await collectLeafUris(REVIEW_ROOT_URI, leafs);
+  const { scannedLeafs, candidates, nowIso } = await scanReviewCandidates(options);
 
   const report = {
-    scanned: leafs.length,
+    scanned: scannedLeafs,
     expired: 0,
     updated: [],
     failed: [],
     dryRun,
   };
 
-  for (const item of leafs) {
-    const candidate = tryParseCandidate(item.content);
-    if (!candidate) continue;
-    if (!shouldExpireCandidate(candidate, nowIso)) continue;
+  for (const item of candidates) {
+    const candidate = item.candidate;
+    if (!item.isExpired) continue;
 
     report.expired += 1;
 
@@ -125,5 +148,6 @@ async function expireStaleReviewCandidates(options = {}) {
 }
 
 module.exports = {
+  scanReviewCandidates,
   expireStaleReviewCandidates,
 };

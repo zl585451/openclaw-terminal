@@ -11,6 +11,7 @@ const memoryFeedback = require('./memory_feedback');
 const memorySearch = require('./memory_search');
 const { sanitizeAssistantReply, sanitizeMemoryNodeContent, stripCotText } = require('./cot_sanitize');
 const memoryGovernor = require('./memory_governor');
+const memoryManagementAgent = require('./memory_management_agent');
 const reviewQueueMaintenance = require('./review_queue_maintenance');
 const imageAnalyzer = require('./image_analyzer');
 const tools = require('./tools');
@@ -166,6 +167,42 @@ function scheduleReviewQueueMaintenance() {
 }
 
 scheduleReviewQueueMaintenance();
+
+// ═══════════════════════════════════════════════════════════════
+// Memory Management Agent：低频巡检 review_queue，输出治理建议
+// 先做报告，不自动改写记忆，避免引入新的不确定性
+// ═══════════════════════════════════════════════════════════════
+const memoryGovernanceReportEnabled = process.env.OCT_MEMORY_GOVERNANCE_REPORT_ENABLED !== '0';
+const memoryGovernanceReportIntervalMs = Number(process.env.OCT_MEMORY_GOVERNANCE_REPORT_INTERVAL_MS || 12 * 60 * 60 * 1000);
+const memoryGovernanceReportStartupDelayMs = Number(process.env.OCT_MEMORY_GOVERNANCE_REPORT_STARTUP_DELAY_MS || 15 * 60 * 1000);
+
+function scheduleMemoryGovernanceReport() {
+  if (!memoryGovernanceReportEnabled) {
+    log.info('Memory governance report disabled');
+    return;
+  }
+
+  const runReport = () => {
+    nocturneQueue.enqueue(async () => {
+      const healthy = await nocturneQueue.isNocturneHealthy();
+      if (!healthy) {
+        log.debug('Skip memory governance report: Nocturne offline');
+        return;
+      }
+      await memoryManagementAgent.runMemoryGovernancePass();
+    }, 'memoryGovernanceReport');
+  };
+
+  setTimeout(runReport, memoryGovernanceReportStartupDelayMs);
+  setInterval(runReport, memoryGovernanceReportIntervalMs);
+
+  log.info('Memory governance report scheduled', {
+    intervalMs: memoryGovernanceReportIntervalMs,
+    startupDelayMs: memoryGovernanceReportStartupDelayMs,
+  });
+}
+
+scheduleMemoryGovernanceReport();
 
 // ═══════════════════════════════════════════════════════════════
 // 流平滑器：让打字机输出更丝滑
