@@ -4,6 +4,7 @@
 
 const config = require('./config');
 const memory = require('./memory');
+const { stripCotText } = require('./cot_sanitize');
 const { createLogger } = require('./logger');
 const log = createLogger('memory_search');
 
@@ -190,12 +191,12 @@ async function searchMemory(query, options = {}) {
       let priority = 2;
       if (r.ok && r.data) {
         const node = r.data?.node || r.data;
-        content = node?.content ?? node?.content_snippet ?? content;
+        content = stripCotText(node?.content ?? node?.content_snippet ?? content);
         priority = node?.priority ?? 2;
       }
       results.push({
         uri: c.uri,
-        content: content ? content.slice(0, 500) : '',
+        content: content ? stripCotText(content).slice(0, 500) : '',
         priority,
         match_score: c.match_score,
       });
@@ -214,13 +215,13 @@ async function searchMemory(query, options = {}) {
               let priority = 2;
               if (r.ok && r.data) {
                 const node = r.data?.node || r.data;
-                content = node?.content ?? node?.content_snippet ?? content;
+                content = stripCotText(node?.content ?? node?.content_snippet ?? content);
                 priority = node?.priority ?? 2;
               }
-              return { uri: c.uri, content: content ? content.slice(0, 500) : '', priority, match_score: c.match_score };
+              return { uri: c.uri, content: content ? stripCotText(content).slice(0, 500) : '', priority, match_score: c.match_score };
             })
           )
-        : top.map((c) => ({ uri: c.uri, content: c.content_snippet, match_score: c.match_score, priority: 2 })),
+        : top.map((c) => ({ uri: c.uri, content: stripCotText(c.content_snippet), match_score: c.match_score, priority: 2 })),
     };
   }
   }
@@ -242,7 +243,7 @@ async function searchMemory(query, options = {}) {
       const r = await memory.readMemory(out[i].uri, { treat404AsDebug: true });
       if (r.ok && r.data) {
         const node = r.data?.node || r.data;
-        out[i].content = (node?.content ?? '').slice(0, 500);
+        out[i].content = stripCotText(node?.content ?? '').slice(0, 500);
         out[i].priority = node?.priority ?? 2;
       }
     }

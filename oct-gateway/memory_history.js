@@ -5,6 +5,7 @@
 
 const config = require('./config');
 const memory = require('./memory');
+const { sanitizeAssistantReply } = require('./cot_sanitize');
 const { createLogger } = require('./logger');
 const log = createLogger('memory_history');
 
@@ -103,6 +104,7 @@ async function saveHistorySummary(userMsg, amyReply, type) {
 
   const maxUser = (config.memory.compress_length && config.memory.compress_length.user) || 100;
   const maxAmy = (config.memory.compress_length && config.memory.compress_length.amy) || 200;
+  const cleanAmyReply = sanitizeAssistantReply(amyReply || '');
 
   const { datePath, timePath, timestamp } = nowFragments();
   const pathSeg = `${HISTORY_BASE}/${datePath}/${timePath}`;
@@ -112,7 +114,7 @@ async function saveHistorySummary(userMsg, amyReply, type) {
   const payload = {
     timestamp,
     user: (userMsg || '').slice(0, maxUser),
-    amy: (amyReply || '').slice(0, maxAmy),
+    amy: cleanAmyReply.slice(0, maxAmy),
     type: t,
     feedback: null,
   };

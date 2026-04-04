@@ -9,6 +9,7 @@ const memory = require('./memory');
 const memoryHistory = require('./memory_history');
 const memoryFeedback = require('./memory_feedback');
 const memorySearch = require('./memory_search');
+const { sanitizeAssistantReply, sanitizeMemoryNodeContent, stripCotText } = require('./cot_sanitize');
 const imageAnalyzer = require('./image_analyzer');
 const tools = require('./tools');
 const toolLoader = require('./tool_loader');
@@ -580,7 +581,7 @@ wss.on('connection', (ws) => {
               // 跳过历史记录节点（太多会撑爆上下文）
               if (item.uri.includes('/history/')) continue;
               seenUris.add(item.uri);
-              const content = (item.content || '').slice(0, 200);
+              const content = stripCotText(item.content || '').slice(0, 200);
               if (content) memContents.push(`[${item.uri}] ${content}`);
             }
           }
@@ -605,7 +606,8 @@ wss.on('connection', (ws) => {
                 const content = r.data?.node?.content || r.data?.content || '';
                 if (!content) continue;
                 try {
-                  const parsed = JSON.parse(content);
+                  const sanitized = sanitizeMemoryNodeContent(content);
+                  const parsed = sanitized.data || JSON.parse(sanitized.content);
                   if (parsed.user && parsed.amy) {
                     memContents.push(
                       `[近期对话] 用户说：${parsed.user.slice(0, 50)} → AI：${parsed.amy.slice(0, 80)}`
@@ -977,13 +979,14 @@ async function extractAndSaveMemory(userMsg, assistantReply) {
   try {
     const nocturneAlive = await memory.isAlive();
     if (!nocturneAlive) return;
+    const cleanAssistantReply = sanitizeAssistantReply(assistantReply || '');
 
     const triggers = [
       '记住', '记一下', '我喜欢', '我不喜欢', '以后', '永远',
       '我的', '我们的', '项目', '决定', '完成了', '发布了',
     ];
     const hasSignal = triggers.some(t =>
-      userMsg.includes(t) || assistantReply.includes(t)
+      userMsg.includes(t) || cleanAssistantReply.includes(t)
     );
     if (!hasSignal) return;
 
@@ -995,7 +998,7 @@ async function extractAndSaveMemory(userMsg, assistantReply) {
         },
         {
           role: 'user',
-          content: `用户说：${userMsg.slice(0, 200)}\nAI回复：${assistantReply.slice(0, 200)}`,
+          content: `用户说：${userMsg.slice(0, 200)}\nAI回复：${cleanAssistantReply.slice(0, 200)}`,
         },
       ],
       onDelta: () => {},

@@ -10,6 +10,7 @@
 const config = require('./config');
 const memory = require('./memory');
 const memoryHistory = require('./memory_history');
+const { sanitizeAssistantReply, sanitizeMemoryNodeContent } = require('./cot_sanitize');
 const { createLogger } = require('./logger');
 const log = createLogger('memory_feedback');
 
@@ -92,6 +93,7 @@ async function detectAndSaveFeedback(userMsg, amyReply) {
 
   const maxUser = 100;
   const maxAmy = 200;
+  const cleanAmyReply = sanitizeAssistantReply(amyReply || '');
   const { datePath, timePath, timestamp } = nowFragments();
   const base = getBasePath(detected.type);
   const pathSeg = `${base}/${datePath}/${timePath}`;
@@ -100,7 +102,7 @@ async function detectAndSaveFeedback(userMsg, amyReply) {
   const payload = {
     timestamp,
     user_message: (userMsg || '').slice(0, maxUser),
-    amy_reply: (amyReply || '').slice(0, maxAmy),
+    amy_reply: cleanAmyReply.slice(0, maxAmy),
     feedback_type: detected.type,
     reason: detected.reason,
     action_taken: detected.type === 'correction' ? '已更新规则' : '已写入记忆',
@@ -197,11 +199,12 @@ async function loadFeedbackForBoot() {
         if (r.ok && r.data) {
           const node = r.data?.node || r.data;
           const raw = node?.content || node?.content_snippet || '';
+          const sanitized = sanitizeMemoryNodeContent(raw);
           try {
-            const j = JSON.parse(raw);
+            const j = sanitized.data || JSON.parse(sanitized.content);
             lines.push(`- 用户说「${j.reason}」→ ${(j.amy_reply || '').slice(0, 50)}...`);
           } catch {
-            lines.push(`- ${raw.slice(0, 60)}...`);
+            lines.push(`- ${sanitized.content.slice(0, 60)}...`);
           }
         }
       }
@@ -220,11 +223,12 @@ async function loadFeedbackForBoot() {
         if (r.ok && r.data) {
           const node = r.data?.node || r.data;
           const raw = node?.content || node?.content_snippet || '';
+          const sanitized = sanitizeMemoryNodeContent(raw);
           try {
-            const j = JSON.parse(raw);
+            const j = sanitized.data || JSON.parse(sanitized.content);
             lines.push(`- 用户说「${j.reason}」→ 避免类似：${(j.amy_reply || '').slice(0, 50)}...`);
           } catch {
-            lines.push(`- ${raw.slice(0, 60)}...`);
+            lines.push(`- ${sanitized.content.slice(0, 60)}...`);
           }
         }
       }
