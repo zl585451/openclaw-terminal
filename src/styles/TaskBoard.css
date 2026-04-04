@@ -43,12 +43,13 @@
   padding: 2px 6px;
   border-radius: 2px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color 0.12s linear, color 0.12s linear, background-color 0.12s linear;
 }
 
 .tb-refresh-btn:hover {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 /* 今日意图 */
@@ -90,11 +91,12 @@
   border-radius: 6px;
   margin: 4px 12px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background-color 0.12s linear, border-color 0.12s linear;
 }
 
 .tb-task-item:hover {
   background: var(--bg-hover);
+  border-color: var(--border-light);
 }
 
 /* 优先级圆点 */
@@ -104,12 +106,11 @@
   border-radius: 50%;
   flex-shrink: 0;
   cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: opacity 0.12s linear;
 }
 
 .tb-priority-dot:hover {
-  transform: scale(1.2);
-  box-shadow: 0 0 8px currentColor;
+  opacity: 0.78;
 }
 
 /* 任务内容 */
@@ -128,7 +129,7 @@
   display: flex;
   gap: 4px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.12s linear;
 }
 
 .tb-task-item:hover .tb-task-actions {
@@ -146,7 +147,7 @@
   border-radius: 3px;
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear, opacity 0.12s linear;
 }
 
 .tb-complete-btn {
@@ -155,8 +156,8 @@
 }
 
 .tb-complete-btn:hover {
-  background: var(--accent-primary-muted);
-  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-light);
 }
 
 .tb-delete-btn {
@@ -191,7 +192,7 @@
   border-radius: 3px;
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear;
 }
 
 .tb-delete-confirm button:first-of-type {
@@ -230,12 +231,13 @@
   color: var(--text-secondary);
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear, opacity 0.12s linear;
 }
 
 .tb-pagination button:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .tb-pagination button:disabled {
@@ -298,7 +300,7 @@
   display: flex;
   gap: 4px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.12s linear;
 }
 
 .tb-parking-item:hover .tb-parking-actions {
@@ -313,7 +315,7 @@
   border-radius: 3px;
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear;
 }
 
 .tb-promote-btn {
@@ -322,8 +324,9 @@
 }
 
 .tb-promote-btn:hover {
-  background: var(--accent-primary-muted);
-  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
 }
 
 .tb-remove-btn {
@@ -333,6 +336,7 @@
 .tb-remove-btn:hover {
   border-color: var(--status-error);
   color: var(--status-error);
+  background: var(--bg-hover);
 }
 
 .tb-parking-empty {
@@ -380,11 +384,13 @@
   color: var(--accent-primary);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear;
 }
 
 .tb-add-btn:hover {
-  background: var(--accent-primary-muted);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-light);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -451,12 +457,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear;
 }
 
 .tb-close-btn:hover {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .tb-full-content {

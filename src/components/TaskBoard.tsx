@@ -136,16 +136,19 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ visible = true, onClose, compact 
     }
   }, []);
 
-  // 初始加载 + 定时刷新
+  // 初始加载；完整面板保留定时刷新，侧边紧凑面板只响应事件/手动刷新
   useEffect(() => {
     loadTasks();
-    refreshTimerRef.current = setInterval(loadTasks, 60000);
+    if (!compact) {
+      refreshTimerRef.current = setInterval(loadTasks, 60000);
+    }
     return () => {
       if (refreshTimerRef.current) {
         clearInterval(refreshTimerRef.current);
+        refreshTimerRef.current = null;
       }
     };
-  }, [loadTasks]);
+  }, [loadTasks, compact]);
 
   // 监听任务更新事件
   useEffect(() => {
@@ -597,4 +600,4 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ visible = true, onClose, compact 
   );
 };
 
-export default TaskBoard;
+export default React.memo(TaskBoard);

@@ -117,22 +117,22 @@ setInterval(async () => {
 
 // ═══════════════════════════════════════════════════════════════
 // 流平滑器：让打字机输出更丝滑
-// 参考 Vercel AI SDK smoothStream + Intl.Segmenter 词边界分词
+// 改为更细的 grapheme 粒度，避免“逐词一坨坨”体感
 // ═══════════════════════════════════════════════════════════════
 /**
  * 按目标打字速度（pacingMs/字符）均匀释放流式内容的 smoother。
- * 去掉 catchup，完全由 setInterval 按固定节奏放行，匹配用户设置的打字速度。
+ * 使用 grapheme 粒度接近逐字显示，避免按词切块导致的“蹦字感”。
  *
  * @param {function} onChunk - 每当有字符可释放时调用
  * @param {number} pacingMs - 每次释放的间隔（毫秒），默认 28ms ≈ 中速 35字/秒
  */
-function createStreamSmoother(onChunk, pacingMs = 28) {
+function createStreamSmoother(onChunk, pacingMs = 4) {
   const buffer = [];
   let timer = null;
   let isEnding = false;
   let endCallback = null;
 
-  const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
+  const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' });
 
   function getNextUnit() {
     if (buffer.length === 0) return null;
@@ -147,13 +147,6 @@ function createStreamSmoother(onChunk, pacingMs = 28) {
       return null;
     }
 
-    // 非词单元（标点、空白）：直接发送
-    if (!first.isWordLike) {
-      buffer.splice(0, first.segment.length);
-      return first.segment;
-    }
-
-    // 词单元：发送整个词
     buffer.splice(0, first.segment.length);
     return first.segment;
   }
@@ -230,6 +223,16 @@ function createStreamMergeDelta(cfg, onChunk) {
     },
     flush,
   };
+}
+
+function sendCanvasEvent(ws, action, payload) {
+  if (!ws || ws.readyState !== ws.OPEN) return;
+  ws.send(JSON.stringify({
+    type: 'event',
+    event: 'canvas',
+    action,
+    payload,
+  }));
 }
 
 const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
@@ -448,10 +451,15 @@ wss.on('connection', (ws) => {
       const sessionKey = params?.sessionKey || 'main';
       const userMessage = params?.message || '';
       const attachments = params?.attachments || [];
+      const canvasContext = params?.canvasContext || null;
 
       // 工具事件回调：Worker 执行后台任务时向前端推送工具调用卡片
       const sendToolEvent = (evt) => {
         if (ws.readyState !== ws.OPEN) return;
+        if (evt?.type === 'canvas' && evt.action) {
+          sendCanvasEvent(ws, evt.action, evt.payload || {});
+          return;
+        }
         ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
         if (evt.type === 'tool_call') {
           ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool }));
@@ -622,12 +630,49 @@ wss.on('connection', (ws) => {
         backgroundTaskNotice = '\n\n[系统] 用户这条消息已派发后台任务执行（如查邮件），请简短回复「好的，我已经派出去查了，我们继续聊」之类，不要在主对话中调用 email_reader 等工具。';
       }
 
+      let canvasSuggestionNotice = '';
+      if (orchResult?.canvasIntent?.shouldUseCanvas) {
+        const suggestedType = orchResult.canvasIntent.artifactType || 'document';
+        const reason = orchResult.canvasIntent.reason || '这条请求适合结构化表达';
+        canvasSuggestionNotice =
+          `\n\n[系统] 这条请求适合使用 Canvas 表达。优先考虑调用 canvas 工具创建一个 ${suggestedType} artifact。原因：${reason}。` +
+          ' 先在聊天中用一句话说明你要产出什么，再创建 Canvas 内容。';
+      }
+
+      let canvasRoundtripNotice = '';
+      if (canvasContext?.activeDocument) {
+        const summary = {
+          intent: canvasContext.intent || 'continue',
+          activeDocumentId: canvasContext.activeDocumentId || null,
+          activeDocument: {
+            id: canvasContext.activeDocument.id,
+            title: canvasContext.activeDocument.title,
+            artifactType: canvasContext.activeDocument.artifactType,
+            mode: canvasContext.activeDocument.mode,
+            language: canvasContext.activeDocument.language,
+            version: canvasContext.activeDocument.version,
+            status: canvasContext.activeDocument.status,
+            explanation: canvasContext.activeDocument.explanation || '',
+            content: canvasContext.activeDocument.content,
+          },
+          documents: Array.isArray(canvasContext.documents) ? canvasContext.documents : [],
+        };
+        canvasRoundtripNotice =
+          '\n\n[Canvas Context] 以下是当前 Canvas 工作区上下文。' +
+          ' 你正在基于这份 artifact 协作，请优先围绕 activeDocument 继续工作。' +
+          ' 如果当前任务是 Continue、Explain 或 Rewrite，且你要修改现有成果物，请优先调用 canvas(action="update", documentId=activeDocumentId, ...) 更新当前文档。' +
+          ' 只有在确实需要新增并行成果物时，才使用 create。\n' +
+          `${JSON.stringify(summary, null, 2)}`;
+      }
+
       const lastUserMsg = typeof messageContent === 'string'
-        ? messageContent + contextMemory + backgroundTaskNotice
+        ? messageContent + contextMemory + backgroundTaskNotice + canvasSuggestionNotice + canvasRoundtripNotice
         : [
             ...messageContent,
             ...(contextMemory ? [{ type: 'text', text: contextMemory }] : []),
             ...(backgroundTaskNotice ? [{ type: 'text', text: backgroundTaskNotice }] : []),
+            ...(canvasSuggestionNotice ? [{ type: 'text', text: canvasSuggestionNotice }] : []),
+            ...(canvasRoundtripNotice ? [{ type: 'text', text: canvasRoundtripNotice }] : []),
           ];
 
       session.addMessage(sessionKey, 'user',
@@ -747,10 +792,8 @@ wss.on('connection', (ws) => {
       currentAbort = () => { cancelled = true; };
 
       let fullReply = '';
-      // pacingMs：每个字符/词之间的发送间隔（毫秒）
-      // 28ms ≈ 中速 35字/秒；18ms ≈ 快速 55字/秒；45ms ≈ 慢速 22字/秒
-      // 前端通过 params.pacingMs 传入，暂默认 28ms
-      const pacingMs = typeof params?.pacingMs === 'number' ? params.pacingMs : 28;
+      // pacingMs：传输层尽量快，主要观感交给前端打字机控制
+      const pacingMs = typeof params?.pacingMs === 'number' ? params.pacingMs : 4;
       const smoother = createStreamSmoother((chunk) => {
         if (cancelled) return;
         fullReply += chunk;
@@ -768,6 +811,10 @@ wss.on('connection', (ws) => {
         onDelta: smoother.feed,
         onToolEvent: (evt) => {
           if (cancelled || ws.readyState !== ws.OPEN) return;
+          if (evt?.type === 'canvas' && evt.action) {
+            sendCanvasEvent(ws, evt.action, evt.payload || {});
+            return;
+          }
           ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
           if (evt.type === 'tool_call') {
             ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool }));

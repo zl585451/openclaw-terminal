@@ -19,12 +19,30 @@
   flex-shrink: 0;
 }
 
+.canvas-toolbar-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .canvas-toolbar-title {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--accent-primary);
   letter-spacing: 1px;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-toolbar-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
 }
 
 .canvas-toolbar-actions {
@@ -33,27 +51,9 @@
   gap: 8px;
 }
 
-.canvas-mode-btn {
-  padding: 4px 8px;
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.canvas-mode-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--border-primary);
-}
-
-.canvas-mode-btn.active {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: var(--bg-base);
+.canvas-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .canvas-action-btn {
@@ -74,15 +74,61 @@
   background: var(--bg-hover);
 }
 
+.canvas-delete-btn {
+  color: var(--status-warning);
+}
+
+.canvas-delete-btn:hover {
+  color: var(--status-warning);
+  border-color: var(--status-warning);
+  background: rgba(255, 180, 0, 0.08);
+}
+
+.canvas-toolbar-switcher {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.canvas-document-select {
+  min-width: 220px;
+  max-width: 320px;
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  border-radius: 4px;
+}
+
+.canvas-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.canvas-workspace--single {
+  display: block;
+}
+
 .canvas-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
+  min-width: 0;
+}
+
+.canvas-content--single {
+  width: 100%;
 }
 
 .canvas-preview {
-  padding: 24px;
+  padding: 16px;
   height: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -93,14 +139,77 @@
   background: var(--bg-code);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.6;
-  padding: 24px;
+  padding: 16px;
   margin: 0;
   border-radius: 4px;
   overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: pre;
+  word-break: normal;
+}
+
+.canvas-mermaid-preview {
+  min-height: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(20, 25, 34, 0.95), rgba(14, 18, 24, 0.98));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.canvas-mermaid-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.canvas-mermaid-btn {
+  padding: 4px 8px;
+  background: rgba(11, 16, 22, 0.85);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.canvas-mermaid-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+.canvas-mermaid-stage {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+.canvas-mermaid-zoom {
+  transform-origin: top center;
+  width: fit-content;
+  min-width: 100%;
+}
+
+.canvas-mermaid-preview svg {
+  width: auto;
+  max-width: none;
+  height: auto;
+}
+
+.canvas-mermaid-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.canvas-mermaid-error {
+  color: var(--status-warning);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 .canvas-html-preview {
@@ -114,7 +223,7 @@
   width: 100%;
   min-height: 100%;
   height: 100%;
-  padding: 16px;
+  padding: 14px;
   background: var(--bg-surface);
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -129,14 +238,46 @@
   color: var(--text-tertiary);
 }
 
-.canvas-actions {
+.canvas-empty {
+  height: 100%;
   display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.canvas-empty-title {
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  letter-spacing: 1px;
+}
+
+.canvas-empty-copy {
+  max-width: 420px;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.canvas-footer {
   padding: 8px 12px;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-panel);
   flex-shrink: 0;
+}
+
+.canvas-explanation {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  min-height: 18px;
 }
 
 /* 确保 markdown 内容在 canvas 中正确显示 */
@@ -181,4 +322,24 @@
 .canvas-preview .msg-content.markdown-body th {
   background: var(--bg-panel);
   font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .canvas-toolbar {
+    height: auto;
+    gap: 8px;
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .canvas-toolbar-switcher {
+    order: 3;
+    width: 100%;
+    justify-content: stretch;
+    padding: 0;
+  }
+
+  .canvas-document-select {
+    max-width: none;
+  }
 }

@@ -755,6 +755,9 @@ export const ChatMessageList = function ChatMessageList({
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
   const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
+  const finalizedParseCacheRef = useRef<
+    Map<number, { input: string; output: ReturnType<typeof parseOptionBox> }>
+  >(new Map());
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
@@ -836,11 +839,13 @@ export const ChatMessageList = function ChatMessageList({
         // 打字机依赖 DOM 节点存在才能直接写 textContent
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
         const fullContent =
-          isStreamingMsg && msg.isStreamingRaw
-            ? raw
-            : isStreamingMsg && streamingContent
-              ? streamingContent
-              : raw;
+          isStreamingMsg
+            ? (
+                (msg.isStreamingRaw && raw.trim())
+                  ? raw
+                  : (streamingContent || raw)
+              )
+            : raw;
         const displayedLength = displayedText.length;
 
         // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
@@ -875,9 +880,17 @@ export const ChatMessageList = function ChatMessageList({
                   // 同样使用剥离 CoT 的内容，避免 parseOptionBox 重复解析 [cot]
                   // CoT 统一由消息循环外部的 CoTBlock 渲染（使用通用提取器）
                   const { mainContent: nonStreamingCotStripped } = extractAssistantCotAndMain(fc);
+                  const cachedFinal = finalizedParseCacheRef.current.get(msg.id);
+                  if (cachedFinal && cachedFinal.input === nonStreamingCotStripped) {
+                    return cachedFinal.output;
+                  }
                   const blocks = blockRouter(nonStreamingCotStripped);
                   const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
                   const finalParsed = parseOptionBox(bridgedText);
+                  finalizedParseCacheRef.current.set(msg.id, {
+                    input: nonStreamingCotStripped,
+                    output: finalParsed,
+                  });
                   return finalParsed;
                 })()
               : {

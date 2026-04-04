@@ -117,6 +117,29 @@ const DIRECT_PATTERNS = [
   /^.{0,15}$/, // 15字以内的短消息，直接对话
 ];
 
+const CANVAS_TRIGGER_RULES = [
+  {
+    artifactType: 'diagram',
+    keywords: ['流程图', '架构图', '时序图', '状态图', '关系图', '示意图', '画个图', '画图'],
+    reason: '用户明确要求图示表达',
+  },
+  {
+    artifactType: 'document',
+    keywords: ['梳理方案', '整理成文档', '输出成文档', '做个方案', '写个提纲', '整理结构', '生成prd', 'PRD'],
+    reason: '用户明确要求结构化文档',
+  },
+  {
+    artifactType: 'ui-draft',
+    keywords: ['页面草图', '界面草图', 'ui草图', '页面结构', '信息架构', '布局草图', '线框图'],
+    reason: '用户明确要求界面或信息架构草图',
+  },
+  {
+    artifactType: 'code',
+    keywords: ['组件草稿', '代码草稿', '生成组件', '搭个组件'],
+    reason: '用户明确要求代码型产物',
+  },
+];
+
 /**
  * 分析用户消息意图
  * @returns { intent, agent, shouldDelegate, description }
@@ -153,6 +176,34 @@ function analyzeIntent(userMessage) {
   return { intent: 'general', agent: 'AMY', shouldDelegate: false };
 }
 
+function analyzeCanvasIntent(userMessage) {
+  if (!userMessage || typeof userMessage !== 'string') {
+    return { shouldUseCanvas: false };
+  }
+
+  const msg = userMessage.trim();
+  for (const pattern of DIRECT_PATTERNS) {
+    if (pattern.test(msg)) {
+      return { shouldUseCanvas: false };
+    }
+  }
+
+  for (const rule of CANVAS_TRIGGER_RULES) {
+    for (const keyword of rule.keywords) {
+      if (msg.includes(keyword)) {
+        return {
+          shouldUseCanvas: true,
+          artifactType: rule.artifactType,
+          reason: rule.reason,
+          matchedKeyword: keyword,
+        };
+      }
+    }
+  }
+
+  return { shouldUseCanvas: false };
+}
+
 /**
  * 主入口：处理一条用户消息
  * 现阶段：只分析和记录，不实际切换 Agent
@@ -160,6 +211,7 @@ function analyzeIntent(userMessage) {
  */
 async function dispatch(userMessage, sessionKey, onToolEvent) {
   const analysis = analyzeIntent(userMessage);
+  const canvasIntent = analyzeCanvasIntent(userMessage);
 
   // 尝试异步任务派发（传入 onToolEvent 以向前端推送工具调用事件）
   const taskId = tryDispatchAsTask(userMessage, sessionKey, onToolEvent);
@@ -176,11 +228,16 @@ async function dispatch(userMessage, sessionKey, onToolEvent) {
     console.log(`[Orchestrator] 常规消息 → AMY 直接处理 (intent: ${analysis.intent})`);
   }
 
+  if (canvasIntent.shouldUseCanvas) {
+    console.log(`[Orchestrator] Canvas 建议触发 (${canvasIntent.artifactType}) via "${canvasIntent.matchedKeyword}"`);
+  }
+
   return {
     ...analysis,
+    canvasIntent,
     sessionKey,
     timestamp: Date.now()
   };
 }
 
-module.exports = { dispatch, analyzeIntent, getCompletedTasksContext };
+module.exports = { dispatch, analyzeIntent, analyzeCanvasIntent, getCompletedTasksContext };

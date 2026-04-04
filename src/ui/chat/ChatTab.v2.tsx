@@ -13,7 +13,6 @@ import { useScrollManager } from '../../hooks/useScrollManager';
 import { ContextMenu } from '../../components/ContextMenu';
 import TaskBoard from '../../components/TaskBoard';
 import SettingsPanel from '../../components/SettingsPanel';
-import HeartbeatWave from '../../components/HeartbeatWave';
 import SetupGuide from '../../components/SetupGuide';
 import LogPanel from '../../components/LogPanel';
 import { TurnFSM } from '../../core/turnFSM';
@@ -184,7 +183,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   // ── UI-only state (消息状态已迁移到 useMessages) ────────────────────────
   const [showSettings, setShowSettings] = useState(false);
-  const [heartbeatPulse, setHeartbeatPulse] = useState(false);
   const [, setLogPath] = useState('');
   const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
@@ -257,9 +255,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const last = messages[messages.length - 1];
     if (last?.role === 'assistant' && last.id !== lastAssistantMsgIdRef.current) {
       lastAssistantMsgIdRef.current = last.id;
-      setHeartbeatPulse(true);
-      const t = setTimeout(() => setHeartbeatPulse(false), 500);
-      return () => clearTimeout(t);
     }
   }, [messages]);
 
@@ -606,18 +601,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           </div>
         </div>
 
-        {/* 2. 心跳- 完整显示 65px */}
-        <div style={{ 
-          borderBottom: '1px solid var(--border-subtle)', 
-          height: '65px',
-          padding: '8px 0',
-          overflow: 'visible',
-          flexShrink: 0,
-        }}>
-          <HeartbeatWave connected={msgs.wsConnected} pulse={heartbeatPulse} />
-        </div>
-
-        {/* 3. 系统信息 MODEL/TOK/CTX */}
+        {/* 2. 系统信息 MODEL/TOK/CTX */}
         <div style={{
           display: 'flex',
           flexWrap: 'wrap',
@@ -774,7 +758,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       className={`canvas-drawer${canvas.isOpen ? ' canvas-drawer--open' : ''}`}
     >
       <div className="canvas-drawer-shadow" aria-hidden />
-      <CanvasPanel onSendToChat={(text) => msgs.sendMessage(text, null)} />
+      <CanvasPanel />
     </div>
 
     {files.screenshotFlash && (

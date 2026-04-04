@@ -4,6 +4,8 @@ import { TurnFSM, deriveLegacyFlags, TurnPhase } from '../core/turnFSM';
 import { StreamRouter, StreamState } from '../core/streamRouter';
 import { BlockIngest } from '../core/blockIngest';
 import { useWebSocket } from './useWebSocket';
+import { useCanvas } from '../contexts/CanvasContext';
+import type { CanvasRoundtripContext } from '../contexts/CanvasContext';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
@@ -111,7 +113,7 @@ export interface UseMessagesReturn {
   streak: number;
   fullTextRef: MutableRefObject<string>;
   streamingDomRef: MutableRefObject<HTMLPreElement | null>;
-  sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[]) => Promise<void>;
+  sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[], canvasContext?: CanvasRoundtripContext) => Promise<void>;
   quickSend: (content: string) => void;
 }
 
@@ -123,9 +125,11 @@ export function useMessages({
   messages,
   setMessages,
   permissions,
-  streamSpeedMs,
+  streamSpeedMs: _streamSpeedMs,
   onStatusChange,
 }: UseMessagesOptions): UseMessagesReturn {
+  const canvas = useCanvas();
+  const transportPacingMs = 4;
   // ── State ─────────────────────────────────────────────────────────────────
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
@@ -166,8 +170,8 @@ export function useMessages({
     );
   }, [fsmPhase, messages]);
 
-  // ── scheduleFullTextSync ──────────────────────────────────────────────────
-  const scheduleFullTextSync = useCallback(() => {
+  // ── ensureStreamingAssistantMessage ───────────────────────────────────────
+  const ensureStreamingAssistantMessage = useCallback(() => {
     if (pendingFullTextSyncRafRef.current != null) return;
     pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
       pendingFullTextSyncRafRef.current = null;
@@ -175,8 +179,7 @@ export function useMessages({
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
-          if (last.content === buf) return prev;
-          return prev.map((m, idx) => (idx === prev.length - 1 ? { ...m, content: buf } : m));
+          return prev;
         }
         if (!buf || !buf.trim()) return prev;
         return [
@@ -209,8 +212,7 @@ export function useMessages({
           streamingMessageRef.current = content;
           fullTextRef.current = content;
         }
-        typewriter.feed(fullTextRef.current);
-        scheduleFullTextSync();
+        // 系统命令只保留一份最终输出，不走流式占位，避免重复渲染。
       } else {
         if (isDelta) {
           streamingMessageRef.current += content;
@@ -223,29 +225,9 @@ export function useMessages({
           try { oct.fsm.onToken(); } catch {}
         }
 
-        typewriter.feed(fullTextRef.current);
-        scheduleFullTextSync();
-      }
-
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          const newContent = (last.content || '') + content;
-          return prev.map((msg, idx) =>
-            idx === prev.length - 1 ? { ...msg, content: newContent } : msg
-          );
+          typewriter.feed(fullTextRef.current);
+          ensureStreamingAssistantMessage();
         }
-        return [
-          ...prev,
-          {
-            id: getNextMessageId(),
-            role: 'assistant' as const,
-            content,
-            isStreaming: true,
-            timestamp: Date.now(),
-          },
-        ];
-      });
     },
 
     onChatDone: (content) => {
@@ -267,7 +249,7 @@ export function useMessages({
             streamingMessageRef.current = fb;
             fullTextRef.current = fb;
             typewriter.feed(fullTextRef.current);
-            scheduleFullTextSync();
+            ensureStreamingAssistantMessage();
           }
         }
         return;
@@ -277,9 +259,11 @@ export function useMessages({
       if (finalStreamContent) {
         streamingMessageRef.current = finalStreamContent;
         fullTextRef.current = finalStreamContent;
-        typewriter.feed(fullTextRef.current);
-        typewriter.finish();
-        scheduleFullTextSync();
+        if (!systemReply) {
+          typewriter.feed(fullTextRef.current);
+          typewriter.finish();
+          ensureStreamingAssistantMessage();
+        }
       }
 
       const text = finalStreamContent;
@@ -315,33 +299,36 @@ export function useMessages({
       }
 
       setMessages((prev) => {
-        const last = prev[prev.length - 1];
+        const cleanedPrev = systemReply
+          ? prev.filter((msg) => !(msg.role === 'assistant' && msg.isStreaming))
+          : prev;
+        const last = cleanedPrev[cleanedPrev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
-          return prev.map((msg, idx) =>
-            idx === prev.length - 1
+          return cleanedPrev.map((msg, idx) =>
+            idx === cleanedPrev.length - 1
               ? { ...msg, content: finalStreamContent, isStreaming: false }
               : msg
           );
         }
         if (finalStreamContent) {
           const textContent = finalStreamContent.trim();
-          if (!textContent) return prev;
+          if (!textContent) return cleanedPrev;
           if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
-            return prev;
+            return cleanedPrev;
           }
           return [
-            ...prev,
+            ...cleanedPrev,
             {
               id: getNextMessageId(),
               role: 'assistant' as const,
               content: textContent,
-              isStreaming: true,
-              isSystemReply: systemReply,
-              timestamp: Date.now(),
-            },
+                isStreaming: false,
+                isSystemReply: systemReply,
+                timestamp: Date.now(),
+              },
           ];
         }
-        return prev;
+        return cleanedPrev;
       });
     },
 
@@ -373,6 +360,10 @@ export function useMessages({
           )
         );
       }
+    },
+
+    onCanvasEvent: (event) => {
+      canvas.applyCanvasEvent(event);
     },
 
     onUsage: (usage, isSnapshot) => {
@@ -472,7 +463,12 @@ export function useMessages({
   }, []);
 
   // ── sendMessage ───────────────────────────────────────────────────────────
-  const sendMessage = useCallback(async (text: string, imageDataUrl: string | null, files?: UploadedFile[]) => {
+  const sendMessage = useCallback(async (
+    text: string,
+    imageDataUrl: string | null,
+    files?: UploadedFile[],
+    canvasContext?: CanvasRoundtripContext
+  ) => {
     if (!text.trim() && !imageDataUrl && !files?.length) return;
 
     let contentToSend = text;
@@ -562,7 +558,7 @@ export function useMessages({
       }
     }
 
-    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, streamSpeedMs);
+    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, transportPacingMs, canvasContext);
     if (!result?.success && !cmdIsSystem) {
       setAwaitingResponse(false);
       console.warn('[useMessages] Send failed:', result);
@@ -573,7 +569,7 @@ export function useMessages({
         console.warn('[useMessages] send failed cleanup', e);
       }
     }
-  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, streamSpeedMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── quickSend ─────────────────────────────────────────────────────────────
   const quickSend = useCallback((content: string) => {
@@ -637,7 +633,7 @@ export function useMessages({
         console.warn('[useMessages] oct runtime (quickSend)', e);
       }
     }
-    ws.send(content.trim(), undefined, undefined, streamSpeedMs).then((result) => {
+    ws.send(content.trim(), undefined, undefined, transportPacingMs).then((result) => {
       if (!result?.success && !isSystem) {
         setAwaitingResponse(false);
         try {
@@ -648,7 +644,7 @@ export function useMessages({
         }
       }
     });
-  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, streamSpeedMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     wsConnected: ws.wsConnected,

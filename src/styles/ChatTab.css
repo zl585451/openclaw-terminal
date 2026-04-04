@@ -73,7 +73,7 @@
 
 /* Canvas 抽屉打开时：左侧聊天区为抽屉让出宽度 */
 .chat-tab.canvas-active .chat-section {
-  margin-right: min(50vw, 720px);
+  margin-right: 0;
 }
 
 /* Claude 风格 Canvas 抽屉（由 ChatTab 渲染，样式定义在此保证随聊天页加载） */
@@ -82,17 +82,20 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: 50vw;
-  min-width: 480px;
-  max-width: 720px;
+  width: min(62vw, 960px);
+  min-width: 560px;
+  max-width: 960px;
   z-index: 50;
   transform: translateX(100%);
-  transition: transform 0.25s ease;
+  transition: transform 0.18s ease;
   display: flex;
   flex-direction: column;
   background: var(--bg-base);
   padding-top: 32px;
   box-sizing: border-box;
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: -24px 0 48px rgba(0, 0, 0, 0.32);
+  will-change: transform;
 }
 
 .canvas-drawer--open {
@@ -101,11 +104,11 @@
 
 .canvas-drawer-shadow {
   position: absolute;
-  left: -20px;
+  left: -32px;
   top: 0;
   bottom: 0;
-  width: 20px;
-  background: linear-gradient(to left, rgba(0, 0, 0, 0.3), transparent);
+  width: 32px;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.42), transparent);
   pointer-events: none;
 }
 
@@ -144,8 +147,8 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
-  animation: scanline 3s linear infinite;
+  background: linear-gradient(90deg, transparent, var(--border-light), transparent);
+  opacity: 0.65;
 }
 
 .header-left {
@@ -172,7 +175,7 @@
   font-family: var(--font-sans);
   cursor: pointer;
   letter-spacing: 1px;
-  transition: all 0.2s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear, opacity 0.12s linear;
 }
 
 .voice-toggle.on {
@@ -186,9 +189,9 @@
 }
 
 .voice-toggle:hover {
-  background: var(--accent-primary-muted);
-  border-color: var(--border-focus);
-  color: var(--accent-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
 }
 
 .ws-status {
@@ -319,7 +322,7 @@
   top: 8px;
   right: 8px;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.12s linear;
 }
 
 .chat-message.assistant:hover .msg-copy-wrap {
@@ -334,12 +337,12 @@
   color: var(--accent-primary);
   font-family: var(--font-mono);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear;
 }
 
 .msg-copy-btn:hover {
-  background: var(--accent-primary-muted);
-  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-light);
 }
 
 .chat-message.assistant {
@@ -690,6 +693,7 @@
   overflow-x: auto;
   max-width: 100%;
   margin: 8px 0;
+  contain: paint;
 }
 
 .msg-content.markdown-body th,
@@ -723,7 +727,8 @@
   background: var(--bg-surface);
 }
 
-.msg-content.markdown-body tr:hover {
+.chat-tab .msg-content.markdown-body tbody tr:hover td,
+.chat-tab .msg-content.markdown-body tr:hover {
   background: var(--bg-panel);
 }
 
@@ -732,6 +737,7 @@
   display: block;
   overflow-x: auto;
   max-width: 100%;
+  contain: paint;
 }
 
 .msg-content table {
@@ -1140,10 +1146,7 @@
   font-family: var(--font-sans);
   font-size: var(--text-md);
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
-  /* 提升为独立合成层，避免 box-shadow 动画触发周边内容重绘 */
-  will-change: box-shadow;
-  transform: translateZ(0);
+  transition: border-color 0.12s linear, background-color 0.12s linear;
 }
 
 .chat-input-textarea {
@@ -1156,10 +1159,7 @@
 
 .chat-input.focused {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 2px var(--accent-primary-muted);
-  /* outline 替代方案（可选，更轻量）：
-  outline: 2px solid var(--accent-primary-muted);
-  outline-offset: 1px; */
+  background: color-mix(in srgb, var(--bg-input) 92%, var(--accent-primary-muted) 8%);
 }
 
 .chat-input.flash {
@@ -1228,7 +1228,7 @@
   font-family: var(--font-sans);
   font-size: var(--text-code);
   font-weight: 600;
-  transition: all 0.2s ease;
+  transition: filter 0.12s linear, opacity 0.12s linear;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -1342,13 +1342,13 @@
   border-radius: 8px;
   font-family: var(--font-sans);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear, opacity 0.12s linear;
 }
 
 .right-panel-quick-btn:hover:not(:disabled) {
-  border-color: var(--border-focus);
-  color: var(--accent-primary);
-  background: var(--accent-primary-muted);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .right-panel-quick-btn:disabled {
@@ -1584,12 +1584,12 @@
   padding: 2px 6px;
   border-radius: 2px;
   font-family: var(--font-mono);
-  transition: all 0.15s;
+  transition: border-color 0.12s linear, color 0.12s linear, background-color 0.12s linear;
 }
 .amy-status-refresh-btn:hover {
-  border-color: var(--border-focus);
-  color: var(--accent-primary);
-  box-shadow: 0 0 6px var(--accent-primary-muted);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .amy-status-clock {
@@ -1799,12 +1799,12 @@
   border-radius: 8px;
   font-size: var(--text-sm);
   color: var(--text-primary);
-  transition: all 0.2s ease;
+  transition: border-color 0.12s linear, opacity 0.12s linear, background-color 0.12s linear;
 }
 
 .tool-call-card--executing {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 1px var(--accent-primary-glow, rgba(100, 200, 255, 0.3));
+  box-shadow: none;
 }
 
 .tool-call-card--done {

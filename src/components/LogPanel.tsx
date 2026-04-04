@@ -287,6 +287,8 @@ export default function LogPanel(props: {
   nocturneOnline?: boolean;
   modelName?: string;
 }) {
+  const COMPACT_VISIBLE_LINES = 20;
+  const COMPACT_PARSE_LINES = 80;
   const {
     title = 'Gateway 日志',
     lines,
@@ -360,9 +362,14 @@ export default function LogPanel(props: {
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [filterOpen]);
 
+  const sourceLines = useMemo(
+    () => (logExpanded ? lines : lines.slice(-COMPACT_PARSE_LINES)),
+    [lines, logExpanded]
+  );
+
   const parsed = useMemo(
-    () => lines.map((raw, i) => formatLogLine(raw, i)),
-    [lines]
+    () => sourceLines.map((raw, i) => formatLogLine(raw, i)),
+    [sourceLines]
   );
 
   const filteredByLevel = useMemo(
@@ -373,6 +380,11 @@ export default function LogPanel(props: {
   const filtered = useMemo(
     () => filterByType(filteredByLevel, logFilter),
     [filteredByLevel, logFilter]
+  );
+
+  const compactVisible = useMemo(
+    () => filtered.slice(-COMPACT_VISIBLE_LINES),
+    [filtered]
   );
 
   // 收起模式：哪些行应该静默（不显示）
@@ -512,7 +524,7 @@ export default function LogPanel(props: {
           {filtered.length === 0 ? (
             <div className="log-empty">{emptyText}</div>
           ) : (
-            filtered.map(renderCompactLine).filter(Boolean)
+            compactVisible.map(renderCompactLine).filter(Boolean)
           )}
         </div>
         <div className="log-panel-statusbar">

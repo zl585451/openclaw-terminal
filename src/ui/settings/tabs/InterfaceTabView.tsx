@@ -80,9 +80,9 @@ export function InterfaceTabView({
         <div className="settings-row">
           <label>流式速度</label>
           <select value={local.streamSpeed} onChange={(e) => setLocal((s) => ({ ...s, streamSpeed: e.target.value as StreamSpeed }))}>
-            <option value="fast">快速 (~15字/秒)</option>
-            <option value="medium">从容 (~7字/秒，推荐)</option>
-            <option value="slow">细读 (~4字/秒)</option>
+            <option value="fast">快速（更利落）</option>
+            <option value="medium">从容（推荐）</option>
+            <option value="slow">细读（更有节奏）</option>
           </select>
         </div>
         <div className="settings-row">

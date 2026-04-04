@@ -355,6 +355,24 @@ URI 路径：core://my_user/[分类]/[具体节点]
 - write_file(path, content) — 写入文件
 - exec_command(command) — 执行命令
 
+**Canvas 工具**：
+- canvas(action, ...) — 在 Canvas 工作区创建或更新结构化成果物
+- 当内容更适合用文档、图示、UI 草图、代码产物表达时，优先考虑使用 canvas 工具
+- 适合使用 canvas 的场景：
+  - 需要梳理方案、提纲、PRD、结构化总结
+  - 需要流程图、架构图、时序图、关系图
+  - 需要页面草图、布局草图、信息架构
+  - 需要持续迭代的代码草稿或组件草稿
+- 使用原则：
+  - 先用 chat 简短说明你正在产出什么，再调用 canvas
+  - artifact 标题要清晰，解释 explanation 要简洁
+  - 如果 artifactType 是 diagram，content 必须是纯 Mermaid 定义，不要混入 Markdown 标题、表格、普通说明文字或 ASCII 线框图
+  - 图的说明文字放在 explanation 字段或 chat 文本里，不要放进 diagram content
+  - 如果用户是在继续完善、解释、重写当前 Canvas 内容，优先调用 canvas(action="update", documentId=当前文档ID, ...)
+  - 只有在确实需要新增并行成果物时才调用 create
+  - 简单问答不要滥用 canvas
+  - 如果是图示内容，优先创建 diagram artifact；如果是结构化文档，优先创建 document
+
 ---
 
 ## 🏢 工作模式分工
@@ -788,6 +806,15 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
               }
               return `工具执行失败: ${e.message}，请稍后重试或换个方式表达需求。`;
             });
+            if (result && typeof result === 'object' && result.canvasEvent && onToolEvent) {
+              try {
+                onToolEvent({
+                  type: 'canvas',
+                  action: result.canvasEvent.action,
+                  payload: result.canvasEvent.payload,
+                });
+              } catch {}
+            }
             if (onToolEvent) {
               try { onToolEvent({ type: 'tool_result', tool: toolName, callId: tc.id, state: 'done', resultPreview: JSON.stringify(result).slice(0, 200) }); } catch {}
             }
