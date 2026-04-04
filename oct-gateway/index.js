@@ -11,6 +11,7 @@ const memoryFeedback = require('./memory_feedback');
 const memorySearch = require('./memory_search');
 const { sanitizeAssistantReply, sanitizeMemoryNodeContent, stripCotText } = require('./cot_sanitize');
 const memoryGovernor = require('./memory_governor');
+const reviewQueueMaintenance = require('./review_queue_maintenance');
 const imageAnalyzer = require('./image_analyzer');
 const tools = require('./tools');
 const toolLoader = require('./tool_loader');
@@ -116,6 +117,55 @@ setInterval(async () => {
     log.warn('Nocturne 心跳检查失败', { error: e?.message || String(e) });
   }
 }, heartbeatIntervalMs);
+
+// ═══════════════════════════════════════════════════════════════
+// Review Queue 维护：低频软过期弱候选，避免 review_queue 越堆越多
+// 仅标记 expired，不做物理删除，保持可审计性
+// ═══════════════════════════════════════════════════════════════
+const reviewQueueMaintenanceEnabled = process.env.OCT_REVIEW_QUEUE_MAINTENANCE_ENABLED !== '0';
+const reviewQueueMaintenanceIntervalMs = Number(process.env.OCT_REVIEW_QUEUE_MAINTENANCE_INTERVAL_MS || 6 * 60 * 60 * 1000);
+const reviewQueueMaintenanceStartupDelayMs = Number(process.env.OCT_REVIEW_QUEUE_MAINTENANCE_STARTUP_DELAY_MS || 10 * 60 * 1000);
+const reviewQueueMaintenanceDryRun = process.env.OCT_REVIEW_QUEUE_MAINTENANCE_DRY_RUN === '1';
+
+function scheduleReviewQueueMaintenance() {
+  if (!reviewQueueMaintenanceEnabled) {
+    log.info('Review queue maintenance disabled');
+    return;
+  }
+
+  const runMaintenance = () => {
+    nocturneQueue.enqueue(async () => {
+      const healthy = await nocturneQueue.isNocturneHealthy();
+      if (!healthy) {
+        log.debug('Skip review queue maintenance: Nocturne offline');
+        return;
+      }
+
+      const report = await reviewQueueMaintenance.expireStaleReviewCandidates({
+        dryRun: reviewQueueMaintenanceDryRun,
+      });
+
+      log.info('Review queue maintenance finished', {
+        scanned: report.scanned,
+        expired: report.expired,
+        updated: report.updated.length,
+        failed: report.failed.length,
+        dryRun: report.dryRun,
+      });
+    }, 'reviewQueueMaintenance');
+  };
+
+  setTimeout(runMaintenance, reviewQueueMaintenanceStartupDelayMs);
+  setInterval(runMaintenance, reviewQueueMaintenanceIntervalMs);
+
+  log.info('Review queue maintenance scheduled', {
+    intervalMs: reviewQueueMaintenanceIntervalMs,
+    startupDelayMs: reviewQueueMaintenanceStartupDelayMs,
+    dryRun: reviewQueueMaintenanceDryRun,
+  });
+}
+
+scheduleReviewQueueMaintenance();
 
 // ═══════════════════════════════════════════════════════════════
 // 流平滑器：让打字机输出更丝滑

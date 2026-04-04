@@ -6,6 +6,7 @@ const log = createLogger('memory_governor');
 const MAX_INJECTION_ITEMS = 5;
 const MAX_INJECTION_CHARS = 800;
 const REVIEW_QUEUE_PREFIX = 'core://agent/review_queue';
+const GOVERNOR_VERSION = 'phase1.5';
 
 function cleanText(input) {
   return stripCotText(String(input || ''))
@@ -96,6 +97,70 @@ function slugify(text) {
     .slice(0, 32) || 'memory';
 }
 
+function getReviewRetentionHours(record = {}, options = {}) {
+  const score = Number(options.score || 0);
+  const layer = String(options.layer || 'scratch');
+  const source = String(record.source || '');
+
+  if (source === 'feedback' || source === 'clarification_preference') return 24 * 14;
+  if (layer === 'project') return score >= 3 ? 24 * 14 : 24 * 7;
+  if (layer === 'core') return score >= 3 ? 24 * 10 : 24 * 5;
+  if (layer === 'archive') return 24 * 7;
+  return score >= 3 ? 24 * 5 : 24 * 2;
+}
+
+function buildCleanupHint(record = {}, options = {}) {
+  const score = Number(options.score || 0);
+  const layer = String(options.layer || 'scratch');
+  const source = String(record.source || '');
+
+  if (source === 'clarification_preference') return 'recheck_after_repeat_confirmation';
+  if (source === 'feedback') return 'merge_into_feedback_memory_if_repeated';
+  if (layer === 'project') return score >= 3 ? 'promote_if_referenced_again' : 'archive_if_not_reused';
+  if (layer === 'core') return score >= 3 ? 'promote_if_user_repeats' : 'drop_if_not_confirmed';
+  return score >= 3 ? 'keep_short_term_then_review' : 'auto_drop_if_idle';
+}
+
+function buildReviewQueueRecord(record = {}, options = {}) {
+  const score = Number(options.score || 0);
+  const layer = String(options.layer || 'scratch');
+  const originalUri = String(record.uri || '');
+  const createdAt = new Date().toISOString();
+  const retentionHours = getReviewRetentionHours(record, { score, layer });
+  const expiresAt = new Date(Date.now() + retentionHours * 60 * 60 * 1000).toISOString();
+  const cleanContentValue = String(record.content || '');
+  const cleanDisclosure = String(record.disclosure || '');
+  const cleanUserMsg = String(record.userMsg || '');
+
+  const payload = {
+    kind: 'memory_review_candidate',
+    review_status: 'pending',
+    created_at: createdAt,
+    governor_version: GOVERNOR_VERSION,
+    source: record.source || 'unknown',
+    original_uri: originalUri,
+    suggested_layer: layer,
+    governor_decision: 'hold',
+    governor_reason: `score_${score}`,
+    governor_score: score,
+    retention_hours: retentionHours,
+    expires_at: expiresAt,
+    cleanup_hint: buildCleanupHint(record, { score, layer }),
+    original_priority: Number(record.priority || 0),
+    disclosure: cleanDisclosure.slice(0, 240),
+    user_message: cleanUserMsg.slice(0, 500),
+    content_preview: cleanContentValue.slice(0, 240),
+    full_content: cleanContentValue.slice(0, 1200),
+    tags: [
+      `layer:${layer}`,
+      `source:${record.source || 'unknown'}`,
+      score >= 3 ? 'candidate:strong' : 'candidate:weak',
+    ],
+  };
+
+  return JSON.stringify(payload, null, 2);
+}
+
 function routeRecord(record = {}) {
   const sanitized = sanitizeRecord(record);
   const layer = classifyRecord(sanitized);
@@ -168,15 +233,7 @@ function routeRecord(record = {}) {
   }
 
   const reviewUri = `${REVIEW_QUEUE_PREFIX}/${layer}/${Date.now()}_${slugify(uri)}`;
-  const reviewContent = JSON.stringify({
-    source: sanitized.source || 'unknown',
-    original_uri: uri,
-    suggested_layer: layer,
-    user: String(sanitized.userMsg || '').slice(0, 200),
-    content: content.slice(0, 200),
-    disclosure: String(sanitized.disclosure || '').slice(0, 120),
-    score,
-  }, null, 2);
+  const reviewContent = buildReviewQueueRecord(sanitized, { score, layer });
 
   const result = {
     decision: 'hold',
