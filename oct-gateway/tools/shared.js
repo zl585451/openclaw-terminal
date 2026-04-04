@@ -8,6 +8,7 @@ const os = require('os');
 const memory = require('../memory');
 const memoryHistory = require('../memory_history');
 const memorySearch = require('../memory_search');
+const memoryGovernor = require('../memory_governor');
 const config = require('../config');
 const { createLogger } = require('../logger');
 const log = createLogger('tools');
@@ -77,21 +78,47 @@ async function writeWithTimeout(uri, content, priority, disclosure) {
 
     (async () => {
       try {
+        const routed = memoryGovernor.routeRecord({
+          source: 'tool_memory_write',
+          uri,
+          content,
+          priority,
+          disclosure,
+        });
+        if (routed.decision === 'reject') {
+          clearTimeout(timer);
+          log.info('memory_write governor rejected', { uri, reason: routed.reason });
+          resolve({ ok: false, blocked: true, error: `Governor blocked: ${routed.reason}` });
+          return;
+        }
+
+        const targetUri = routed.uri;
+        const targetContent = routed.content;
+        const targetPriority = routed.priority ?? priority;
+        const targetDisclosure = routed.disclosure ?? disclosure;
+
         const m = uri.match(/^([^:]+):\/\/(.+)$/);
         if (!m) {
           clearTimeout(timer);
           resolve({ ok: false, error: `无效 URI: ${uri}` });
           return;
         }
-        const [, domain, pathPart] = m;
-        const exists = await memory.readMemory(uri, { treat404AsDebug: true });
+        const targetMatch = targetUri.match(/^([^:]+):\/\/(.+)$/);
+        if (!targetMatch) {
+          clearTimeout(timer);
+          resolve({ ok: false, error: `Governor 返回无效 URI: ${targetUri}` });
+          return;
+        }
+
+        const [, domain, pathPart] = targetMatch;
+        const exists = await memory.readMemory(targetUri, { treat404AsDebug: true });
         if (exists.ok && exists.data) {
-          const r = await memory.writeMemory(uri, content, priority, disclosure);
+          const r = await memory.writeMemory(targetUri, targetContent, targetPriority, targetDisclosure);
           clearTimeout(timer);
           resolve({ ...r, updated: r.ok });
         } else {
           await memoryHistory.ensurePathExists(domain, pathPart);
-          const r = await memory.createMemory(uri, content, priority, disclosure);
+          const r = await memory.createMemory(targetUri, targetContent, targetPriority, targetDisclosure);
           clearTimeout(timer);
           resolve({ ...r, created: r.ok });
         }

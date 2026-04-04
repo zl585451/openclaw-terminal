@@ -10,6 +10,7 @@ const memoryHistory = require('./memory_history');
 const memoryFeedback = require('./memory_feedback');
 const memorySearch = require('./memory_search');
 const { sanitizeAssistantReply, sanitizeMemoryNodeContent, stripCotText } = require('./cot_sanitize');
+const memoryGovernor = require('./memory_governor');
 const imageAnalyzer = require('./image_analyzer');
 const tools = require('./tools');
 const toolLoader = require('./tool_loader');
@@ -582,7 +583,14 @@ wss.on('connection', (ws) => {
               if (item.uri.includes('/history/')) continue;
               seenUris.add(item.uri);
               const content = stripCotText(item.content || '').slice(0, 200);
-              if (content) memContents.push(`[${item.uri}] ${content}`);
+              if (content) {
+                memContents.push({
+                  uri: item.uri,
+                  content: `[${item.uri}] ${content}`,
+                  priority: item.priority || 2,
+                  match_score: item.match_score || 0.5,
+                });
+              }
             }
           }
 
@@ -609,17 +617,32 @@ wss.on('connection', (ws) => {
                   const sanitized = sanitizeMemoryNodeContent(content);
                   const parsed = sanitized.data || JSON.parse(sanitized.content);
                   if (parsed.user && parsed.amy) {
-                    memContents.push(
-                      `[近期对话] 用户说：${parsed.user.slice(0, 50)} → AI：${parsed.amy.slice(0, 80)}`
-                    );
+                    memContents.push({
+                      uri: `core://${childPath}`,
+                      content: `[近期对话] 用户说：${parsed.user.slice(0, 50)} → AI：${parsed.amy.slice(0, 80)}`,
+                      priority: 1,
+                      match_score: 0.2,
+                    });
                   }
                 } catch {}
               }
             }
           } catch {}
 
-          if (memContents.length > 0) {
-            contextMemory = '\n\n[相关记忆]\n' + memContents.join('\n');
+          const selectedMemories = memoryGovernor.selectForInjection(
+            memContents,
+            { limit: 4, maxChars: 700 }
+          );
+          if (selectedMemories.length > 0) {
+            log.info('contextMemory selected', {
+              searchWords,
+              selectedUris: selectedMemories.map((item) => item.uri),
+              count: selectedMemories.length,
+            });
+          }
+
+          if (selectedMemories.length > 0) {
+            contextMemory = '\n\n[相关记忆]\n' + selectedMemories.map((item) => item.content).join('\n');
           }
         }
       } catch (e) {
@@ -1020,8 +1043,35 @@ async function extractAndSaveMemory(userMsg, assistantReply) {
             log.debug('memory extract skip blocked path', { uri });
             return;
           }
-          await memory.writeMemory(uri, content, priority, disclosure);
-          log.info('memory extracted write ok', { uri, contentLen: content.length, priority });
+          const routed = memoryGovernor.routeRecord({
+            source: 'extract_memory',
+            uri,
+            content,
+            priority,
+            disclosure,
+            userMsg,
+            assistantReply: cleanAssistantReply,
+          });
+
+          if (routed.decision === 'reject') {
+            log.debug('memory governor rejected extracted memory', { uri, reason: routed.reason });
+            return;
+          }
+
+          await memory.writeMemory(
+            routed.uri,
+            routed.content,
+            routed.priority ?? priority,
+            routed.disclosure ?? disclosure
+          );
+          log.info('memory extracted write ok', {
+            uri: routed.uri,
+            originalUri: uri,
+            contentLen: routed.content.length,
+            priority: routed.priority ?? priority,
+            decision: routed.decision,
+            layer: routed.layer,
+          });
         }
       },
       onError: () => {},
