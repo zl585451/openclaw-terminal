@@ -22,6 +22,7 @@ const raf = typeof requestAnimationFrame === 'function'
   : (fn: () => void) => setTimeout(fn, 0);
 
 export class ScrollAnchor {
+  private static readonly RECONCILE_THRESHOLD_PX = 8;
   private container: HTMLElement | null = null;
   private anchorEl: HTMLElement | null = null;
   private anchorTopOffset: number = 0;
@@ -78,19 +79,13 @@ export class ScrollAnchor {
    */
   reconcile(): void {
     if (!this.locked || !this.anchorEl || !this.container) return;
-    if (this.programmaticScroll) {
-      console.log('[ScrollAnchor] reconcile SKIPPED (programmaticScroll)');
-      return;
-    }
+    if (this.programmaticScroll) return;
 
     const containerRect = this.container.getBoundingClientRect();
     const currentOffset = this.anchorEl.getBoundingClientRect().top - containerRect.top;
     const drift = currentOffset - this.anchorTopOffset;
 
-    console.log(`[ScrollAnchor] reconcile drift=${drift.toFixed(1)} anchorOffset=${this.anchorTopOffset.toFixed(1)} currentOffset=${currentOffset.toFixed(1)}`);
-
-    if (Math.abs(drift) > 1) {
-      console.log(`[ScrollAnchor] reconcile APPLYING drift=${drift.toFixed(1)}`);
+    if (Math.abs(drift) >= ScrollAnchor.RECONCILE_THRESHOLD_PX) {
       this.programmaticScroll = true;
       this.container.scrollTop += drift;
       raf(() => { this.programmaticScroll = false; });

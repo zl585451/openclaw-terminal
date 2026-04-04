@@ -239,6 +239,7 @@
   width: 100%;
   scroll-padding-top: 4px;
   overflow-anchor: none;
+  overscroll-behavior-y: contain;
 }
 
 /* 内容容器：负责居中排版，不负责滚动 */
@@ -315,6 +316,8 @@
   color: var(--text-primary);
   font-size: var(--text-md);
   line-height: var(--leading-relaxed);
+  animation: user-message-buffer-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top right;
 }
 
 .msg-copy-wrap {
@@ -358,6 +361,11 @@
   color: var(--text-primary);
 }
 
+.chat-message.assistant.streaming {
+  animation: assistant-shell-buffer-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top left;
+}
+
 .chat-message.assistant.speaking {
   border-left-color: transparent;
 }
@@ -368,6 +376,8 @@
 
 .chat-message.assistant.streaming .msg-assistant-body {
   min-height: auto;
+  animation: assistant-stream-buffer-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top left;
 }
 
 .msg-user-body {
@@ -505,6 +515,39 @@
   margin: 0;
   width: 100%;
   color: var(--text-primary);
+}
+
+@keyframes assistant-stream-buffer-in {
+  0% {
+    opacity: 0.72;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes assistant-shell-buffer-in {
+  0% {
+    opacity: 0.86;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes user-message-buffer-in {
+  0% {
+    opacity: 0.8;
+    transform: translateY(8px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .msg-content {

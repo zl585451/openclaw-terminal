@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import '../styles/LogPanel.css';
 
 export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'OK';
@@ -441,6 +442,163 @@ export default function LogPanel(props: {
     { key: 'tools', label: 'Tools' },
   ];
 
+  const overlayContent = logExpanded ? (
+    <div
+      className="log-panel-overlay"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.85)',
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 12,
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>
+          Gateway 日志（展开模式）
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {/* 过滤 pills */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            {filters.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setLogFilter(f.key)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  border:
+                    logFilter === f.key
+                      ? '1px solid #60a5fa'
+                      : '1px solid rgba(255,255,255,0.3)',
+                  borderRadius: 6,
+                  background: logFilter === f.key ? 'rgba(96,165,250,0.2)' : 'transparent',
+                  color: logFilter === f.key ? '#93c5fd' : '#9ca3af',
+                  cursor: 'pointer',
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {/* 缩放按钮 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              type="button"
+              onClick={() => setLogFontSize((s) => Math.max(9, s - 2))}
+              style={{
+                padding: '4px 8px',
+                fontSize: 12,
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 6,
+                background: 'transparent',
+                color: '#9ca3af',
+                cursor: 'pointer',
+              }}
+            >
+              A-
+            </button>
+            <span style={{ color: '#9ca3af', fontSize: 12, minWidth: 36, textAlign: 'center' }}>
+              {logFontSize}px
+            </span>
+            <button
+              type="button"
+              onClick={() => setLogFontSize((s) => Math.min(24, s + 2))}
+              style={{
+                padding: '4px 8px',
+                fontSize: 12,
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 6,
+                background: 'transparent',
+                color: '#9ca3af',
+                cursor: 'pointer',
+              }}
+            >
+              A+
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLogExpanded(false)}
+            style={{
+              padding: '6px 14px',
+              fontSize: 13,
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: 6,
+              background: 'rgba(255,255,255,0.1)',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            收回 ↙
+          </button>
+        </div>
+      </div>
+
+      {/* 展开模式的日志区域（logFontSize 通过父级 font-size 生效，子元素用 em 继承） */}
+      <div
+        ref={internalBodyRef}
+        className="log-expanded-scroll"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          fontFamily: 'var(--font-mono), monospace',
+          fontSize: logFontSize,
+          lineHeight: 1.6,
+          color: '#e0e0e0',
+          padding: 12,
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 8,
+          background: 'rgba(0,0,0,0.3)',
+        }}
+      >
+        {filtered.length === 0 ? (
+          <div style={{ color: '#888' }}>{emptyText}</div>
+        ) : (
+          filtered.map(renderLogLine)
+        )}
+      </div>
+
+      <div
+        style={{
+          color: '#888',
+          fontSize: 12,
+          marginTop: 8,
+          display: 'flex',
+          gap: 16,
+          alignItems: 'center',
+        }}
+      >
+        <span>{lines.length} 行</span>
+        {nocturneOnline !== undefined && (
+          <span style={{ color: nocturneOnline ? '#86efac' : '#fca5a5' }}>
+            Nocturne: {nocturneOnline ? '✅' : '❌'}
+          </span>
+        )}
+        {modelName && (
+          <span style={{ color: '#93c5fd' }}>{modelName}</span>
+        )}
+        <span style={{ marginLeft: 'auto' }}>按 ESC 收回</span>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <div className="log-panel">
@@ -540,163 +698,9 @@ export default function LogPanel(props: {
         </div>
       </div>
 
-      {/* 展开模式 overlay */}
-      {logExpanded && (
-        <div
-          className="log-panel-overlay"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.85)',
-            zIndex: 9999,
-            display: 'flex',
-            flexDirection: 'column',
-            padding: 24,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 12,
-              flexWrap: 'wrap',
-              gap: 12,
-            }}
-          >
-            <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>
-              Gateway 日志（展开模式）
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              {/* 过滤 pills */}
-              <div style={{ display: 'flex', gap: 6 }}>
-                {filters.map((f) => (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setLogFilter(f.key)}
-                    style={{
-                      padding: '4px 10px',
-                      fontSize: 12,
-                      border:
-                        logFilter === f.key
-                          ? '1px solid #60a5fa'
-                          : '1px solid rgba(255,255,255,0.3)',
-                      borderRadius: 6,
-                      background: logFilter === f.key ? 'rgba(96,165,250,0.2)' : 'transparent',
-                      color: logFilter === f.key ? '#93c5fd' : '#9ca3af',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-              {/* 缩放按钮 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <button
-                  type="button"
-                  onClick={() => setLogFontSize((s) => Math.max(9, s - 2))}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: 12,
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: 6,
-                    background: 'transparent',
-                    color: '#9ca3af',
-                    cursor: 'pointer',
-                  }}
-                >
-                  A-
-                </button>
-                <span style={{ color: '#9ca3af', fontSize: 12, minWidth: 36, textAlign: 'center' }}>
-                  {logFontSize}px
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setLogFontSize((s) => Math.min(24, s + 2))}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: 12,
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: 6,
-                    background: 'transparent',
-                    color: '#9ca3af',
-                    cursor: 'pointer',
-                  }}
-                >
-                  A+
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => setLogExpanded(false)}
-                style={{
-                  padding: '6px 14px',
-                  fontSize: 13,
-                  border: '1px solid rgba(255,255,255,0.4)',
-                  borderRadius: 6,
-                  background: 'rgba(255,255,255,0.1)',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                收回 ↙
-              </button>
-            </div>
-          </div>
-
-          {/* 展开模式的日志区域（logFontSize 通过父级 font-size 生效，子元素用 em 继承） */}
-          <div
-            ref={internalBodyRef}
-            className="log-expanded-scroll"
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'auto',
-              fontFamily: 'var(--font-mono), monospace',
-              fontSize: logFontSize,
-              lineHeight: 1.6,
-              color: '#e0e0e0',
-              padding: 12,
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: 8,
-              background: 'rgba(0,0,0,0.3)',
-            }}
-          >
-            {filtered.length === 0 ? (
-              <div style={{ color: '#888' }}>{emptyText}</div>
-            ) : (
-              filtered.map(renderLogLine)
-            )}
-          </div>
-
-          <div
-            style={{
-              color: '#888',
-              fontSize: 12,
-              marginTop: 8,
-              display: 'flex',
-              gap: 16,
-              alignItems: 'center',
-            }}
-          >
-            <span>{lines.length} 行</span>
-            {nocturneOnline !== undefined && (
-              <span style={{ color: nocturneOnline ? '#86efac' : '#fca5a5' }}>
-                Nocturne: {nocturneOnline ? '✅' : '❌'}
-              </span>
-            )}
-            {modelName && (
-              <span style={{ color: '#93c5fd' }}>{modelName}</span>
-            )}
-            <span style={{ marginLeft: 'auto' }}>按 ESC 收回</span>
-          </div>
-        </div>
-      )}
+      {typeof document !== 'undefined' && overlayContent
+        ? createPortal(overlayContent, document.body)
+        : null}
     </>
   );
 }

@@ -996,7 +996,7 @@ export const ChatMessageList = function ChatMessageList({
           </div>
         )}
         <div ref={bottomRef as React.Ref<HTMLDivElement>} style={{ height: 0, margin: 0, padding: 0 }} />
-        {/* 底部 spacer：始终保持固定高度，不随 isStreaming 变化，避免开始/结束时跳变 */}
+        {/* 底部 spacer：保持较大的支撑，确保发送后用户消息可以顶到上方目标位 */}
         <div style={{ height: '60vh', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
       </div>
     </div>
