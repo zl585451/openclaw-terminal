@@ -266,7 +266,7 @@ const MessageHeader = memo(
         {msg.role === 'user' ? (
           <span className="msg-label">YOU ▶</span>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+          <div className="amy-header-row">
             <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
             <span
               style={{
@@ -278,11 +278,11 @@ const MessageHeader = memo(
             >
               AMY
             </span>
-            {showBadge && (
+            <span className={`agent-status-slot ${showBadge ? 'is-visible' : ''}`} aria-hidden={!showBadge}>
               <span className="agent-status-badge">
                 {agentPhase === 'thinking' ? '思考中' : agentPhase === 'tool_executing' ? '调用工具中' : '打字中'}
               </span>
-            )}
+            </span>
           </div>
         )}
       </div>

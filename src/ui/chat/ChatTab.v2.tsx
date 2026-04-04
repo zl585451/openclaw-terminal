@@ -467,42 +467,16 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         />
       </div>
 
-      <div className="right-panel" style={{
-        width: sidebarCollapsed ? '40px' : '380px',
-        transition: 'width 0.2s ease',
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
+      <div className={`right-panel ${sidebarCollapsed ? 'right-panel--collapsed' : ''}`}>
         {/* 折叠按钮 */}
         <button
           onClick={() => setSidebarCollapsed(v => !v)}
-          style={{
-            position: 'absolute',
-            left: sidebarCollapsed ? '8px' : '-14px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: '24px',
-            height: '48px',
-            background: 'var(--bg-panel)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '4px',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            fontSize: 'var(--text-sm)',
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          className={`right-panel-toggle ${sidebarCollapsed ? 'is-collapsed' : ''}`}
         >
           {sidebarCollapsed ? '›' : '‹'}
         </button>
         {/* 内容区域 - 折叠时隐藏 */}
-        <div style={{
-          display: sidebarCollapsed ? 'none' : 'flex',
-          flexDirection: 'column',
-          height: '100%',
-        }}>
+        <div className={`right-panel-inner ${sidebarCollapsed ? 'is-hidden' : ''}`}>
         {/* 1. 顶部状态行：GW/MEM 信号+ 时间 */}
         <div
           style={{
