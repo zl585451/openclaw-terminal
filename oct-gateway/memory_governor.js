@@ -194,7 +194,7 @@ function routeRecord(record = {}) {
 
   if (!uri || !content) {
     const result = { decision: 'reject', reason: 'missing_uri_or_content', layer };
-    log.info('routeRecord', {
+    log.debug('routeRecord', {
       source,
       decision: result.decision,
       reason: result.reason,
@@ -206,7 +206,7 @@ function routeRecord(record = {}) {
 
   if (uri.startsWith('core://agent/corrections')) {
     const result = { decision: 'promote', reason: 'protected_corrections', layer: 'core', uri, content };
-    log.info('routeRecord', {
+    log.debug('routeRecord', {
       source,
       decision: result.decision,
       reason: result.reason,
@@ -218,7 +218,7 @@ function routeRecord(record = {}) {
 
   if (looksLikeTestRecord(sanitized)) {
     const result = { decision: 'reject', reason: 'test_record_blocked', layer };
-    log.info('routeRecord', {
+    log.debug('routeRecord', {
       source,
       decision: result.decision,
       reason: result.reason,
@@ -234,7 +234,7 @@ function routeRecord(record = {}) {
 
   if (!explicitMemoryIntent && content.length < 10 && source !== 'feedback' && source !== 'clarification_preference') {
     const result = { decision: 'reject', reason: 'too_short_low_value', layer };
-    log.info('routeRecord', {
+    log.debug('routeRecord', {
       source,
       decision: result.decision,
       reason: result.reason,
@@ -246,7 +246,7 @@ function routeRecord(record = {}) {
 
   if (ephemeralLike && !explicitMemoryIntent && layer === 'scratch' && score < 4) {
     const result = { decision: 'reject', reason: 'ephemeral_record_blocked', layer };
-    log.info('routeRecord', {
+    log.debug('routeRecord', {
       source,
       decision: result.decision,
       reason: result.reason,
@@ -274,7 +274,7 @@ function routeRecord(record = {}) {
       priority: 2,
       disclosure: `待审核记忆候选：${uri}`,
     };
-    log.info('routeRecord', {
+    log.debug('routeRecord', {
       source,
       decision: result.decision,
       reason: result.reason,
@@ -302,7 +302,7 @@ function routeRecord(record = {}) {
       priority: sanitized.priority,
       disclosure: sanitized.disclosure,
     };
-    log.info('routeRecord', {
+    log.debug('routeRecord', {
       source,
       decision: result.decision,
       reason: result.reason,
@@ -372,6 +372,7 @@ function selectForInjection(items = [], options = {}) {
     if (!item.content) continue;
     if (key.includes('/history/')) continue;
     if (key.includes('/review_queue/')) continue;
+    if (key.includes('/governance/')) continue;
     if (key.startsWith('core://test/') || key.startsWith('core://tmp/') || key.startsWith('scratch://')) continue;
     cleaned.push({ ...item, governor_score: scoreInjectionItem(item) });
   }

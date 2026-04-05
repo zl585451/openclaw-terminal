@@ -27,64 +27,62 @@ export type CotExtractResult = {
   mainContent: string;
 };
 
-function extractBracket(full: string): CotExtractResult | null {
-  const openIdx = full.indexOf(BRACKET_OPEN);
-  if (openIdx === -1) return null;
-  const before = full.slice(0, openIdx);
-  const afterOpen = full.slice(openIdx + BRACKET_OPEN.length);
-  const closeIdx = afterOpen.indexOf(BRACKET_CLOSE);
-  if (closeIdx !== -1) {
-    return {
-      cotContent: afterOpen.slice(0, closeIdx).trim(),
-      cotDone: true,
-      mainContent: `${before}\n${afterOpen.slice(closeIdx + BRACKET_CLOSE.length)}`.trim(),
-    };
+type TagSpec = {
+  open: string;
+  close: string;
+};
+
+const TAG_SPECS: TagSpec[] = [
+  { open: BRACKET_OPEN, close: BRACKET_CLOSE },
+  { open: THINK_OPEN, close: THINK_CLOSE },
+  { open: REDACTED_THINK_OPEN, close: REDACTED_THINK_CLOSE },
+];
+
+function findNextTag(full: string, fromIndex: number): { spec: TagSpec; index: number } | null {
+  let best: { spec: TagSpec; index: number } | null = null;
+  for (const spec of TAG_SPECS) {
+    const idx = full.indexOf(spec.open, fromIndex);
+    if (idx === -1) continue;
+    if (!best || idx < best.index) {
+      best = { spec, index: idx };
+    }
   }
-  return {
-    cotContent: afterOpen.trim(),
-    cotDone: false,
-    mainContent: before.trim(),
-  };
+  return best;
 }
 
-function extractThinkTags(full: string): CotExtractResult | null {
-  const openIdx = full.indexOf(THINK_OPEN);
-  if (openIdx === -1) return null;
-  const before = full.slice(0, openIdx);
-  const afterOpen = full.slice(openIdx + THINK_OPEN.length);
-  const closeIdx = afterOpen.indexOf(THINK_CLOSE);
-  if (closeIdx !== -1) {
-    return {
-      cotContent: afterOpen.slice(0, closeIdx).trim(),
-      cotDone: true,
-      mainContent: `${before}\n${afterOpen.slice(closeIdx + THINK_CLOSE.length)}`.trim(),
-    };
-  }
-  return {
-    cotContent: afterOpen.trim(),
-    cotDone: false,
-    mainContent: before.trim(),
-  };
+function stripStrayCotTags(text: string): string {
+  return text
+    .split(BRACKET_OPEN).join('')
+    .split(BRACKET_CLOSE).join('')
+    .split(THINK_OPEN).join('')
+    .split(THINK_CLOSE).join('')
+    .split(REDACTED_THINK_OPEN).join('')
+    .split(REDACTED_THINK_CLOSE).join('');
 }
 
-function extractRedactedThinkTags(full: string): CotExtractResult | null {
-  const openIdx = full.indexOf(REDACTED_THINK_OPEN);
-  if (openIdx === -1) return null;
-  const before = full.slice(0, openIdx);
-  const afterOpen = full.slice(openIdx + REDACTED_THINK_OPEN.length);
-  const closeIdx = afterOpen.indexOf(REDACTED_THINK_CLOSE);
-  if (closeIdx !== -1) {
-    return {
-      cotContent: afterOpen.slice(0, closeIdx).trim(),
-      cotDone: true,
-      mainContent: `${before}\n${afterOpen.slice(closeIdx + REDACTED_THINK_CLOSE.length)}`.trim(),
-    };
-  }
-  return {
-    cotContent: afterOpen.trim(),
-    cotDone: false,
-    mainContent: before.trim(),
-  };
+function sanitizeCotContent(text: string): string {
+  if (!text) return text;
+
+  const withoutTags = stripStrayCotTags(text)
+    .replace(/\[pills\][\s\S]*?\[\/pills\]/gi, '')
+    .replace(/\n{3,}/g, '\n\n');
+
+  const filteredLines = withoutTags
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (/^[a-z_][a-z0-9_]*\([^)]*\)\s*$/i.test(trimmed)) return false;
+      if (/^(输出|output)\s*[:：]?$/i.test(trimmed)) return false;
+      if (/^[+>]*\s*\{".*$/i.test(trimmed)) return false;
+      return true;
+    })
+    .join('\n');
+
+  return filteredLines
+    .replace(/("api_key"\s*:\s*")[^"]+(")/gi, '$1[REDACTED]$2')
+    .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+    .trim();
 }
 
 export function extractAssistantCotAndMain(fullContent: string): CotExtractResult {
@@ -92,22 +90,45 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
     return { cotContent: null, cotDone: true, mainContent: fullContent };
   }
 
-  const bi = fullContent.indexOf(BRACKET_OPEN);
-  const ti = fullContent.indexOf(THINK_OPEN);
-  const ri = fullContent.indexOf(REDACTED_THINK_OPEN);
+  const cotParts: string[] = [];
+  const mainParts: string[] = [];
+  let cursor = 0;
+  let cotDone = true;
 
-  // 取最靠前的标记
-  if (bi !== -1 && (ti === -1 || bi < ti) && (ri === -1 || bi < ri)) {
-    return extractBracket(fullContent)!;
-  }
-  if (ti !== -1 && (ri === -1 || ti < ri)) {
-    return extractThinkTags(fullContent)!;
-  }
-  if (ri !== -1) {
-    return extractRedactedThinkTags(fullContent)!;
+  while (cursor < fullContent.length) {
+    const next = findNextTag(fullContent, cursor);
+    if (!next) {
+      mainParts.push(fullContent.slice(cursor));
+      break;
+    }
+
+    if (next.index > cursor) {
+      mainParts.push(fullContent.slice(cursor, next.index));
+    }
+
+    const afterOpen = next.index + next.spec.open.length;
+    const closeIdx = fullContent.indexOf(next.spec.close, afterOpen);
+    if (closeIdx === -1) {
+      cotParts.push(fullContent.slice(afterOpen).trim());
+      cotDone = false;
+      cursor = fullContent.length;
+      break;
+    }
+
+    cotParts.push(fullContent.slice(afterOpen, closeIdx).trim());
+    cursor = closeIdx + next.spec.close.length;
   }
 
-  return { cotContent: null, cotDone: true, mainContent: fullContent };
+  const cotContent = cotParts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('\n\n---\n\n');
+
+  const mainContent = stripStrayCotTags(mainParts.join(''))
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return { cotContent: sanitizeCotContent(cotContent) || null, cotDone, mainContent };
 }
 
 /** 用于 UI：是否应走「行内 CoT」分支（避免双指示器） */

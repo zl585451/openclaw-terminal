@@ -136,7 +136,7 @@ async function expireStaleReviewCandidates(options = {}) {
     }
   }
 
-  log.info('expireStaleReviewCandidates', {
+  log.debug('expireStaleReviewCandidates', {
     scanned: report.scanned,
     expired: report.expired,
     updated: report.updated.length,

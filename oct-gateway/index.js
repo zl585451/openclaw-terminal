@@ -13,6 +13,7 @@ const { sanitizeAssistantReply, sanitizeMemoryNodeContent, stripCotText } = requ
 const memoryGovernor = require('./memory_governor');
 const memoryManagementAgent = require('./memory_management_agent');
 const reviewQueueMaintenance = require('./review_queue_maintenance');
+const reviewQueueActions = require('./review_queue_actions');
 const imageAnalyzer = require('./image_analyzer');
 const tools = require('./tools');
 const toolLoader = require('./tool_loader');
@@ -146,7 +147,7 @@ function scheduleReviewQueueMaintenance() {
         dryRun: reviewQueueMaintenanceDryRun,
       });
 
-      log.info('Review queue maintenance finished', {
+        log.debug('Review queue maintenance finished', {
         scanned: report.scanned,
         expired: report.expired,
         updated: report.updated.length,
@@ -159,7 +160,7 @@ function scheduleReviewQueueMaintenance() {
   setTimeout(runMaintenance, reviewQueueMaintenanceStartupDelayMs);
   setInterval(runMaintenance, reviewQueueMaintenanceIntervalMs);
 
-  log.info('Review queue maintenance scheduled', {
+    log.debug('Review queue maintenance scheduled', {
     intervalMs: reviewQueueMaintenanceIntervalMs,
     startupDelayMs: reviewQueueMaintenanceStartupDelayMs,
     dryRun: reviewQueueMaintenanceDryRun,
@@ -196,13 +197,37 @@ function scheduleMemoryGovernanceReport() {
   setTimeout(runReport, memoryGovernanceReportStartupDelayMs);
   setInterval(runReport, memoryGovernanceReportIntervalMs);
 
-  log.info('Memory governance report scheduled', {
+    log.debug('Memory governance report scheduled', {
     intervalMs: memoryGovernanceReportIntervalMs,
     startupDelayMs: memoryGovernanceReportStartupDelayMs,
   });
 }
 
 scheduleMemoryGovernanceReport();
+
+function isLocalInternalRequest(req) {
+  const remote = String(req.socket?.remoteAddress || '');
+  return (
+    remote === '127.0.0.1' ||
+    remote === '::1' ||
+    remote === '::ffff:127.0.0.1'
+  );
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body || '{}'));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on('error', reject);
+  });
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 流平滑器：让打字机输出更丝滑
@@ -386,6 +411,66 @@ const httpServer = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, service: 'oct-vault' }));
     return;
+  }
+
+  if (req.url?.startsWith('/internal/memory/')) {
+    if (!isLocalInternalRequest(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'internal_endpoint_local_only' }));
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/internal/memory/governance/latest') {
+      memory.readMemory('core://agent/governance/latest', { treat404AsDebug: true })
+        .then((result) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        })
+        .catch((e) => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: e?.message || String(e) }));
+        });
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/internal/memory/governance/run') {
+      readJsonBody(req).then(async (body) => {
+        const result = await memoryManagementAgent.runMemoryGovernancePass(body || {});
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, result }));
+      }).catch((e) => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e?.message || String(e) }));
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/internal/memory/review-action') {
+      readJsonBody(req).then(async (body) => {
+        const action = String(body?.action || '').trim();
+        const uri = String(body?.uri || '').trim();
+        let result;
+
+        if (action === 'approve') {
+          result = await reviewQueueActions.approveReviewCandidate(uri, body || {});
+        } else if (action === 'reject') {
+          result = await reviewQueueActions.rejectReviewCandidate(uri, body || {});
+        } else if (action === 'archive') {
+          result = await reviewQueueActions.archiveReviewCandidate(uri, body || {});
+        } else if (action === 'merge') {
+          result = await reviewQueueActions.mergeReviewCandidate(uri, body || {});
+        } else {
+          result = { ok: false, error: 'unsupported_review_action' };
+        }
+
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      }).catch((e) => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e?.message || String(e) }));
+      });
+      return;
+    }
   }
 
   if (req.method === 'POST' && req.url === '/tool') {

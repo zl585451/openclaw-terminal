@@ -278,7 +278,7 @@ function filterByType(entries: LogEntry[], filter: LogFilterType): LogEntry[] {
   });
 }
 
-export default function LogPanel(props: {
+function LogPanelComponent(props: {
   title?: string;
   lines: string[];
   bodyRef?: React.RefObject<HTMLDivElement | null>;
@@ -704,3 +704,8 @@ export default function LogPanel(props: {
     </>
   );
 }
+
+const LogPanel = React.memo(LogPanelComponent);
+LogPanel.displayName = 'LogPanel';
+
+export default LogPanel;

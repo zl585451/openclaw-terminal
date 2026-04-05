@@ -73,7 +73,7 @@ function formatDateDisplay(dateStr: string): string {
   return `${y}-${m}-${day} ${wd}`;
 }
 
-const TaskBoard: React.FC<TaskBoardProps> = ({ visible = true, onClose, compact = false }) => {
+const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose, compact = false }) => {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [parkingLot, setParkingLot] = useState<ParkingItem[]>([]);
   const [intention, setIntention] = useState<string>('');
@@ -600,4 +600,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ visible = true, onClose, compact 
   );
 };
 
-export default React.memo(TaskBoard);
+const TaskBoard = React.memo(TaskBoardComponent);
+TaskBoard.displayName = 'TaskBoard';
+
+export default TaskBoard;

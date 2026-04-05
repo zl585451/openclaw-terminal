@@ -94,6 +94,17 @@ export function InterfaceTabView({
             <option value="bubble">水泡 (低频)</option>
           </select>
         </div>
+        <div className="settings-row">
+          <label>回复朗读</label>
+          <label className="toggle-wrap">
+            <input
+              type="checkbox"
+              checked={local.ttsPlayback}
+              onChange={(e) => setLocal((s) => ({ ...s, ttsPlayback: e.target.checked }))}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
       </section>
       <section className="settings-section">
         <h3>界面</h3>

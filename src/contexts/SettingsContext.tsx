@@ -78,6 +78,7 @@ export const THEME_PRESETS: Record<Exclude<ThemeColor, 'custom'>, { label: strin
 export interface Settings {
   streamSpeed: StreamSpeed;
   typingSound: TypingSoundMode;
+  ttsPlayback: boolean;
   theme: ThemeColor;
   customTheme?: ThemeVars;
 }
@@ -85,6 +86,7 @@ export interface Settings {
 const DEFAULT: Settings = {
   streamSpeed: 'medium',
   typingSound: 'off',
+  ttsPlayback: false,
   theme: 'matrix',
 };
 
@@ -140,6 +142,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           typingSound: data.typingSound === true ? 'typewriter'
             : data.typingSound === false ? 'off'
             : (['off', 'typewriter', 'soft', 'bubble'].includes(data.typingSound) ? data.typingSound : DEFAULT.typingSound),
+          ttsPlayback: typeof data.ttsPlayback === 'boolean'
+            ? data.ttsPlayback
+            : (data.voicePlayback === true ? true : DEFAULT.ttsPlayback),
           theme: normalizeTheme(data.theme),
           customTheme: data.customTheme,
         };
