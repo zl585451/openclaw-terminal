@@ -2,7 +2,7 @@
 
 > 目标：在保留 Nocturne 作为记忆底座的前提下，给 OCT 补上一层“记忆治理系统”，避免长期使用后记忆库垃圾场化。  
 > 适用范围：`oct-gateway/` 现有 Nocturne 接入链路、相关记忆注入、历史摘要、反馈闭环、偏好系统、自适应问答系统。  
-> 当前状态：方案文档，准备进入实施。
+> 当前状态：Phase 1 / 1.5 已落地，Phase 2 最小骨架已接入运行中。
 
 ---
 
@@ -34,6 +34,46 @@
 一句话：
 
 **Nocturne 是记忆底座，Memory Governor 才是 OCT 的记忆操作系统。**
+
+---
+
+## 1.1 当前落地进度（2026-04-05）
+
+这份文档最初是实施方案，现在已经进入“方案 + 已落地现状”阶段。
+
+### 已完成
+
+- `oct-gateway/memory_governor.js` 已建立并投入使用
+- 写入前清洗已接入，CoT / think / redacted_thinking 会在记忆链路中被剥离
+- 已接入 Governor 的入口：
+  - `extractAndSaveMemory()`
+  - `memory_history.js`
+  - `memory_feedback.js`
+  - `clarification_memory.js`
+  - `tools/shared.js` 中的 `memory_write`
+  - 相关记忆注入筛选
+- `core://agent/review_queue/...` 已作为候选层启用
+- `review_queue` 已有统一结构、保留时长、过期提示
+- `review_queue_maintenance.js` 已可低频后台扫描并软过期弱候选
+- `memory_management_agent.js` 已接入最小巡检骨架，可输出治理报告
+
+### 已验证
+
+- AI CoT / 内心 OS 不再写入相关记忆
+- `memory_write` 的测试路径（如 `core://test/...`）已被 Governor 拦截
+- 相关记忆注入已开始偏向：
+  - `core://my_user/preferences/*`
+  - `core://my_user/profile/*`
+  - `project://*`
+  - `core://agent/*`
+  - `core://amy/*`
+
+### 仍在继续
+
+- 更强的 `promote / hold / reject` 规则
+- review queue 的汇总报告和后续审查工作流
+- Memory Management Agent 的进一步自治能力
+- 后续 Dashboard / 审计视图
 
 ---
 
@@ -700,4 +740,3 @@ AMY 说“做一个记忆管理 Agent”，我赞成。
 所以这套方案的真正目标是：
 
 **把 OCT 的记忆系统，从“可写的 Nocturne 接入层”，升级成“可治理的记忆操作系统”。**
-

@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-03-24（网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉）  
+> **最后更新**：2026-04-05（Memory Governor Phase 1 / 1.5、MiniMax 流式按帧刷新）  
 > **详细说明**：查看 `docs/feature-map/` 文件夹中的分模块文档
 
 ---
@@ -53,8 +53,11 @@
 - 🔇 模式提炼（已停用，依赖自评）
 - ✅ 用户反馈检测（`memory_feedback.js:422`，2026-03-20 修复：已在 onDone 调用）
 - ✅ 停车场待办检测（`index.js:424`）
-- ✅ 自动记忆提炼（`index.js:431`）
-- 🚧 追问偏好学习（待实现）
+- ✅ 自动记忆提炼（`index.js:431`，已接入 Governor）
+- ✅ 追问偏好学习（已接入 Governor）
+- ✅ Memory Governor（已接管历史摘要 / 反馈 / 自动提炼 / 追问偏好 / 工具层 memory_write / 注入筛选）
+- ✅ review_queue 候选层与低频维护（软过期）
+- ✅ Memory Management Agent 最小巡检骨架（低频治理报告）
 
 **文档清理**：2026-03-20 删除 4 个重复的独立文件（`feedback-detect.md` 等），合并到 `02_auto_pipeline.md`
 
@@ -90,6 +93,13 @@
 - **http_request**：通用 HTTP 工具，GET/POST/PUT/DELETE，对接第三方 API
 - **image_gen**：通义万象 wanx-v1 图像生成，复用 DashScope API Key
 - **VaultPanel 抽屉**：从右下角悬浮球改为 TabBar 内嵌 🔐 VAULT 按钮，右侧滑入抽屉，深绿黑主题
+
+### 2026-04-05 记忆治理与 MiniMax 流式优化
+- **Memory Governor Phase 1 / 1.5**：新增 `memory_governor.js`，统一接管历史摘要、反馈、自动提炼、追问偏好、`memory_write`、相关记忆注入筛选
+- **review_queue**：新增标准候选层结构，带 `retention_hours`、`expires_at`、`cleanup_hint`
+- **维护器**：新增 `review_queue_maintenance.js`，低频后台软过期弱候选
+- **管理 Agent 骨架**：新增 `memory_management_agent.js`，输出治理报告与待处理建议
+- **MiniMax 流式优化**：前端改为按帧合并刷新，并在流式阶段减轻重型解析，明显降低“系统被拖住”的顿感
 
 ### 2026-03-24 OCT 握手 + 工具层 + Orchestrator + 后台任务 + 保险箱与邮件
 - **OCT 握手**：移除 OpenClaw ECDSA 签名，改为 `params.auth.token` 认证
