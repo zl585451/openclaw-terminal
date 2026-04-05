@@ -11,6 +11,7 @@ import TaskList from '../../components/TaskList';
 import QuestionCards from '../../components/QuestionCards';
 import CoTBlock from '../../components/CoTBlock';
 import AmyAvatar from '../../components/AmyAvatar';
+import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown } from '../../utils/markdownPreprocess';
 import type { ChatMessage } from './ChatTab.v2';
 
@@ -184,6 +185,7 @@ const SystemMessage = ({ text }: { text: string }) => {
 
 export interface ChatMessageItemProps {
   msg: ChatMessage;
+  assistantName: string;
   textToShow: string;
   raw: string;
   optionsToShow: OptionItem[];
@@ -253,12 +255,14 @@ const MessageHeader = memo(
     isStreamingMsg,
     agentPhase,
     suppressPhaseBadge,
+    assistantName,
   }: {
     msg: ChatMessage;
     isStreamingMsg: boolean;
     agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
     /** 与头部带内 CoT 并存且 phase 为 thinking 时隐藏，避免与 CoT 标题双「思考中」 */
     suppressPhaseBadge?: boolean;
+    assistantName: string;
   }) {
     const showBadge =
       isStreamingMsg &&
@@ -279,7 +283,7 @@ const MessageHeader = memo(
                 letterSpacing: '2px',
               }}
             >
-              AMY
+              {assistantName}
             </span>
             <span className={`agent-status-slot ${showBadge ? 'is-visible' : ''}`} aria-hidden={!showBadge}>
               <span className="agent-status-badge">
@@ -297,7 +301,8 @@ const MessageHeader = memo(
     !!a.msg.isStreaming === !!b.msg.isStreaming &&
     a.isStreamingMsg === b.isStreamingMsg &&
     a.agentPhase === b.agentPhase &&
-    !!a.suppressPhaseBadge === !!b.suppressPhaseBadge
+    !!a.suppressPhaseBadge === !!b.suppressPhaseBadge &&
+    a.assistantName === b.assistantName
 );
 
 const UserMessageBody = memo(
@@ -623,6 +628,7 @@ function MessageRow({
 const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProps) {
   const {
     msg,
+    assistantName,
     textToShow,
     raw,
     optionsToShow,
@@ -675,6 +681,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             isStreamingMsg={isStreamingMsg}
             agentPhase={agentPhase}
             suppressPhaseBadge
+            assistantName={assistantName}
           />
           <div className="cot-stream-wrapper cot-stream-wrapper--header-inline">
             <CoTBlock
@@ -688,7 +695,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
           </div>
         </div>
       ) : (
-        <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} />
+        <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} assistantName={assistantName} />
       )}
       <div className="msg-body">
         {msg.role === 'assistant' ? (
@@ -790,6 +797,8 @@ export const ChatMessageList = function ChatMessageList({
   usePlainStreamingText = false,
   markdownComponents,
 }: ChatMessageListProps) {
+  const { settings } = useSettings();
+  const assistantName = settings.aiName || 'OpenClaw';
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
   const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
   const finalizedParseCacheRef = useRef<
@@ -857,7 +866,7 @@ export const ChatMessageList = function ChatMessageList({
           ) : (
             // 其他等待阶段（typing / tool_executing）：保持原有样式
             <div className="chat-thinking">
-              <span className="msg-label">◆ AMY</span>
+              <span className="msg-label">◆ {assistantName}</span>
               {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
               {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
               <span className="processing-blocks typing-dots">
@@ -978,6 +987,7 @@ export const ChatMessageList = function ChatMessageList({
             <ChatMessageItem
               key={`item-${msg.id}`}
               msg={msg}
+              assistantName={assistantName}
               raw={raw}
               textToShow={textToShow}
               optionsToShow={optionsToShow}

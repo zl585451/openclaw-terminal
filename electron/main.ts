@@ -33,6 +33,9 @@ const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
 const DEFAULT_CONFIG = {
   OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
   OPENCLAW_TOKEN: '',
+  OCT_AI_NAME: 'OpenClaw',
+  OCT_USER_NAME: '用户',
+  OCT_PERSONA_STYLE: 'warm',
   /** 随 OCT 启动 AI.library（知识库 HTTP 服务，默认端口 8001，与 Nocturne :8000 错开） */
   OCT_AI_LIBRARY_AUTO_START: false,
   OCT_AI_LIBRARY_PATH: '',
@@ -1759,11 +1762,20 @@ ipcMain.handle('seed-nocturne-memories', async (): Promise<{ success: boolean; e
   const pythonCmd = getPythonForNocturne().join(' ');
   try {
     const cwd = path.join(base, 'backend');
+    const cfg: Record<string, string> = fs.existsSync(CONFIG_FILE)
+      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
+      : {};
     const out = execSync(`${pythonCmd} -m scripts.seed_oct_memories`, {
       cwd,
       encoding: 'utf8',
       timeout: 30000,
-      env: { ...process.env, PYTHONPATH: cwd, PYTHONIOENCODING: 'utf-8' },
+      env: {
+        ...process.env,
+        PYTHONPATH: cwd,
+        PYTHONIOENCODING: 'utf-8',
+        OCT_AI_NAME: (cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME).toString(),
+        OCT_USER_NAME: (cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME).toString(),
+      },
     });
     return { success: true, output: out };
   } catch (e: any) {
@@ -2366,6 +2378,58 @@ ipcMain.handle('save-api-keys', async (_, keys: {
   } catch (e: any) {
     console.error('[API Keys] Failed to save:', e.message);
     return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('get-persona-settings', async () => {
+  try {
+    ensureConfigFile();
+    const cfg: Record<string, string> = fs.existsSync(CONFIG_FILE)
+      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
+      : {};
+    return {
+      success: true,
+      data: {
+        OCT_AI_NAME: (cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME).toString(),
+        OCT_USER_NAME: (cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME).toString(),
+        OCT_PERSONA_STYLE: (cfg.OCT_PERSONA_STYLE || DEFAULT_CONFIG.OCT_PERSONA_STYLE).toString(),
+      },
+    };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('save-persona-settings', async (_, payload: {
+  OCT_AI_NAME?: string;
+  OCT_USER_NAME?: string;
+  OCT_PERSONA_STYLE?: string;
+}) => {
+  try {
+    ensureConfigFile();
+    let cfg: Record<string, string> = {};
+    if (fs.existsSync(CONFIG_FILE)) {
+      try {
+        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      } catch {}
+    }
+
+    const normalizeName = (value: string | undefined, fallback: string, maxLen: number) => {
+      const trimmed = String(value || '').trim().replace(/\s+/g, ' ');
+      return (trimmed || fallback).slice(0, maxLen);
+    };
+    const normalizeStyle = (value: string | undefined) => {
+      const trimmed = String(value || '').trim();
+      return ['neutral', 'warm', 'companion'].includes(trimmed) ? trimmed : DEFAULT_CONFIG.OCT_PERSONA_STYLE;
+    };
+
+    cfg.OCT_AI_NAME = normalizeName(payload.OCT_AI_NAME, DEFAULT_CONFIG.OCT_AI_NAME, 24);
+    cfg.OCT_USER_NAME = normalizeName(payload.OCT_USER_NAME, DEFAULT_CONFIG.OCT_USER_NAME, 24);
+    cfg.OCT_PERSONA_STYLE = normalizeStyle(payload.OCT_PERSONA_STYLE);
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
   }
 });
 

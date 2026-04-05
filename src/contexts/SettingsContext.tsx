@@ -81,6 +81,9 @@ export interface Settings {
   ttsPlayback: boolean;
   theme: ThemeColor;
   customTheme?: ThemeVars;
+  aiName: string;
+  userName: string;
+  personaStyle: 'neutral' | 'warm' | 'companion';
 }
 
 const DEFAULT: Settings = {
@@ -88,6 +91,9 @@ const DEFAULT: Settings = {
   typingSound: 'off',
   ttsPlayback: false,
   theme: 'matrix',
+  aiName: 'OpenClaw',
+  userName: '用户',
+  personaStyle: 'warm',
 };
 
 const STORAGE_KEY = 'claw-terminal-settings';
@@ -147,6 +153,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             : (data.voicePlayback === true ? true : DEFAULT.ttsPlayback),
           theme: normalizeTheme(data.theme),
           customTheme: data.customTheme,
+          aiName: typeof data.aiName === 'string' && data.aiName.trim() ? data.aiName : DEFAULT.aiName,
+          userName: typeof data.userName === 'string' && data.userName.trim() ? data.userName : DEFAULT.userName,
+          personaStyle: ['neutral', 'warm', 'companion'].includes(data.personaStyle) ? data.personaStyle : DEFAULT.personaStyle,
         };
       }
     } catch {}

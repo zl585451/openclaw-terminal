@@ -305,7 +305,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (lastMsg?.role === 'assistant' && lastMsg.content) {
         if (!windowFocused) {
           const preview = lastMsg.content.slice(0, 30).replace(/\s+/g, ' ') + (lastMsg.content.length > 30 ? '...' : '');
-          ipcRenderer.invoke('show-notification', { title: 'AMY 回复', body: preview });
+          ipcRenderer.invoke('show-notification', { title: `${settings.aiName || 'OpenClaw'} 回复`, body: preview });
         }
         playTTSForMessage(lastMsg);
       }

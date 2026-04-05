@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import QuickCommandMenu from '../../components/QuickCommandMenu';
+import { useSettings } from '../../contexts/SettingsContext';
 import type { UploadedFile } from './ChatTab.v2';
 
 const ipcRenderer =
@@ -41,6 +42,8 @@ const ChatInputArea = memo(function ChatInputArea({
   onClearHistory,
   hasPendingPills,
 }: ChatInputAreaProps) {
+  const { settings } = useSettings();
+  const assistantName = settings.aiName || 'OpenClaw';
   const [inputValue, setInputValue] = useState('');
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -281,7 +284,7 @@ const ChatInputArea = memo(function ChatInputArea({
           className="send-btn"
           onClick={handleSend}
           disabled={isStreaming || (!inputValue.trim() && !imagePreview && uploadedFiles.length === 0)}
-          title={isStreaming ? 'AMY 正在回复...' : !wsConnected ? '连接..' : undefined}
+          title={isStreaming ? `${assistantName} 正在回复...` : !wsConnected ? '连接..' : undefined}
         >
           [ SEND ] →
           </button>

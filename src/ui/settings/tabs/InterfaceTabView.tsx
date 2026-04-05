@@ -14,6 +14,12 @@ export interface InterfaceTabViewProps {
   setAutoScroll: (v: boolean) => void;
   maxHistory: number;
   setMaxHistory: (v: number) => void;
+  aiName: string;
+  setAiName: (v: string) => void;
+  userName: string;
+  setUserName: (v: string) => void;
+  personaStyle: string;
+  setPersonaStyle: (v: string) => void;
 }
 
 export function InterfaceTabView({
@@ -27,9 +33,49 @@ export function InterfaceTabView({
   setAutoScroll,
   maxHistory,
   setMaxHistory,
+  aiName,
+  setAiName,
+  userName,
+  setUserName,
+  personaStyle,
+  setPersonaStyle,
 }: InterfaceTabViewProps) {
   return (
     <div className="settings-tab-content">
+      <section className="settings-section">
+        <h3>AI 人格</h3>
+        <div className="settings-desc" style={{ marginBottom: 12 }}>
+          发布版默认建议保持中性可配置。这里定义当前用户自己的 AI 名称、称呼和语气。
+        </div>
+        <div className="settings-row">
+          <label>AI 名称</label>
+          <input
+            className="settings-input settings-input-focusable"
+            value={aiName}
+            maxLength={24}
+            onChange={(e) => setAiName(e.target.value)}
+            placeholder="例如 OpenClaw / AMY"
+          />
+        </div>
+        <div className="settings-row">
+          <label>用户称呼</label>
+          <input
+            className="settings-input settings-input-focusable"
+            value={userName}
+            maxLength={24}
+            onChange={(e) => setUserName(e.target.value)}
+            placeholder="例如 用户 / 小王 / 少爷"
+          />
+        </div>
+        <div className="settings-row">
+          <label>风格预设</label>
+          <select value={personaStyle} onChange={(e) => setPersonaStyle(e.target.value)}>
+            <option value="neutral">克制专业</option>
+            <option value="warm">温暖可靠（推荐）</option>
+            <option value="companion">更有陪伴感</option>
+          </select>
+        </div>
+      </section>
       <section className="settings-section">
         <h3>界面主题</h3>
         <div className="settings-desc" style={{ marginBottom: 12 }}>选择你喜欢的配色方案</div>

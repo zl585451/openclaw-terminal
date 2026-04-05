@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useSettings } from '../contexts/SettingsContext';
 import './ResponseTray.css';
 
 interface ResponseTrayProps {
@@ -10,11 +11,13 @@ interface ResponseTrayProps {
 
 export default function ResponseTray({
   pills,
-  label = 'AMY 想确认一件事',
+  label,
   onSelect,
   onDismiss,
 }: ResponseTrayProps) {
+  const { settings } = useSettings();
   const trayRef = useRef<HTMLDivElement>(null);
+  const effectiveLabel = label || `${settings.aiName || 'OpenClaw'} 想确认一件事`;
 
   // 进场动画触发
   useEffect(() => {
@@ -39,7 +42,7 @@ export default function ResponseTray({
 
   return (
     <div ref={trayRef} className="response-tray">
-      <div className="response-tray__label">{label} →</div>
+      <div className="response-tray__label">{effectiveLabel} →</div>
       <div className="response-tray__pills">
         {pills.map((pill, i) => (
           <button

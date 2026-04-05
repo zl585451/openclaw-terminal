@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSettings } from '../contexts/SettingsContext';
 import '../styles/LogPanel.css';
 
 export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'OK';
@@ -288,6 +289,8 @@ function LogPanelComponent(props: {
   nocturneOnline?: boolean;
   modelName?: string;
 }) {
+  const { settings } = useSettings();
+  const assistantName = settings.aiName || 'OpenClaw';
   const COMPACT_VISIBLE_LINES = 20;
   const COMPACT_PARSE_LINES = 80;
   const {
@@ -369,8 +372,15 @@ function LogPanelComponent(props: {
   );
 
   const parsed = useMemo(
-    () => sourceLines.map((raw, i) => formatLogLine(raw, i)),
-    [sourceLines]
+    () => sourceLines.map((raw, i) => {
+      const entry = formatLogLine(raw, i);
+      return {
+        ...entry,
+        brief: entry.brief.replace(/AMY/g, assistantName),
+        detail: entry.detail.replace(/AMY/g, assistantName),
+      };
+    }),
+    [sourceLines, assistantName]
   );
 
   const filteredByLevel = useMemo(

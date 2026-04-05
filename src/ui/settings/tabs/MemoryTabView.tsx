@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
+import { useSettings } from '../../../contexts/SettingsContext';
 
 export type NocturneStatusBrief = { available: boolean; path: string } | null;
 
@@ -81,6 +82,9 @@ export function MemoryTabView({
   aiLibSaving,
   setAiLibSaving,
 }: MemoryTabViewProps) {
+  const { settings } = useSettings();
+  const assistantName = settings.aiName || 'OpenClaw';
+  const userName = settings.userName || '用户';
   return (
     <div className="settings-tab-content">
       <div className="settings-guide-card" style={{ marginBottom: 20 }}>
@@ -296,22 +300,22 @@ export function MemoryTabView({
                 const api = (window as any).electronAPI;
                 if (!api?.nocturneCreate) return;
                 setAmyWorkModeWriting(true);
-                const workModeContent = `少爷的工作团队分工：
-AMY（行政助理）：日常对话、信息整理、记忆管理、任务分发、提示词优化。处理80%的日常问题。
-Cursor（执行总监）：所有代码编写、文件修改、项目实现。AMY生成提示词，少爷交给Cursor执行。
+                const workModeContent = `${userName} 的工作团队分工：
+${assistantName}（行政助理）：日常对话、信息整理、记忆管理、任务分发、提示词优化。处理80%的日常问题。
+Cursor（执行总监）：所有代码编写、文件修改、项目实现。${assistantName} 生成提示词，${userName} 交给 Cursor 执行。
 Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、高级问题咨询。费用较高，只在必要时使用。
 
 判断标准：
-- 日常问题、信息查询、文档整理 → AMY直接解决
-- 代码编写、文件修改 → AMY生成Cursor提示词
-- 架构设计、技术选型、复杂bug → 提醒少爷咨询Claude
-- 需要咨询Claude时，AMY先帮少爷整理问题、优化提示词、提炼关键信息，减少token消耗`;
-                const claudeRoutingContent = `当少爷需要咨询Claude时，AMY的工作流程：
-1. 先理解少爷的问题
+- 日常问题、信息查询、文档整理 → ${assistantName} 直接解决
+- 代码编写、文件修改 → ${assistantName} 生成 Cursor 提示词
+- 架构设计、技术选型、复杂 bug → 提醒 ${userName} 咨询 Claude
+- 需要咨询 Claude 时，${assistantName} 先帮 ${userName} 整理问题、优化提示词、提炼关键信息，减少 token 消耗`;
+                const claudeRoutingContent = `当 ${userName} 需要咨询 Claude 时，${assistantName} 的工作流程：
+1. 先理解 ${userName} 的问题
 2. 整理成结构化的提示词（背景+问题+已尝试的方案+期望结果）
 3. 精简掉不必要的细节，控制在500字以内
-4. 告知少爷：是否需要附图、哪些截图最关键
-5. 输出一段可以直接复制给Claude的提示词
+4. 告知 ${userName}：是否需要附图、哪些截图最关键
+5. 输出一段可以直接复制给 Claude 的提示词
 
 格式模板：
 【背景】OCT项目，[简短背景]
@@ -323,7 +327,7 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                   const r1 = await api.nocturneCreate('core://agent/work_mode', workModeContent, 0, '工作模式、分工、角色、顾问、Claude、Cursor');
                   const r2 = await api.nocturneCreate('core://agent/claude_routing', claudeRoutingContent, 1, '咨询Claude、问题整理、提示词优化、token节省');
                   if (r1?.ok && r2?.ok) {
-                    alert('已写入 AMY 工作模式记忆：core://agent/work_mode、core://agent/claude_routing');
+                    alert(`已写入 ${assistantName} 工作模式记忆：core://agent/work_mode、core://agent/claude_routing`);
                     api.getNocturneStatus().then((r: any) => setNocturneDetail(r)).catch(() => {});
                   } else {
                     alert('写入失败：' + (r1?.error || r2?.error || '未知错误'));
@@ -334,7 +338,7 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                 setAmyWorkModeWriting(false);
               }}
             >
-              {amyWorkModeWriting ? '写入中...' : '写入 AMY 工作模式记忆'}
+              {amyWorkModeWriting ? '写入中...' : `写入 ${assistantName} 工作模式记忆`}
             </button>
           </div>
           {nocturneSetupError && <p className="settings-error">{nocturneSetupError}</p>}

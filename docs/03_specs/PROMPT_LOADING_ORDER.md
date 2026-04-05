@@ -1,8 +1,8 @@
 # 系统提示词加载顺序
 
-> **最后更新时间**：2026-03-24  
+> **最后更新时间**：2026-04-06  
 > **为谁而写**：AI 协作伙伴  
-> **用途**：理解 AMY 的 system prompt 如何组装，修改提示词时知道生效顺序
+> **用途**：理解 OCT 的 system prompt 如何组装，修改提示词时知道生效顺序
 
 ---
 
@@ -10,6 +10,11 @@
 
 - **文件**：`oct-gateway/ai.js` → `loadSystemPrompt(promptsDir)`
 - **promptsDir**：来自 `config.PROMPTS_DIR`，默认 `docs/01_system_prompts`
+- **人格配置来源**：`oct-gateway/config.js` → `config.persona`
+  - `aiName`：默认 `OpenClaw`
+  - `userName`：默认 `用户`
+  - `style`：默认 `warm`
+  - 配置值来自 Electron `userData/config.json`
 
 ---
 
@@ -33,10 +38,19 @@ loadSystemPrompt(promptsDir)
 
 `buildSystemPrompt` 将以下内容按顺序拼接：
 
-1. **bootMemory / 本地 MD 主体**（Nocturne 或 本地 4 个文件）
-2. **CLARIFICATION_PROTOCOL.md**（若存在）
-3. **adaptive-questioning-system.md**（若存在）
-4. **skillAdapter.formatSkillsForPrompt()** — 扫描 `oct-gateway/skills/` 下 SKILL.md，注入 `<skills>` 段落
+1. **核心身份与交流契约**（运行时生成，最高优先级）
+2. **SOUL.md 注入块**（先做 `{{AI_NAME}} / {{USER_NAME}}` 模板替换）
+3. **AGENTS.md 注入块**（先做模板替换）
+4. **bootMemory / 本地 MD 主体**（Nocturne 或 本地 4 个文件）
+5. **CLARIFICATION_PROTOCOL.md**（若存在）
+6. **adaptive-questioning-system.md**（若存在）
+7. **skillAdapter.formatSkillsForPrompt()** — 扫描 `oct-gateway/skills/` 下 SKILL.md，注入 `<skills>` 段落
+
+### 重要说明：人格已改为“产品默认 + 用户可配置层”
+
+- 发布版不应再把 `AMY / 少爷` 这类私人设定写死进运行链路
+- 运行时的 AI 名称、用户称呼、语气强度，统一来自设置中的人格配置
+- 模板文件中允许保留 `{{AI_NAME}}`、`{{USER_NAME}}` 占位符，但必须依赖运行时替换
 
 ---
 
@@ -81,6 +95,7 @@ loadSystemPrompt(promptsDir)
 
 - Gateway **启动时**加载一次
 - 修改 MD 文件后需**重启 Gateway** 生效
+- 修改人格设置（AI 名称 / 用户称呼 / 风格）后也需**重启 Gateway**，设置面板已自动处理
 - MEMORY.md 会在 Nocturne 同步时被覆盖
 
 ---

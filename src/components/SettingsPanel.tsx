@@ -22,6 +22,9 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('required');
   const [local, setLocal] = useState(settings);
   const [localPerm, setLocalPerm] = useState(permissions);
+  const [aiName, setAiName] = useState('OpenClaw');
+  const [userName, setUserName] = useState('用户');
+  const [personaStyle, setPersonaStyle] = useState('warm');
 
   const {
     apiKeys,
@@ -141,14 +144,44 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalPerm(permissions);
   }, [permissions]);
 
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    api?.getPersonaSettings?.()
+      .then((result: any) => {
+        if (!result?.success || !result?.data) return;
+        setAiName(result.data.OCT_AI_NAME || 'OpenClaw');
+        setUserName(result.data.OCT_USER_NAME || '用户');
+        setPersonaStyle(result.data.OCT_PERSONA_STYLE || 'warm');
+        setLocal((prev) => ({
+          ...prev,
+          aiName: result.data.OCT_AI_NAME || 'OpenClaw',
+          userName: result.data.OCT_USER_NAME || '用户',
+          personaStyle: result.data.OCT_PERSONA_STYLE || 'warm',
+        }));
+      })
+      .catch(() => {});
+  }, []);
+
   const apply = async () => {
-    setSettings(local);
+    setSettings({ ...local, aiName, userName, personaStyle: personaStyle as 'neutral' | 'warm' | 'companion' });
     setPermissions(localPerm);
     saveShortcut();
     saveAdvancedSettings();
 
     setApplyError('');
     const api = (window as any).electronAPI;
+    if (api?.savePersonaSettings) {
+      const personaResult = await api.savePersonaSettings({
+        OCT_AI_NAME: aiName,
+        OCT_USER_NAME: userName,
+        OCT_PERSONA_STYLE: personaStyle,
+      });
+      if (!personaResult?.success) {
+        setApplyStatus('error');
+        setApplyError(personaResult?.error || '人格设置保存失败');
+        return;
+      }
+    }
     if (api?.saveApiKeys) {
       setApplyStatus('saving');
       const keysToSave = {
@@ -250,6 +283,12 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               setAutoScroll={setAutoScroll}
               maxHistory={maxHistory}
               setMaxHistory={setMaxHistory}
+              aiName={aiName}
+              setAiName={setAiName}
+              userName={userName}
+              setUserName={setUserName}
+              personaStyle={personaStyle}
+              setPersonaStyle={setPersonaStyle}
             />
           )}
 

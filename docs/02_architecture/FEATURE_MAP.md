@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-05（Memory Governor Phase 1 / 1.5、MiniMax 流式按帧刷新）  
+> **最后更新**：2026-04-06（人格配置产品化：默认中性人格 + 用户可配置层）  
 > **详细说明**：查看 `docs/feature-map/` 文件夹中的分模块文档
 
 ---
@@ -43,7 +43,7 @@
 - **后台任务队列**：task_queue + worker，持久化、60s 超时
 - **AI 对话引擎**：Provider 抽象，支持百炼/DeepSeek/硅基/Groq/OpenAI/Ollama 等
 - **Provider 系统**：服务商预设、按模型能力动态组装、Settings 服务商选择器
-- **System Prompt**：从 Nocturne + 本地 MD 文件动态加载
+- **System Prompt**：从 Nocturne + 本地 MD 文件 + 人格配置动态加载
 - **Nocturne 记忆后端**：Python FastAPI + SQLite
 
 ### 自动处理管线（第二层）
@@ -86,6 +86,18 @@
 ---
 
 ## 最近修复
+
+### 2026-04-06 人格配置产品化
+- **目标**：让 OCT 作为可发布产品时不再绑定开发者私人设定
+- **实现**：
+  - 设置面板新增人格配置：`AI 名称`、`用户称呼`、`风格预设`
+  - Electron 将人格配置保存到 `userData/config.json`
+  - Gateway 读取人格配置，运行时替换 `{{AI_NAME}} / {{USER_NAME}}`
+  - Nocturne 初始化预设记忆改为按配置生成身份描述
+  - 聊天 UI、通知、状态条的主要展示名称与人格配置保持一致
+- **结果**：
+  - 发布默认人格为中性可配置
+  - 私人化人格改为用户自己的本地配置，而不是写死在仓库主链里
 
 ### 2026-03-24 网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉
 - **网络稳定性**：ai.js 代理绕过（getDirectFetchOptions）、fetchWithRetry（90s 超时 + 重试）、流中断截断提示、工具调用 30s 超时隔离；config.js NO_PROXY 直连 DashScope

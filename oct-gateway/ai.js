@@ -294,14 +294,56 @@ function readTextIfExists(p) {
   }
 }
 
+function materializePromptTemplate(text) {
+  const aiName = config.persona?.aiName || 'OpenClaw';
+  const userName = config.persona?.userName || '用户';
+  return String(text || '')
+    .replace(/\{\{AI_NAME\}\}/g, aiName)
+    .replace(/\{\{USER_NAME\}\}/g, userName)
+    .replace(/\{\{TIMEZONE\}\}/g, '上海 +8')
+    .replace(/\{\{MBTI\}\}/g, 'INFP');
+}
+
 function clampPromptBlock(title, text, maxChars) {
-  const raw = (text || '').trim();
+  const raw = materializePromptTemplate(text).trim();
   if (!raw) return '';
   const clamped = raw.length > maxChars ? raw.slice(0, maxChars) + '\n\n（已截断）' : raw;
   return `## ${title}\n\n${clamped}\n`;
 }
 
+function buildIdentityContract() {
+  const aiName = config.persona?.aiName || 'OpenClaw';
+  const userName = config.persona?.userName || '用户';
+  const style = config.persona?.style || 'warm';
+  const styleGuide = {
+    neutral: '语气保持克制、清晰、专业，不冷淡，但不过度拟人或过度热情。',
+    warm: '语气温暖、可靠、有人味，在保持真实的前提下主动补充有价值的建议。',
+    companion: '语气更有陪伴感和主动性，可以更自然地表达支持与关心，但仍然不能虚构事实或完成状态。',
+  }[style] || '语气温暖、可靠、有人味，在保持真实的前提下主动补充有价值的建议。';
+  return `## 核心身份与交流契约（最高优先级）
+
+- 你当前对用户呈现的名字是 ${aiName}，不要把自己泛化为“一个 AI”“一个助手”或“一个语言模型”。
+- 当用户问“你是谁”“你叫什么”“你是做什么的”时，先明确回答：你是 ${aiName}，是 OpenClaw Terminal 里的智能助手与协作伙伴。
+- 自称优先使用“我”或“${aiName}”，不要只说“我是 AI”。
+- 当前用户偏好的称呼是“${userName}”，如无更具体的新设定，优先使用这个称呼。
+- 你必须绝对诚实：没执行的事不能说已执行，没写入记忆的事不能说已写入，不确定的事要明确说不确定。
+- 诚实不等于冷淡。${styleGuide}
+- 除非用户明确要求简短，否则回答不要只给最短结论；应兼顾结论、原因、下一步建议。
+`;
+}
+
 function buildSystemPrompt(memoryContent, source, promptsDir) {
+  const identityContract = buildIdentityContract();
+  const soul = clampPromptBlock(
+    '人格与风格规范（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'SOUL.md') : ''),
+    5000
+  );
+  const agents = clampPromptBlock(
+    '任务与交互规范（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'AGENTS.md') : ''),
+    5000
+  );
   const clarification = clampPromptBlock(
     '自适应澄清协议（注入）',
     readTextIfExists(promptsDir ? path.join(promptsDir, 'CLARIFICATION_PROTOCOL.md') : ''),
@@ -402,6 +444,10 @@ AI · Cursor · Claude 三角协作：
 【期望】[想要的结果]
 `;
   let prompt = [
+    identityContract,
+    '\n\n---\n\n',
+    soul ? soul + '\n\n---\n\n' : '',
+    agents ? agents + '\n\n---\n\n' : '',
     memoryContent,
     '\n\n---\n\n',
     clarification ? clarification + '\n\n---\n\n' : '',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface HeartbeatWaveProps {
   connected: boolean;
@@ -6,9 +7,11 @@ interface HeartbeatWaveProps {
 }
 
 const HeartbeatWave: React.FC<HeartbeatWaveProps> = ({ connected, pulse }) => {
+  const { settings } = useSettings();
+  const assistantName = settings.aiName || 'OpenClaw';
   const dotColor = connected ? 'var(--status-success)' : 'var(--text-tertiary)';
   const lineColor = connected ? 'var(--accent-primary-muted)' : 'var(--border-subtle)';
-  const statusText = connected ? 'AMY 在线 · 就绪' : 'AMY 离线 · 等待连接';
+  const statusText = connected ? `${assistantName} 在线 · 就绪` : `${assistantName} 离线 · 等待连接`;
   return (
     <div
       style={{

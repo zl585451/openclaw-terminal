@@ -50,6 +50,12 @@ const electronAPI = {
         BRAVE_SEARCH_API_KEY?: string;
         TAVILY_API_KEY?: string;
       }) => ipcRenderer.invoke('save-api-keys', keys),
+  getPersonaSettings: () => ipcRenderer.invoke('get-persona-settings'),
+  savePersonaSettings: (payload: {
+    OCT_AI_NAME?: string;
+    OCT_USER_NAME?: string;
+    OCT_PERSONA_STYLE?: string;
+  }) => ipcRenderer.invoke('save-persona-settings', payload),
   getProviderList: () => ipcRenderer.invoke('get-provider-list'),
   testAIConnection: (formConfig?: Record<string, string>) => ipcRenderer.invoke('test-ai-connection', formConfig),
   // Nocturne 记忆系统
