@@ -10,6 +10,10 @@ interface CoTBlockProps {
   isPlaceholder?: boolean;
   /** 极少数场景下需要挂载即展开；默认 false（仅手动点击展开） */
   defaultExpanded?: boolean;
+  /** 轻量状态模式：仅显示状态条，不流式渲染正文 */
+  compactStreaming?: boolean;
+  labelOverride?: string;
+  placeholderHint?: string;
 }
 
 const CoTBlock: React.FC<CoTBlockProps> = ({
@@ -17,6 +21,9 @@ const CoTBlock: React.FC<CoTBlockProps> = ({
   isStreaming = false,
   isPlaceholder = false,
   defaultExpanded,
+  compactStreaming = false,
+  labelOverride,
+  placeholderHint,
 }) => {
   const [expanded, setExpanded] = useState(() => defaultExpanded === true);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -43,11 +50,11 @@ const CoTBlock: React.FC<CoTBlockProps> = ({
   }, [isStreaming, isPlaceholder]);
 
   // 占位模式 / 流式：显示"思考中"；完成后：显示"已深度思考"
-  const label = isPlaceholder
+  const label = labelOverride ?? (isPlaceholder
     ? `思考中 · ${elapsed}s`
     : isStreaming
       ? `思考中 · ${elapsed}s`
-      : `已深度思考（${stepCount}步）`;
+      : `已深度思考（${stepCount}步）`);
 
   return (
     <div className={`cot-block ${expanded ? 'cot-expanded' : 'cot-collapsed'} ${isStreaming || isPlaceholder ? 'cot-streaming' : 'cot-done'}`}>
@@ -83,10 +90,10 @@ const CoTBlock: React.FC<CoTBlockProps> = ({
           </span>
         </div>
 
-        {isPlaceholder ? (
+        {isPlaceholder || compactStreaming ? (
           expanded && (
             <div className="cot-body-wrapper cot-body-open">
-              <div className="cot-body cot-placeholder-hint">等待思考内容输出…</div>
+              <div className="cot-body cot-placeholder-hint">{placeholderHint || '等待思考内容输出…'}</div>
             </div>
           )
         ) : (

@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
 import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../../utils/cotExtract';
+import { summarizeCotForDisplay } from '../../utils/cotSummary';
 import { blockRouter } from '../../core/blockRouter';
 import { blocksToSegments } from '../../core/blockAdapter';
 import OptionBox from '../../components/OptionBox';
@@ -214,7 +215,7 @@ export interface ChatMessageItemProps {
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
   /** 从 [cot]…[/cot] 提取的思维链；null/undefined 表示本条无 CoT */
   cotContent?: string | null;
-  /** 思维链是否仍在流式接收 */
+  /** 兼容旧接口：当前已不再用于驱动思维链流式渲染 */
   cotStreaming?: boolean;
   /**
    * OCT-LAYOUT-ANCHOR-2026-04-01
@@ -269,7 +270,7 @@ const MessageHeader = memo(
           <span className="msg-label">YOU ▶</span>
         ) : (
           <div className="amy-header-row">
-            <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
+            <AmyAvatar isStreaming={false} size={32} />
             <span
               style={{
                 color: 'var(--accent)',
@@ -351,7 +352,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   onQuoteQuestion,
   segments,
   isLastAssistant,
-  streamingDomRef: _streamingDomRef,
+  streamingDomRef,
   usePlainStreamingText = false,
   markdownComponents,
 }: AssistantMessageBodyProps & { markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] }) {
@@ -390,9 +391,11 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         className="msg-assistant-body"
         style={{ display: 'flex', flexDirection: 'column' }}
       >
-        <pre className="msg-content msg-content-streaming msg-content-streaming-root">
-          {textToShow || ''}
-        </pre>
+        {/* 正文由 useMessages 的 RAF 写 textContent，避免每帧 React 协调整棵 ChatTab */}
+        <pre
+          ref={streamingDomRef as React.LegacyRef<HTMLPreElement> | undefined}
+          className="msg-content msg-content-streaming msg-content-streaming-root"
+        />
         <TypewriterCursor show />
       </div>
     );
@@ -646,8 +649,16 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     inlineThinkingPlaceholder = false,
   } = props;
 
-  const showCotInline = msg.role === 'assistant' && cotContent != null;
-  const showHeaderBand = showCotInline || inlineThinkingPlaceholder;
+  const showCotInline = msg.role === 'assistant' && !isStreamingMsg && cotContent != null;
+  const displayCotContent = showCotInline
+    ? summarizeCotForDisplay(cotContent, textToShow || raw || '')
+    : null;
+  const showLightweightThinkingBadge =
+    msg.role === 'assistant' &&
+    isStreamingMsg &&
+    !inlineThinkingPlaceholder &&
+    agentPhase === 'thinking';
+  const showHeaderBand = showCotInline || inlineThinkingPlaceholder || showLightweightThinkingBadge;
 
   return (
     <MessageRow
@@ -667,9 +678,12 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
           />
           <div className="cot-stream-wrapper cot-stream-wrapper--header-inline">
             <CoTBlock
-              content={showCotInline ? (cotContent ?? '') : ''}
-              isStreaming={inlineThinkingPlaceholder || !!cotStreaming}
+              content={showCotInline ? (displayCotContent ?? cotContent ?? '') : ''}
+              isStreaming={inlineThinkingPlaceholder || showLightweightThinkingBadge || !!cotStreaming}
               isPlaceholder={inlineThinkingPlaceholder}
+              compactStreaming={showLightweightThinkingBadge}
+              labelOverride={showLightweightThinkingBadge ? '思考中' : undefined}
+              placeholderHint={showLightweightThinkingBadge ? '思维链将在回复完成后显示。' : undefined}
             />
           </div>
         </div>
@@ -872,10 +886,12 @@ export const ChatMessageList = function ChatMessageList({
         const displayedLength = displayedText.length;
 
         // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
-        const { cotContent: streamingCotContent, cotDone: streamingCotDone, mainContent: mainTextFull } =
+        const { cotContent: streamingCotContent, mainContent: mainTextFull } =
           msg.role === 'assistant' && fullContent
-            ? extractAssistantCotAndMain(fullContent)
-            : { cotContent: null, cotDone: true, mainContent: fullContent };
+            ? !hasAssistantCotMarkers(fullContent)
+              ? { cotContent: null, mainContent: fullContent }
+              : extractAssistantCotAndMain(fullContent)
+            : { cotContent: null, mainContent: fullContent };
         const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
         const shouldBypassStreamingParse =
           usePlainStreamingText && msg.role === 'assistant' && isStreamingMsg;
@@ -983,10 +999,8 @@ export const ChatMessageList = function ChatMessageList({
             streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
             usePlainStreamingText={usePlainStreamingText}
             markdownComponents={markdownComponents}
-            cotContent={msg.role === 'assistant' ? streamingCotContent : undefined}
-              cotStreaming={
-                msg.role === 'assistant' && streamingCotContent != null ? !streamingCotDone : false
-              }
+            cotContent={msg.role === 'assistant' && !isStreamingMsg ? streamingCotContent : undefined}
+              cotStreaming={false}
               inlineThinkingPlaceholder={inlineThinkingPlaceholder}
             />
             {/* 工具调用卡片：紧跟当前 streaming assistant 消息之后 */}

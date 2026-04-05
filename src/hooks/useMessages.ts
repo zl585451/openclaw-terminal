@@ -10,6 +10,8 @@ import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile } from '../ui/chat/ChatTab.v2';
+import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../utils/cotExtract';
+import { stripThinkModeMarker } from '../utils/socraticTemplates';
 
 // ── Streak helpers ────────────────────────────────────────────────────────────
 function getTodayStr(): string {
@@ -125,11 +127,15 @@ export function useMessages({
   messages,
   setMessages,
   permissions,
-  streamSpeedMs: _streamSpeedMs,
+  streamSpeedMs,
   onStatusChange,
 }: UseMessagesOptions): UseMessagesReturn {
   const canvas = useCanvas();
   const transportPacingMs = 4;
+  const scrollRef = useRef(scroll);
+  scrollRef.current = scroll;
+  const streamSpeedMsRef = useRef(streamSpeedMs);
+  streamSpeedMsRef.current = streamSpeedMs;
   // ── State ─────────────────────────────────────────────────────────────────
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
@@ -150,14 +156,26 @@ export function useMessages({
   const [pendingPills, setPendingPills] = useState<string[] | null>(null);
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
-  const [, setStreamRenderTick] = useState(0);
+  /** 流式阶段 reconcile 每帧调用会引发大量 layout；限制频率 */
+  const lastStreamReconcileMsRef = useRef(0);
+  /** usage 事件 RAF 合并：同一帧多条合并后再 setState */
+  const usageBatchRef = useRef<Array<{ usage: any; isSnapshot: boolean }>>([]);
+  const usageFlushRafRef = useRef<number | null>(null);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const streamingMessageRef = useRef('');
   const fullTextRef = useRef<string>('');
   const streamingDomRef = useRef<HTMLPreElement | null>(null);
   const pendingFullTextSyncRafRef = useRef<number | null>(null);
-  const streamUiRafRef = useRef<number | null>(null);
+  /** 流式正文 DOM 直写 RAF 链（把大 chunk 拆成多帧铺开，像刷油漆） */
+  const streamPaintRafRef = useRef<number | null>(null);
+  /** 已向 <pre> 展示的「正文」字符数（相对 extract 后的 main） */
+  const streamPaintShownLenRef = useRef(0);
+  /** 直写节奏预算，限制每帧只追加极少字符，减少“蹦字感” */
+  const streamPaintBudgetRef = useRef(0);
+  const streamPaintLastTsRef = useRef(0);
+  const pendingStreamFinalizeRef = useRef(false);
+  const runStreamPaintTickRef = useRef<() => void>(() => {});
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
   // ── isStreaming (memo) ────────────────────────────────────────────────────
@@ -170,14 +188,107 @@ export function useMessages({
       (!!last?.isStreaming && last.role === 'assistant')
     );
   }, [fsmPhase, messages]);
-  const isMiniMaxModel = useMemo(() => /^MiniMax-/i.test(modelName || ''), [modelName]);
+  const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
+    const finalRaw = stripThinkModeMarker(rawText ?? fullTextRef.current ?? '');
+    pendingStreamFinalizeRef.current = false;
+    streamPaintShownLenRef.current = 0;
+    streamPaintBudgetRef.current = 0;
+    streamPaintLastTsRef.current = 0;
+    try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[useMessages] fsm.onTurnFinish', e); }
+    oct.ingest.reset();
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === 'assistant' && last.isStreaming) {
+        return prev.map((msg, idx) =>
+          idx === prev.length - 1
+            ? { ...msg, content: finalRaw || msg.content, isStreaming: false, isStreamingRaw: false }
+            : msg
+        );
+      }
+      return prev;
+    });
+  }, [oct, setMessages]);
+
+  runStreamPaintTickRef.current = () => {
+    streamPaintRafRef.current = null;
+    const now = performance.now();
+    if (!streamPaintLastTsRef.current) streamPaintLastTsRef.current = now;
+    const dt = Math.min(80, now - streamPaintLastTsRef.current);
+    if (dt < 24 && !pendingStreamFinalizeRef.current) {
+      streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
+      return;
+    }
+    streamPaintLastTsRef.current = now;
+    const raw = fullTextRef.current;
+    const el = streamingDomRef.current;
+    const markers = hasAssistantCotMarkers(raw);
+    const main = markers ? extractAssistantCotAndMain(raw).mainContent : raw;
+    const targetLen = main.length;
+    let shown = streamPaintShownLenRef.current;
+    if (shown > targetLen) {
+      shown = targetLen;
+      streamPaintShownLenRef.current = shown;
+    }
+    const behind = targetLen - shown;
+
+    if (!el) {
+      if (behind > 0) {
+        streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
+      }
+      return;
+    }
+
+    if (behind > 0) {
+      let effectiveMs = Math.max(3, streamSpeedMsRef.current);
+      if (behind > 32) effectiveMs *= 0.9;
+      if (behind > 96) effectiveMs *= 0.82;
+      if (pendingStreamFinalizeRef.current) effectiveMs *= 0.7;
+
+      streamPaintBudgetRef.current += dt / effectiveMs;
+      let step = Math.floor(streamPaintBudgetRef.current);
+      if (step <= 0 && streamPaintBudgetRef.current >= 0.82) {
+        step = 1;
+      }
+      step = Math.min(behind, Math.max(0, Math.min(step, pendingStreamFinalizeRef.current ? 5 : 3)));
+
+      if (step > 0) {
+        streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
+        shown = Math.min(targetLen, shown + step);
+        streamPaintShownLenRef.current = shown;
+        el.textContent = main.slice(0, shown);
+      }
+    } else if (targetLen > 0) {
+      el.textContent = main;
+    }
+
+    try {
+      const t = performance.now();
+      // 略拉长间隔，减轻与 textContent 触发布局在同一帧内叠 getBoundingClientRect 的「拖住」感
+      if (t - lastStreamReconcileMsRef.current >= 120) {
+        lastStreamReconcileMsRef.current = t;
+        scrollRef.current.reconcile();
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const rawEnd = fullTextRef.current;
+    const mainEnd = hasAssistantCotMarkers(rawEnd)
+      ? extractAssistantCotAndMain(rawEnd).mainContent.length
+      : rawEnd.length;
+    if (streamPaintShownLenRef.current < mainEnd) {
+      streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
+      return;
+    }
+
+    if (pendingStreamFinalizeRef.current) {
+      finalizeStreamingAssistantMessage(rawEnd);
+    }
+  };
 
   const scheduleStreamUiTick = useCallback(() => {
-    if (streamUiRafRef.current != null) return;
-    streamUiRafRef.current = requestAnimationFrame(() => {
-      streamUiRafRef.current = null;
-      setStreamRenderTick((v) => v + 1);
-    });
+    if (streamPaintRafRef.current != null) return;
+    streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
   }, []);
 
   // ── ensureStreamingAssistantMessage ───────────────────────────────────────
@@ -205,6 +316,33 @@ export function useMessages({
       });
     });
   }, [getNextMessageId, setMessages]);
+
+  const scheduleUsageFlush = useCallback(() => {
+    if (usageFlushRafRef.current != null) return;
+    usageFlushRafRef.current = requestAnimationFrame(() => {
+      usageFlushRafRef.current = null;
+      const batch = usageBatchRef.current;
+      usageBatchRef.current = [];
+      if (batch.length === 0) return;
+      for (const { usage, isSnapshot } of batch) {
+        if (usage.inputTokens != null) {
+          if (isSnapshot) setTokenIn(usage.inputTokens);
+          else setTokenIn((v) => (v ?? 0) + usage.inputTokens);
+        }
+        if (usage.outputTokens != null) {
+          if (isSnapshot) setTokenOut(usage.outputTokens);
+          else setTokenOut((v) => (v ?? 0) + usage.outputTokens);
+        }
+        if (usage.cost != null) {
+          if (isSnapshot) setCost(Number(usage.cost));
+          else setCost((v) => (v ?? 0) + Number(usage.cost));
+        }
+        if (usage.ctxUsed != null) setCtxUsed(usage.ctxUsed);
+        if (usage.ctxMax != null) setCtxMax(usage.ctxMax);
+        if (usage.session != null) setSession(usage.session);
+      }
+    });
+  }, []);
 
   // ── useWebSocket ──────────────────────────────────────────────────────────
   const ws = useWebSocket({
@@ -235,14 +373,9 @@ export function useMessages({
           try { oct.fsm.onToken(); } catch {}
         }
 
-        if (isMiniMaxModel) {
-          scheduleStreamUiTick();
-          ensureStreamingAssistantMessage();
-        } else {
-          typewriter.feed(fullTextRef.current);
-          ensureStreamingAssistantMessage();
-        }
-        }
+        scheduleStreamUiTick();
+        ensureStreamingAssistantMessage();
+      }
     },
 
     onChatDone: (content) => {
@@ -258,18 +391,13 @@ export function useMessages({
           oct.stream.end();
         } catch {
           recoverOctStreamFromEndFailure(oct);
-          if (!isMiniMaxModel) typewriter.finish();
           const fb = String(content || '').trim();
           if (fb) {
             streamingMessageRef.current = fb;
             fullTextRef.current = fb;
-            if (isMiniMaxModel) {
-              scheduleStreamUiTick();
-              ensureStreamingAssistantMessage();
-            } else {
-              typewriter.feed(fullTextRef.current);
-              ensureStreamingAssistantMessage();
-            }
+            pendingStreamFinalizeRef.current = true;
+            scheduleStreamUiTick();
+            ensureStreamingAssistantMessage();
           }
         }
         return;
@@ -279,16 +407,6 @@ export function useMessages({
       if (finalStreamContent) {
         streamingMessageRef.current = finalStreamContent;
         fullTextRef.current = finalStreamContent;
-        if (!systemReply) {
-          if (isMiniMaxModel) {
-            scheduleStreamUiTick();
-            ensureStreamingAssistantMessage();
-          } else {
-            typewriter.feed(fullTextRef.current);
-            typewriter.finish();
-            ensureStreamingAssistantMessage();
-          }
-        }
       }
 
       const text = finalStreamContent;
@@ -392,21 +510,8 @@ export function useMessages({
     },
 
     onUsage: (usage, isSnapshot) => {
-      if (usage.inputTokens != null) {
-        if (isSnapshot) setTokenIn(usage.inputTokens);
-        else setTokenIn((v) => (v ?? 0) + usage.inputTokens);
-      }
-      if (usage.outputTokens != null) {
-        if (isSnapshot) setTokenOut(usage.outputTokens);
-        else setTokenOut((v) => (v ?? 0) + usage.outputTokens);
-      }
-      if (usage.cost != null) {
-        if (isSnapshot) setCost(Number(usage.cost));
-        else setCost((v) => (v ?? 0) + Number(usage.cost));
-      }
-      if (usage.ctxUsed != null) setCtxUsed(usage.ctxUsed);
-      if (usage.ctxMax != null) setCtxMax(usage.ctxMax);
-      if (usage.session != null) setSession(usage.session);
+      usageBatchRef.current.push({ usage, isSnapshot });
+      scheduleUsageFlush();
     },
 
     onModelName: (name) => setModelName(name),
@@ -423,22 +528,26 @@ export function useMessages({
   useEffect(() => {
     const { stream, ingest } = oct;
 
-    const applyRawToMessages = (raw: string) => {
+    const applyRawToMessages = () => {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
-          if (last.content === raw && last.isStreamingRaw) return prev;
           return prev.map((m, idx) =>
-            idx === prev.length - 1 ? { ...m, content: raw, isStreamingRaw: true } : m
+            idx === prev.length - 1
+              ? (
+                  m.isStreamingRaw
+                    ? m
+                    : { ...m, isStreamingRaw: true }
+                )
+              : m
           );
         }
-        if (!raw.trim()) return prev;
         return [
           ...prev,
           {
             id: getNextMessageId(),
             role: 'assistant' as const,
-            content: raw,
+            content: '',
             isStreaming: true,
             isStreamingRaw: true,
             timestamp: Date.now(),
@@ -453,24 +562,20 @@ export function useMessages({
         const raw = ingest.getAccumulatedRaw();
         streamingMessageRef.current = raw;
         fullTextRef.current = raw;
-        if (isMiniMaxModel) {
-          scheduleStreamUiTick();
-          ensureStreamingAssistantMessage();
-        } else {
-          applyRawToMessages(raw);
-          typewriter.feed(raw);
-        }
+        applyRawToMessages();
+        scheduleStreamUiTick();
       }
-      if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
+        if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
         queueMicrotask(() => {
-          if (!isMiniMaxModel) typewriter.finish();
+          pendingStreamFinalizeRef.current = true;
+          scheduleStreamUiTick();
           try { stream.close(); } catch (e) { console.warn('[useMessages] stream.close', e); }
         });
       }
     });
 
     return () => { unsubscribe(); };
-  }, [oct, getNextMessageId, setMessages, isMiniMaxModel, scheduleStreamUiTick, ensureStreamingAssistantMessage]);
+  }, [oct, getNextMessageId, setMessages, scheduleStreamUiTick]);
 
   // ── pendingPills: reset on messages change ────────────────────────────────
   useEffect(() => {
@@ -482,12 +587,16 @@ export function useMessages({
     onStatusChange?.(ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
   }, [ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
 
-  // ── streamUiRafRef cleanup ────────────────────────────────────────────────
+  // ── streamPaintRafRef / usageFlushRafRef cleanup ───────────────────────────
   useEffect(() => {
     return () => {
-      if (streamUiRafRef.current != null) {
-        cancelAnimationFrame(streamUiRafRef.current);
-        streamUiRafRef.current = null;
+      if (streamPaintRafRef.current != null) {
+        cancelAnimationFrame(streamPaintRafRef.current);
+        streamPaintRafRef.current = null;
+      }
+      if (usageFlushRafRef.current != null) {
+        cancelAnimationFrame(usageFlushRafRef.current);
+        usageFlushRafRef.current = null;
       }
     };
   }, []);
@@ -539,7 +648,15 @@ export function useMessages({
     pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
     streamingMessageRef.current = '';
     fullTextRef.current = '';
-    if (!isMiniMaxModel) typewriter.reset();
+    streamPaintShownLenRef.current = 0;
+    streamPaintBudgetRef.current = 0;
+    streamPaintLastTsRef.current = 0;
+    pendingStreamFinalizeRef.current = false;
+    if (streamPaintRafRef.current != null) {
+      cancelAnimationFrame(streamPaintRafRef.current);
+      streamPaintRafRef.current = null;
+    }
+    typewriter.reset();
     oct.ingest.reset();
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
@@ -624,7 +741,15 @@ export function useMessages({
     pendingSystemReplyMap.current.set(newRequestId, isSystem);
     streamingMessageRef.current = '';
     fullTextRef.current = '';
-    if (!isMiniMaxModel) typewriter.reset();
+    streamPaintShownLenRef.current = 0;
+    streamPaintBudgetRef.current = 0;
+    streamPaintLastTsRef.current = 0;
+    pendingStreamFinalizeRef.current = false;
+    if (streamPaintRafRef.current != null) {
+      cancelAnimationFrame(streamPaintRafRef.current);
+      streamPaintRafRef.current = null;
+    }
+    typewriter.reset();
     oct.ingest.reset();
     if (!isSystem) {
       setAwaitingResponse(true);

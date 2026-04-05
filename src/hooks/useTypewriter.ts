@@ -19,6 +19,7 @@ export interface UseTypewriterOptions {
   baseDelayMs: number;
   typingSound: TypingSoundMode;
   onFinished: (finalText: string) => void;
+  enabled?: boolean;
 }
 
 export interface UseTypewriterReturn {
@@ -92,7 +93,7 @@ function pickPreferredNextIndex(text: string, idx: number, maxChars: number): nu
 // ── Hook ────────────────────────────────────────────────
 
 export function useTypewriter(options: UseTypewriterOptions): UseTypewriterReturn {
-  const { baseDelayMs, typingSound, onFinished } = options;
+  const { baseDelayMs, typingSound, onFinished, enabled = true } = options;
 
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
@@ -151,6 +152,18 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
 
   // ── RAF tick 循环 ──
   useEffect(() => {
+    if (!enabled) {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      budgetRef.current = 0;
+      lastTsRef.current = 0;
+      startTsRef.current = 0;
+      frameCountRef.current = 0;
+      return;
+    }
+
     const tryStart = () => {
       if (rafRef.current !== null) return;
 
@@ -298,7 +311,7 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
         rafRef.current = null;
       }
     };
-  }, [baseDelayMs, typingSound]);
+  }, [baseDelayMs, typingSound, enabled]);
 
   return { feed, finish, reset, displayedText, isTyping };
 }
