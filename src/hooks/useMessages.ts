@@ -150,6 +150,7 @@ export function useMessages({
   const [pendingPills, setPendingPills] = useState<string[] | null>(null);
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
   const [streak, setStreak] = useState<number>(() => getStreakData().streak);
+  const [, setStreamRenderTick] = useState(0);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const streamingMessageRef = useRef('');
@@ -169,6 +170,15 @@ export function useMessages({
       (!!last?.isStreaming && last.role === 'assistant')
     );
   }, [fsmPhase, messages]);
+  const isMiniMaxModel = useMemo(() => /^MiniMax-/i.test(modelName || ''), [modelName]);
+
+  const scheduleStreamUiTick = useCallback(() => {
+    if (streamUiRafRef.current != null) return;
+    streamUiRafRef.current = requestAnimationFrame(() => {
+      streamUiRafRef.current = null;
+      setStreamRenderTick((v) => v + 1);
+    });
+  }, []);
 
   // ── ensureStreamingAssistantMessage ───────────────────────────────────────
   const ensureStreamingAssistantMessage = useCallback(() => {
@@ -225,8 +235,13 @@ export function useMessages({
           try { oct.fsm.onToken(); } catch {}
         }
 
+        if (isMiniMaxModel) {
+          scheduleStreamUiTick();
+          ensureStreamingAssistantMessage();
+        } else {
           typewriter.feed(fullTextRef.current);
           ensureStreamingAssistantMessage();
+        }
         }
     },
 
@@ -243,13 +258,18 @@ export function useMessages({
           oct.stream.end();
         } catch {
           recoverOctStreamFromEndFailure(oct);
-          typewriter.finish();
+          if (!isMiniMaxModel) typewriter.finish();
           const fb = String(content || '').trim();
           if (fb) {
             streamingMessageRef.current = fb;
             fullTextRef.current = fb;
-            typewriter.feed(fullTextRef.current);
-            ensureStreamingAssistantMessage();
+            if (isMiniMaxModel) {
+              scheduleStreamUiTick();
+              ensureStreamingAssistantMessage();
+            } else {
+              typewriter.feed(fullTextRef.current);
+              ensureStreamingAssistantMessage();
+            }
           }
         }
         return;
@@ -260,9 +280,14 @@ export function useMessages({
         streamingMessageRef.current = finalStreamContent;
         fullTextRef.current = finalStreamContent;
         if (!systemReply) {
-          typewriter.feed(fullTextRef.current);
-          typewriter.finish();
-          ensureStreamingAssistantMessage();
+          if (isMiniMaxModel) {
+            scheduleStreamUiTick();
+            ensureStreamingAssistantMessage();
+          } else {
+            typewriter.feed(fullTextRef.current);
+            typewriter.finish();
+            ensureStreamingAssistantMessage();
+          }
         }
       }
 
@@ -428,19 +453,24 @@ export function useMessages({
         const raw = ingest.getAccumulatedRaw();
         streamingMessageRef.current = raw;
         fullTextRef.current = raw;
-        applyRawToMessages(raw);
-        typewriter.feed(raw);
+        if (isMiniMaxModel) {
+          scheduleStreamUiTick();
+          ensureStreamingAssistantMessage();
+        } else {
+          applyRawToMessages(raw);
+          typewriter.feed(raw);
+        }
       }
       if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
         queueMicrotask(() => {
-          typewriter.finish();
+          if (!isMiniMaxModel) typewriter.finish();
           try { stream.close(); } catch (e) { console.warn('[useMessages] stream.close', e); }
         });
       }
     });
 
     return () => { unsubscribe(); };
-  }, [oct, getNextMessageId, setMessages]);
+  }, [oct, getNextMessageId, setMessages, isMiniMaxModel, scheduleStreamUiTick, ensureStreamingAssistantMessage]);
 
   // ── pendingPills: reset on messages change ────────────────────────────────
   useEffect(() => {
@@ -509,7 +539,7 @@ export function useMessages({
     pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
     streamingMessageRef.current = '';
     fullTextRef.current = '';
-    typewriter.reset();
+    if (!isMiniMaxModel) typewriter.reset();
     oct.ingest.reset();
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
@@ -594,7 +624,7 @@ export function useMessages({
     pendingSystemReplyMap.current.set(newRequestId, isSystem);
     streamingMessageRef.current = '';
     fullTextRef.current = '';
-    typewriter.reset();
+    if (!isMiniMaxModel) typewriter.reset();
     oct.ingest.reset();
     if (!isSystem) {
       setAwaitingResponse(true);

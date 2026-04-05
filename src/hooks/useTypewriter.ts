@@ -31,7 +31,7 @@ export interface UseTypewriterReturn {
 
 // ── 常量 ────────────────────────────────────────────────
 
-const MAX_CHARS_PER_FRAME = 4;
+const MAX_CHARS_PER_FRAME = 2;
 const BATCH_FRAMES = 1;
 
 // ── 字符工具函数 ────────────────────────────────────────
@@ -174,7 +174,7 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
       if (displayedLenRef.current >= visibleTextRef.current.length && !streamDoneRef.current) return;
 
       setIsTyping(true);
-      budgetRef.current = 30;
+      budgetRef.current = 10;
       startTsRef.current = performance.now();
       lastTsRef.current = 0;
       frameCountRef.current = 0;
@@ -214,8 +214,9 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
 
         while (typedThisFrame < dynamicFrameCap && idx < fullLen) {
           const remain = dynamicFrameCap - typedThisFrame;
-          const preferSingleStep = !streamDoneRef.current && backlog < 48;
-          let targetIdx = preferSingleStep
+          // 流式阶段强制逐字符推进，避免“按词/按段蹦出来”。
+          // 只在 stream done 后再允许更激进的收尾追赶。
+          let targetIdx = !streamDoneRef.current
             ? getNextCharIndex(full, idx)
             : pickPreferredNextIndex(full, idx, remain);
           if (targetIdx <= idx) targetIdx = getNextCharIndex(full, idx);

@@ -208,6 +208,8 @@ export interface ChatMessageItemProps {
   isLastAssistant?: boolean;
   /** 打字机 DOM ref，供 AssistantMessageBody 直接写 textContent */
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
+  /** 流式阶段跳过 markdown/block 解析，直接渲染纯文本，降低重排抖动 */
+  usePlainStreamingText?: boolean;
   /** Markdown 组件配置 */
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
   /** 从 [cot]…[/cot] 提取的思维链；null/undefined 表示本条无 CoT */
@@ -329,6 +331,7 @@ type AssistantMessageBodyProps = Pick<
   | 'isLastAssistant'
 > & {
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
+  usePlainStreamingText?: boolean;
 };
 
 const AssistantMessageBody = memo(function AssistantMessageBody({
@@ -349,6 +352,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   segments,
   isLastAssistant,
   streamingDomRef: _streamingDomRef,
+  usePlainStreamingText = false,
   markdownComponents,
 }: AssistantMessageBodyProps & { markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] }) {
   // Layout Lock：流式开始时记录高度并锁定 minHeight，防止结束时收缩跳动
@@ -377,6 +381,21 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
 
   if (msg.isSystemReply) {
     return <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />;
+  }
+
+  if (isStreamingMsg && usePlainStreamingText) {
+    return (
+      <div
+        ref={bubbleRef}
+        className="msg-assistant-body"
+        style={{ display: 'flex', flexDirection: 'column' }}
+      >
+        <pre className="msg-content msg-content-streaming msg-content-streaming-root">
+          {textToShow || ''}
+        </pre>
+        <TypewriterCursor show />
+      </div>
+    );
   }
 
   return (
@@ -620,6 +639,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     segments,
     isLastAssistant,
     streamingDomRef,
+    usePlainStreamingText = false,
     markdownComponents,
     cotContent,
     cotStreaming,
@@ -676,6 +696,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             segments={segments}
             isLastAssistant={isLastAssistant}
             streamingDomRef={streamingDomRef}
+            usePlainStreamingText={usePlainStreamingText}
             markdownComponents={markdownComponents}
           />
         ) : (
@@ -727,6 +748,7 @@ export interface ChatMessageListProps {
   }>;
   getToolDisplayName?: (tool: string) => string;
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
+  usePlainStreamingText?: boolean;
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
 }
 
@@ -751,6 +773,7 @@ export const ChatMessageList = function ChatMessageList({
   activeTools = [],
   getToolDisplayName = (t) => t,
   streamingDomRef,
+  usePlainStreamingText = false,
   markdownComponents,
 }: ChatMessageListProps) {
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
@@ -854,11 +877,24 @@ export const ChatMessageList = function ChatMessageList({
             ? extractAssistantCotAndMain(fullContent)
             : { cotContent: null, cotDone: true, mainContent: fullContent };
         const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
+        const shouldBypassStreamingParse =
+          usePlainStreamingText && msg.role === 'assistant' && isStreamingMsg;
         const parsed =
           msg.role === 'user'
             ? USER_ROW_PARSE_PLACEHOLDER
             : msg.role === 'assistant'
               ? (() => {
+                  if (shouldBypassStreamingParse) {
+                    return {
+                      text: display,
+                      options: STABLE_EMPTY_OPTIONS,
+                      totalPages: undefined,
+                      isTaskList: false,
+                      isReflectiveQuestions: false,
+                      forcePills: undefined,
+                      segments: undefined,
+                    };
+                  }
                   const fc = typeof fullContent === 'string' ? fullContent : '';
                   // 如果已经通过 streamingCotContent 提取了 CoT 内容，
                   // 就把剥离了 [cot]...[/cot] 的纯正文传给 blockRouter，
@@ -943,10 +979,11 @@ export const ChatMessageList = function ChatMessageList({
               quickSend={quickSend}
               onContextMenu={onMessageContextMenu}
               onQuoteQuestion={onQuoteQuestion}
-              isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
-              streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
-              markdownComponents={markdownComponents}
-              cotContent={msg.role === 'assistant' ? streamingCotContent : undefined}
+            isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
+            streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
+            usePlainStreamingText={usePlainStreamingText}
+            markdownComponents={markdownComponents}
+            cotContent={msg.role === 'assistant' ? streamingCotContent : undefined}
               cotStreaming={
                 msg.role === 'assistant' && streamingCotContent != null ? !streamingCotDone : false
               }

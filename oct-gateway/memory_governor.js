@@ -8,6 +8,9 @@ const MAX_INJECTION_CHARS = 800;
 const REVIEW_QUEUE_PREFIX = 'core://agent/review_queue';
 const GOVERNOR_VERSION = 'phase1.5';
 
+const EXPLICIT_MEMORY_INTENT_RE = /(记住|记一下|记下来|以后都|默认|偏好|习惯|我喜欢|我不喜欢|请保存|长期|设定|规则|约定)/;
+const EPHEMERAL_SIGNAL_RE = /(临时|测试|随手|暂时|一会|稍后|刚刚|今天先|这次先|执行成功|执行失败|报错|日志|调试|点击|打开|运行|重启|试一下)/;
+
 function cleanText(input) {
   return stripCotText(String(input || ''))
     .replace(/\s+\n/g, '\n')
@@ -49,6 +52,11 @@ function classifyRecord(record = {}) {
   return 'scratch';
 }
 
+function hasExplicitMemoryIntent(record = {}) {
+  const combined = `${record.userMsg || ''}\n${record.content || ''}\n${record.disclosure || ''}`;
+  return EXPLICIT_MEMORY_INTENT_RE.test(combined);
+}
+
 function scorePromotion(record = {}) {
   const userMsg = String(record.userMsg || '');
   const content = String(record.content || '');
@@ -87,6 +95,22 @@ function looksLikeTestRecord(record = {}) {
   ];
   const combined = `${content} ${disclosure} ${source}`;
   return signals.some((s) => combined.includes(s));
+}
+
+function looksLikeEphemeralRecord(record = {}) {
+  const combined = `${record.userMsg || ''}\n${record.content || ''}\n${record.disclosure || ''}`;
+  return EPHEMERAL_SIGNAL_RE.test(combined);
+}
+
+function isLongTermNamespace(uri = '') {
+  const key = String(uri || '').toLowerCase();
+  return (
+    key.startsWith('core://my_user/preferences') ||
+    key.startsWith('core://my_user/profile') ||
+    key.startsWith('core://amy/') ||
+    key.startsWith('core://agent/identity') ||
+    key.startsWith('core://agent/definition')
+  );
 }
 
 function slugify(text) {
@@ -205,6 +229,62 @@ function routeRecord(record = {}) {
   }
 
   const score = scorePromotion(sanitized);
+  const explicitMemoryIntent = hasExplicitMemoryIntent(sanitized);
+  const ephemeralLike = looksLikeEphemeralRecord(sanitized);
+
+  if (!explicitMemoryIntent && content.length < 10 && source !== 'feedback' && source !== 'clarification_preference') {
+    const result = { decision: 'reject', reason: 'too_short_low_value', layer };
+    log.info('routeRecord', {
+      source,
+      decision: result.decision,
+      reason: result.reason,
+      layer: result.layer,
+      uri,
+    });
+    return result;
+  }
+
+  if (ephemeralLike && !explicitMemoryIntent && layer === 'scratch' && score < 4) {
+    const result = { decision: 'reject', reason: 'ephemeral_record_blocked', layer };
+    log.info('routeRecord', {
+      source,
+      decision: result.decision,
+      reason: result.reason,
+      layer: result.layer,
+      uri,
+    });
+    return result;
+  }
+
+  if (
+    isLongTermNamespace(uri) &&
+    source !== 'feedback' &&
+    source !== 'clarification_preference' &&
+    !explicitMemoryIntent &&
+    score < 5
+  ) {
+    const reviewUri = `${REVIEW_QUEUE_PREFIX}/${layer}/${Date.now()}_${slugify(uri)}`;
+    const reviewContent = buildReviewQueueRecord(sanitized, { score, layer });
+    const result = {
+      decision: 'hold',
+      reason: 'long_term_namespace_requires_confirmation',
+      layer,
+      uri: reviewUri,
+      content: reviewContent,
+      priority: 2,
+      disclosure: `待审核记忆候选：${uri}`,
+    };
+    log.info('routeRecord', {
+      source,
+      decision: result.decision,
+      reason: result.reason,
+      layer: result.layer,
+      uri,
+      reviewUri,
+    });
+    return result;
+  }
+
   const shouldPromote =
     layer === 'project' ||
     layer === 'archive' ||

@@ -158,6 +158,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     },
   });
 
+
   const gateway = useGateway();
 
   const files = useFileAttachment();
@@ -395,7 +396,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           isStreaming={msgs.isStreaming}
           awaitingResponse={msgs.awaitingResponse}
           streamingContent={msgs.fullTextRef.current}
-          displayedText={typewriter.displayedText}
+          displayedText={/^MiniMax-/i.test(msgs.modelName || '') ? (msgs.fullTextRef.current || '') : typewriter.displayedText}
+          usePlainStreamingText={/^MiniMax-/i.test(msgs.modelName || '')}
           speakingMessageId={speakingMessageId}
           agentPhase={msgs.agentPhase}
           thinkingElapsed={msgs.thinkingElapsed}
