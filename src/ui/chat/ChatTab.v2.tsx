@@ -18,8 +18,7 @@ import { StreamRouter } from '../../core/streamRouter';
 import { BlockIngest } from '../../core/blockIngest';
 import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
-import { useCanvas } from '../../contexts/CanvasContext';
-import CanvasPanel from '../../components/CanvasPanel';
+import { useCanvasBridge } from '../../hooks/useCanvasBridge';
 // playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
 import { extractAssistantCotAndMain } from '../../utils/cotExtract';
@@ -121,11 +120,11 @@ interface ChatTabProps {
 const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange }) => {
   const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
-  const canvas = useCanvas();
+  const canvasBridge = useCanvasBridge();
 
   const mdComponents = useMemo(
-    () => createMarkdownComponents(canvas.openCanvas),
-    [canvas.openCanvas]
+    () => createMarkdownComponents(canvasBridge.openCanvas),
+    [canvasBridge.openCanvas]
   );
 
   const octRuntimeRef = useRef<{ fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest } | null>(null);
@@ -411,7 +410,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         onDelete={(msgId) => setMessages((prev) => prev.filter((m) => m.id !== msgId))}
       />
     <div
-      className={`chat-tab${canvas.isOpen ? ' canvas-active' : ''}`}
+      className="chat-tab"
       onPaste={files.handlePaste}
       onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types?.includes('Files')) files.setDragging(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) files.setDragging(false); }}
@@ -460,9 +459,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             </button>
             <button
               type="button"
-              className={`voice-toggle ${canvas.isOpen ? 'on' : ''}`}
-              onClick={canvas.openPanel}
-              title={canvas.isOpen ? 'Canvas 面板已打开' : '打开 Canvas 面板'}
+              className={`voice-toggle ${canvasBridge.isOpen ? 'on' : ''}`}
+              onClick={canvasBridge.openPanel}
+              title={canvasBridge.isOpen ? 'Canvas 面板已打开' : '打开 Canvas 面板'}
             >
               ▣ OPEN CANVAS
             </button>
@@ -597,13 +596,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         localDate={timers.localDate}
       />
     {/* chat-tab 结束 */}
-    </div>
-
-    <div
-      className={`canvas-drawer${canvas.isOpen ? ' canvas-drawer--open' : ''}`}
-    >
-      <div className="canvas-drawer-shadow" aria-hidden />
-      <CanvasPanel />
     </div>
 
     {files.screenshotFlash && (

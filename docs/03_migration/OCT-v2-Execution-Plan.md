@@ -159,7 +159,7 @@ Step 3: 【Claude】 输出该 Phase 的 Cursor Prompt
 Step 4: 【Zilong → Cursor】 把 Cursor Prompt 喂给 Cursor 执行
         如果 Cursor 出问题：
         - 简单问题 → 让 Cursor 自己修
-        - 复杂问题 → 让 AMY 出 claude-brief.md → 交给 Claude 诊断
+        - 复杂问题 → 直接整理背景/问题/已知现象 → 交给 Claude 诊断
 
 Step 5: 【Zilong】 验收测试
         按 Cursor Prompt 末尾的"验证方式"逐项测试

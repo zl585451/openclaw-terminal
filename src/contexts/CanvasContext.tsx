@@ -65,7 +65,13 @@ interface CanvasContextValue extends CanvasState {
   title: string;
   language: string;
   openPanel: () => void;
-  openCanvas: (content: string, mode: CanvasMode, title?: string, language?: string) => void;
+  openCanvas: (
+    content: string,
+    mode: CanvasMode,
+    title?: string,
+    language?: string,
+    artifactType?: CanvasArtifactType
+  ) => void;
   closeCanvas: () => void;
   updateContent: (content: string) => void;
   setActiveDocument: (documentId: string) => void;
@@ -115,9 +121,17 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     [state.activeDocumentId, state.documents]
   );
 
-  const openCanvas = useCallback((content: string, mode: CanvasMode, title = '', language = 'text') => {
+  const openCanvas = useCallback((
+    content: string,
+    mode: CanvasMode,
+    title = '',
+    language = 'text',
+    artifactType?: CanvasArtifactType
+  ) => {
     setState((prev) => {
-      const nextDocument = createCanvasDocument(content, mode, title, language);
+      const nextDocument = createCanvasDocument(content, mode, title, language, {
+        artifactType,
+      });
       return {
         isOpen: true,
         documents: [...prev.documents, nextDocument],

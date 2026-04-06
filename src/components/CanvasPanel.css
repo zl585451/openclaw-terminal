@@ -116,6 +116,73 @@
   display: block;
 }
 
+.canvas-workspace--studio {
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-details-panel {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+}
+
+.canvas-studio-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  padding: 10px;
+}
+
+.canvas-studio-card-title {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
+  margin-bottom: 8px;
+}
+
+.canvas-studio-card-body {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.canvas-studio-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.canvas-studio-meta-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.canvas-studio-meta-key {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.canvas-studio-meta-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
 .canvas-content {
   flex: 1;
   overflow-y: auto;
@@ -128,12 +195,22 @@
   width: 100%;
 }
 
+.canvas-content--studio {
+  width: 100%;
+  background: var(--bg-surface);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .canvas-preview {
   padding: 24px;
   height: 100%;
+  flex: 1;
+  min-height: 0;
   max-width: 100%;
   box-sizing: border-box;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .canvas-code-preview {
@@ -151,31 +228,44 @@
 }
 
 .canvas-mermaid-preview {
-  min-height: 100%;
-  padding: 14px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px;
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(12, 18, 28, 0.96), rgba(10, 14, 22, 0.98));
-  border: 1px solid rgba(114, 146, 189, 0.28);
+  background: linear-gradient(180deg, var(--mermaid-card-header), var(--mermaid-card-bg));
+  border: 1px solid var(--mermaid-card-border);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.canvas-mermaid-preview--compact {
+  min-height: 196px;
+  height: auto;
+  padding: 0;
+  gap: 0;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .canvas-mermaid-toolbar {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .canvas-mermaid-btn {
   padding: 5px 10px;
-  background: rgba(13, 19, 28, 0.92);
-  border: 1px solid rgba(117, 146, 184, 0.4);
-  color: #d2e3ff;
-  font-family: var(--font-sans);
+  background: color-mix(in srgb, var(--mermaid-card-header) 88%, #000 12%);
+  border: 1px solid var(--mermaid-card-border);
+  color: var(--text-secondary);
+  font-family: var(--mermaid-font-family, var(--font-sans));
   font-size: 12px;
-  border-radius: 6px;
+  border-radius: 999px;
   cursor: pointer;
 }
 
@@ -184,13 +274,31 @@
   border-color: var(--border-primary);
 }
 
+.canvas-mermaid-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .canvas-mermaid-stage {
   flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 14px;
+  padding: 10px;
   border-radius: 10px;
-  background: rgba(10, 16, 24, 0.8);
-  border: 1px solid rgba(120, 149, 188, 0.26);
+  background: var(--mermaid-stage-bg);
+  border: 1px solid var(--mermaid-stage-border);
+}
+
+.canvas-mermaid-stage--compact {
+  min-height: 176px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
 }
 
 .canvas-mermaid-zoom {
@@ -199,10 +307,88 @@
   min-width: 100%;
 }
 
+.canvas-mermaid-zoom--compact {
+  min-width: auto;
+  margin: 0 auto;
+}
+
 .canvas-mermaid-preview svg {
   width: auto;
   max-width: none;
   height: auto;
+  overflow: visible;
+}
+
+.canvas-mermaid-preview svg .node rect,
+.canvas-mermaid-preview svg .node polygon,
+.canvas-mermaid-preview svg .node circle,
+.canvas-mermaid-preview svg .node ellipse,
+.canvas-mermaid-preview svg .cluster rect {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.08));
+  stroke-width: 1.15px !important;
+}
+
+.canvas-mermaid-preview svg .cluster rect {
+  stroke-width: 1px !important;
+}
+
+.canvas-mermaid-preview svg text,
+.canvas-mermaid-preview svg tspan {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-family: var(--mermaid-font-family, var(--font-display, var(--font-sans))) !important;
+}
+
+.canvas-mermaid-preview svg .edgePath path,
+.canvas-mermaid-preview svg .flowchart-link {
+  stroke-width: 1.35px !important;
+}
+
+.canvas-mermaid-preview svg .edgeLabel rect {
+  stroke: none !important;
+  opacity: 0.9;
+}
+
+.canvas-mermaid-preview--compact svg text,
+.canvas-mermaid-preview--compact svg tspan {
+  font-size: 15px !important;
+}
+
+.canvas-mermaid-preview--compact svg .node rect,
+.canvas-mermaid-preview--compact svg .node polygon,
+.canvas-mermaid-preview--compact svg .node circle,
+.canvas-mermaid-preview--compact svg .node ellipse {
+  filter: none;
+  stroke-width: 0.95px !important;
+}
+
+.canvas-mermaid-preview--compact svg .cluster rect {
+  filter: none;
+  stroke-width: 0.8px !important;
+  opacity: 0.46;
+  fill-opacity: 0.34;
+}
+
+.canvas-mermaid-preview--compact svg .edgePath path,
+.canvas-mermaid-preview--compact svg .flowchart-link {
+  stroke-width: 1.05px !important;
+  opacity: 0.8;
+}
+
+.canvas-mermaid-preview--compact svg .cluster-label text,
+.canvas-mermaid-preview--compact svg .cluster-label span,
+.canvas-mermaid-preview--compact svg .cluster text {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  opacity: 0.92;
+}
+
+.canvas-mermaid-preview--compact svg .edgeLabel {
+  opacity: 0.78;
+}
+
+.canvas-mermaid-preview--compact svg .edgeLabel rect {
+  fill-opacity: 0.58 !important;
 }
 
 .canvas-mermaid-fallback {
@@ -222,6 +408,65 @@
   height: 100%;
   border: none;
   background: white;
+}
+
+.canvas-ui-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.canvas-ui-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.canvas-ui-viewport-btn {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.canvas-ui-viewport-btn.active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-primary-muted);
+}
+
+.canvas-ui-viewport-size {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.canvas-ui-stage {
+  flex: 1;
+  min-height: 420px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(13, 19, 28, 0.92), rgba(9, 13, 20, 0.96));
+  padding: 16px;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.canvas-ui-frame-wrap {
+  flex: 0 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(150, 174, 211, 0.42);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  background: #fff;
 }
 
 .canvas-editor {
@@ -267,25 +512,6 @@
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   line-height: 1.6;
-}
-
-.canvas-footer {
-  padding: 8px 12px;
-  border-top: 1px solid var(--border-subtle);
-  background: var(--bg-panel);
-  flex-shrink: 0;
-}
-
-.canvas-explanation {
-  flex-basis: 100%;
-  color: var(--text-secondary);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 1.65;
-  min-height: 18px;
-  max-height: 84px;
-  overflow-y: auto;
-  white-space: pre-wrap;
 }
 
 /* 确保 markdown 内容在 canvas 中正确显示 */
@@ -349,5 +575,9 @@
 
   .canvas-document-select {
     max-width: none;
+  }
+
+  .canvas-details-panel {
+    grid-template-columns: 1fr;
   }
 }

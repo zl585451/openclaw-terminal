@@ -62,6 +62,40 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
 
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
 const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
+const CHAT_MERMAID_RENDER_LIMIT = 1;
+
+function limitChatMermaidBlocks(text: string, maxBlocks = CHAT_MERMAID_RENDER_LIMIT): string {
+  if (!text || typeof text !== 'string') return text;
+
+  const matches = [...text.matchAll(/```mermaid\s*[\r\n]+[\s\S]*?```/gi)];
+  if (matches.length <= maxBlocks) return text;
+
+  let result = '';
+  let lastIndex = 0;
+  let kept = 0;
+  let omitted = 0;
+
+  for (const match of matches) {
+    const index = match.index ?? 0;
+    const block = match[0];
+    result += text.slice(lastIndex, index);
+
+    if (kept < maxBlocks) {
+      result += block;
+      kept += 1;
+    } else {
+      omitted += 1;
+      if (omitted === 1) {
+        result += '\n\n> 已省略额外 Mermaid 图，请在 Canvas 中查看完整图集。\n\n';
+      }
+    }
+
+    lastIndex = index + block.length;
+  }
+
+  result += text.slice(lastIndex);
+  return result.replace(/\n{3,}/g, '\n\n').trim();
+}
 
 /** 流式结束后的正文：预处理 + ReactMarkdown，结果按 messageId+段键缓存 */
 const FinalizedMarkdownContent = memo(
@@ -88,7 +122,9 @@ const FinalizedMarkdownContent = memo(
         if (streaming || segmentKey?.includes('stream')) {
           return content || '';
         }
-        return getCachedPreprocessedMarkdown(messageId, segmentKey, content || '');
+        return limitChatMermaidBlocks(
+          getCachedPreprocessedMarkdown(messageId, segmentKey, content || '')
+        );
       },
       [messageId, segmentKey, content, streaming]
     );

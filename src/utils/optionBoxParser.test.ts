@@ -8,6 +8,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { parseOptionBox } from './optionBoxParser';
+import { blockRouter } from '../core/blockRouter';
+import { blocksToSegments } from '../core/blockAdapter';
 
 // ============================================================
 // 1. 成对标签 [pills]...[/pills] — 基本功能
@@ -396,6 +398,82 @@ describe('边界情况', () => {
     const textSeg = result.segments!.find(s => s.type === 'text');
     expect(textSeg?.content).toContain('```');
     expect(textSeg?.content).toContain('| col1 | col2 |');
+  });
+
+  it('普通 Markdown "-" 列表保持为正文，不自动渲染成交互组件', () => {
+    const input = `问题点：
+
+- AI 输出内容里用 \`-\` 开头写注意事项
+- 前端 Markdown 解析器把它当成选项组件
+- 代码块标记也可能被一起影响`;
+
+    const result = parseOptionBox(input);
+    expect(result.options).toHaveLength(0);
+    expect(result.segments).toBeUndefined();
+    expect(result.text).toContain('- AI 输出内容里用');
+    expect(result.text).toContain('- 前端 Markdown 解析器把它当成选项组件');
+  });
+
+  it('经过 blockRouter/blocksToSegments 桥接后，代码块内的 "-" 列表仍不触发选项检测', () => {
+    const raw = `示例代码：
+
+\`\`\`md
+- 注意 1
+- 注意 2
+- 注意 3
+\`\`\`
+
+正文继续`;
+
+    const bridged = blocksToSegments(blockRouter(raw)).map((s) => s.content).join('');
+    const result = parseOptionBox(bridged);
+
+    expect(result.options).toHaveLength(0);
+    expect(result.text).toContain('```md');
+    expect(result.text).toContain('- 注意 1');
+    expect(result.text).toContain('正文继续');
+  });
+
+  it('仅因为前文提到“任务/清单”字样，不应把后续 checkbox 文本段误判成 TaskList', () => {
+    const input = `这里先解释一下任务背景，不是在声明任务清单。
+
+[text]
+[ ] 先看日志
+[ ] 再看渲染链
+[/text]`;
+
+    const result = parseOptionBox(input);
+    expect(result.segments).toBeDefined();
+    const checkboxSeg = result.segments!.find((s) => s.type === 'checkbox');
+    const taskSeg = result.segments!.find((s) => s.type === 'tasklist');
+    expect(checkboxSeg).toBeDefined();
+    expect(taskSeg).toBeUndefined();
+  });
+
+  it('普通编号步骤说明保持为正文，不自动渲染成交互组件', () => {
+    const input = `排查步骤：
+
+1. 打开日志面板
+2. 查看网络请求
+3. 对比渲染前后的结构`;
+
+    const result = parseOptionBox(input);
+    expect(result.options).toHaveLength(0);
+    expect(result.segments).toBeUndefined();
+    expect(result.text).toContain('1. 打开日志面板');
+    expect(result.text).toContain('2. 查看网络请求');
+  });
+
+  it('带明确选择提示的编号列表仍可自动渲染为交互组件', () => {
+    const input = `你想先做哪个？
+
+1. 修复渲染 BUG
+2. 检查消息解析链
+3. 补回归测试`;
+
+    const result = parseOptionBox(input);
+    expect(result.options).toHaveLength(3);
+    expect(result.text).toContain('<!--OPTIONS_HERE-->');
   });
 
   it('表格内容（中文、英文、emoji）在 text segment 中保留，供 Markdown 渲染', () => {

@@ -4,6 +4,7 @@ import TabBar from './components/TabBar';
 import ChatTab, { ChatMessage } from './ui/chat/ChatTab.v2';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
+import CanvasHost from './components/canvas/CanvasHost';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { CanvasProvider } from './contexts/CanvasContext';
 import './styles/App.css';
@@ -109,6 +110,7 @@ const App: React.FC = () => {
           {activeTab === 'sound' && <SoundTab />}
           {activeTab === 'reaper' && <ReaperTab />}
         </div>
+        <CanvasHost enabled={activeTab === 'chat'} />
         </div>
       </CanvasProvider>
     </ThemeProvider>

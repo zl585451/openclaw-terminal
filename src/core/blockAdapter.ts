@@ -13,9 +13,10 @@ export function blocksToSegments(blocks: ContentBlock[]): RenderSegment[] {
 
     if (block.type === 'code') {
       const lang = block.language || '';
+      const normalizedCode = block.code.endsWith('\n') ? block.code : `${block.code}\n`;
       return {
         type: 'text',
-        content: `\`\`\`${lang}\n${block.code}\`\`\``,
+        content: `\`\`\`${lang}\n${normalizedCode}\`\`\``,
         options: [],
       };
     }

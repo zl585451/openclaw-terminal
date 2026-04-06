@@ -1,9 +1,91 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from '../../components/CodeBlock';
+import MermaidRenderer from '../../components/canvas/MermaidRenderer';
 import { highlightCode } from '../../utils/codeHighlight';
 
-export function createMarkdownComponents(openCanvas?: (content: string, mode: 'markdown' | 'code' | 'html', title?: string, language?: string) => void): React.ComponentProps<typeof ReactMarkdown>['components'] {
+const CHAT_MERMAID_MAX_LINES = 18;
+const CHAT_MERMAID_MAX_CHARS = 600;
+const CHAT_MERMAID_MAX_SUBGRAPHS = 2;
+const CHAT_MERMAID_CANVAS_ONLY_TYPES = new Set([
+  'sequencediagram',
+  'statediagram',
+  'statediagram-v2',
+  'gantt',
+  'journey',
+  'timeline',
+  'requirementdiagram',
+]);
+
+function analyzeMermaid(code: string) {
+  const source = String(code || '').trim();
+  const lines = source.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const firstDirective =
+    lines.find((line) => !line.trim().startsWith('%%'))?.trim().toLowerCase() || '';
+  const typeMatch = firstDirective.match(
+    /^(flowchart|graph|sequencediagram|classdiagram|erdiagram|statediagram(?:-v2)?|gantt|pie|mindmap|journey|timeline|quadrantchart|requirementdiagram|gitgraph)\b/
+  );
+  const diagramType = typeMatch?.[1] || 'mermaid';
+  const subgraphCount = (source.match(/\bsubgraph\b/gi) || []).length;
+
+  return {
+    source,
+    lineCount: lines.length,
+    charCount: source.length,
+    subgraphCount,
+    diagramType,
+  };
+}
+
+function shouldRenderChatMermaidPreview(code: string) {
+  const meta = analyzeMermaid(code);
+  if (CHAT_MERMAID_CANVAS_ONLY_TYPES.has(meta.diagramType)) {
+    return { allowPreview: false, reason: 'complex-type', meta };
+  }
+  if (meta.lineCount > CHAT_MERMAID_MAX_LINES) {
+    return { allowPreview: false, reason: 'too-long', meta };
+  }
+  if (meta.charCount > CHAT_MERMAID_MAX_CHARS) {
+    return { allowPreview: false, reason: 'too-dense', meta };
+  }
+  if (meta.subgraphCount > CHAT_MERMAID_MAX_SUBGRAPHS) {
+    return { allowPreview: false, reason: 'too-many-groups', meta };
+  }
+  return { allowPreview: true, reason: 'inline-ok', meta };
+}
+
+function getMermaidSummaryLabel(diagramType: string) {
+  switch (diagramType) {
+    case 'sequencediagram':
+      return '时序图';
+    case 'statediagram':
+    case 'statediagram-v2':
+      return '状态图';
+    case 'gantt':
+      return '甘特图';
+    case 'journey':
+      return '旅程图';
+    case 'timeline':
+      return '时间线';
+    case 'mindmap':
+      return '思维导图';
+    case 'flowchart':
+    case 'graph':
+      return '流程图';
+    default:
+      return 'Mermaid 图';
+  }
+}
+
+export function createMarkdownComponents(
+  openCanvas?: (
+    content: string,
+    mode: 'markdown' | 'code' | 'html',
+    title?: string,
+    language?: string,
+    artifactType?: 'document' | 'diagram' | 'code' | 'ui-draft'
+  ) => void
+): React.ComponentProps<typeof ReactMarkdown>['components'] {
   return {
   a: ({ href, children }) => (
     <a
@@ -51,6 +133,72 @@ export function createMarkdownComponents(openCanvas?: (content: string, mode: 'm
       );
     }
     const code = String(children);
+    if (isBlock && (className?.replace('language-', '') || 'text').toLowerCase() === 'mermaid') {
+      const MermaidBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
+        const [copied, setCopied] = React.useState(false);
+        const previewDecision = React.useMemo(() => shouldRenderChatMermaidPreview(code), []);
+        const summaryLabel = getMermaidSummaryLabel(previewDecision.meta.diagramType);
+
+        const handleCopy = () => {
+          navigator.clipboard.writeText(code);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        };
+
+        return (
+          <div
+            className="chat-mermaid-card"
+            data-oct-block-code={__octBlockCode ? '1' : undefined}
+          >
+            <div className="chat-mermaid-card__header">
+              <span className="chat-mermaid-card__label">
+                mermaid
+              </span>
+              <div className="chat-mermaid-card__actions">
+                {openCanvas && (
+                  <button
+                    onClick={() => openCanvas(code, 'markdown', 'Mermaid Diagram', 'mermaid', 'diagram')}
+                    className="chat-mermaid-card__action"
+                  >
+                    Open
+                  </button>
+                )}
+                <button
+                  onClick={handleCopy}
+                  className={`chat-mermaid-card__action${copied ? ' is-copied' : ''}`}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div className="chat-mermaid-card__body">
+              {previewDecision.allowPreview ? (
+                <MermaidRenderer content={code} compact />
+              ) : (
+                <div className="chat-mermaid-summary">
+                  <div className="chat-mermaid-summary__title">
+                    {summaryLabel} 已转为 Canvas 完整展示
+                  </div>
+                  <div className="chat-mermaid-summary__meta">
+                    {previewDecision.meta.lineCount} 行 · {previewDecision.meta.charCount} 字符
+                    {previewDecision.meta.subgraphCount > 0 ? ` · ${previewDecision.meta.subgraphCount} 个分组` : ''}
+                  </div>
+                  <div className="chat-mermaid-summary__copy">
+                    {previewDecision.reason === 'complex-type' && '这类图在聊天区容易过长或渲染不稳，建议直接在 Canvas 查看。'}
+                    {previewDecision.reason === 'too-long' && '这张图在聊天区会过长，已保留 Open 入口供你查看完整版本。'}
+                    {previewDecision.reason === 'too-dense' && '这张图信息密度较高，聊天区只保留摘要，完整图放在 Canvas 更清楚。'}
+                    {previewDecision.reason === 'too-many-groups' && '这张图分组较多，聊天区容易拥挤，完整版更适合在 Canvas 阅读。'}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      return <MermaidBlock __octBlockCode />;
+    }
+
     const CodeBlockWithCopy = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
       const [copied, setCopied] = React.useState(false);
       const lines = code.split('\n').length;
@@ -114,7 +262,14 @@ export function createMarkdownComponents(openCanvas?: (content: string, mode: 'm
               )}
               {openCanvas && (
                 <button
-                  onClick={() => openCanvas(code, 'code', className?.replace('language-', '') || 'code', className?.replace('language-', '') || 'text')}
+                  onClick={() => {
+                    const language = className?.replace('language-', '') || 'text';
+                    if (language.toLowerCase() === 'mermaid') {
+                      openCanvas(code, 'markdown', 'Mermaid Diagram', 'mermaid', 'diagram');
+                      return;
+                    }
+                    openCanvas(code, 'code', language || 'code', language || 'text', 'code');
+                  }}
                   style={{
                     background: 'none',
                     border: 'none',

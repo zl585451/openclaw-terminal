@@ -4,8 +4,8 @@ import { TurnFSM, deriveLegacyFlags, TurnPhase } from '../core/turnFSM';
 import { StreamRouter, StreamState } from '../core/streamRouter';
 import { BlockIngest } from '../core/blockIngest';
 import { useWebSocket } from './useWebSocket';
-import { useCanvas } from '../contexts/CanvasContext';
 import type { CanvasRoundtripContext } from '../contexts/CanvasContext';
+import { useCanvasBridge } from './useCanvasBridge';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
@@ -130,7 +130,7 @@ export function useMessages({
   streamSpeedMs,
   onStatusChange,
 }: UseMessagesOptions): UseMessagesReturn {
-  const canvas = useCanvas();
+  const canvasBridge = useCanvasBridge();
   const transportPacingMs = 4;
   const scrollRef = useRef(scroll);
   scrollRef.current = scroll;
@@ -506,7 +506,7 @@ export function useMessages({
     },
 
     onCanvasEvent: (event) => {
-      canvas.applyCanvasEvent(event);
+      canvasBridge.handleCanvasEvent(event);
     },
 
     onUsage: (usage, isSnapshot) => {
