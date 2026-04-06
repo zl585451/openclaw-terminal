@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 export type StreamSpeed = 'fast' | 'medium' | 'slow';
 export type TypingSoundMode = 'off' | 'typewriter' | 'soft' | 'bubble';
 export type ThemeColor = 'matrix' | 'cyber' | 'sunset' | 'midnight' | 'custom';
+export type TtsProvider = 'auto' | 'browser' | 'dashscope' | 'minimax';
 
 export interface ThemeVars {
   '--primary-color': string;
@@ -79,6 +80,7 @@ export interface Settings {
   streamSpeed: StreamSpeed;
   typingSound: TypingSoundMode;
   ttsPlayback: boolean;
+  ttsProvider: TtsProvider;
   theme: ThemeColor;
   customTheme?: ThemeVars;
   aiName: string;
@@ -90,6 +92,7 @@ const DEFAULT: Settings = {
   streamSpeed: 'medium',
   typingSound: 'off',
   ttsPlayback: false,
+  ttsProvider: 'auto',
   theme: 'matrix',
   aiName: 'OpenClaw',
   userName: '用户',
@@ -151,6 +154,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           ttsPlayback: typeof data.ttsPlayback === 'boolean'
             ? data.ttsPlayback
             : (data.voicePlayback === true ? true : DEFAULT.ttsPlayback),
+          ttsProvider: ['auto', 'browser', 'dashscope', 'minimax'].includes(data.ttsProvider)
+            ? data.ttsProvider
+            : DEFAULT.ttsProvider,
           theme: normalizeTheme(data.theme),
           customTheme: data.customTheme,
           aiName: typeof data.aiName === 'string' && data.aiName.trim() ? data.aiName : DEFAULT.aiName,

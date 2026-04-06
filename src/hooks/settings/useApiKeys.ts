@@ -5,6 +5,7 @@ export interface ApiKeysState {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  TTS_MINIMAX_VOICE_ID: string;
   CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
@@ -36,6 +37,7 @@ export function useApiKeys() {
     DASHSCOPE_API_KEY: '',
     DEEPSEEK_API_KEY: '',
     MINIMAX_API_KEY: '',
+    TTS_MINIMAX_VOICE_ID: 'male-qn-qingse',
     CUSTOM_API_KEY: '',
     OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
     OPENCLAW_TOKEN: '',
@@ -114,8 +116,14 @@ export function useApiKeys() {
   }, []);
 
   const currentProviderId = useMemo(
-    () => apiKeys.OCT_PROVIDER || inferProviderFromBaseUrl(apiKeys.DASHSCOPE_BASE_URL || apiKeys.DEEPSEEK_BASE_URL || apiKeys.CUSTOM_BASE_URL || ''),
-    [apiKeys.OCT_PROVIDER, apiKeys.DASHSCOPE_BASE_URL, apiKeys.DEEPSEEK_BASE_URL, apiKeys.CUSTOM_BASE_URL],
+    () => apiKeys.OCT_PROVIDER || inferProviderFromBaseUrl(
+      apiKeys.MINIMAX_BASE_URL
+      || apiKeys.DASHSCOPE_BASE_URL
+      || apiKeys.DEEPSEEK_BASE_URL
+      || apiKeys.CUSTOM_BASE_URL
+      || '',
+    ),
+    [apiKeys.OCT_PROVIDER, apiKeys.MINIMAX_BASE_URL, apiKeys.DASHSCOPE_BASE_URL, apiKeys.DEEPSEEK_BASE_URL, apiKeys.CUSTOM_BASE_URL],
   );
 
   const currentProvider = providers[currentProviderId];
@@ -129,6 +137,8 @@ export function useApiKeys() {
     let baseUrl = '';
     if (currentProviderId === 'deepseek') {
       baseUrl = apiKeys.DEEPSEEK_BASE_URL;
+    } else if (currentProviderId === 'minimax') {
+      baseUrl = apiKeys.MINIMAX_BASE_URL;
     } else if (currentProviderId === 'custom') {
       baseUrl = apiKeys.CUSTOM_BASE_URL;
     } else {
@@ -147,12 +157,15 @@ export function useApiKeys() {
         OPENCLAW_TOKEN: apiKeys.OPENCLAW_TOKEN || '',
         DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY || '',
         DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
+        MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY || '',
+        TTS_MINIMAX_VOICE_ID: apiKeys.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse',
         CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
         OCT_PROVIDER: currentProviderId || 'bailian-coding',
         OCT_MODEL: effectiveModel,
         CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
-        DASHSCOPE_BASE_URL: currentProviderId === 'deepseek' || currentProviderId === 'custom' ? '' : (baseUrl || currentProvider?.baseUrl || ''),
+        DASHSCOPE_BASE_URL: currentProviderId === 'deepseek' || currentProviderId === 'custom' || currentProviderId === 'minimax' ? '' : (baseUrl || currentProvider?.baseUrl || ''),
         DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+        MINIMAX_BASE_URL: currentProviderId === 'minimax' ? (baseUrl || currentProvider?.baseUrl || '') : '',
         CUSTOM_BASE_URL: currentProviderId === 'custom' ? (baseUrl || currentProvider?.baseUrl || '') : '',
         BRAVE_SEARCH_API_KEY: searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
         TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',

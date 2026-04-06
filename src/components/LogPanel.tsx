@@ -6,13 +6,14 @@ import '../styles/LogPanel.css';
 export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'OK';
 
 // 6种语义分类（面向用户）
-type LogCategory = 'AI' | 'Tool' | 'Memory' | 'System' | 'Warn' | 'Error';
+type LogCategory = 'AI' | 'Tool' | 'Memory' | 'System' | 'TTS' | 'Warn' | 'Error';
 
 const CATEGORY_STYLE: Record<LogCategory, { dot: string; bg: string; text: string; label: string }> = {
   AI:     { dot: '#7c6fcd', bg: '#26215C', text: '#c4b5fd', label: 'AI思考' },
   Tool:   { dot: '#34a87e', bg: '#04342C', text: '#6ee7b7', label: '工具' },
   Memory: { dot: '#4a90d9', bg: '#0c2a4a', text: '#7ec8f5', label: '记忆' },
   System: { dot: '#6b6b66', bg: '#2a2a28', text: '#9a9a94', label: '系统' },
+  TTS:    { dot: '#c9792b', bg: '#3a2210', text: '#f6c38b', label: 'TTS' },
   Warn:   { dot: '#d4900a', bg: '#3a2800', text: '#f5c842', label: '警告' },
   Error:  { dot: '#e05252', bg: '#3a1212', text: '#fca5a5', label: '错误' },
 };
@@ -34,6 +35,7 @@ const ALL_LEVELS: LogLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'OK'];
 function parseLevel(raw: string): LogLevel {
   const upper = raw.toUpperCase();
   if (upper.includes('[ERROR]')) return 'ERROR';
+  if (upper.includes('[ERR]')) return 'ERROR';
   if (upper.includes('[WARN]') || upper.includes('[WARNING]')) return 'WARN';
   if (upper.includes('[DEBUG]')) return 'DEBUG';
   if (upper.includes('[OK]')) return 'OK';
@@ -49,6 +51,7 @@ function categorize(entry: { level: LogLevel; tag: string; raw: string }): LogCa
   if (entry.level === 'ERROR') return 'Error';
   if (entry.level === 'WARN') return 'Warn';
   const tag = entry.tag.toLowerCase();
+  if (/\[(?:minimax|dashscope) tts\]|tts:/i.test(entry.raw)) return 'TTS';
   if (['ai'].includes(tag)) return 'AI';
   if (['tool', 'tools'].includes(tag)) return 'Tool';
   if (['memory', 'memhistory', 'feedback', 'extractmem', 'mem',
@@ -165,6 +168,41 @@ function humanize(entry: LogEntry): { brief: string; detail: string } {
     if (/Mobile HTTP/i.test(raw)) return { brief: '', detail: '' }; // 静默
   }
 
+  // TTS 分类
+  if (entry.category === 'TTS') {
+    if (/\[(MiniMax|DashScope) TTS\] success/i.test(raw)) {
+      const provider = raw.match(/\[(MiniMax|DashScope) TTS\]/i)?.[1] ?? 'TTS';
+      const chars = raw.match(/chars=(\d+)/i)?.[1];
+      const bytes = raw.match(/bytes=(\d+)/i)?.[1];
+      const voice = raw.match(/voice=([^\s]+)/i)?.[1];
+      const detail = [
+        chars ? `本次用量 ${chars} 字符` : '',
+        bytes ? `音频 ${Math.max(1, Math.round(Number(bytes) / 1024))} KB` : '',
+        voice ? `音色 ${voice}` : '',
+      ].filter(Boolean).join(' · ');
+      return { brief: `${provider} 朗读完成`, detail };
+    }
+    if (/\[(MiniMax|DashScope) TTS\]\[WS\]\[FAIL\]/i.test(raw)) {
+      const provider = raw.match(/\[(MiniMax|DashScope) TTS\]/i)?.[1] ?? 'TTS';
+      const code = raw.match(/code=([^\s]+)/i)?.[1];
+      const msgMatch = raw.match(/msg=(.*)$/i);
+      return {
+        brief: `${provider} 朗读失败${code ? ` · code ${code}` : ''}`,
+        detail: (msgMatch?.[1] ?? msg).slice(0, 180),
+      };
+    }
+    if (/\[(MiniMax|DashScope) TTS\]\[(ERR|WS\]\[ERR)\]/i.test(raw) || /^TTS:/i.test(msg)) {
+      const provider = raw.match(/\[(MiniMax|DashScope) TTS\]/i)?.[1] ?? 'TTS';
+      return { brief: `${provider} 朗读异常`, detail: msg.slice(0, 180) };
+    }
+    if (/\[(MiniMax|DashScope) TTS\] start/i.test(raw)) {
+      const provider = raw.match(/\[(MiniMax|DashScope) TTS\]/i)?.[1] ?? 'TTS';
+      const chars = raw.match(/chars=(\d+)/i)?.[1];
+      return { brief: `${provider} 开始朗读`, detail: chars ? `本次文本 ${chars} 字符` : '' };
+    }
+    return { brief: msg.slice(0, 80), detail: '' };
+  }
+
   // Warn 分类
   if (entry.category === 'Warn') {
     if (/allowlist contains unknown/i.test(raw)) return { brief: '工具配置含未知项（不影响使用）', detail: msg };
@@ -265,7 +303,11 @@ function formatMessage(msg: string): string {
   return msg;
 }
 
-type LogFilterType = 'all' | 'error' | 'memory' | 'eval' | 'gateway' | 'tools';
+type LogFilterType = 'all' | 'error' | 'memory' | 'eval' | 'gateway' | 'tools' | 'tts';
+
+function isLowSignalTts(entry: LogEntry): boolean {
+  return entry.category === 'TTS' && /\bstart\b/i.test(entry.raw);
+}
 
 function filterByType(entries: LogEntry[], filter: LogFilterType): LogEntry[] {
   if (filter === 'all') return entries;
@@ -275,6 +317,7 @@ function filterByType(entries: LogEntry[], filter: LogFilterType): LogEntry[] {
     if (filter === 'eval') return ['SelfEval', 'Hypothesis'].includes(e.tag);
     if (filter === 'gateway') return e.category === 'System' || e.category === 'AI';
     if (filter === 'tools') return e.category === 'Tool';
+    if (filter === 'tts') return e.category === 'TTS' && !isLowSignalTts(e);
     return true;
   });
 }
@@ -407,6 +450,7 @@ function LogPanelComponent(props: {
     if (/sourceMimeType.*image/i.test(e.raw)) return true; // 图片压缩日志
     if (/saveHistorySummary called/i.test(e.raw)) return true;
     if (/write history summary.*type/i.test(e.raw)) return true;
+    if (isLowSignalTts(e)) return true;
     return false;
   }
 
@@ -449,6 +493,7 @@ function LogPanelComponent(props: {
     { key: 'memory', label: '记忆' },
     { key: 'eval', label: '评估' },
     { key: 'gateway', label: 'Gateway' },
+    { key: 'tts', label: 'TTS' },
     { key: 'tools', label: 'Tools' },
   ];
 

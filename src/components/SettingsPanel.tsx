@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useRef } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../themes/ThemeProvider';
@@ -22,9 +23,9 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('required');
   const [local, setLocal] = useState(settings);
   const [localPerm, setLocalPerm] = useState(permissions);
-  const [aiName, setAiName] = useState('OpenClaw');
-  const [userName, setUserName] = useState('用户');
-  const [personaStyle, setPersonaStyle] = useState('warm');
+  const [aiName, setAiName] = useState(settings.aiName || 'OpenClaw');
+  const [userName, setUserName] = useState(settings.userName || '用户');
+  const [personaStyle, setPersonaStyle] = useState(settings.personaStyle || 'warm');
 
   const {
     apiKeys,
@@ -105,12 +106,21 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   const [applyStatus, setApplyStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [applyError, setApplyError] = useState<string>('');
+  const [ttsPreviewStatus, setTtsPreviewStatus] = useState<'idle' | 'playing' | 'error' | 'success'>('idle');
+  const [ttsPreviewError, setTtsPreviewError] = useState('');
   const { themeId, setTheme } = useTheme();
+  const minimaxTtsAvailable = Boolean(apiKeys.MINIMAX_API_KEY?.trim());
 
   // MCP Server 状态
   const [mcpStatus, setMcpStatus] = useState<Record<string, any>>({});
   const [mcpLoading, setMcpLoading] = useState(false);
   const [newServer, setNewServer] = useState({ name: '', command: '', args: '', envText: '' });
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  const ipcRenderer =
+    typeof window !== 'undefined' && typeof (window as any).require === 'function'
+      ? (window as any).require('electron').ipcRenderer
+      : null;
 
   const loadMcpStatus = async () => {
     setMcpLoading(true);
@@ -122,6 +132,10 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   };
 
   useEffect(() => { loadMcpStatus(); }, []);
+
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [activeTab]);
 
   // 每次切到 MCP Tab 刷新（Gateway 重启后避免仍显示空状态）
   useEffect(() => {
@@ -143,6 +157,19 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   useEffect(() => {
     setLocalPerm(permissions);
   }, [permissions]);
+
+  useEffect(() => {
+    setLocal(settings);
+    setAiName(settings.aiName || 'OpenClaw');
+    setUserName(settings.userName || '用户');
+    setPersonaStyle(settings.personaStyle || 'warm');
+  }, [settings]);
+
+  useEffect(() => {
+    if (!minimaxTtsAvailable && local.ttsProvider === 'minimax') {
+      setLocal((prev) => ({ ...prev, ttsProvider: 'auto' }));
+    }
+  }, [minimaxTtsAvailable, local.ttsProvider]);
 
   useEffect(() => {
     const api = (window as any).electronAPI;
@@ -170,12 +197,15 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
     setApplyError('');
     const api = (window as any).electronAPI;
-    if (api?.savePersonaSettings) {
-      const personaResult = await api.savePersonaSettings({
+    if (api?.savePersonaSettings || ipcRenderer) {
+      const payload = {
         OCT_AI_NAME: aiName,
         OCT_USER_NAME: userName,
         OCT_PERSONA_STYLE: personaStyle,
-      });
+      };
+      const personaResult = api?.savePersonaSettings
+        ? await api.savePersonaSettings(payload)
+        : await ipcRenderer?.invoke('save-persona-settings', payload);
       if (!personaResult?.success) {
         setApplyStatus('error');
         setApplyError(personaResult?.error || '人格设置保存失败');
@@ -186,6 +216,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       setApplyStatus('saving');
       const keysToSave = {
         ...apiKeys,
+        TTS_MINIMAX_VOICE_ID: apiKeys.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse',
         BRAVE_SEARCH_API_KEY: searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
         TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
       };
@@ -221,6 +252,69 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     }
   };
 
+  const previewTts = async () => {
+    setTtsPreviewStatus('playing');
+    setTtsPreviewError('');
+    try {
+      const payload = {
+        text: `${aiName || 'OpenClaw'} 正在进行语音试听。这是一段用于检查接口与系统播放链路的测试语音。`,
+        providerPreference: local.ttsProvider,
+      };
+      if (local.ttsProvider === 'browser') {
+        if (!('speechSynthesis' in window)) {
+          setTtsPreviewStatus('error');
+          setTtsPreviewError('当前环境不支持浏览器本地朗读');
+          return;
+        }
+        const utterance = new SpeechSynthesisUtterance(payload.text);
+        utterance.lang = 'zh-CN';
+        utterance.onend = () => setTtsPreviewStatus('success');
+        utterance.onerror = () => {
+          setTtsPreviewStatus('error');
+          setTtsPreviewError('浏览器本地朗读失败');
+        };
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+        return;
+      }
+      const api = (window as any).electronAPI;
+      const result = api?.ttsSpeak
+        ? await api.ttsSpeak(payload)
+        : ipcRenderer
+        ? await ipcRenderer.invoke('tts-speak', payload)
+        : null;
+      if (!result?.success || !result?.audioBase64) {
+        if (local.ttsProvider === 'auto' && 'speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(payload.text);
+          utterance.lang = 'zh-CN';
+          utterance.onend = () => setTtsPreviewStatus('success');
+          utterance.onerror = () => {
+            setTtsPreviewStatus('error');
+            setTtsPreviewError(result?.error || '试听失败');
+          };
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utterance);
+          setTtsPreviewError('云端 TTS 不可用，已回退到浏览器本地朗读');
+          return;
+        }
+        setTtsPreviewStatus('error');
+        setTtsPreviewError(result?.error || '当前环境不支持 TTS 试听');
+        return;
+      }
+      const mimeType = result?.mimeType || 'audio/mpeg';
+      const audio = new Audio(`data:${mimeType};base64,${result.audioBase64}`);
+      audio.onended = () => setTtsPreviewStatus('success');
+      audio.onerror = () => {
+        setTtsPreviewStatus('error');
+        setTtsPreviewError('音频播放失败，请检查系统输出设备或音量');
+      };
+      await audio.play();
+    } catch (err: any) {
+      setTtsPreviewStatus('error');
+      setTtsPreviewError(err?.message || '试听请求失败');
+    }
+  };
+
   const tabs: { id: TabId; label: string }[] = [
     { id: 'required', label: '① 连接配置' },
     { id: 'interface', label: '② 界面设置' },
@@ -248,7 +342,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             </button>
           ))}
         </div>
-        <div className="settings-body">
+        <div className="settings-body" ref={bodyRef}>
           {activeTab === 'required' && (
             <ConnectionTabView
               apiKeysLoaded={apiKeysLoaded}
@@ -289,6 +383,12 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               setUserName={setUserName}
               personaStyle={personaStyle}
               setPersonaStyle={setPersonaStyle}
+              ttsPreviewStatus={ttsPreviewStatus}
+              ttsPreviewError={ttsPreviewError}
+              onPreviewTts={previewTts}
+              minimaxTtsAvailable={minimaxTtsAvailable}
+              minimaxVoiceId={apiKeys.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse'}
+              setMinimaxVoiceId={(v) => setApiKeys((prev) => ({ ...prev, TTS_MINIMAX_VOICE_ID: v }))}
             />
           )}
 

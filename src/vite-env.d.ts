@@ -16,6 +16,8 @@ interface ElectronAPI {
   invokeGatewayTool?: (toolName: string, args: any) => Promise<any>;
   getPersonaSettings?: () => Promise<{ success: boolean; data?: { OCT_AI_NAME: string; OCT_USER_NAME: string; OCT_PERSONA_STYLE: string }; error?: string }>;
   savePersonaSettings?: (payload: { OCT_AI_NAME?: string; OCT_USER_NAME?: string; OCT_PERSONA_STYLE?: string }) => Promise<{ success: boolean; error?: string }>;
+  ttsSpeak?: (payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) => Promise<{ success: boolean; audioBase64?: string; mimeType?: string; error?: string }>;
+  asrTranscribe?: (payload: { audioDataUrl: string; language?: string }) => Promise<{ success: boolean; text?: string; error?: string }>;
   [key: string]: unknown;
 }
 

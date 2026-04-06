@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { Settings, StreamSpeed, TypingSoundMode } from '../../../contexts/SettingsContext';
+import type { Settings, StreamSpeed, TtsProvider, TypingSoundMode } from '../../../contexts/SettingsContext';
 import { allThemes, type ThemeId } from '../../../themes/themes';
-import { FONT_SIZE_OPTIONS } from '../constants';
+import { FONT_SIZE_OPTIONS, MINIMAX_TTS_VOICE_OPTIONS } from '../constants';
 
 export interface InterfaceTabViewProps {
   themeId: ThemeId;
@@ -18,8 +18,14 @@ export interface InterfaceTabViewProps {
   setAiName: (v: string) => void;
   userName: string;
   setUserName: (v: string) => void;
-  personaStyle: string;
-  setPersonaStyle: (v: string) => void;
+  personaStyle: 'neutral' | 'warm' | 'companion';
+  setPersonaStyle: (v: 'neutral' | 'warm' | 'companion') => void;
+  ttsPreviewStatus: 'idle' | 'playing' | 'error' | 'success';
+  ttsPreviewError: string;
+  onPreviewTts: () => void;
+  minimaxTtsAvailable: boolean;
+  minimaxVoiceId: string;
+  setMinimaxVoiceId: (v: string) => void;
 }
 
 export function InterfaceTabView({
@@ -39,6 +45,12 @@ export function InterfaceTabView({
   setUserName,
   personaStyle,
   setPersonaStyle,
+  ttsPreviewStatus,
+  ttsPreviewError,
+  onPreviewTts,
+  minimaxTtsAvailable,
+  minimaxVoiceId,
+  setMinimaxVoiceId,
 }: InterfaceTabViewProps) {
   return (
     <div className="settings-tab-content">
@@ -69,7 +81,7 @@ export function InterfaceTabView({
         </div>
         <div className="settings-row">
           <label>风格预设</label>
-          <select value={personaStyle} onChange={(e) => setPersonaStyle(e.target.value)}>
+          <select value={personaStyle} onChange={(e) => setPersonaStyle(e.target.value as 'neutral' | 'warm' | 'companion')}>
             <option value="neutral">克制专业</option>
             <option value="warm">温暖可靠（推荐）</option>
             <option value="companion">更有陪伴感</option>
@@ -150,6 +162,63 @@ export function InterfaceTabView({
             />
             <span className="toggle-slider" />
           </label>
+        </div>
+        <div className="settings-row">
+          <label>朗读服务</label>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <select
+              value={local.ttsProvider}
+              onChange={(e) => setLocal((s) => ({ ...s, ttsProvider: e.target.value as TtsProvider }))}
+            >
+              <option value="auto">自动：优先云端，失败回退本地</option>
+              {minimaxTtsAvailable && <option value="minimax">MiniMax 云端朗读</option>}
+              <option value="browser">浏览器本地朗读</option>
+              <option value="dashscope">DashScope 云端朗读</option>
+            </select>
+            <span className="settings-desc" style={{ margin: 0, textAlign: 'right', maxWidth: 360 }}>
+              MiniMax 更像正式语音助手，浏览器本地朗读最稳，自动适合日常使用。
+            </span>
+          </div>
+        </div>
+        {minimaxTtsAvailable ? (
+          <div className="settings-row">
+            <label>云端音色</label>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+              <select
+                value={minimaxVoiceId}
+                onChange={(e) => setMinimaxVoiceId(e.target.value)}
+              >
+                {MINIMAX_TTS_VOICE_OPTIONS.map((voice) => (
+                  <option key={voice.value} value={voice.value}>{voice.label}</option>
+                ))}
+              </select>
+              <span className="settings-desc" style={{ margin: 0, textAlign: 'right', maxWidth: 360 }}>
+                检测到可用的 MiniMax 云端 TTS 能力。当前音色仅在选择 MiniMax 或自动回退到 MiniMax 时生效。
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="settings-row">
+            <label>云端音色</label>
+            <span className="settings-desc" style={{ margin: 0, textAlign: 'right', maxWidth: 360 }}>
+              当前未检测到可用的 MiniMax 云端 TTS 能力，已自动隐藏专属音色配置，不会产生额外系统负担。
+            </span>
+          </div>
+        )}
+        <div className="settings-row">
+          <label>试听音色</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" className="settings-btn" onClick={onPreviewTts} disabled={ttsPreviewStatus === 'playing'}>
+              {ttsPreviewStatus === 'playing' ? '试听中...' : '播放试听'}
+            </button>
+            <span className="settings-desc" style={{ margin: 0 }}>
+              {ttsPreviewStatus === 'success'
+                ? '试听请求已发出，请检查系统音量与输出设备'
+                : ttsPreviewStatus === 'error'
+                ? (ttsPreviewError || '试听失败')
+                : '使用当前朗读服务和默认音色播放一句测试语音'}
+            </span>
+          </div>
         </div>
       </section>
       <section className="settings-section">

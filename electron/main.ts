@@ -36,6 +36,7 @@ const DEFAULT_CONFIG = {
   OCT_AI_NAME: 'OpenClaw',
   OCT_USER_NAME: '用户',
   OCT_PERSONA_STYLE: 'warm',
+  TTS_MINIMAX_VOICE_ID: 'male-qn-qingse',
   /** 随 OCT 启动 AI.library（知识库 HTTP 服务，默认端口 8001，与 Nocturne :8000 错开） */
   OCT_AI_LIBRARY_AUTO_START: false,
   OCT_AI_LIBRARY_PATH: '',
@@ -226,6 +227,182 @@ function loadOpenClawConfig(): void {
     OPENCLAW_TOKEN = DEFAULT_CONFIG.OPENCLAW_TOKEN;
   }
   syncAiLibraryPluginConfigFromDisk();
+}
+
+function readAppConfig(): Record<string, any> {
+  ensureConfigFile();
+  if (!fs.existsSync(CONFIG_FILE)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function getMiniMaxEndpoints(config: Record<string, any>) {
+  const configuredBase = String(config.MINIMAX_BASE_URL || process.env.MINIMAX_BASE_URL || '').trim();
+  const httpBase = configuredBase || 'https://api.minimaxi.com/v1';
+  const normalized = httpBase.replace(/\/$/, '');
+  let wsBase = '';
+  try {
+    const url = new URL(normalized);
+    wsBase = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}/ws/v1/t2a_v2`;
+  } catch {
+    wsBase = 'wss://api.minimaxi.com/ws/v1/t2a_v2';
+  }
+  return { httpBase: normalized, wsBase };
+}
+
+function pushUiLog(line: string) {
+  try {
+    mainWindow?.webContents.send('openclaw-log-lines', [line]);
+  } catch {}
+}
+
+function synthesizeMiniMaxViaWebSocket({
+  wsUrl,
+  apiKey,
+  text,
+  voiceId = 'male-qn-qingse',
+}: {
+  wsUrl: string;
+  apiKey: string;
+  text: string;
+  voiceId?: string;
+}): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const traceId = crypto.randomUUID();
+    const ws = new WebSocket(wsUrl, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    const audioChunks: Buffer[] = [];
+    let started = false;
+    let finished = false;
+    let finishSent = false;
+    let settleCalled = false;
+
+    const settle = (fn: () => void) => {
+      if (settleCalled) return;
+      settleCalled = true;
+      try { ws.close(); } catch {}
+      clearTimeout(timeout);
+      fn();
+    };
+
+    const timeout = setTimeout(() => {
+      settle(() => reject(new Error('MiniMax WebSocket TTS timed out')));
+    }, 45000);
+
+    ws.on('open', () => {
+      // 等 connected_success 后再 task_start
+    });
+
+    ws.on('message', (raw) => {
+      try {
+        const data = JSON.parse(String(raw));
+        const type = data?.event || data?.type || '';
+        const logPayload = JSON.stringify({
+          type,
+          status_code: data?.status_code || data?.base_resp?.status_code,
+          status_msg: data?.status_msg || data?.base_resp?.status_msg,
+          hasAudio: Boolean(data?.data?.audio || data?.payload?.audio || data?.audio),
+          isFinal: data?.is_final ?? data?.payload?.is_final ?? null,
+          extraKeys: Object.keys(data || {}),
+        });
+        console.log('[MiniMax TTS][WS]', logPayload);
+
+        if (type === 'task_failed' || type === 'error') {
+          const message =
+            data?.base_resp?.status_msg ||
+            data?.message ||
+            data?.error ||
+            'MiniMax WebSocket TTS error';
+          pushUiLog(`[MiniMax TTS][WS][FAIL] code=${data?.base_resp?.status_code ?? data?.status_code ?? 'unknown'} msg=${String(message)}`);
+          settle(() => reject(new Error(String(message))));
+          return;
+        }
+
+        if (type === 'connected_success') {
+          ws.send(JSON.stringify({
+            event: 'task_start',
+            model: 'speech-2.8-hd',
+            voice_setting: {
+              voice_id: voiceId,
+              speed: 1,
+              vol: 1,
+              pitch: 0,
+              english_normalization: false,
+            },
+            audio_setting: {
+              sample_rate: 32000,
+              bitrate: 128000,
+              format: 'mp3',
+              channel: 1,
+            },
+          }));
+          return;
+        }
+
+        if (type === 'task_started') {
+          started = true;
+          ws.send(JSON.stringify({
+            event: 'task_continue',
+            text,
+          }));
+          return;
+        }
+
+        if (type === 'task_continued' || type === 'audio') {
+          const hex = data?.data?.audio || data?.payload?.audio || data?.audio || '';
+          if (typeof hex === 'string' && hex) {
+            audioChunks.push(Buffer.from(hex, 'hex'));
+          }
+          const isFinal = data?.is_final === true || data?.payload?.is_final === true;
+          if (isFinal) {
+            if (!finishSent) {
+              finishSent = true;
+              ws.send(JSON.stringify({ event: 'task_finish' }));
+            }
+            finished = true;
+          }
+          return;
+        }
+
+        if (type === 'task_finished') {
+          settle(() => {
+            const merged = Buffer.concat(audioChunks);
+            if (merged.length === 0) {
+              reject(new Error('MiniMax WebSocket TTS returned no audio payload'));
+            } else {
+              resolve(merged);
+            }
+          });
+        }
+      } catch (err: any) {
+        settle(() => reject(new Error(err?.message || 'MiniMax WebSocket TTS parse failed')));
+      }
+    });
+
+    ws.on('error', (err) => {
+      pushUiLog(`[MiniMax TTS][WS][ERR] ${err?.message || String(err)}`);
+      settle(() => reject(err));
+    });
+
+    ws.on('close', () => {
+      if (settleCalled) return;
+      settle(() => {
+        const merged = Buffer.concat(audioChunks);
+        if (started && merged.length > 0) {
+          resolve(merged);
+        } else {
+          reject(new Error('MiniMax WebSocket TTS connection closed before audio was returned'));
+        }
+      });
+    });
+  });
 }
 
 // ── AI.library 插件（与 Nocturne :8000 错开，默认 :8001）────────────────
@@ -2246,8 +2423,13 @@ ipcMain.handle('get-api-keys', async () => {
     keys.OCT_MODEL = pick('OCT_MODEL', cfg.OCT_MODEL);
     keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);
     keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
+    keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
+    keys.TTS_MINIMAX_VOICE_ID = pick('TTS_MINIMAX_VOICE_ID', cfg.TTS_MINIMAX_VOICE_ID, DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID);
+    keys.CUSTOM_API_KEY = pick('CUSTOM_API_KEY', cfg.CUSTOM_API_KEY);
     keys.DASHSCOPE_BASE_URL = pick('DASHSCOPE_BASE_URL', cfg.DASHSCOPE_BASE_URL);
     keys.DEEPSEEK_BASE_URL = pick('DEEPSEEK_BASE_URL', cfg.DEEPSEEK_BASE_URL);
+    keys.MINIMAX_BASE_URL = pick('MINIMAX_BASE_URL', cfg.MINIMAX_BASE_URL);
+    keys.CUSTOM_BASE_URL = pick('CUSTOM_BASE_URL', cfg.CUSTOM_BASE_URL);
     keys.BRAVE_SEARCH_API_KEY = pick('BRAVE_SEARCH_API_KEY', cfg.BRAVE_SEARCH_API_KEY);
     keys.TAVILY_API_KEY = pick('TAVILY_API_KEY', cfg.TAVILY_API_KEY);
     return { 
@@ -2255,12 +2437,17 @@ ipcMain.handle('get-api-keys', async () => {
       data: { 
         DASHSCOPE_API_KEY: keys.DASHSCOPE_API_KEY || '', 
         DEEPSEEK_API_KEY: keys.DEEPSEEK_API_KEY || '',
+        MINIMAX_API_KEY: keys.MINIMAX_API_KEY || '',
+        TTS_MINIMAX_VOICE_ID: keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
+        CUSTOM_API_KEY: keys.CUSTOM_API_KEY || '',
         OPENCLAW_WS_URL: keys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
         OPENCLAW_TOKEN: keys.OPENCLAW_TOKEN || '',
         OCT_PROVIDER: keys.OCT_PROVIDER || '',
         OCT_MODEL: keys.OCT_MODEL || '',
         DASHSCOPE_BASE_URL: keys.DASHSCOPE_BASE_URL || '',
         DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
+        MINIMAX_BASE_URL: keys.MINIMAX_BASE_URL || '',
+        CUSTOM_BASE_URL: keys.CUSTOM_BASE_URL || '',
         BRAVE_SEARCH_API_KEY: keys.BRAVE_SEARCH_API_KEY || '',
         TAVILY_API_KEY: keys.TAVILY_API_KEY || '',
       } 
@@ -2275,6 +2462,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     DASHSCOPE_API_KEY?: string;
     DEEPSEEK_API_KEY?: string;
     MINIMAX_API_KEY?: string;
+    TTS_MINIMAX_VOICE_ID?: string;
     CUSTOM_API_KEY?: string;
     OPENCLAW_WS_URL?: string;
     OPENCLAW_TOKEN?: string;
@@ -2302,6 +2490,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.DASHSCOPE_API_KEY !== undefined) cfg.DASHSCOPE_API_KEY = keys.DASHSCOPE_API_KEY || '';
     if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
     if (keys.MINIMAX_API_KEY !== undefined) cfg.MINIMAX_API_KEY = keys.MINIMAX_API_KEY || '';
+    if (keys.TTS_MINIMAX_VOICE_ID !== undefined) cfg.TTS_MINIMAX_VOICE_ID = keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID;
     if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
     if (keys.OCT_PROVIDER !== undefined) cfg.OCT_PROVIDER = keys.OCT_PROVIDER || '';
     if (keys.OCT_MODEL !== undefined) cfg.OCT_MODEL = keys.OCT_MODEL || '';
@@ -2342,8 +2531,10 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     const aiConfigChanged = keys.OCT_PROVIDER !== undefined || keys.OCT_MODEL !== undefined
       || keys.CUSTOM_MODEL !== undefined
       || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
+      || keys.MINIMAX_BASE_URL !== undefined
       || keys.CUSTOM_BASE_URL !== undefined
       || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
+      || keys.MINIMAX_API_KEY !== undefined
       || keys.CUSTOM_API_KEY !== undefined
       || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
@@ -2452,10 +2643,7 @@ ipcMain.handle('get-provider-list', async () => {
 // 测试 AI 连接（用当前配置发一个简单请求，可传入 formConfig 覆盖已保存配置）
 ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, string>) => {
   try {
-    let cfg: Record<string, string> = {};
-    if (fs.existsSync(CONFIG_FILE)) {
-      cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-    }
+    let cfg: Record<string, string> = readAppConfig();
     if (formConfig && typeof formConfig === 'object') {
       cfg = { ...cfg, ...formConfig };
     }
@@ -2464,8 +2652,16 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
     const { PROVIDERS } = fs.existsSync(providersPath) ? require(providersPath) : { PROVIDERS: {} };
     const providerId = cfg.OCT_PROVIDER || ((cfg.DASHSCOPE_BASE_URL || '').includes('coding.dashscope') ? 'bailian-coding' : 'bailian');
     const provider = (PROVIDERS as Record<string, any>)[providerId] || (PROVIDERS as Record<string, any>)['bailian-coding'];
-    const baseUrl = providerId === 'deepseek' ? (cfg.DEEPSEEK_BASE_URL || provider?.baseUrl || '') : (cfg.DASHSCOPE_BASE_URL || provider?.baseUrl || '');
-    const apiKey = providerId === 'deepseek' ? (cfg.DEEPSEEK_API_KEY || '') : (cfg.DASHSCOPE_API_KEY || '');
+    const baseUrl =
+      providerId === 'deepseek' ? (cfg.DEEPSEEK_BASE_URL || provider?.baseUrl || '')
+      : providerId === 'minimax' ? (cfg.MINIMAX_BASE_URL || provider?.baseUrl || '')
+      : providerId === 'custom' ? (cfg.CUSTOM_BASE_URL || provider?.baseUrl || '')
+      : (cfg.DASHSCOPE_BASE_URL || provider?.baseUrl || '');
+    const apiKey =
+      providerId === 'deepseek' ? (cfg.DEEPSEEK_API_KEY || '')
+      : providerId === 'minimax' ? (cfg.MINIMAX_API_KEY || '')
+      : providerId === 'custom' ? (cfg.CUSTOM_API_KEY || '')
+      : (cfg.DASHSCOPE_API_KEY || '');
     const model = cfg.OCT_MODEL || provider?.defaultModel || 'qwen3.5-plus';
     if (!baseUrl || !apiKey) {
       return { success: false, error: '请先填写 API Key 并选择服务商' };
@@ -2585,34 +2781,165 @@ ipcMain.handle('show-notification', (_, { title, body }: { title: string; body: 
   }
 });
 
-ipcMain.handle('tts-speak', async (_, { text }: { text: string }) => {
-  const apiKey = (process.env.DASHSCOPE_API_KEY || '').trim();
-  if (!apiKey) {
-    return { success: false, error: 'DASHSCOPE_API_KEY not configured' };
+ipcMain.handle('tts-speak', async (_, payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) => {
+  const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+  const providerPreference = payload?.providerPreference || 'auto';
+  if (!text) {
+    return { success: false, error: 'TTS text is empty' };
   }
+
+  const cfg = readAppConfig();
+  const dashscopeApiKey = String(cfg.DASHSCOPE_API_KEY || process.env.DASHSCOPE_API_KEY || '').trim();
+  const minimaxApiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
+  const minimaxVoiceId = String(cfg.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse').trim() || 'male-qn-qingse';
+  const dashscopeBaseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  const { wsBase: minimaxWsUrl } = getMiniMaxEndpoints(cfg);
+  const currentProviderId = String(cfg.OCT_PROVIDER || '').trim();
+
+  const providers: Array<'minimax' | 'dashscope'> =
+    providerPreference === 'browser' ? []
+    : providerPreference === 'minimax' ? ['minimax']
+    : providerPreference === 'dashscope' ? ['dashscope']
+    : currentProviderId === 'minimax' ? ['minimax']
+    : currentProviderId === 'bailian' || currentProviderId === 'bailian-coding' ? ['dashscope']
+    : [];
+
+  const errors: string[] = [];
+
+  for (const provider of providers) {
+    try {
+      if (provider === 'minimax') {
+        if (!minimaxApiKey) {
+          errors.push('MiniMax API Key not configured');
+          continue;
+        }
+        pushUiLog(`[MiniMax TTS] start provider=MiniMax model=speech-2.8-hd voice=${minimaxVoiceId} chars=${text.length}`);
+        try {
+          const audioBuffer = await synthesizeMiniMaxViaWebSocket({
+            wsUrl: minimaxWsUrl,
+            apiKey: minimaxApiKey,
+            text,
+            voiceId: minimaxVoiceId,
+          });
+          pushUiLog(`[MiniMax TTS] success provider=MiniMax model=speech-2.8-hd voice=${minimaxVoiceId} chars=${text.length} bytes=${audioBuffer.length}`);
+          return {
+            success: true,
+            provider: 'minimax',
+            audioBase64: audioBuffer.toString('base64'),
+            mimeType: 'audio/mpeg',
+          };
+        } catch (err: any) {
+          pushUiLog(`[MiniMax TTS][ERR] ${err?.message || 'unknown error'}`);
+          errors.push(`MiniMax WebSocket TTS failed: ${err?.message || 'unknown error'}`);
+          if (providerPreference === 'minimax') {
+            break;
+          }
+          continue;
+        }
+      }
+
+      if (!dashscopeApiKey) {
+        errors.push('DashScope API Key not configured');
+        continue;
+      }
+      pushUiLog(`[DashScope TTS] start provider=DashScope voice=longxiaochun chars=${text.length}`);
+      const res = await fetch(`${dashscopeBaseUrl.replace(/\/$/, '')}/audio/speech`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${dashscopeApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'cosyvoice-v1',
+          voice: 'longxiaochun',
+          input: text,
+          response_format: 'mp3',
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        pushUiLog(`[DashScope TTS][ERR] ${res.status} ${errText.slice(0, 160)}`);
+        errors.push(`DashScope TTS API error ${res.status}: ${errText}`);
+        continue;
+      }
+      const buf = await res.arrayBuffer();
+      pushUiLog(`[DashScope TTS] success provider=DashScope voice=longxiaochun chars=${text.length} bytes=${buf.byteLength}`);
+      return {
+        success: true,
+        provider: 'dashscope',
+        audioBase64: Buffer.from(buf).toString('base64'),
+        mimeType: 'audio/mpeg',
+      };
+    } catch (e: any) {
+      errors.push(`${provider} TTS request failed: ${e?.message || 'unknown error'}`);
+    }
+  }
+
+  return { success: false, error: errors.join(' | ') || (providerPreference === 'browser' ? 'Browser TTS handled in renderer' : 'No matching cloud TTS capability for current provider') };
+});
+
+ipcMain.handle('asr-transcribe', async (_, payload: { audioDataUrl: string; language?: string }) => {
+  const audioDataUrl = typeof payload?.audioDataUrl === 'string' ? payload.audioDataUrl.trim() : '';
+  const language = typeof payload?.language === 'string' ? payload.language.trim() : 'zh';
+  if (!audioDataUrl.startsWith('data:audio/')) {
+    return { success: false, error: 'Invalid audio payload' };
+  }
+
+  const cfg = readAppConfig();
+  const apiKey = String(cfg.DASHSCOPE_API_KEY || process.env.DASHSCOPE_API_KEY || '').trim();
+  if (!apiKey) {
+    return { success: false, error: 'DASHSCOPE_API_KEY not configured for ASR' };
+  }
+
+  const configuredBase = String(cfg.DASHSCOPE_BASE_URL || '').trim();
+  const baseUrl = configuredBase.includes('dashscope-intl')
+    ? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+    : 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+
   try {
-    const res = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/audio/speech', {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'cosyvoice-v1',
-        voice: 'longxiaochun',
-        input: text,
-        response_format: 'mp3',
+        model: 'qwen3-asr-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_audio',
+                input_audio: {
+                  data: audioDataUrl,
+                },
+              },
+            ],
+          },
+        ],
+        stream: false,
+        asr_options: {
+          language,
+          enable_itn: false,
+        },
       }),
     });
+
     if (!res.ok) {
       const errText = await res.text();
-      return { success: false, error: `TTS API error ${res.status}: ${errText}` };
+      return { success: false, error: `ASR API error ${res.status}: ${errText}` };
     }
-    const buf = await res.arrayBuffer();
-    const base64 = Buffer.from(buf).toString('base64');
-    return { success: true, audioBase64: base64 };
+
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+    if (!text || typeof text !== 'string') {
+      return { success: false, error: 'ASR returned no transcript text' };
+    }
+
+    return { success: true, text: text.trim() };
   } catch (e: any) {
-    return { success: false, error: e?.message || 'TTS request failed' };
+    return { success: false, error: e?.message || 'ASR request failed' };
   }
 });
 

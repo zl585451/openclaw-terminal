@@ -37,6 +37,7 @@ const electronAPI = {
         DASHSCOPE_API_KEY?: string;
         DEEPSEEK_API_KEY?: string;
         MINIMAX_API_KEY?: string;
+        TTS_MINIMAX_VOICE_ID?: string;
         CUSTOM_API_KEY?: string;
         OPENCLAW_WS_URL?: string;
         OPENCLAW_TOKEN?: string;
@@ -56,6 +57,10 @@ const electronAPI = {
     OCT_USER_NAME?: string;
     OCT_PERSONA_STYLE?: string;
   }) => ipcRenderer.invoke('save-persona-settings', payload),
+  ttsSpeak: (payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) =>
+    ipcRenderer.invoke('tts-speak', payload),
+  asrTranscribe: (payload: { audioDataUrl: string; language?: string }) =>
+    ipcRenderer.invoke('asr-transcribe', payload),
   getProviderList: () => ipcRenderer.invoke('get-provider-list'),
   testAIConnection: (formConfig?: Record<string, string>) => ipcRenderer.invoke('test-ai-connection', formConfig),
   // Nocturne 记忆系统

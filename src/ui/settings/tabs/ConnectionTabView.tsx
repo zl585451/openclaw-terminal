@@ -4,6 +4,7 @@ export type SettingsApiKeysState = {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  TTS_MINIMAX_VOICE_ID: string;
   CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
@@ -171,8 +172,10 @@ export function ConnectionTabView({
                     ...k,
                     OCT_PROVIDER: id,
                     OCT_MODEL: p?.defaultModel || k.OCT_MODEL,
-                    DASHSCOPE_BASE_URL: id === 'deepseek' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
+                    DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
                     DEEPSEEK_BASE_URL: id === 'deepseek' ? (p?.baseUrl || '') : k.DEEPSEEK_BASE_URL,
+                    MINIMAX_BASE_URL: id === 'minimax' ? (p?.baseUrl || '') : k.MINIMAX_BASE_URL,
+                    CUSTOM_BASE_URL: id === 'custom' ? (p?.baseUrl || '') : k.CUSTOM_BASE_URL,
                   }));
                 }}
                 className="settings-input settings-input-focusable"
@@ -190,16 +193,18 @@ export function ConnectionTabView({
               <label>API Key</label>
               <div className="settings-input-row">
                 <input
-                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY || showApiKey.CUSTOM_API_KEY ? 'text' : 'password'}
+                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY || showApiKey.MINIMAX_API_KEY || showApiKey.CUSTOM_API_KEY ? 'text' : 'password'}
                   value={
                     currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_API_KEY : 
+                    currentProviderId === 'minimax' ? apiKeys.MINIMAX_API_KEY :
                     currentProviderId === 'custom' ? apiKeys.CUSTOM_API_KEY : 
                     apiKeys.DASHSCOPE_API_KEY
                   }
                   onChange={(e) => {
                     let key: keyof SettingsApiKeysState;
-                    if (apiKeys.OCT_PROVIDER === 'deepseek') key = 'DEEPSEEK_API_KEY';
-                    else if (apiKeys.OCT_PROVIDER === 'custom') key = 'CUSTOM_API_KEY';
+                    if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
+                    else if (currentProviderId === 'minimax') key = 'MINIMAX_API_KEY';
+                    else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
                     else key = 'DASHSCOPE_API_KEY';
                     setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                   }}
@@ -213,6 +218,7 @@ export function ConnectionTabView({
                   onClick={() => {
                     let key: string;
                     if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
+                    else if (currentProviderId === 'minimax') key = 'MINIMAX_API_KEY';
                     else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
                     else key = 'DASHSCOPE_API_KEY';
                     setShowApiKey((s) => ({ ...s, [key]: !s[key as keyof typeof s] }));
@@ -220,6 +226,8 @@ export function ConnectionTabView({
                 >
                   {currentProviderId === 'deepseek' 
                     ? (showApiKey.DEEPSEEK_API_KEY ? '🙈' : '👁') 
+                    : currentProviderId === 'minimax'
+                    ? (showApiKey.MINIMAX_API_KEY ? '🙈' : '👁')
                     : currentProviderId === 'custom'
                     ? (showApiKey.CUSTOM_API_KEY ? '🙈' : '👁')
                     : (showApiKey.DASHSCOPE_API_KEY ? '🙈' : '👁')}
@@ -284,13 +292,15 @@ export function ConnectionTabView({
                     type="text"
                     value={
                       currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : 
+                      currentProviderId === 'minimax' ? apiKeys.MINIMAX_BASE_URL :
                       currentProviderId === 'custom' ? apiKeys.CUSTOM_BASE_URL :
                       apiKeys.DASHSCOPE_BASE_URL
                     }
                     onChange={(e) => {
                       let key: keyof SettingsApiKeysState;
-                      if (apiKeys.OCT_PROVIDER === 'deepseek') key = 'DEEPSEEK_BASE_URL';
-                      else if (apiKeys.OCT_PROVIDER === 'custom') key = 'CUSTOM_BASE_URL';
+                      if (currentProviderId === 'deepseek') key = 'DEEPSEEK_BASE_URL';
+                      else if (currentProviderId === 'minimax') key = 'MINIMAX_BASE_URL';
+                      else if (currentProviderId === 'custom') key = 'CUSTOM_BASE_URL';
                       else key = 'DASHSCOPE_BASE_URL';
                       setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                     }}
@@ -317,14 +327,18 @@ export function ConnectionTabView({
                   setTestConnectionError('');
                   const providerId = currentProviderId;
                   const p = providers[providerId];
-                  const result = await api.testAIConnection({
-                    OCT_PROVIDER: providerId,
-                    OCT_MODEL: apiKeys.OCT_MODEL || p?.defaultModel || 'qwen3.5-plus',
-                    DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
-                    DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
-                    DASHSCOPE_BASE_URL: providerId === 'deepseek' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
-                    DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
-                  });
+                    const result = await api.testAIConnection({
+                      OCT_PROVIDER: providerId,
+                      OCT_MODEL: apiKeys.OCT_MODEL || p?.defaultModel || 'qwen3.5-plus',
+                      DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
+                      DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
+                      MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
+                      CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
+                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
+                      DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
+                      MINIMAX_BASE_URL: providerId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || p?.baseUrl || '') : '',
+                      CUSTOM_BASE_URL: providerId === 'custom' ? (apiKeys.CUSTOM_BASE_URL || p?.baseUrl || '') : '',
+                    });
                   setTestConnectionStatus(result.success ? 'success' : 'error');
                   if (!result.success) setTestConnectionError(result.error || '');
                   setTimeout(() => setTestConnectionStatus('idle'), 3000);

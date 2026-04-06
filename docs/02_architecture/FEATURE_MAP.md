@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-06（人格配置产品化：默认中性人格 + 用户可配置层）  
+> **最后更新**：2026-04-06（语音能力路由产品化：云端 TTS 按当前 Provider 能力启用）  
 > **详细说明**：查看 `docs/feature-map/` 文件夹中的分模块文档
 
 ---
@@ -97,7 +97,21 @@
   - 聊天 UI、通知、状态条的主要展示名称与人格配置保持一致
 - **结果**：
   - 发布默认人格为中性可配置
-  - 私人化人格改为用户自己的本地配置，而不是写死在仓库主链里
+- 私人化人格改为用户自己的本地配置，而不是写死在仓库主链里
+
+### 2026-04-06 语音助手与能力路由产品化
+- **目标**：把语音能力做成产品级 capability routing，而不是 MiniMax 私有定制链
+- **实现**：
+  - 接入 MiniMax `speech-2.8-hd` WebSocket TTS
+  - 保留浏览器本地朗读兜底
+  - 语音输入改为录音 → IPC → 云端 ASR → 文本回填
+  - `LogPanel` 新增 `TTS` 分类，只显示用量、成功与错误
+  - 设置面板新增云端音色选择，但只有检测到可用 MiniMax TTS 能力时才展示
+  - `auto` 朗读改为跟随当前 `OCT_PROVIDER`，不再因残留 Key 误触发别家云端语音
+- **结果**：
+  - MiniMax Token Plan 用户可直接启用云端朗读
+  - 非 MiniMax 用户不会平白承担额外系统负担
+  - 后续生图/多模态套餐能力可沿用同一套路由思路
 
 ### 2026-03-24 网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉
 - **网络稳定性**：ai.js 代理绕过（getDirectFetchOptions）、fetchWithRetry（90s 超时 + 重试）、流中断截断提示、工具调用 30s 超时隔离；config.js NO_PROXY 直连 DashScope
