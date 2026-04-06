@@ -19,28 +19,65 @@ async function fetchPageExcerpt(proxyFetch, url, maxChars = 600) {
 }
 
 async function enrichResults(proxyFetch, results, limit = 2) {
-  const targets = (results || []).filter((item) => item?.url).slice(0, limit);
-  if (!targets.length) return results;
+  const list = results || [];
+  /** 按原始下标取前 limit 条带 url 的项，避免 filter/slice 后与 idx 错位 */
+  const indices = [];
+  for (let i = 0; i < list.length && indices.length < limit; i++) {
+    if (list[i]?.url) indices.push(i);
+  }
+  if (!indices.length) return results;
 
-  const enriched = await Promise.all(
-    targets.map(async (item) => {
+  const enrichedPairs = await Promise.all(
+    indices.map(async (i) => {
+      const item = list[i];
       const excerpt = await fetchPageExcerpt(proxyFetch, item.url, 600);
-      if (!excerpt) return item;
-      return {
-        ...item,
-        snippet: item.snippet && item.snippet.length > 40
-          ? item.snippet
-          : excerpt,
-        excerpt,
-      };
+      if (!excerpt) return [i, item];
+      return [
+        i,
+        {
+          ...item,
+          snippet: item.snippet && item.snippet.length > 40
+            ? item.snippet
+            : excerpt,
+          excerpt,
+        },
+      ];
     })
   );
 
-  return results.map((item, idx) => enriched[idx] || item);
+  const out = [...list];
+  for (const [i, item] of enrichedPairs) {
+    out[i] = item;
+  }
+  return out;
+}
+
+function toolSearchFail(error, hint) {
+  return { success: false, data: null, error, hint: hint || null };
+}
+
+/** 成功响应：data 为规范载荷，legacy 中的字段同步保留在顶层以兼容旧消费方 */
+function toolSearchOk(data, legacy) {
+  const hint =
+    legacy && Object.prototype.hasOwnProperty.call(legacy, 'hint')
+      ? legacy.hint
+      : data && data.hint != null
+        ? data.hint
+        : null;
+  return {
+    success: true,
+    data,
+    error: null,
+    hint,
+    ...legacy,
+  };
 }
 
 module.exports = {
   name: 'web_search',
+  category: 'web',
+  riskLevel: 'guarded',
+  displayName: '网页搜索',
   definition: {
     type: 'function',
     function: {
@@ -93,10 +130,16 @@ module.exports = {
       : engine;
 
     if (useEngine === 'brave' && !braveKey) {
-      return { success: false, error: 'BRAVE_SEARCH_API_KEY 未配置，请在 .env 中填入' };
+      return toolSearchFail(
+        'BRAVE_SEARCH_API_KEY 未配置，请在 .env 中填入',
+        '配置 BRAVE_SEARCH_API_KEY，或改用 engine=duckduckgo / tavily（视可用性）'
+      );
     }
     if (useEngine === 'tavily' && !tavilyKey) {
-      return { success: false, error: 'TAVILY_API_KEY 未配置，请在 .env 中填入' };
+      return toolSearchFail(
+        'TAVILY_API_KEY 未配置，请在 .env 中填入',
+        '配置 TAVILY_API_KEY，或改用 engine=brave / duckduckgo'
+      );
     }
 
     if (useEngine === 'brave') {
@@ -111,28 +154,48 @@ module.exports = {
           }
         );
         if (!res.ok) throw new Error(`Brave API ${res.status}`);
-        const data = await res.json();
-        let results = (data.web?.results || []).slice(0, count).map(r => ({
+        const braveJson = await res.json();
+        let results = (braveJson.web?.results || []).slice(0, count).map(r => ({
           title: r.title, url: r.url, snippet: r.description || '',
         }));
         if (enrich) {
           results = await enrichResults(proxyFetch, results, Math.min(2, results.length));
         }
-        return { success: true, engine: 'brave', query, results, enriched: enrich };
+        const payload = { engine: 'brave', query, results, enriched: enrich };
+        return toolSearchOk(payload, { engine: 'brave', query, results, enriched: enrich });
       } catch (braveErr) {
         if (engine === 'auto') {
           log.warn('Brave search failed, falling back to DuckDuckGo', { query, error: braveErr?.message });
           try {
             let results = await doDuckDuckGo(query, count);
             if (results.length === 0) {
-              return { success: true, engine: 'duckduckgo', query, results: [], fallback: true, hint: 'DuckDuckGo 无即时结果（国内可能无法访问），建议配置 Brave 或 Tavily' };
+              const h = 'DuckDuckGo 无即时结果（国内可能无法访问），建议配置 Brave 或 Tavily';
+              const payload = { engine: 'duckduckgo', query, results: [], fallback: true, enriched: enrich, hint: h };
+              return toolSearchOk(payload, {
+                engine: 'duckduckgo',
+                query,
+                results: [],
+                fallback: true,
+                enriched: enrich,
+                hint: h,
+              });
             }
             if (enrich) {
               results = await enrichResults(proxyFetch, results, Math.min(2, results.length));
             }
-            return { success: true, engine: 'duckduckgo', query, results, fallback: true, enriched: enrich };
+            const payload2 = { engine: 'duckduckgo', query, results, fallback: true, enriched: enrich };
+            return toolSearchOk(payload2, {
+              engine: 'duckduckgo',
+              query,
+              results,
+              fallback: true,
+              enriched: enrich,
+            });
           } catch (ddgErr) {
-            return { success: false, error: `Brave 失败: ${braveErr?.message}，降级 DuckDuckGo 也失败: ${ddgErr?.message}` };
+            return toolSearchFail(
+              `Brave 失败: ${braveErr?.message}，降级 DuckDuckGo 也失败: ${ddgErr?.message}`,
+              '检查网络与 API 密钥，或稍后重试'
+            );
           }
         }
         throw braveErr;
@@ -149,28 +212,49 @@ module.exports = {
           signal: AbortSignal.timeout(10000),
         });
         if (!res.ok) throw new Error(`Tavily API ${res.status}`);
-        const data = await res.json();
-        let results = (data.results || []).slice(0, count).map(r => ({
+        const tavilyJson = await res.json();
+        let results = (tavilyJson.results || []).slice(0, count).map(r => ({
           title: r.title, url: r.url, snippet: r.content || '',
         }));
         if (enrich) {
           results = await enrichResults(proxyFetch, results, Math.min(2, results.length));
         }
-        return { success: true, engine: 'tavily', query, answer: data.answer || '', results, enriched: enrich };
+        const answer = tavilyJson.answer || '';
+        const payloadTv = { engine: 'tavily', query, answer, results, enriched: enrich };
+        return toolSearchOk(payloadTv, { engine: 'tavily', query, answer, results, enriched: enrich });
       } catch (tavilyErr) {
         if (engine === 'auto') {
           log.warn('Tavily search failed, falling back to DuckDuckGo', { query, error: tavilyErr?.message });
           try {
             let results = await doDuckDuckGo(query, count);
             if (results.length === 0) {
-              return { success: true, engine: 'duckduckgo', query, results: [], fallback: true, hint: 'DuckDuckGo 无即时结果（国内可能无法访问）' };
+              const h = 'DuckDuckGo 无即时结果（国内可能无法访问）';
+              const dataEmpty = { engine: 'duckduckgo', query, results: [], fallback: true, enriched: enrich, hint: h };
+              return toolSearchOk(dataEmpty, {
+                engine: 'duckduckgo',
+                query,
+                results: [],
+                fallback: true,
+                enriched: enrich,
+                hint: h,
+              });
             }
             if (enrich) {
               results = await enrichResults(proxyFetch, results, Math.min(2, results.length));
             }
-            return { success: true, engine: 'duckduckgo', query, results, fallback: true, enriched: enrich };
+            const dataFb = { engine: 'duckduckgo', query, results, fallback: true, enriched: enrich };
+            return toolSearchOk(dataFb, {
+              engine: 'duckduckgo',
+              query,
+              results,
+              fallback: true,
+              enriched: enrich,
+            });
           } catch (ddgErr) {
-            return { success: false, error: `Tavily 失败: ${tavilyErr?.message}，降级 DuckDuckGo 也失败: ${ddgErr?.message}` };
+            return toolSearchFail(
+              `Tavily 失败: ${tavilyErr?.message}，降级 DuckDuckGo 也失败: ${ddgErr?.message}`,
+              '检查网络与 API 密钥，或稍后重试'
+            );
           }
         }
         throw tavilyErr;
@@ -178,12 +262,15 @@ module.exports = {
     } else {
       let results = await doDuckDuckGo(query, count);
       if (results.length === 0) {
-        return { success: true, engine: 'duckduckgo', query, results: [], hint: 'DuckDuckGo 无即时结果（国内可能无法访问），建议用 Brave 或 Tavily' };
+        const h = 'DuckDuckGo 无即时结果（国内可能无法访问），建议用 Brave 或 Tavily';
+        const dataEmpty = { engine: 'duckduckgo', query, results: [], enriched: enrich, hint: h };
+        return toolSearchOk(dataEmpty, { engine: 'duckduckgo', query, results: [], enriched: enrich, hint: h });
       }
       if (enrich) {
         results = await enrichResults(proxyFetch, results, Math.min(2, results.length));
       }
-      return { success: true, engine: 'duckduckgo', query, results, enriched: enrich };
+      const dataDdg = { engine: 'duckduckgo', query, results, enriched: enrich };
+      return toolSearchOk(dataDdg, { engine: 'duckduckgo', query, results, enriched: enrich });
     }
   },
 };

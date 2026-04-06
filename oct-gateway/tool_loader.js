@@ -7,6 +7,26 @@ const TOOLS_DIR = path.join(__dirname, 'tools');
 /** 供其他工具 require 的模块，非 ToolLoader 注册项（无 name/definition/execute） */
 const TOOL_LOADER_SKIP = new Set(['shared.js', 'ai_library.js', 'command_converter.js']);
 
+const META_DEFAULTS = { category: 'misc', riskLevel: 'safe' };
+const VALID_CATEGORIES = new Set(['project', 'web', 'memory', 'task', 'system', 'misc']);
+const VALID_RISK_LEVELS = new Set(['safe', 'guarded', 'dangerous']);
+
+/**
+ * 解析工具可选元数据；缺字段或非法值时用默认值，保证旧工具不报错。
+ * @param {object} tool
+ * @returns {{ category: string, riskLevel: string, displayName: string }}
+ */
+function resolveToolMeta(tool) {
+  const name = tool.name || 'unknown';
+  let category = tool.category;
+  if (!VALID_CATEGORIES.has(category)) category = META_DEFAULTS.category;
+  let riskLevel = tool.riskLevel;
+  if (!VALID_RISK_LEVELS.has(riskLevel)) riskLevel = META_DEFAULTS.riskLevel;
+  const displayName =
+    typeof tool.displayName === 'string' && tool.displayName.trim() ? tool.displayName.trim() : name;
+  return { category, riskLevel, displayName };
+}
+
 let _definitions = [];
 let _executors = {};
 
@@ -34,7 +54,8 @@ function loadTools() {
 
         _definitions.push(tool.definition);
         _executors[tool.name] = tool.execute;
-        console.log(`[ToolLoader] 已加载工具: ${tool.name}`);
+        const meta = resolveToolMeta(tool);
+        console.log(`[ToolLoader] 已加载工具: ${tool.name} (${meta.category}/${meta.riskLevel})`);
       } catch (e) {
         console.error(`[ToolLoader] 加载 ${file} 失败:`, e.message);
       }
