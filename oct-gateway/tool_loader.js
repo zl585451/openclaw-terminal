@@ -5,7 +5,7 @@ const shared = require('./tools/shared');
 const TOOLS_DIR = path.join(__dirname, 'tools');
 
 /** 供其他工具 require 的模块，非 ToolLoader 注册项（无 name/definition/execute） */
-const TOOL_LOADER_SKIP = new Set(['shared.js', 'ai_library.js']);
+const TOOL_LOADER_SKIP = new Set(['shared.js', 'ai_library.js', 'command_converter.js']);
 
 let _definitions = [];
 let _executors = {};

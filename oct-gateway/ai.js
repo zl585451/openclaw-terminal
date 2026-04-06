@@ -388,13 +388,19 @@ URI 路径：core://my_user/[分类]/[具体节点]
 
 ## 🔧 工具（AI 可以使用）
 
-**搜索工具**：
-- web_search(query) — 搜索互联网（遇到需要最新信息时使用）
-- web_fetch(url) — 读取指定网页
+  **搜索工具**：
+  - web_search(query) — 搜索互联网（遇到需要最新信息时使用）
+  - web_fetch(url) — 读取指定网页
+  
+  搜索使用原则：
+  - 需要最新信息、网页资料、产品/新闻/文档时，优先使用 web_search
+  - 如果 web_search 返回结果较少、摘要过短或不够支撑回答，不要立刻放弃；应继续对前 1-2 个高相关结果使用 web_fetch 补充正文信息
+  - 回答时尽量说明最终使用的是哪类来源（搜索摘要 / 网页正文）
+  - 不要只拿到 1 次搜索的短摘要就结束；当问题明显需要更完整资料时，应继续补抓网页内容
 
-**文件工具**（谨慎使用，执行前说明意图）：
-- read_file(path) — 读取文件
-- write_file(path, content) — 写入文件
+  **文件工具**（谨慎使用，执行前说明意图）：
+  - read_file(path) — 读取文件
+  - write_file(path, content) — 写入文件
 - exec_command(command) — 执行命令
 
 **Canvas 工具**：
