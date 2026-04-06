@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
 import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../../utils/cotExtract';
 import { summarizeCotForDisplay } from '../../utils/cotSummary';
@@ -58,6 +60,9 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
   return <span className="cursor-blink">▋</span>;
 });
 
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
+const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
+
 /** 流式结束后的正文：预处理 + ReactMarkdown，结果按 messageId+段键缓存 */
 const FinalizedMarkdownContent = memo(
   function FinalizedMarkdownContent({
@@ -89,7 +94,11 @@ const FinalizedMarkdownContent = memo(
     );
     return (
       <span className="msg-content markdown-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        <ReactMarkdown
+          remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+          rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+          components={markdownComponents}
+        >
           {processedText}
         </ReactMarkdown>
       </span>
@@ -968,7 +977,7 @@ export const ChatMessageList = function ChatMessageList({
             ? (display as string)
             : parsed.text?.trim()
               ? parsed.text
-              : raw
+              : mainTextFull
           : (display as string);
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;

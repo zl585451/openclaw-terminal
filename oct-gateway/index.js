@@ -911,9 +911,9 @@ wss.on('connection', (ws) => {
       const thinkMode = session.getThinkMode(sessionKey);
       if (thinkMode && thinkMode !== 'off') {
         const thinkPrompts = {
-          'low': '\n\n[思考模式：LOW] 回复时先用 [cot] 标签简要列出你的思路要点（2-3 步），然后 [/cot] 结束，最后给出正式回复。格式示例：\n[cot]\n1. 分析问题核心\n2. 确定方案\n[/cot]\n\n正式回复内容...',
-          'medium': '\n\n[思考模式：MEDIUM] 回复时先用 [cot] 标签结构化分析问题（1.核心目标 2.关键约束 3.可行方案 4.建议行动），然后 [/cot] 结束，最后给出正式回复。格式示例：\n[cot]\n1. 核心目标：...\n2. 关键约束：...\n3. 可行方案：...\n4. 建议行动：...\n[/cot]\n\n正式回复内容...',
-          'high': '\n\n[思考模式：HIGH] 回复时先用 [cot] 标签做深度推理，分析问题本质，列举多种思路，评估优劣，然后 [/cot] 结束，最后给出详细正式回复。格式示例：\n[cot]\n## 问题分析\n...\n## 可能方案\n### 方案A：...\n### 方案B：...\n## 评估\n...\n## 结论\n...\n[/cot]\n\n正式回复内容...',
+          'low': '\n\n[思考模式：LOW] 允许内部思考，但最终只输出对用户可见的简洁答案。严禁输出思考过程、草稿、自言自语、[cot] 或 <think> 标签。',
+          'medium': '\n\n[思考模式：MEDIUM] 允许内部思考，但最终只输出结构化结论与行动建议。严禁输出思考过程、草稿、自言自语、[cot] 或 <think> 标签。',
+          'high': '\n\n[思考模式：HIGH] 允许深度内部推理，但最终只输出清晰完整的正式回复。严禁输出思考过程、草稿、自言自语、[cot] 或 <think> 标签。',
         };
         finalSystemPrompt = finalSystemPrompt + thinkPrompts[thinkMode];
       }
@@ -1025,12 +1025,13 @@ wss.on('connection', (ws) => {
           currentAbort = null;
           if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
           smoother.flush();
-          if (fullReply) {
-            session.addMessage(sessionKey, 'assistant', fullReply);
+          const sanitizedReply = sanitizeAssistantReply(fullReply || '');
+          if (sanitizedReply) {
+            session.addMessage(sessionKey, 'assistant', sanitizedReply);
 
             // 后台队列串行执行，限流避免压垮 Nocturne；失败记录日志不阻塞
             nocturneQueue.enqueue(
-              () => memoryFeedback.detectAndSaveFeedback(userMessage, fullReply),
+              () => memoryFeedback.detectAndSaveFeedback(userMessage, sanitizedReply),
               'memoryFeedback'
             );
             nocturneQueue.enqueue(
@@ -1038,11 +1039,11 @@ wss.on('connection', (ws) => {
               'detectAndSaveParking'
             );
             nocturneQueue.enqueue(
-              () => memoryHistory.saveHistorySummary(userMessage, fullReply),
+              () => memoryHistory.saveHistorySummary(userMessage, sanitizedReply),
               'memoryHistory'
             );
             nocturneQueue.enqueue(
-              () => extractAndSaveMemory(userMessage, fullReply),
+              () => extractAndSaveMemory(userMessage, sanitizedReply),
               'extractAndSaveMemory'
             );
             const history = session.getHistory(sessionKey) || [];
@@ -1054,7 +1055,7 @@ wss.on('connection', (ws) => {
               : '';
             nocturneQueue.enqueue(
               () => clarificationMemory.detectAndSaveClarification(
-                userMessage, fullReply, prevAssistantReply
+                userMessage, sanitizedReply, prevAssistantReply
               ),
               'clarificationMemory'
             );
@@ -1067,7 +1068,7 @@ wss.on('connection', (ws) => {
           }
 
           if (ws.readyState === ws.OPEN) {
-            const donePayload = { text: fullReply, state: 'done', done: true };
+            const donePayload = { text: sanitizedReply, state: 'done', done: true };
             if (usage) donePayload.usage = usage;
             if (responseModel) donePayload.model = responseModel;
             ws.send(JSON.stringify({ type: 'event', event: 'chat', payload: donePayload }));
@@ -1075,7 +1076,7 @@ wss.on('connection', (ws) => {
               type: 'event', event: 'agent-phase', phase: 'idle'
             }));
           }
-          log.info('stream done', { len: fullReply.length });
+          log.info('stream done', { len: sanitizedReply.length });
         },
         onError: (err) => {
           if (cancelled) return;

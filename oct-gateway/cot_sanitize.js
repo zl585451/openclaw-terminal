@@ -20,8 +20,80 @@ function stripCotText(input) {
     .trim();
 }
 
+function stripTextToolAnnotations(input) {
+  const text = String(input || '');
+  if (!text) return '';
+
+  const headerRe = /\[To=(?:"[^"]+"|'[^']+')\]\s*\{/g;
+  let out = '';
+  let cursor = 0;
+  let match;
+
+  while ((match = headerRe.exec(text)) !== null) {
+    const start = match.index;
+    const openBracePos = text.indexOf('{', start);
+    if (openBracePos < 0) break;
+
+    out += text.slice(cursor, start);
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let quoteChar = '"';
+    let i = openBracePos;
+    let foundEnd = false;
+
+    for (; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === quoteChar) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quoteChar = ch;
+        continue;
+      }
+      if (ch === '{') {
+        depth += 1;
+        continue;
+      }
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          foundEnd = true;
+          i += 1;
+          break;
+        }
+      }
+    }
+
+    if (!foundEnd) {
+      cursor = start;
+      break;
+    }
+
+    cursor = i;
+    headerRe.lastIndex = i;
+  }
+
+  out += text.slice(cursor);
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function sanitizeAssistantReply(reply) {
-  return stripCotText(reply);
+  return stripCotText(stripTextToolAnnotations(reply));
 }
 
 function sanitizeMemoryNodeContent(raw) {
@@ -58,6 +130,7 @@ function sanitizeMemoryNodeContent(raw) {
 }
 
 module.exports = {
+  stripTextToolAnnotations,
   stripCotText,
   sanitizeAssistantReply,
   sanitizeMemoryNodeContent,

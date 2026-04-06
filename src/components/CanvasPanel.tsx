@@ -1,11 +1,16 @@
 import { useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { useCanvas } from '../contexts/CanvasContext';
 import { markdownComponents } from '../ui/chat/markdownComponents';
 import { highlightCode } from '../utils/codeHighlight';
 import MermaidRenderer from './canvas/MermaidRenderer';
 import './CanvasPanel.css';
+
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
+const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
 
 export default function CanvasPanel() {
   const canvas = useCanvas();
@@ -93,7 +98,11 @@ export default function CanvasPanel() {
       return (
         <div className="canvas-preview">
           <div className="msg-content markdown-body">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown
+              remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+              rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+              components={markdownComponents}
+            >
               {activeDocument.content}
             </ReactMarkdown>
           </div>

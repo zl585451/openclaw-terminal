@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import '../styles/CoTBlock.css';
+
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
+const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
 
 interface CoTBlockProps {
   content: string;
@@ -99,7 +104,12 @@ const CoTBlock: React.FC<CoTBlockProps> = ({
         ) : (
           <div className={`cot-body-wrapper ${expanded ? 'cot-body-open' : 'cot-body-closed'}`}>
             <div className="cot-body" ref={bodyRef}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+                rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+              >
+                {content}
+              </ReactMarkdown>
             </div>
           </div>
         )}

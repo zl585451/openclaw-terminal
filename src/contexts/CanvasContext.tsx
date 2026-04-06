@@ -64,6 +64,7 @@ interface CanvasContextValue extends CanvasState {
   mode: CanvasMode;
   title: string;
   language: string;
+  openPanel: () => void;
   openCanvas: (content: string, mode: CanvasMode, title?: string, language?: string) => void;
   closeCanvas: () => void;
   updateContent: (content: string) => void;
@@ -123,6 +124,10 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
         activeDocumentId: nextDocument.id,
       };
     });
+  }, []);
+
+  const openPanel = useCallback(() => {
+    setState((prev) => ({ ...prev, isOpen: true }));
   }, []);
 
   const createDocument = useCallback((document: Partial<CanvasDocument> & { content: string; mode?: CanvasMode; title?: string }) => {
@@ -248,6 +253,7 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     mode: activeDocument?.mode ?? 'markdown',
     title: activeDocument?.title ?? '',
     language: activeDocument?.language ?? 'text',
+    openPanel,
     openCanvas,
     closeCanvas,
     updateContent,
@@ -256,7 +262,7 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     createDocument,
     updateDocument,
     applyCanvasEvent,
-  }), [activeDocument, applyCanvasEvent, closeCanvas, createDocument, deleteDocument, openCanvas, setActiveDocument, state, updateContent, updateDocument]);
+  }), [activeDocument, applyCanvasEvent, closeCanvas, createDocument, deleteDocument, openCanvas, openPanel, setActiveDocument, state, updateContent, updateDocument]);
 
   return (
     <CanvasContext.Provider value={value}>

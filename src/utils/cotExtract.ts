@@ -38,6 +38,83 @@ const TAG_SPECS: TagSpec[] = [
   { open: REDACTED_THINK_OPEN, close: REDACTED_THINK_CLOSE },
 ];
 
+/**
+ * 剥离文本中的工具调用注释，例如：
+ * [To="canvas"] { ...json... }
+ * [To='memory.write'] { ... }
+ */
+export function stripTextToolAnnotations(input: string): string {
+  const text = String(input || '');
+  if (!text) return '';
+
+  const headerRe = /\[To=(?:"[^"]+"|'[^']+')\]\s*\{/g;
+  let out = '';
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = headerRe.exec(text)) !== null) {
+    const start = match.index;
+    const openBracePos = text.indexOf('{', start);
+    if (openBracePos < 0) break;
+
+    out += text.slice(cursor, start);
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let quoteChar = '"';
+    let i = openBracePos;
+    let foundEnd = false;
+
+    for (; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === quoteChar) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quoteChar = ch;
+        continue;
+      }
+      if (ch === '{') {
+        depth += 1;
+        continue;
+      }
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          foundEnd = true;
+          i += 1;
+          break;
+        }
+      }
+    }
+
+    if (!foundEnd) {
+      cursor = start;
+      break;
+    }
+
+    cursor = i;
+    headerRe.lastIndex = i;
+  }
+
+  out += text.slice(cursor);
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function findNextTag(full: string, fromIndex: number): { spec: TagSpec; index: number } | null {
   let best: { spec: TagSpec; index: number } | null = null;
   for (const spec of TAG_SPECS) {
@@ -90,32 +167,33 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
     return { cotContent: null, cotDone: true, mainContent: fullContent };
   }
 
+  const normalizedContent = stripTextToolAnnotations(fullContent);
   const cotParts: string[] = [];
   const mainParts: string[] = [];
   let cursor = 0;
   let cotDone = true;
 
-  while (cursor < fullContent.length) {
-    const next = findNextTag(fullContent, cursor);
+  while (cursor < normalizedContent.length) {
+    const next = findNextTag(normalizedContent, cursor);
     if (!next) {
-      mainParts.push(fullContent.slice(cursor));
+      mainParts.push(normalizedContent.slice(cursor));
       break;
     }
 
     if (next.index > cursor) {
-      mainParts.push(fullContent.slice(cursor, next.index));
+      mainParts.push(normalizedContent.slice(cursor, next.index));
     }
 
     const afterOpen = next.index + next.spec.open.length;
-    const closeIdx = fullContent.indexOf(next.spec.close, afterOpen);
+    const closeIdx = normalizedContent.indexOf(next.spec.close, afterOpen);
     if (closeIdx === -1) {
-      cotParts.push(fullContent.slice(afterOpen).trim());
+      cotParts.push(normalizedContent.slice(afterOpen).trim());
       cotDone = false;
-      cursor = fullContent.length;
+      cursor = normalizedContent.length;
       break;
     }
 
-    cotParts.push(fullContent.slice(afterOpen, closeIdx).trim());
+    cotParts.push(normalizedContent.slice(afterOpen, closeIdx).trim());
     cursor = closeIdx + next.spec.close.length;
   }
 

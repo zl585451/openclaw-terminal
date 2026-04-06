@@ -10,7 +10,7 @@ import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile } from '../ui/chat/ChatTab.v2';
-import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../utils/cotExtract';
+import { extractAssistantCotAndMain, hasAssistantCotMarkers, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 
 // ── Streak helpers ────────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ export function useMessages({
     );
   }, [fsmPhase, messages]);
   const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
-    const finalRaw = stripThinkModeMarker(rawText ?? fullTextRef.current ?? '');
+    const finalRaw = stripTextToolAnnotations(stripThinkModeMarker(rawText ?? fullTextRef.current ?? ''));
     pendingStreamFinalizeRef.current = false;
     streamPaintShownLenRef.current = 0;
     streamPaintBudgetRef.current = 0;

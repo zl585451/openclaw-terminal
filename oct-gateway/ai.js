@@ -409,6 +409,9 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - 先用 chat 简短说明你正在产出什么，再调用 canvas
   - artifact 标题要清晰，解释 explanation 要简洁
   - 如果 artifactType 是 diagram，content 必须是纯 Mermaid 定义，不要混入 Markdown 标题、表格、普通说明文字或 ASCII 线框图
+  - diagram 默认优先可读性：避免把完整长段落塞进节点；节点文案尽量短句，必要时在标签里使用 \\n 主动换行
+  - diagram 节点建议控制：每个节点 1 个核心概念，最多附 2 个要点；单行过长就换行，避免超宽节点
+  - 当信息量过大时先输出“总览图”（分组/分层），再按用户要求继续细化子图，不要一次堆满所有细节
   - 图的说明文字放在 explanation 字段或 chat 文本里，不要放进 diagram content
   - 如果用户是在继续完善、解释、重写当前 Canvas 内容，优先调用 canvas(action="update", documentId=当前文档ID, ...)
   - 只有在确实需要新增并行成果物时才调用 create

@@ -12,11 +12,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 40px;
-  padding: 0 12px;
+  min-height: 52px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-panel);
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .canvas-toolbar-title-group {
@@ -27,28 +28,28 @@
 }
 
 .canvas-toolbar-title {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--accent-primary);
-  letter-spacing: 1px;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .canvas-toolbar-meta {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
   color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.2px;
 }
 
 .canvas-toolbar-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .canvas-action-btn:disabled {
@@ -57,13 +58,13 @@
 }
 
 .canvas-action-btn {
-  padding: 4px 8px;
+  padding: 6px 10px;
   background: transparent;
   border: 1px solid var(--border-subtle);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  border-radius: 3px;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -128,7 +129,7 @@
 }
 
 .canvas-preview {
-  padding: 16px;
+  padding: 24px;
   height: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -151,13 +152,14 @@
 
 .canvas-mermaid-preview {
   min-height: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgba(20, 25, 34, 0.95), rgba(14, 18, 24, 0.98));
+  padding: 14px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(12, 18, 28, 0.96), rgba(10, 14, 22, 0.98));
+  border: 1px solid rgba(114, 146, 189, 0.28);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .canvas-mermaid-toolbar {
@@ -167,13 +169,13 @@
 }
 
 .canvas-mermaid-btn {
-  padding: 4px 8px;
-  background: rgba(11, 16, 22, 0.85);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  border-radius: 4px;
+  padding: 5px 10px;
+  background: rgba(13, 19, 28, 0.92);
+  border: 1px solid rgba(117, 146, 184, 0.4);
+  color: #d2e3ff;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -185,7 +187,10 @@
 .canvas-mermaid-stage {
   flex: 1;
   overflow: auto;
-  padding: 12px;
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(10, 16, 24, 0.8);
+  border: 1px solid rgba(120, 149, 188, 0.26);
 }
 
 .canvas-mermaid-zoom {
@@ -275,9 +280,12 @@
   flex-basis: 100%;
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.65;
   min-height: 18px;
+  max-height: 84px;
+  overflow-y: auto;
+  white-space: pre-wrap;
 }
 
 /* 确保 markdown 内容在 canvas 中正确显示 */

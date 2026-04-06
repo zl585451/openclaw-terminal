@@ -458,6 +458,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             >
               {settings.ttsPlayback ? '♪ VOICE ON' : '♪ VOICE OFF'}
             </button>
+            <button
+              type="button"
+              className={`voice-toggle ${canvas.isOpen ? 'on' : ''}`}
+              onClick={canvas.openPanel}
+              title={canvas.isOpen ? 'Canvas 面板已打开' : '打开 Canvas 面板'}
+            >
+              ▣ OPEN CANVAS
+            </button>
             {speakingMessageId != null ? (
               <button
                 type="button"
