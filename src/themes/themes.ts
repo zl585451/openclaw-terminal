@@ -218,6 +218,15 @@ export const deepspaceTheme: ThemeDefinition = {
     "--mermaid-line":           "#8EA2FF",
     "--mermaid-edge-label-bg":  "#161A32",
     "--mermaid-font-family":    "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    // Mermaid pie chart — 哑光色板（深空冷蓝紫风）
+    "--mermaid-pie-1": "#6070d8",  // 主题靛蓝（近 accent 低饱和版）
+    "--mermaid-pie-2": "#38a0a8",  // 深空青
+    "--mermaid-pie-3": "#a88840",  // 星云金
+    "--mermaid-pie-4": "#9060c0",  // 紫水晶
+    "--mermaid-pie-5": "#3a9870",  // 海泡绿
+    "--mermaid-pie-6": "#b06858",  // 暗赭
+    "--mermaid-pie-7": "#7888d0",  // 矢车菊蓝
+    "--mermaid-pie-8": "#7898b0",  // 钢灰蓝
 
     "--radius-sm":   "6px",
     "--radius-md":   "10px",
@@ -337,6 +346,15 @@ export const claudeDarkTheme: ThemeDefinition = {
     "--mermaid-line":           "#E8956A",
     "--mermaid-edge-label-bg":  "#353430",
     "--mermaid-font-family":    "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    // Mermaid pie chart — 哑光色板（暖棕黑风）
+    "--mermaid-pie-1": "#b86840",  // 哑光赭橙（近 accent 低饱和版）
+    "--mermaid-pie-2": "#3f9090",  // 青瓷
+    "--mermaid-pie-3": "#b09040",  // 暖金
+    "--mermaid-pie-4": "#806890",  // 烟紫
+    "--mermaid-pie-5": "#4e9258",  // 鼠尾草绿
+    "--mermaid-pie-6": "#a05870",  // 玫瑰棕
+    "--mermaid-pie-7": "#4878a0",  // 铁蓝
+    "--mermaid-pie-8": "#8a7840",  // 苔绿金
 
     "--radius-sm":   "8px",
     "--radius-md":   "12px",

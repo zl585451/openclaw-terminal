@@ -3,7 +3,11 @@ import mermaid from 'mermaid';
 import { useTheme } from '../../themes/ThemeProvider';
 
 const renderCache = new Map<string, string>();
-const CACHE_VERSION = 'v4'; // bump when polishSvg logic changes
+const CACHE_VERSION = 'v5'; // bump when polishSvg logic changes
+// Guard: only call mermaid.initialize() when theme+compact actually changes.
+// mermaid.initialize() is synchronous and rebuilds global config — no need to
+// repeat it for every cache-hit render or StrictMode re-invoke.
+let lastMermaidInitKey = '';
 
 function extractMermaidSource(content: string): string {
   const trimmed = (content || '').trim();
@@ -74,21 +78,19 @@ function getMermaidThemeVariables(compact: boolean) {
     sectionBkgColor: bgPanel,
     altSectionBkgColor: bgCode,
     gridColor: borderSubtle,
-    // ── Pie chart slice colors ────────────────────────────────────────────
-    // 8 visually distinct hues that work on OCT's dark background.
-    // Ordered so adjacent slices always contrast (warm / cool alternating).
-    pie1: '#d4764e',  // OCT orange (primary accent)
-    pie2: '#5eaaa0',  // teal
-    pie3: '#deba62',  // amber gold
-    pie4: '#c85873',  // rose
-    pie5: '#82b06e',  // sage green
-    pie6: '#7a8ec8',  // slate blue
-    pie7: '#b07ac8',  // purple
-    pie8: '#d49860',  // warm terracotta
-    pie9: '#e87c6e',  // coral
-    pie10: '#6ab098', // mint
-    pie11: '#9878c8', // violet
-    pie12: '#c8b462', // gold
+    // ── Pie chart slice colors — read per-theme CSS vars, fallback to muted universals ──
+    pie1:  cssVar('--mermaid-pie-1', '#b06840'),
+    pie2:  cssVar('--mermaid-pie-2', '#3f9090'),
+    pie3:  cssVar('--mermaid-pie-3', '#a88840'),
+    pie4:  cssVar('--mermaid-pie-4', '#806890'),
+    pie5:  cssVar('--mermaid-pie-5', '#4e9258'),
+    pie6:  cssVar('--mermaid-pie-6', '#a05870'),
+    pie7:  cssVar('--mermaid-pie-7', '#4878a0'),
+    pie8:  cssVar('--mermaid-pie-8', '#8a7840'),
+    pie9:  cssVar('--mermaid-pie-1', '#b06840'),  // wrap for >8 slices
+    pie10: cssVar('--mermaid-pie-2', '#3f9090'),
+    pie11: cssVar('--mermaid-pie-3', '#a88840'),
+    pie12: cssVar('--mermaid-pie-4', '#806890'),
     pieSectionTextColor: '#ffffff',
     pieSectionTextSize: compact ? '13px' : '15px',
     pieTitleTextColor: textPrimary,
@@ -224,18 +226,22 @@ export default function MermaidRenderer({
         return;
       }
 
-      mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: 'loose',
-        theme: 'base',
-        flowchart: {
-          useMaxWidth: false,
-          nodeSpacing: compact ? 42 : 56,
-          rankSpacing: compact ? 58 : 76,
-          curve: 'basis',
-        },
-        themeVariables: getMermaidThemeVariables(compact),
-      });
+      const initKey = `${themeId}:${compact ? 'compact' : 'full'}`;
+      if (initKey !== lastMermaidInitKey) {
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'loose',
+          theme: 'base',
+          flowchart: {
+            useMaxWidth: false,
+            nodeSpacing: compact ? 42 : 56,
+            rankSpacing: compact ? 58 : 76,
+            curve: 'basis',
+          },
+          themeVariables: getMermaidThemeVariables(compact),
+        });
+        lastMermaidInitKey = initKey;
+      }
 
       try {
         // Each attempt gets a unique suffix to avoid Mermaid's internal ID conflicts
