@@ -3,7 +3,7 @@ import mermaid from 'mermaid';
 import { useTheme } from '../../themes/ThemeProvider';
 
 const renderCache = new Map<string, string>();
-const CACHE_VERSION = 'v7'; // bump when source normalization or polishSvg logic changes
+const CACHE_VERSION = 'v8'; // bump when source normalization or polishSvg logic changes
 // Guard: only call mermaid.initialize() when theme+compact actually changes.
 // mermaid.initialize() is synchronous and rebuilds global config — no need to
 // repeat it for every cache-hit render or StrictMode re-invoke.
@@ -126,9 +126,42 @@ function polishSvg(rawSvg: string, compact: boolean): string {
     const nodeRadius = compact ? '14' : '16';
     const clusterRadius = compact ? '18' : '20';
 
-    svgEl.querySelectorAll('.node rect').forEach((node) => {
-      node.setAttribute('rx', nodeRadius);
-      node.setAttribute('ry', nodeRadius);
+    // Strip rogue inline fill/stroke colours that the AI may have injected via
+    // `style A fill:#xxx` or `classDef highlight fill:#xxx` Mermaid commands.
+    // Those bypass the theme system and produce garish off-theme nodes.
+    // We read the intended theme colours from CSS vars and restore them here.
+    const themeFill   = cssVar('--mermaid-node-fill',   '#2b448e');
+    const themeStroke = cssVar('--mermaid-node-border',  '#8ea2ff');
+    const themeText   = cssVar('--mermaid-node-text',    '#f5f7ff');
+    const themeEdge   = cssVar('--mermaid-line',         themeStroke);
+
+    svgEl.querySelectorAll<SVGElement>('.node rect, .node circle, .node ellipse, .node polygon').forEach((shape) => {
+      const inlineFill = shape.getAttribute('fill');
+      // Only overwrite if the AI explicitly injected a non-default colour that
+      // differs from the theme. We detect "AI injection" by checking whether the
+      // fill is not already a CSS var reference and not transparent/none.
+      if (inlineFill && inlineFill !== 'none' && !inlineFill.startsWith('var(')) {
+        shape.setAttribute('fill',   themeFill);
+        shape.setAttribute('stroke', themeStroke);
+      }
+      shape.setAttribute('rx', nodeRadius);
+      shape.setAttribute('ry', nodeRadius);
+    });
+
+    // Restore text colour on nodes that may have been re-coloured
+    svgEl.querySelectorAll<SVGElement>('.node .label text, .node .label tspan').forEach((t) => {
+      const inlineFill = t.getAttribute('fill');
+      if (inlineFill && inlineFill !== 'none' && !inlineFill.startsWith('var(')) {
+        t.setAttribute('fill', themeText);
+      }
+    });
+
+    // Restore edge/link colours
+    svgEl.querySelectorAll<SVGElement>('.edgePath path, .flowchart-link').forEach((path) => {
+      const inlineStroke = path.getAttribute('stroke');
+      if (inlineStroke && inlineStroke !== 'none' && !inlineStroke.startsWith('var(')) {
+        path.setAttribute('stroke', themeEdge);
+      }
     });
 
     svgEl.querySelectorAll('.cluster rect').forEach((node) => {
