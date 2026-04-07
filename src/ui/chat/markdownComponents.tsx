@@ -13,9 +13,8 @@ const CHAT_MERMAID_INLINE_TYPES = new Set(['flowchart', 'graph', 'pie']);
 const CHAT_MERMAID_MAX_LINES    = 16;
 const CHAT_MERMAID_MAX_CHARS    = 550;
 const CHAT_MERMAID_MAX_SUBGRAPHS = 2;
-// LR/RL flowcharts are naturally wide; allow at most 4 edges inline.
-// More than that will overflow the chat bubble → redirect to Canvas.
-const CHAT_MERMAID_MAX_LR_EDGES = 4;
+// LR/RL flowcharts are always redirected to Canvas regardless of size.
+// Even a 3-node LR chain with tall nodes overflows the chat bubble.
 
 // Canvas-supported types rendered with the existing Mermaid Canvas renderer.
 // All other types (experimental, unknown) fall through to the same Canvas path.
@@ -85,10 +84,10 @@ function shouldRenderChatMermaidPreview(code: string) {
   if (meta.subgraphCount > CHAT_MERMAID_MAX_SUBGRAPHS) {
     return { allowPreview: false, reason: 'too-many-groups', meta };
   }
-  // LR/RL flowcharts grow horizontally — cap at 4 edges to avoid overflow in
-  // the chat bubble. Wider charts must open in Canvas where there's room.
-  if (meta.isHorizontal && meta.edgeCount > CHAT_MERMAID_MAX_LR_EDGES) {
-    return { allowPreview: false, reason: 'lr-too-wide', meta };
+  // LR/RL always goes to Canvas — even a 3-node chain overflows if nodes
+  // have multi-line labels or emojis. TD is the only safe chat direction.
+  if (meta.isHorizontal) {
+    return { allowPreview: false, reason: 'lr-not-allowed', meta };
   }
   return { allowPreview: true, reason: 'inline-ok', meta };
 }

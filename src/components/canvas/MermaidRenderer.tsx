@@ -3,7 +3,7 @@ import mermaid from 'mermaid';
 import { useTheme } from '../../themes/ThemeProvider';
 
 const renderCache = new Map<string, string>();
-const CACHE_VERSION = 'v8'; // bump when source normalization or polishSvg logic changes
+const CACHE_VERSION = 'v9'; // bump when source normalization or polishSvg logic changes
 // Guard: only call mermaid.initialize() when theme+compact actually changes.
 // mermaid.initialize() is synchronous and rebuilds global config — no need to
 // repeat it for every cache-hit render or StrictMode re-invoke.
@@ -76,7 +76,7 @@ function getMermaidThemeVariables(compact: boolean) {
     mainBkg: nodeFill,
     textColor: textPrimary,
     nodeTextColor: nodeText,
-    fontSize: compact ? '15px' : '16px',
+    fontSize: compact ? '13px' : '15px',
     fontFamily: fontSans,
     edgeLabelBackground,
     clusterBkg: bgPanel,
@@ -185,20 +185,15 @@ function polishSvg(rawSvg: string, compact: boolean): string {
         if (parts.length >= 4 && !parts.some(Number.isNaN)) {
           const [, , vbw, vbh] = parts;
           if (vbw > 0 && vbh > 0) {
-            // Chat bubble: cap to 520px so the SVG fits inside the card's inner
-            // width (card border + stage padding eat ~60px from the chat column).
-            // Wide LR charts that still exceed this will scroll inside the stage
-            // (overflow-x:auto) because .chat-mermaid-card no longer clips them.
+            // Chat bubble: only scale DOWN to fit within 520×400.
+            // Never scale UP — upscaling inflates AI-generated large nodes even more.
+            // Small diagrams (e.g. 2-node TD chains) stay at their natural size;
+            // the stage centres them with flexbox.
             const maxW = 520;
-            const maxH = 420;
-            const minRenderedH = 236;
-            const maxScale = 2.75;
+            const maxH = 400;
 
-            let scale = Math.min(maxW / vbw, maxH / vbh);
-            if (vbh * scale < minRenderedH) {
-              scale = Math.min(minRenderedH / vbh, maxScale);
-            }
-            scale = Math.min(scale, maxScale);
+            // scale ≤ 1: only shrink, never enlarge
+            const scale = Math.min(maxW / vbw, maxH / vbh, 1);
 
             svgEl.setAttribute('width', String(Math.round(vbw * scale)));
             svgEl.setAttribute('height', String(Math.round(vbh * scale)));
