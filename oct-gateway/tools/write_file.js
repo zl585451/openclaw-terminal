@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const { createLogger } = require('../logger');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const ALLOWED_ROOTS = [PROJECT_ROOT];
+const log = createLogger('tool:write_file');
 
 function normalizeInputPath(inputPath) {
   const raw = String(inputPath || '').trim();
@@ -11,12 +12,10 @@ function normalizeInputPath(inputPath) {
   return path.resolve(PROJECT_ROOT, raw);
 }
 
-function isWithinAllowedRoots(targetPath) {
+function isWithinProjectRoot(targetPath) {
   const normalizedTarget = path.resolve(targetPath);
-  return ALLOWED_ROOTS.some((root) => {
-    const normalizedRoot = path.resolve(root);
-    return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(normalizedRoot + path.sep);
-  });
+  const normalizedRoot = path.resolve(PROJECT_ROOT);
+  return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(normalizedRoot + path.sep);
 }
 
 module.exports = {
@@ -28,11 +27,11 @@ module.exports = {
     type: 'function',
     function: {
       name: 'write_file',
-      description: '写入文件内容',
+      description: '写入文件内容。优先使用项目相对路径；也支持绝对路径。写入项目外文件时会记录兼容性日志。',
       parameters: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: '项目内路径：优先相对项目根目录，或使用项目内的绝对路径' },
+          path: { type: 'string', description: '文件路径：优先项目相对路径，也支持绝对路径' },
           content: { type: 'string', description: '写入内容' },
         },
         required: ['path', 'content'],
@@ -46,19 +45,16 @@ module.exports = {
         success: false,
         data: null,
         error: 'path 不能为空',
-        hint: '请提供项目根目录下的相对路径，例如 src/App.tsx',
+        hint: '请提供文件路径，例如 src/App.tsx 或绝对路径',
         path: args.path,
       };
     }
-    if (!isWithinAllowedRoots(resolvedPath)) {
-      return {
-        success: false,
-        data: null,
-        error: `禁止写入项目目录之外的文件: ${resolvedPath}`,
-        hint: '请使用项目根目录下的相对路径或项目内的绝对路径',
-        allowedRoots: ALLOWED_ROOTS,
-        path: resolvedPath,
-      };
+    const isProjectPath = isWithinProjectRoot(resolvedPath);
+    if (!isProjectPath) {
+      log.warn('compat mode: writing outside project root', {
+        requestedPath: String(args.path || ''),
+        resolvedPath,
+      });
     }
     try {
       const dir = path.dirname(resolvedPath);
@@ -67,11 +63,12 @@ module.exports = {
       const message = `已写入 ${resolvedPath}`;
       return {
         success: true,
-        data: { path: resolvedPath, message },
+        data: { path: resolvedPath, message, outsideProject: !isProjectPath },
         error: null,
-        hint: null,
+        hint: !isProjectPath ? '当前写入的是项目目录之外的文件，请确认这符合你的意图。' : null,
         message,
         path: resolvedPath,
+        outsideProject: !isProjectPath,
       };
     } catch (e) {
       return {
@@ -80,6 +77,7 @@ module.exports = {
         error: e?.message || String(e),
         hint: '确认目标目录可写、磁盘空间充足，路径合法',
         path: resolvedPath,
+        outsideProject: !isProjectPath,
       };
     }
   },

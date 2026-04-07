@@ -242,7 +242,6 @@
 }
 
 .canvas-mermaid-preview--compact {
-  min-height: 196px;
   height: auto;
   padding: 0;
   gap: 0;
@@ -290,12 +289,11 @@
 }
 
 .canvas-mermaid-stage--compact {
-  min-height: 176px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-radius: 10px;
   background: transparent;
   border: none;

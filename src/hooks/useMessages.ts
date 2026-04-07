@@ -175,6 +175,7 @@ export function useMessages({
   const streamPaintBudgetRef = useRef(0);
   const streamPaintLastTsRef = useRef(0);
   const pendingStreamFinalizeRef = useRef(false);
+  const finalizeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runStreamPaintTickRef = useRef<() => void>(() => {});
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
@@ -190,6 +191,10 @@ export function useMessages({
   }, [fsmPhase, messages]);
   const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
     const finalRaw = stripTextToolAnnotations(stripThinkModeMarker(rawText ?? fullTextRef.current ?? ''));
+    if (finalizeFallbackTimerRef.current != null) {
+      clearTimeout(finalizeFallbackTimerRef.current);
+      finalizeFallbackTimerRef.current = null;
+    }
     pendingStreamFinalizeRef.current = false;
     streamPaintShownLenRef.current = 0;
     streamPaintBudgetRef.current = 0;
@@ -207,6 +212,35 @@ export function useMessages({
       }
       return prev;
     });
+  }, [oct, setMessages]);
+
+  const scheduleFinalizeFallback = useCallback((rawText?: string) => {
+    if (finalizeFallbackTimerRef.current != null) {
+      clearTimeout(finalizeFallbackTimerRef.current);
+    }
+    finalizeFallbackTimerRef.current = setTimeout(() => {
+      finalizeFallbackTimerRef.current = null;
+      const fallbackRaw = stripTextToolAnnotations(stripThinkModeMarker(rawText ?? fullTextRef.current ?? ''));
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (!(last?.role === 'assistant' && last.isStreaming)) {
+          return prev;
+        }
+        if (fallbackRaw.trim()) {
+          return prev.map((msg, idx) =>
+            idx === prev.length - 1
+              ? { ...msg, content: fallbackRaw, isStreaming: false, isStreamingRaw: false }
+              : msg
+          );
+        }
+        return prev.filter((_, idx) => idx !== prev.length - 1);
+      });
+      try {
+        recoverOctStreamFromEndFailure(oct);
+      } catch {
+        /* ignore */
+      }
+    }, 180);
   }, [oct, setMessages]);
 
   runStreamPaintTickRef.current = () => {
@@ -387,17 +421,26 @@ export function useMessages({
       pendingSystemReplyMap.current.delete(currentRequestId);
 
       if (!systemReply) {
+        const fallbackText = stripTextToolAnnotations(stripThinkModeMarker(String(content || '').trim()));
+        if (fallbackText && !fullTextRef.current.trim()) {
+          streamingMessageRef.current = fallbackText;
+          fullTextRef.current = fallbackText;
+          ensureStreamingAssistantMessage();
+        }
         try {
           oct.stream.end();
+          scheduleFinalizeFallback(fallbackText);
         } catch {
           recoverOctStreamFromEndFailure(oct);
-          const fb = String(content || '').trim();
+          const fb = fallbackText;
           if (fb) {
             streamingMessageRef.current = fb;
             fullTextRef.current = fb;
             pendingStreamFinalizeRef.current = true;
             scheduleStreamUiTick();
             ensureStreamingAssistantMessage();
+          } else {
+            scheduleFinalizeFallback('');
           }
         }
         return;
@@ -590,6 +633,10 @@ export function useMessages({
   // ── streamPaintRafRef / usageFlushRafRef cleanup ───────────────────────────
   useEffect(() => {
     return () => {
+      if (finalizeFallbackTimerRef.current != null) {
+        clearTimeout(finalizeFallbackTimerRef.current);
+        finalizeFallbackTimerRef.current = null;
+      }
       if (streamPaintRafRef.current != null) {
         cancelAnimationFrame(streamPaintRafRef.current);
         streamPaintRafRef.current = null;
@@ -652,6 +699,10 @@ export function useMessages({
     streamPaintBudgetRef.current = 0;
     streamPaintLastTsRef.current = 0;
     pendingStreamFinalizeRef.current = false;
+    if (finalizeFallbackTimerRef.current != null) {
+      clearTimeout(finalizeFallbackTimerRef.current);
+      finalizeFallbackTimerRef.current = null;
+    }
     if (streamPaintRafRef.current != null) {
       cancelAnimationFrame(streamPaintRafRef.current);
       streamPaintRafRef.current = null;
@@ -745,6 +796,10 @@ export function useMessages({
     streamPaintBudgetRef.current = 0;
     streamPaintLastTsRef.current = 0;
     pendingStreamFinalizeRef.current = false;
+    if (finalizeFallbackTimerRef.current != null) {
+      clearTimeout(finalizeFallbackTimerRef.current);
+      finalizeFallbackTimerRef.current = null;
+    }
     if (streamPaintRafRef.current != null) {
       cancelAnimationFrame(streamPaintRafRef.current);
       streamPaintRafRef.current = null;

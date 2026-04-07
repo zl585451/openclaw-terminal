@@ -129,7 +129,7 @@ const FinalizedMarkdownContent = memo(
       [messageId, segmentKey, content, streaming]
     );
     return (
-      <span className="msg-content markdown-body">
+      <div className="msg-content markdown-body">
         <ReactMarkdown
           remarkPlugins={MARKDOWN_REMARK_PLUGINS}
           rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
@@ -137,7 +137,7 @@ const FinalizedMarkdownContent = memo(
         >
           {processedText}
         </ReactMarkdown>
-      </span>
+      </div>
     );
   },
   (prev, next) =>
@@ -271,6 +271,7 @@ export interface ChatMessageItemProps {
    * 退回：删此 prop 及相关分支，恢复 ChatMessageList 内独立的 thinking CoT 块（仅改回 TSX 即可）。
    */
   inlineThinkingPlaceholder?: boolean;
+  isMobileViewport?: boolean;
 }
 
 const MessageMeta = memo(function MessageMeta({ timestamp }: { timestamp: string | number | undefined }) {
@@ -698,11 +699,12 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     cotContent,
     cotStreaming,
     inlineThinkingPlaceholder = false,
+    isMobileViewport = false,
   } = props;
 
   const showCotInline = msg.role === 'assistant' && !isStreamingMsg && cotContent != null;
   const displayCotContent = showCotInline
-    ? summarizeCotForDisplay(cotContent, textToShow || raw || '')
+    ? summarizeCotForDisplay(cotContent, textToShow || raw || '', { compact: isMobileViewport })
     : null;
   const showLightweightThinkingBadge =
     msg.role === 'assistant' &&
@@ -845,6 +847,9 @@ export const ChatMessageList = function ChatMessageList({
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
+  const [isMobileViewport, setIsMobileViewport] = useState(() => (
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 720px)').matches : false
+  ));
   const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
   const finalizedParseCacheRef = useRef<
     Map<number, { input: string; output: ReturnType<typeof parseOptionBox> }>
@@ -852,6 +857,15 @@ export const ChatMessageList = function ChatMessageList({
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const media = window.matchMedia('(max-width: 720px)');
+    const apply = () => setIsMobileViewport(media.matches);
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
   }, []);
 
   // 检查任何来源的思维链标记：streamingContent 或 最后一条 assistant 消息的 content
@@ -1053,10 +1067,11 @@ export const ChatMessageList = function ChatMessageList({
             isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
             streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
             usePlainStreamingText={usePlainStreamingText}
-            markdownComponents={markdownComponents}
+              markdownComponents={markdownComponents}
             cotContent={msg.role === 'assistant' && !isStreamingMsg ? streamingCotContent : undefined}
               cotStreaming={false}
               inlineThinkingPlaceholder={inlineThinkingPlaceholder}
+              isMobileViewport={isMobileViewport}
             />
             {/* 工具调用卡片：紧跟当前 streaming assistant 消息之后 */}
             {isStreamingMsg && activeTools.length > 0 && (

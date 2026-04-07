@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const { createLogger } = require('../logger');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const ALLOWED_ROOTS = [PROJECT_ROOT];
+const log = createLogger('tool:read_file');
 
 function normalizeInputPath(inputPath) {
   const raw = String(inputPath || '').trim();
@@ -11,12 +12,10 @@ function normalizeInputPath(inputPath) {
   return path.resolve(PROJECT_ROOT, raw);
 }
 
-function isWithinAllowedRoots(targetPath) {
+function isWithinProjectRoot(targetPath) {
   const normalizedTarget = path.resolve(targetPath);
-  return ALLOWED_ROOTS.some((root) => {
-    const normalizedRoot = path.resolve(root);
-    return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(normalizedRoot + path.sep);
-  });
+  const normalizedRoot = path.resolve(PROJECT_ROOT);
+  return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(normalizedRoot + path.sep);
 }
 
 module.exports = {
@@ -28,11 +27,11 @@ module.exports = {
     type: 'function',
     function: {
       name: 'read_file',
-      description: '读取文件内容。优先传项目根目录下的相对路径；也可传项目内绝对路径。不会读取项目目录之外的文件。',
+      description: '读取文件内容。优先传项目根目录下的相对路径；也可传任意绝对路径。读取项目外文件时会记录兼容性日志。',
       parameters: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: '项目内文件路径，优先使用相对路径，如 src/App.tsx 或 oct-gateway/index.js' },
+          path: { type: 'string', description: '文件路径，优先使用项目相对路径，如 src/App.tsx 或 oct-gateway/index.js；也支持绝对路径' },
         },
         required: ['path'],
       },
@@ -45,18 +44,15 @@ module.exports = {
         success: false,
         data: null,
         error: 'path 不能为空',
-        hint: '请提供项目内文件路径，例如 oct-gateway/index.js',
+        hint: '请提供文件路径，例如 oct-gateway/index.js 或绝对路径',
       };
     }
-
-    if (!isWithinAllowedRoots(resolvedPath)) {
-      return {
-        success: false,
-        data: null,
-        error: `禁止读取项目目录之外的文件: ${resolvedPath}`,
-        hint: '请使用项目根目录下的相对路径或项目内的绝对路径',
-        allowedRoots: ALLOWED_ROOTS,
-      };
+    const isProjectPath = isWithinProjectRoot(resolvedPath);
+    if (!isProjectPath) {
+      log.warn('compat mode: reading outside project root', {
+        requestedPath: String(args.path || ''),
+        resolvedPath,
+      });
     }
 
     if (!fs.existsSync(resolvedPath)) {
@@ -67,6 +63,7 @@ module.exports = {
         hint: '确认路径是否正确，或先列出目录再读取',
         requestedPath: String(args.path || ''),
         resolvedPath,
+        outsideProject: !isProjectPath,
       };
     }
 
@@ -75,11 +72,12 @@ module.exports = {
       const sliced = content.slice(0, 10000);
       return {
         success: true,
-        data: { path: resolvedPath, content: sliced },
+        data: { path: resolvedPath, content: sliced, outsideProject: !isProjectPath },
         error: null,
-        hint: null,
+        hint: !isProjectPath ? '当前读取的是项目目录之外的文件，请确认这是你想分析的目标。' : null,
         path: resolvedPath,
         content: sliced,
+        outsideProject: !isProjectPath,
       };
     } catch (e) {
       return {
@@ -88,6 +86,7 @@ module.exports = {
         error: e?.message || String(e),
         hint: '确认文件可读、未被占用，且路径有效',
         path: resolvedPath,
+        outsideProject: !isProjectPath,
       };
     }
   },

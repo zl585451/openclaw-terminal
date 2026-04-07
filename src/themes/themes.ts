@@ -87,6 +87,15 @@ export const terminalTheme: ThemeDefinition = {
     "--mermaid-line":           "#38F08F",
     "--mermaid-edge-label-bg":  "#0F1419",
     "--mermaid-font-family":    "'JetBrains Mono', 'Noto Sans SC', monospace",
+    // Mermaid pie chart — 哑光色板（绿色黑客风）
+    "--mermaid-pie-1": "#38a86c",  // 消光翠绿（主题色调低饱和版）
+    "--mermaid-pie-2": "#3d8faa",  // 钢青
+    "--mermaid-pie-3": "#a88c38",  // 琥珀金
+    "--mermaid-pie-4": "#7858a8",  // 柔紫
+    "--mermaid-pie-5": "#5ea03e",  // 橄榄绿
+    "--mermaid-pie-6": "#a84e40",  // 砖红
+    "--mermaid-pie-7": "#4878b8",  // 钢蓝
+    "--mermaid-pie-8": "#889830",  // 橄榄黄
 
     // 圆角
     "--radius-sm":   "6px",

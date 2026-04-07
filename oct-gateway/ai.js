@@ -40,6 +40,8 @@ const log = createLogger('ai');
 // ═══════════════════════════════════════════════════════════════
 const MAX_HISTORY_ROUNDS = 12; // 最多保留最近 12 轮对话
 const MAX_CONTEXT_CHARS = 60000; // 上下文字符上限（约 15k tokens）
+const MAX_TOOL_ROUNDS = 10;
+const MAX_IDENTICAL_TOOL_SIGNATURES = 4;
 
 function truncateHistory(messages) {
   if (!messages || messages.length === 0) return messages;
@@ -360,8 +362,9 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
 
 记忆已从${source === 'nocturne' ? ' Nocturne 服务器' : '本地文件'}加载。
 
-AI 通过以下方式操作记忆，直接在回复中描述操作意图，
-Gateway 会自动处理实际的 API 调用：
+记忆系统有两条链路：
+- 自动链路：Gateway 会在回答前注入一部分相关记忆，并在回答后后台保存反馈/摘要/偏好
+- 显式链路：当你需要主动回忆、核对或写入记忆时，应直接调用 memory_search / memory_read / memory_write 工具，不要只在正文里口头描述“我去查记忆”
 
 **写入记忆**（遇到以下情况自动触发）：
 - 用户说「记住」「记下来」「停车」→ 立即写入
@@ -378,6 +381,13 @@ URI 路径：core://my_user/[分类]/[具体节点]
 
 **搜索记忆**：
 - /memory search 关键词 → 搜索相关记忆
+
+**显式工具使用规则**：
+- 当用户问“你还记得吗 / 之前说过什么 / 上次那个方案 / 我们前面怎么定的”时，优先先用 memory_search 搜关键词，不要直接猜
+- memory_search 命中后，如需核对原文或细节，再用 memory_read 读取最相关的 1-2 个节点
+- 当用户明确要求“记住这件事 / 以后按这个来 / 把这个偏好记下来”时，可显式使用 memory_write
+- 不要假设 Gateway 会替你完成所有显式记忆查询；需要确认时应主动调记忆工具
+- 不要先拍脑袋回答，再补查记忆；涉及“是否记得 / 之前怎么说的”时，优先查再答
 
 **不要做的事**：
 - 不要频繁读取记忆（每次对话最多 3 次读取操作）
@@ -403,6 +413,14 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - write_file(path, content) — 写入文件
 - exec_command(command) — 执行命令
 
+  文件/命令使用规则：
+  - 当前运行环境以 Windows 为主，优先使用项目相对路径，例如 oct-gateway/index.js、src/ui/chat/MessageList.tsx
+  - 查代码时优先使用 read_file，不要先尝试猜测本机绝对路径
+  - 只有在 read_file 无法满足时才使用 exec_command
+  - 在 Windows 环境中不要优先使用 ls、grep、head、find ... |、/mnt/...、2>/dev/null 这类 Unix/Linux 命令风格
+  - 如果需要目录信息，优先使用 Windows 友好的命令或直接读取明确文件；不要连续尝试多种路径风格
+  - 当命令执行失败时，不要反复换壳层或路径风格盲试超过 2 次；应改用 read_file 或直接基于已知文件回答
+
 **Canvas 工具**：
 - canvas(action, ...) — 在 Canvas 工作区创建或更新结构化成果物
 - 当内容更适合用文档、图示、UI 草图、代码产物表达时，优先考虑使用 canvas 工具
@@ -422,12 +440,17 @@ URI 路径：core://my_user/[分类]/[具体节点]
     - 状态变化、生命周期、条件流转
     - 角色关系、系统关系、依赖关系
     - 多方案对比、优缺点对照、维度分析
-  - 图表类型选择：
-    - 流程/步骤/链路：优先 flowchart
-    - 阶段推进/路线图：优先分阶段线路图
-    - 层级/模块/架构：优先分层结构图
-    - 状态变化：优先 stateDiagram
-    - 时序交互：优先 sequenceDiagram
+  - 图表类型选择（重要：聊天区只支持以下类型直接预览，其他类型请放入 Canvas）：
+    - 【聊天区可直接预览】flowchart / graph：流程/步骤/链路/依赖/架构（节点建议 ≤ 8 个）
+    - 【聊天区可直接预览】pie：数据占比/比例分析（项目不超过 8 个）
+    - 【必须放 Canvas】mindmap：思维导图（小卡片里难以阅读，放 Canvas 才清晰）
+    - 【必须放 Canvas】sequenceDiagram：时序交互
+    - 【必须放 Canvas】classDiagram：类结构
+    - 【必须放 Canvas】erDiagram：数据库实体关系
+    - 【必须放 Canvas】gantt：甘特图/时间线
+    - 【必须放 Canvas】gitGraph：分支图
+    - 【必须放 Canvas】stateDiagram：状态机
+    - 【禁止生成】sankey、xychart、venn、kanban、architecture、radar、treemap、ishikawa、treeview、zenuml、block、packet：实验性语法，渲染不稳定，不要使用
     - 对比分析：优先表格
     - 信息归类：优先分组图或结构化表格
   - 默认先判断是否适合图表；如果适合，优先生成 1 个最清晰的图表，不要一次生成很多图
@@ -438,6 +461,16 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - diagram 默认优先可读性：避免把完整长段落塞进节点；节点文案尽量短句，必要时在标签里使用 \\n 主动换行
   - diagram 节点建议控制：每个节点 1 个核心概念，最多附 2 个要点；单行过长就换行，避免超宽节点
   - 当信息量过大时先输出“总览图”（分组/分层），再按用户要求继续细化子图，不要一次堆满所有细节
+  - 对“依赖图 / 结构图 / 组件关系图 / 页面关系图 / 模块关系图”场景，默认优先“总览展示图”，不是工程级全量依赖图
+  - 依赖图优先规则：
+    - 中间放 1 个主节点（例如页面、模块、入口文件），周围放 3-5 个依赖分组，不要把所有节点摊成超宽横带
+    - 优先按职责分组，例如 Hooks / Core / Services / Contexts / Components，而不是把每个节点当成独立泳道
+    - 每个分组最多展示 4-5 个代表节点；超出的折叠成“其他 hooks / 其他 components / 更多 services”
+    - 默认只画主依赖和代表性依赖，不要尝试还原每一条真实细线；展示图优先可读性，不优先完整性
+    - 优先让图的视觉重心落在画布中心，避免全部信息被拉到左右两端
+    - 如果一个依赖图会明显横向过宽，优先改成“中心主干 + 四周分组岛”或“2x2 分组总览”，不要继续加长
+    - 如果一个依赖图会明显纵向过长，先做总览层，不要把每个子节点全展开
+    - 结构图默认先回答“主结构是什么”，再回答“细节依赖是什么”；不要一张图同时承担全部细节
   - 对“思维导图/脑图/策略图”场景，默认优先使用 flowchart TD 的“金字塔/分层线路图”结构（顶层目标 -> 中层支柱 -> 底层执行项），不要默认散点式 mindmap
   - 画布填充优先：diagram 需要尽量覆盖画布主体区域，避免节点全部挤在上半区；层级建议 3-4 层、每层节点数量控制在可读范围
   - flowchart 建议显式设置布局参数（如 nodeSpacing / rankSpacing / curve）来控制密度，保持均匀分布和连线清晰
@@ -510,14 +543,35 @@ AI · Cursor · Claude 三角协作：
   return prompt;
 }
 
-async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
+function buildToolSignature(toolCalls) {
+  return JSON.stringify(
+    (toolCalls || [])
+      .filter(Boolean)
+      .map((tc) => ({
+        id: tc.id || '',
+        name: tc.function?.name || '',
+        arguments: tc.function?.arguments || '',
+      }))
+  );
+}
+
+async function streamChat({
+  messages,
+  onDelta,
+  onDone,
+  onError,
+  onToolEvent,
+  preserveToolChain = false,
+  toolRound = 0,
+  toolSignatures = [],
+}) {
   const provider = config.getProviderConfig();
   const apiKey = provider.apiKey;
   const baseUrl = provider.baseUrl;
   const model = config.DASHSCOPE_MODEL;
 
   // 上下文截断优化：防止消息过长
-  const truncatedMessages = truncateHistory(messages);
+  const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages);
   getContextUsageRatio(truncatedMessages, model);
 
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
@@ -864,6 +918,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
             if (!toolCalls[idx]) {
               toolCalls[idx] = { id: tc.id || '', type: 'function', function: { name: '', arguments: '' } };
             }
+            if (tc.id) toolCalls[idx].id = tc.id;
             if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
             if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
           }
@@ -876,9 +931,33 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
           stopHeartbeat();
           // 不要在这里 flushThinkState！thinking 状态要保持打开，
           // 等工具返回后继续的 streamChat 会继续处理 thinking 内容
-          log.info('tool_calls', { count: toolCalls.filter(Boolean).length });
+          const normalizedToolCalls = toolCalls.filter(Boolean);
+          const toolSignature = buildToolSignature(normalizedToolCalls);
+          const repeatedCount = toolSignatures.filter((sig) => sig === toolSignature).length;
+          if (toolRound >= MAX_TOOL_ROUNDS || repeatedCount >= MAX_IDENTICAL_TOOL_SIGNATURES) {
+            const stopReason =
+              toolRound >= MAX_TOOL_ROUNDS
+                ? `工具探索轮次已达到上限（${MAX_TOOL_ROUNDS} 轮）`
+                : '检测到重复的工具调用模式';
+            const gracefulStop =
+              `${fullText ? `${fullText}\n\n` : ''}` +
+              `⚠️ ${stopReason}，我先停止继续自动试探工具，避免一直卡住。` +
+              `\n\n目前已拿到一部分工具结果，但还没整理成最终结论。你可以：` +
+              `\n1. 让我基于当前结果直接总结` +
+              `\n2. 把问题缩小到更明确的文件或模块` +
+              `\n3. 让我优先用 read_file 分析，少用命令行工具`;
+            log.warn('tool loop guard triggered', {
+              toolRound,
+              repeatedCount,
+              signaturePreview: toolSignature.slice(0, 240),
+            });
+            flushThinkAtEnd();
+            onDone(gracefulStop, totalUsage, responseModel);
+            return;
+          }
+          log.info('tool_calls', { count: normalizedToolCalls.length, toolRound: toolRound + 1 });
           const toolResults = [];
-          for (const tc of toolCalls.filter(Boolean)) {
+          for (const tc of normalizedToolCalls) {
             let args = {};
             try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
             log.info('tool call', { name: tc.function.name, args });
@@ -919,10 +998,19 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
 
           const continuedMessages = [
             ...truncatedMessages,
-            { role: 'assistant', content: fullText || null, tool_calls: toolCalls.filter(Boolean) },
+            { role: 'assistant', content: fullText || '', tool_calls: normalizedToolCalls },
             ...toolResults,
           ];
-          await streamChat({ messages: continuedMessages, onDelta, onDone, onError, onToolEvent });
+          await streamChat({
+            messages: continuedMessages,
+            onDelta,
+            onDone,
+            onError,
+            onToolEvent,
+            preserveToolChain: true,
+            toolRound: toolRound + 1,
+            toolSignatures: [...toolSignatures, toolSignature].slice(-8),
+          });
           return;
         }
       }

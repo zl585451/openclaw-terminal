@@ -3,6 +3,7 @@ import mermaid from 'mermaid';
 import { useTheme } from '../../themes/ThemeProvider';
 
 const renderCache = new Map<string, string>();
+const CACHE_VERSION = 'v4'; // bump when polishSvg logic changes
 
 function extractMermaidSource(content: string): string {
   const trimmed = (content || '').trim();
@@ -73,6 +74,28 @@ function getMermaidThemeVariables(compact: boolean) {
     sectionBkgColor: bgPanel,
     altSectionBkgColor: bgCode,
     gridColor: borderSubtle,
+    // ── Pie chart slice colors ────────────────────────────────────────────
+    // 8 visually distinct hues that work on OCT's dark background.
+    // Ordered so adjacent slices always contrast (warm / cool alternating).
+    pie1: '#d4764e',  // OCT orange (primary accent)
+    pie2: '#5eaaa0',  // teal
+    pie3: '#deba62',  // amber gold
+    pie4: '#c85873',  // rose
+    pie5: '#82b06e',  // sage green
+    pie6: '#7a8ec8',  // slate blue
+    pie7: '#b07ac8',  // purple
+    pie8: '#d49860',  // warm terracotta
+    pie9: '#e87c6e',  // coral
+    pie10: '#6ab098', // mint
+    pie11: '#9878c8', // violet
+    pie12: '#c8b462', // gold
+    pieSectionTextColor: '#ffffff',
+    pieSectionTextSize: compact ? '13px' : '15px',
+    pieTitleTextColor: textPrimary,
+    pieTitleTextSize: compact ? '13px' : '15px',
+    pieStrokeColor: bgCode,
+    pieStrokeWidth: '2px',
+    pieOpacity: '1',
   };
 }
 
@@ -103,6 +126,34 @@ function polishSvg(rawSvg: string, compact: boolean): string {
         node.setAttribute('font-weight', compact ? '600' : '700');
       }
     });
+
+    // For compact (chat) mode: bake the target dimensions into the SVG itself.
+    // This is more reliable than CSS transform scaling, which doesn't affect layout
+    // and causes the content to be clipped by overflow:hidden.
+    if (compact) {
+      const vbAttr = svgEl.getAttribute('viewBox');
+      if (vbAttr) {
+        const parts = vbAttr.trim().split(/[\s,]+/).map(Number);
+        if (parts.length >= 4 && !parts.some(Number.isNaN)) {
+          const [, , vbw, vbh] = parts;
+          if (vbw > 0 && vbh > 0) {
+            // Fit within a 580×380 box, maintain aspect ratio.
+            // 580px ≈ typical chat message width; 380px gives pie charts
+            // (~square viewBox) enough room to be clearly readable.
+            const maxW = 580;
+            const maxH = 380;
+            const scale = Math.min(maxW / vbw, maxH / vbh, 1);
+            svgEl.setAttribute('width', String(Math.round(vbw * scale)));
+            svgEl.setAttribute('height', String(Math.round(vbh * scale)));
+          }
+        }
+      }
+      // Remove Mermaid's inline max-width so our explicit dimensions take effect
+      const style = svgEl.getAttribute('style') ?? '';
+      const cleaned = style.replace(/max-width\s*:[^;]+;?\s*/gi, '').trim();
+      if (cleaned) svgEl.setAttribute('style', cleaned);
+      else svgEl.removeAttribute('style');
+    }
 
     return new XMLSerializer().serializeToString(svgEl);
   } catch {
@@ -164,14 +215,12 @@ export default function MermaidRenderer({
         return;
       }
 
-      const cacheKey = `${themeId}:${compact ? 'compact' : 'full'}:${source}`;
+      const cacheKey = `${CACHE_VERSION}:${themeId}:${compact ? 'compact' : 'full'}:${source}`;
       const cached = renderCache.get(cacheKey);
       if (cached) {
         setSvg(cached);
         setError(null);
-        requestAnimationFrame(() => {
-          fitToStage();
-        });
+        // fitToStage is called by the svg useEffect after React commits the DOM
         return;
       }
 
@@ -189,7 +238,16 @@ export default function MermaidRenderer({
       });
 
       try {
-        const { svg: nextSvg } = await mermaid.render(`oct_mermaid_${graphId}`, source);
+        // Each attempt gets a unique suffix to avoid Mermaid's internal ID conflicts
+        // (can happen in React StrictMode double-invoke and concurrent renders).
+        const renderId = `oct_mermaid_${graphId}_${Date.now()}`;
+        const stale = document.getElementById(renderId);
+        if (stale) stale.remove();
+
+        console.log('[OCT Mermaid] render start', { compact, type: source.trim().split(/\s/)[0], id: renderId });
+        const { svg: nextSvg } = await mermaid.render(renderId, source);
+        console.log('[OCT Mermaid] render ok, svg bytes:', nextSvg.length);
+
         const polishedSvg = polishSvg(nextSvg, compact);
         renderCache.set(cacheKey, polishedSvg);
         if (renderCache.size > 80) {
@@ -199,11 +257,12 @@ export default function MermaidRenderer({
         if (!cancelled) {
           setSvg(polishedSvg);
           setError(null);
-          requestAnimationFrame(() => {
-            fitToStage();
-          });
+          // fitToStage is called by the svg useEffect after React commits the DOM
+        } else {
+          console.warn('[OCT Mermaid] render completed but effect was cancelled');
         }
       } catch (err) {
+        console.error('[OCT Mermaid] render error:', err);
         if (!cancelled) {
           setSvg('');
           setError(err instanceof Error ? err.message : 'Mermaid render failed');
@@ -217,6 +276,23 @@ export default function MermaidRenderer({
       cancelled = true;
     };
   }, [compact, content, graphId, themeId]);
+
+  // Fit after SVG is committed to DOM (ResizeObserver alone misses cases where
+  // the stage size doesn't change, e.g. compact mode with a fixed min-height).
+  useEffect(() => {
+    if (!svg) return;
+    let frameId: number = 0;
+    const outer = requestAnimationFrame(() => {
+      frameId = requestAnimationFrame(() => {
+        fitToStage();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(frameId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [svg]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -341,9 +417,9 @@ export default function MermaidRenderer({
       <div className={`canvas-mermaid-stage${compact ? ' canvas-mermaid-stage--compact' : ''}`} ref={stageRef}>
         <div
           className={`canvas-mermaid-zoom${compact ? ' canvas-mermaid-zoom--compact' : ''}`}
-          style={{
+          style={compact ? undefined : {
             transform: `scale(${zoom})`,
-            transformOrigin: compact ? 'top left' : 'top center',
+            transformOrigin: 'top center',
           }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />

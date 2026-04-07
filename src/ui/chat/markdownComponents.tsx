@@ -4,43 +4,57 @@ import CodeBlock from '../../components/CodeBlock';
 import MermaidRenderer from '../../components/canvas/MermaidRenderer';
 import { highlightCode } from '../../utils/codeHighlight';
 
-const CHAT_MERMAID_MAX_LINES = 18;
-const CHAT_MERMAID_MAX_CHARS = 600;
+// ── Chat inline preview: ONLY these types are shown directly in the chat window.
+// Everything else is redirected to Canvas (with an Open button).
+// mindmap excluded: fragile indentation syntax + too small to read inline.
+const CHAT_MERMAID_INLINE_TYPES = new Set(['flowchart', 'graph', 'pie']);
+
+// Size limits that apply only to inline-allowed types.
+const CHAT_MERMAID_MAX_LINES = 16;
+const CHAT_MERMAID_MAX_CHARS = 550;
 const CHAT_MERMAID_MAX_SUBGRAPHS = 2;
-const CHAT_MERMAID_CANVAS_ONLY_TYPES = new Set([
-  'sequencediagram',
-  'statediagram',
-  'statediagram-v2',
-  'gantt',
-  'journey',
-  'timeline',
-  'requirementdiagram',
-]);
+
+// Canvas-supported types rendered with the existing Mermaid Canvas renderer.
+// All other types (experimental, unknown) fall through to the same Canvas path.
+const CANVAS_MERMAID_LABEL: Record<string, string> = {
+  sequencediagram: '时序图',
+  classdiagram: '类图',
+  erdiagram: '实体关系图',
+  statediagram: '状态图',
+  'statediagram-v2': '状态图',
+  gantt: '甘特图',
+  journey: '旅程图',
+  timeline: '时间线',
+  requirementdiagram: '需求图',
+  gitgraph: 'Git 分支图',
+  quadrantchart: '象限图',
+  flowchart: '流程图',
+  graph: '流程图',
+  pie: '饼图',
+  mindmap: '思维导图',
+};
 
 function analyzeMermaid(code: string) {
   const source = String(code || '').trim();
   const lines = source.split(/\r?\n/).filter((line) => line.trim().length > 0);
   const firstDirective =
     lines.find((line) => !line.trim().startsWith('%%'))?.trim().toLowerCase() || '';
+  // Detect all known types; unknown/experimental types fall back to 'unknown'.
   const typeMatch = firstDirective.match(
-    /^(flowchart|graph|sequencediagram|classdiagram|erdiagram|statediagram(?:-v2)?|gantt|pie|mindmap|journey|timeline|quadrantchart|requirementdiagram|gitgraph)\b/
+    /^(flowchart|graph|sequencediagram|classdiagram|erdiagram|statediagram(?:-v2)?|gantt|pie|mindmap|journey|timeline|quadrantchart|requirementdiagram|gitgraph|sankey|xychart|block|packet|kanban|architecture|radar|treemap|venn|ishikawa|treeview|zenuml|c4context)\b/
   );
-  const diagramType = typeMatch?.[1] || 'mermaid';
+  const diagramType = typeMatch?.[1] ?? 'unknown';
   const subgraphCount = (source.match(/\bsubgraph\b/gi) || []).length;
 
-  return {
-    source,
-    lineCount: lines.length,
-    charCount: source.length,
-    subgraphCount,
-    diagramType,
-  };
+  return { source, lineCount: lines.length, charCount: source.length, subgraphCount, diagramType };
 }
 
 function shouldRenderChatMermaidPreview(code: string) {
   const meta = analyzeMermaid(code);
-  if (CHAT_MERMAID_CANVAS_ONLY_TYPES.has(meta.diagramType)) {
-    return { allowPreview: false, reason: 'complex-type', meta };
+
+  // Allowlist check: only approved types can show inline.
+  if (!CHAT_MERMAID_INLINE_TYPES.has(meta.diagramType)) {
+    return { allowPreview: false, reason: 'not-inline-type', meta };
   }
   if (meta.lineCount > CHAT_MERMAID_MAX_LINES) {
     return { allowPreview: false, reason: 'too-long', meta };
@@ -55,26 +69,7 @@ function shouldRenderChatMermaidPreview(code: string) {
 }
 
 function getMermaidSummaryLabel(diagramType: string) {
-  switch (diagramType) {
-    case 'sequencediagram':
-      return '时序图';
-    case 'statediagram':
-    case 'statediagram-v2':
-      return '状态图';
-    case 'gantt':
-      return '甘特图';
-    case 'journey':
-      return '旅程图';
-    case 'timeline':
-      return '时间线';
-    case 'mindmap':
-      return '思维导图';
-    case 'flowchart':
-    case 'graph':
-      return '流程图';
-    default:
-      return 'Mermaid 图';
-  }
+  return CANVAS_MERMAID_LABEL[diagramType] ?? 'Mermaid 图';
 }
 
 export function createMarkdownComponents(
@@ -184,10 +179,10 @@ export function createMarkdownComponents(
                     {previewDecision.meta.subgraphCount > 0 ? ` · ${previewDecision.meta.subgraphCount} 个分组` : ''}
                   </div>
                   <div className="chat-mermaid-summary__copy">
-                    {previewDecision.reason === 'complex-type' && '这类图在聊天区容易过长或渲染不稳，建议直接在 Canvas 查看。'}
-                    {previewDecision.reason === 'too-long' && '这张图在聊天区会过长，已保留 Open 入口供你查看完整版本。'}
-                    {previewDecision.reason === 'too-dense' && '这张图信息密度较高，聊天区只保留摘要，完整图放在 Canvas 更清楚。'}
-                    {previewDecision.reason === 'too-many-groups' && '这张图分组较多，聊天区容易拥挤，完整版更适合在 Canvas 阅读。'}
+                    {previewDecision.reason === 'not-inline-type' && '这类图需要足够的展示空间，点击 Open 在 Canvas 查看完整版。'}
+                    {previewDecision.reason === 'too-long' && '图的内容较多，聊天区不适合展示，点击 Open 在 Canvas 查看完整版。'}
+                    {previewDecision.reason === 'too-dense' && '图的信息密度较高，点击 Open 在 Canvas 查看完整版。'}
+                    {previewDecision.reason === 'too-many-groups' && '图的分组较多，聊天区容易拥挤，点击 Open 在 Canvas 查看完整版。'}
                   </div>
                 </div>
               )}

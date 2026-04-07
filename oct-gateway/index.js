@@ -204,6 +204,33 @@ function scheduleMemoryGovernanceReport() {
 
 scheduleMemoryGovernanceReport();
 
+function extractMemorySearchTerms(text) {
+  const source = String(text || '').trim();
+  if (!source) return [];
+
+  const terms = [];
+  const quoted = source.match(/["“”'‘’]([^"'“”‘’]{2,40})["“”'‘’]/g) || [];
+  for (const token of quoted) {
+    terms.push(token.replace(/["“”'‘’]/g, '').trim());
+  }
+
+  const enWords = source.match(/[a-zA-Z][a-zA-Z0-9_\-\.]{2,}/g) || [];
+  terms.push(...enWords.slice(0, 5));
+
+  const zhWords = source.match(/[\u4e00-\u9fa5]{2,8}/g) || [];
+  terms.push(...zhWords.slice(0, 6));
+
+  return [...new Set(terms.map((item) => item.trim()).filter(Boolean))];
+}
+
+function hasRecallIntent(text) {
+  return /(还记得|记不记得|之前说过|之前那个|上次|刚才那个|那个方案|那个链路|前面聊过|以前提过|之前提过|我们前面|你记得吗)/.test(String(text || ''));
+}
+
+function isProjectAnalysisRequest(text) {
+  return /(gateway|oct-gateway|前端|后端|ui|界面|canvas|架构|耦合|模块|链路|流程图|线路图|结构图|代码|文件|目录|hook|hooks|组件|context|contexts|streamrouter|turnfsm|messagelist|chattab|memory|orchestrator|index\.js|\.tsx|\.ts|\.js)/i.test(String(text || ''));
+}
+
 function isLocalInternalRequest(req) {
   const remote = String(req.socket?.remoteAddress || '');
   return (
@@ -685,25 +712,32 @@ wss.on('connection', (ws) => {
       try {
         const nocturneAlive = await nocturneQueue.isNocturneHealthy();
         if (nocturneAlive && userMessage.length > 1) {
+          const recallIntent = hasRecallIntent(userMessage);
+          const projectAnalysisIntent = isProjectAnalysisRequest(userMessage);
+          const shouldInjectContextMemory = recallIntent || !projectAnalysisIntent;
+          const history = session.getHistory(sessionKey) || [];
+          const recentContextTexts = recallIntent
+            ? history
+                .slice(-6)
+                .map((m) => (typeof m?.content === 'string' ? m.content : ''))
+                .filter(Boolean)
+            : [];
 
-          // 1. 提取用户消息里的实体词（中文词组、英文词、技术词）
-          const entityWords = [];
-          // 英文单词/技术词（3字符以上）
-          const enWords = userMessage.match(/[a-zA-Z][a-zA-Z0-9_\-\.]{2,}/g) || [];
-          entityWords.push(...enWords.slice(0, 3));
-          // 中文词组（2-6字）
-          const zhWords = userMessage.match(/[\u4e00-\u9fa5]{2,6}/g) || [];
-          entityWords.push(...zhWords.slice(0, 3));
+          // 1. 提取当前消息与最近上下文里的实体词，弱指代场景额外借最近历史补召回。
+          const entityWords = [
+            ...extractMemorySearchTerms(userMessage),
+            ...recentContextTexts.flatMap((text) => extractMemorySearchTerms(text).slice(0, 2)),
+          ];
 
-          // 2. 去重搜索，最多搜 3 个词
-          const searchWords = [...new Set(entityWords)].slice(0, 3);
+          // 2. 去重搜索；弱指代场景稍微放宽一点。
+          const searchWords = [...new Set(entityWords)].slice(0, recallIntent ? 5 : 3);
           const memContents = [];
           const seenUris = new Set();
 
           for (const word of searchWords) {
             const r = await memorySearch.searchMemory(word, {
               domain: 'core',
-              limit: 2,
+              limit: recallIntent ? 3 : 2,
               include_content: true,
             });
             if (!r.ok || !r.data) continue;
@@ -759,20 +793,30 @@ wss.on('connection', (ws) => {
             }
           } catch {}
 
-          const selectedMemories = memoryGovernor.selectForInjection(
-            memContents,
-            { limit: 4, maxChars: 700 }
-          );
-          if (selectedMemories.length > 0) {
-            log.info('contextMemory selected', {
-              searchWords,
-              selectedUris: selectedMemories.map((item) => item.uri),
-              count: selectedMemories.length,
-            });
-          }
+          if (shouldInjectContextMemory) {
+            const selectedMemories = memoryGovernor.selectForInjection(
+              memContents,
+              { limit: recallIntent ? 6 : 4, maxChars: recallIntent ? 1000 : 700 }
+            );
+            if (selectedMemories.length > 0) {
+              log.info('contextMemory selected', {
+                recallIntent,
+                projectAnalysisIntent,
+                searchWords,
+                selectedUris: selectedMemories.map((item) => item.uri),
+                count: selectedMemories.length,
+              });
+            }
 
-          if (selectedMemories.length > 0) {
-            contextMemory = '\n\n[相关记忆]\n' + selectedMemories.map((item) => item.content).join('\n');
+            if (selectedMemories.length > 0) {
+              contextMemory = '\n\n[相关记忆]\n' + selectedMemories.map((item) => item.content).join('\n');
+            }
+          } else {
+            log.info('contextMemory skipped for project analysis request', {
+              recallIntent,
+              projectAnalysisIntent,
+              searchWords,
+            });
           }
         }
       } catch (e) {

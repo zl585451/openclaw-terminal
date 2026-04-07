@@ -21,10 +21,19 @@ function firstMeaningfulLine(text: string): string {
   return lines[0] ?? '';
 }
 
-export function summarizeCotForDisplay(rawCot: string | null | undefined, mainContent = ''): string | null {
+interface CotSummaryOptions {
+  compact?: boolean;
+}
+
+export function summarizeCotForDisplay(
+  rawCot: string | null | undefined,
+  mainContent = '',
+  options: CotSummaryOptions = {},
+): string | null {
   const cot = (rawCot || '').trim();
   if (!cot) return null;
   if (hasEnoughChinese(cot)) return cot;
+  const compact = options.compact === true;
 
   const haystack = `${cot}\n${mainContent}`.toLowerCase();
   const files = collectFileRefs(`${cot}\n${mainContent}`);
@@ -34,7 +43,8 @@ export function summarizeCotForDisplay(rawCot: string | null | undefined, mainCo
   const bullets: string[] = [];
 
   if (intro) {
-    bullets.push(`先围绕你的目标做判断：${intro.slice(0, 42)}${intro.length > 42 ? '...' : ''}`);
+    const introLimit = compact ? 26 : 42;
+    bullets.push(`先围绕你的目标做判断：${intro.slice(0, introLimit)}${intro.length > introLimit ? '...' : ''}`);
   } else {
     bullets.push('先理解这次问题的目标、上下文和输出要求。');
   }
@@ -63,9 +73,9 @@ export function summarizeCotForDisplay(rawCot: string | null | undefined, mainCo
     bullets.push('完成调整后再做一次校验，确认显示效果、输出链路和稳定性都没有回退。');
   }
 
-  const uniqueBullets = [...new Set(bullets)].slice(0, 5);
+  const uniqueBullets = [...new Set(bullets)].slice(0, compact ? 3 : 5);
   return [
-    '以下是本轮思考过程的中文摘要：',
+    compact ? '本轮思路摘要：' : '以下是本轮思考过程的中文摘要：',
     '',
     ...uniqueBullets.map((line) => `- ${line}`),
   ].join('\n');
