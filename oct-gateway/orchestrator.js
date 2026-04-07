@@ -119,8 +119,13 @@ const DIRECT_PATTERNS = [
 
 const CANVAS_TRIGGER_RULES = [
   {
+    artifactType: 'react-flow',
+    keywords: ['架构图', '模块关系', '依赖图', '节点图', '交互图', '结构关系图', '组件关系', '系统架构'],
+    reason: '用户要求复杂结构图，使用 React Flow 渲染',
+  },
+  {
     artifactType: 'diagram',
-    keywords: ['流程图', '架构图', '时序图', '状态图', '关系图', '示意图', '画个图', '画图'],
+    keywords: ['流程图', '时序图', '状态图', '关系图', '示意图', '画个图', '画图'],
     reason: '用户明确要求图示表达',
   },
   {

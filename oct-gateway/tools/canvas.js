@@ -6,7 +6,9 @@ function normalizeMode(mode, artifactType) {
 }
 
 function normalizeArtifactType(artifactType, mode) {
-  if (artifactType === 'document' || artifactType === 'diagram' || artifactType === 'ui-draft' || artifactType === 'code') {
+  if (artifactType === 'document' || artifactType === 'diagram' ||
+      artifactType === 'ui-draft' || artifactType === 'code' ||
+      artifactType === 'react-flow') {
     return artifactType;
   }
   if (mode === 'code') return 'code';
@@ -65,8 +67,8 @@ module.exports = {
           },
           artifactType: {
             type: 'string',
-            enum: ['document', 'diagram', 'ui-draft', 'code'],
-            description: 'Artifact category shown in the canvas workspace',
+            enum: ['document', 'diagram', 'ui-draft', 'code', 'react-flow'],
+            description: 'Artifact category: document=markdown文档, diagram=Mermaid图, react-flow=交互式节点图(JSON格式), ui-draft=HTML, code=代码',
           },
           mode: {
             type: 'string',
@@ -75,7 +77,7 @@ module.exports = {
           },
           content: {
             type: 'string',
-            description: 'Artifact content. Use markdown for documents, pure Mermaid source for diagrams, HTML for ui-draft, and raw code for code artifacts.',
+            description: 'Artifact content. markdown for documents; pure Mermaid DSL for diagram; {"nodes":[...],"edges":[...],"direction":"LR","title":"..."} JSON for react-flow; HTML for ui-draft; raw code for code.',
           },
           language: {
             type: 'string',
@@ -104,6 +106,7 @@ module.exports = {
 
       const mode = normalizeMode(args.mode, args.artifactType);
       const artifactType = normalizeArtifactType(args.artifactType, mode);
+      // react-flow content is JSON — never run it through the Mermaid extractor
       const normalizedContent = artifactType === 'diagram'
         ? normalizeDiagramContent(args.content)
         : args.content;
