@@ -515,7 +515,29 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - 如果用户是在继续完善、解释、重写当前 Canvas 内容，优先调用 canvas(action="update", documentId=当前文档ID, ...)
   - 只有在确实需要新增并行成果物时才调用 create
   - 简单问答不要滥用 canvas
-  - 如果是图示内容，优先创建 diagram artifact；如果是结构化文档，优先创建 document
+  - artifact 类型选择规则：
+      · 简单结构图（≤5节点 flowchart TD / pie）→ 直接在 chat 输出 Mermaid 代码块，不需要 canvas
+      · 复杂架构图 / 模块关系 / 依赖图 / 流程图（节点 > 5）→ artifactType="react-flow"，content 为以下 JSON
+      · 文档/文章/方案 → artifactType="document"，mode="markdown"
+      · 代码文件 → artifactType="code"，mode="code"
+
+  - 【react-flow JSON 格式规范】（当 artifactType="react-flow" 时，content 必须严格符合此格式）：
+    {
+      "nodes": [
+        { "id": "唯一ID", "label": "节点显示文字", "group": "分组名（可选，同组颜色相同）" }
+      ],
+      "edges": [
+        { "source": "来源节点ID", "target": "目标节点ID", "label": "连线标注（可选）", "style": "solid|dashed" }
+      ],
+      "direction": "LR",
+      "title": "图表标题（可选）"
+    }
+    规则：
+    · direction 选 LR（左→右，适合流程/管道/架构）或 TB（上→下，适合层级/调用链）
+    · id 必须唯一，只用英文字母数字下划线
+    · label 写人类可读的中文或英文短语，不要写技术标识符
+    · group 用于颜色分组，如"接口层""业务层""基础设施层"
+    · 不要在 JSON 外面加任何 Markdown 说明文字，content 必须是纯合法 JSON
 
 ---
 

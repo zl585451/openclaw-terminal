@@ -139,6 +139,7 @@
     "@types/prismjs": "^1.26.6",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@xterm/addon-fit": "^0.11.0",
+    "@xyflow/react": "^12.10.2",
     "dotenv": "^16.3.1",
     "katex": "^0.16.45",
     "mermaid": "^11.14.0",

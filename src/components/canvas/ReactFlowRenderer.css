@@ -1,0 +1,179 @@
+/* ── ReactFlowRenderer — OCT 主题适配 ────────────────────────────────────── */
+
+/* 6 组颜色 — 从 mermaid-pie 变量取色，10% bg / 50% border */
+.oct-rf-wrapper { --rf-group-1-bg: color-mix(in srgb, var(--mermaid-pie-1, #38a86c) 14%, transparent); --rf-group-1-border: color-mix(in srgb, var(--mermaid-pie-1, #38a86c) 60%, transparent); --rf-group-1-text: var(--text-primary); }
+.oct-rf-wrapper { --rf-group-2-bg: color-mix(in srgb, var(--mermaid-pie-2, #3d8faa) 14%, transparent); --rf-group-2-border: color-mix(in srgb, var(--mermaid-pie-2, #3d8faa) 60%, transparent); --rf-group-2-text: var(--text-primary); }
+.oct-rf-wrapper { --rf-group-3-bg: color-mix(in srgb, var(--mermaid-pie-3, #a88c38) 14%, transparent); --rf-group-3-border: color-mix(in srgb, var(--mermaid-pie-3, #a88c38) 60%, transparent); --rf-group-3-text: var(--text-primary); }
+.oct-rf-wrapper { --rf-group-4-bg: color-mix(in srgb, var(--mermaid-pie-4, #7858a8) 14%, transparent); --rf-group-4-border: color-mix(in srgb, var(--mermaid-pie-4, #7858a8) 60%, transparent); --rf-group-4-text: var(--text-primary); }
+.oct-rf-wrapper { --rf-group-5-bg: color-mix(in srgb, var(--mermaid-pie-5, #5ea03e) 14%, transparent); --rf-group-5-border: color-mix(in srgb, var(--mermaid-pie-5, #5ea03e) 60%, transparent); --rf-group-5-text: var(--text-primary); }
+.oct-rf-wrapper { --rf-group-6-bg: color-mix(in srgb, var(--mermaid-pie-6, #a84e40) 14%, transparent); --rf-group-6-border: color-mix(in srgb, var(--mermaid-pie-6, #a84e40) 60%, transparent); --rf-group-6-text: var(--text-primary); }
+
+.oct-rf-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--mermaid-stage-bg, var(--bg-code));
+}
+
+.oct-rf-title {
+  padding: 10px 16px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.oct-rf-canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Override React Flow default light theme */
+.oct-rf-canvas .react-flow {
+  background: transparent;
+}
+
+.oct-rf-canvas .react-flow__renderer,
+.oct-rf-canvas .react-flow__pane {
+  cursor: grab;
+}
+
+.oct-rf-canvas .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+/* ── Node ─────────────────────────────────────────────────────────────────── */
+
+.oct-rf-node {
+  min-width: 120px;
+  max-width: 200px;
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  word-break: break-word;
+  /* subtle glass feel */
+  backdrop-filter: blur(4px);
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.oct-rf-node:hover {
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 30%, transparent);
+  transform: translateY(-1px);
+}
+
+.oct-rf-node-label {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Handles (connection dots) ───────────────────────────────────────────── */
+
+.oct-rf-handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: var(--mermaid-line, #8ea2ff) !important;
+  border: 2px solid var(--bg-code, #080a14) !important;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.oct-rf-node:hover .oct-rf-handle {
+  opacity: 1;
+}
+
+/* ── Edges ───────────────────────────────────────────────────────────────── */
+
+.oct-rf-canvas .react-flow__edge-path {
+  stroke: var(--mermaid-line, #8ea2ff);
+  stroke-width: 1.5px;
+}
+
+.oct-rf-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent-primary);
+  stroke-width: 2px;
+}
+
+.oct-rf-canvas .react-flow__arrowhead path {
+  fill: var(--mermaid-line, #8ea2ff);
+  stroke: none;
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+
+.oct-rf-controls.react-flow__controls {
+  background: var(--bg-elevated, #1a232d);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.oct-rf-controls .react-flow__controls-button {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.oct-rf-controls .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.oct-rf-controls .react-flow__controls-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.oct-rf-controls .react-flow__controls-button svg {
+  fill: currentColor;
+  width: 12px;
+  height: 12px;
+}
+
+/* ── MiniMap ─────────────────────────────────────────────────────────────── */
+
+.oct-rf-minimap.react-flow__minimap {
+  background: var(--bg-elevated, #1a232d) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Error state ─────────────────────────────────────────────────────────── */
+
+.oct-rf-error {
+  padding: 24px;
+  color: var(--status-warning, #ffab40);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.oct-rf-error pre {
+  margin-top: 12px;
+  background: var(--bg-code);
+  padding: 12px;
+  border-radius: 8px;
+  overflow: auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+}

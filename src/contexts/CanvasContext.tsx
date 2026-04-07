@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
 
 export type CanvasMode = 'markdown' | 'code' | 'html';
-export type CanvasArtifactType = 'document' | 'diagram' | 'code' | 'ui-draft';
+export type CanvasArtifactType = 'document' | 'diagram' | 'code' | 'ui-draft' | 'react-flow';
 export type CanvasDocumentStatus = 'draft' | 'refining' | 'final';
 
 export interface CanvasDocument {
