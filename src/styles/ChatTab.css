@@ -663,7 +663,10 @@
 .chat-mermaid-card {
   margin: 12px 0;
   border-radius: 14px;
-  overflow: hidden;
+  /* Do NOT use overflow:hidden — it clips wide SVGs before the inner
+     stage's overflow-x:auto can activate. Visual containment is handled
+     by the stage's own border-radius. */
+  overflow: visible;
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--mermaid-card-border) 22%, transparent 78%);
   box-shadow: none;

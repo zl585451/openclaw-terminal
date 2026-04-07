@@ -3,7 +3,7 @@ import mermaid from 'mermaid';
 import { useTheme } from '../../themes/ThemeProvider';
 
 const renderCache = new Map<string, string>();
-const CACHE_VERSION = 'v5'; // bump when polishSvg logic changes
+const CACHE_VERSION = 'v7'; // bump when source normalization or polishSvg logic changes
 // Guard: only call mermaid.initialize() when theme+compact actually changes.
 // mermaid.initialize() is synchronous and rebuilds global config — no need to
 // repeat it for every cache-hit render or StrictMode re-invoke.
@@ -26,6 +26,19 @@ function extractMermaidSource(content: string): string {
   }
 
   return trimmed;
+}
+
+function normalizeMermaidSource(source: string): string {
+  let next = String(source || '');
+
+  // Common AI mistake: empty double-circle nodes like A(()) are invalid Mermaid.
+  // Rewrite them to a valid minimal label so chat preview does not hard-fail.
+  next = next.replace(/\b([A-Za-z][A-Za-z0-9_]*)\(\(\)\)/g, (_m, id) => `${id}((${id}))`);
+
+  // Common AI mistake: empty stadium nodes like A([]) or malformed placeholder labels.
+  next = next.replace(/\b([A-Za-z][A-Za-z0-9_]*)\(\[\]\)/g, (_m, id) => `${id}["${id}"]`);
+
+  return next.trim();
 }
 
 function cssVar(name: string, fallback: string): string {
@@ -139,12 +152,21 @@ function polishSvg(rawSvg: string, compact: boolean): string {
         if (parts.length >= 4 && !parts.some(Number.isNaN)) {
           const [, , vbw, vbh] = parts;
           if (vbw > 0 && vbh > 0) {
-            // Fit within a 580×380 box, maintain aspect ratio.
-            // 580px ≈ typical chat message width; 380px gives pie charts
-            // (~square viewBox) enough room to be clearly readable.
-            const maxW = 580;
-            const maxH = 380;
-            const scale = Math.min(maxW / vbw, maxH / vbh, 1);
+            // Chat bubble: cap to 520px so the SVG fits inside the card's inner
+            // width (card border + stage padding eat ~60px from the chat column).
+            // Wide LR charts that still exceed this will scroll inside the stage
+            // (overflow-x:auto) because .chat-mermaid-card no longer clips them.
+            const maxW = 520;
+            const maxH = 420;
+            const minRenderedH = 236;
+            const maxScale = 2.75;
+
+            let scale = Math.min(maxW / vbw, maxH / vbh);
+            if (vbh * scale < minRenderedH) {
+              scale = Math.min(minRenderedH / vbh, maxScale);
+            }
+            scale = Math.min(scale, maxScale);
+
             svgEl.setAttribute('width', String(Math.round(vbw * scale)));
             svgEl.setAttribute('height', String(Math.round(vbh * scale)));
           }
@@ -207,7 +229,7 @@ export default function MermaidRenderer({
   };
 
   useEffect(() => {
-    const source = extractMermaidSource(content);
+    const source = normalizeMermaidSource(extractMermaidSource(content));
     let cancelled = false;
 
     async function renderDiagram() {
@@ -234,8 +256,8 @@ export default function MermaidRenderer({
           theme: 'base',
           flowchart: {
             useMaxWidth: false,
-            nodeSpacing: compact ? 42 : 56,
-            rankSpacing: compact ? 58 : 76,
+            nodeSpacing: compact ? 50 : 56,
+            rankSpacing: compact ? 70 : 76,
             curve: 'basis',
           },
           themeVariables: getMermaidThemeVariables(compact),
@@ -421,14 +443,23 @@ export default function MermaidRenderer({
         </div>
       )}
       <div className={`canvas-mermaid-stage${compact ? ' canvas-mermaid-stage--compact' : ''}`} ref={stageRef}>
-        <div
-          className={`canvas-mermaid-zoom${compact ? ' canvas-mermaid-zoom--compact' : ''}`}
-          style={compact ? undefined : {
-            transform: `scale(${zoom})`,
-            transformOrigin: 'top center',
-          }}
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
+        {compact ? (
+          <div className="canvas-mermaid-stage--compact-inner">
+            <div
+              className="canvas-mermaid-zoom canvas-mermaid-zoom--compact"
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          </div>
+        ) : (
+          <div
+            className="canvas-mermaid-zoom"
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top center',
+            }}
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        )}
       </div>
     </div>
   );

@@ -10,9 +10,12 @@ import { highlightCode } from '../../utils/codeHighlight';
 const CHAT_MERMAID_INLINE_TYPES = new Set(['flowchart', 'graph', 'pie']);
 
 // Size limits that apply only to inline-allowed types.
-const CHAT_MERMAID_MAX_LINES = 16;
-const CHAT_MERMAID_MAX_CHARS = 550;
+const CHAT_MERMAID_MAX_LINES    = 16;
+const CHAT_MERMAID_MAX_CHARS    = 550;
 const CHAT_MERMAID_MAX_SUBGRAPHS = 2;
+// LR/RL flowcharts are naturally wide; allow at most 4 edges inline.
+// More than that will overflow the chat bubble → redirect to Canvas.
+const CHAT_MERMAID_MAX_LR_EDGES = 4;
 
 // Canvas-supported types rendered with the existing Mermaid Canvas renderer.
 // All other types (experimental, unknown) fall through to the same Canvas path.
@@ -46,7 +49,24 @@ function analyzeMermaid(code: string) {
   const diagramType = typeMatch?.[1] ?? 'unknown';
   const subgraphCount = (source.match(/\bsubgraph\b/gi) || []).length;
 
-  return { source, lineCount: lines.length, charCount: source.length, subgraphCount, diagramType };
+  // Detect horizontal layout direction (LR / RL) — these produce wide diagrams
+  // that overflow the chat bubble when there are more than a few nodes.
+  const directionMatch = firstDirective.match(/\b(lr|rl|td|bt|tb)\b/);
+  const direction = directionMatch?.[1] ?? 'td'; // default TD (top-down)
+  const isHorizontal = direction === 'lr' || direction === 'rl';
+
+  // Count edges (arrows) as a proxy for diagram complexity / rendered width.
+  const edgeCount = (source.match(/--[->]|==|\.\.>/g) || []).length;
+
+  return {
+    source,
+    lineCount: lines.length,
+    charCount: source.length,
+    subgraphCount,
+    diagramType,
+    isHorizontal,
+    edgeCount,
+  };
 }
 
 function shouldRenderChatMermaidPreview(code: string) {
@@ -64,6 +84,11 @@ function shouldRenderChatMermaidPreview(code: string) {
   }
   if (meta.subgraphCount > CHAT_MERMAID_MAX_SUBGRAPHS) {
     return { allowPreview: false, reason: 'too-many-groups', meta };
+  }
+  // LR/RL flowcharts grow horizontally — cap at 4 edges to avoid overflow in
+  // the chat bubble. Wider charts must open in Canvas where there's room.
+  if (meta.isHorizontal && meta.edgeCount > CHAT_MERMAID_MAX_LR_EDGES) {
+    return { allowPreview: false, reason: 'lr-too-wide', meta };
   }
   return { allowPreview: true, reason: 'inline-ok', meta };
 }
