@@ -143,17 +143,39 @@ export function InterfaceTabView({
             <option value="slow">细读（更有节奏）</option>
           </select>
         </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>打字音效</h3>
+        <div className="settings-desc" style={{ marginBottom: 12 }}>在流式输出时播放键盘声、气泡音或水滴声</div>
         <div className="settings-row">
-          <label>打字音效</label>
-          <select value={local.typingSound} onChange={(e) => setLocal((s) => ({ ...s, typingSound: e.target.value as TypingSoundMode }))}>
-            <option value="off">关闭</option>
-            <option value="typewriter">键盘 (清脆)</option>
-            <option value="soft">轻柔 (气泡)</option>
-            <option value="bubble">水泡 (低频)</option>
-          </select>
+          <label>启用音效</label>
+          <label className="toggle-wrap">
+            <input
+              type="checkbox"
+              checked={local.typingSound !== 'off'}
+              onChange={(e) => setLocal((s) => ({ ...s, typingSound: e.target.checked ? 'typewriter' : 'off' }))}
+            />
+            <span className="toggle-slider" />
+          </label>
         </div>
+        {local.typingSound !== 'off' && (
+          <div className="settings-row">
+            <label>音效风格</label>
+            <select value={local.typingSound} onChange={(e) => setLocal((s) => ({ ...s, typingSound: e.target.value as TypingSoundMode }))}>
+              <option value="typewriter">键盘（清脆机械声）</option>
+              <option value="soft">气泡（柔和提示音）</option>
+              <option value="bubble">水泡（低频水滴声）</option>
+            </select>
+          </div>
+        )}
+      </section>
+
+      <section className="settings-section">
+        <h3>语音播报</h3>
+        <div className="settings-desc" style={{ marginBottom: 12 }}>AI 回复完成后自动朗读，支持多种朗读服务</div>
         <div className="settings-row">
-          <label>回复朗读</label>
+          <label>启用播报</label>
           <label className="toggle-wrap">
             <input
               type="checkbox"
