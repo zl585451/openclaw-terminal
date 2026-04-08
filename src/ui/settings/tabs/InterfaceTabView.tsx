@@ -180,7 +180,15 @@ export function InterfaceTabView({
             <input
               type="checkbox"
               checked={local.ttsPlayback}
-              onChange={(e) => setLocal((s) => ({ ...s, ttsPlayback: e.target.checked }))}
+              onChange={(e) => setLocal((s) => {
+                const enabled = e.target.checked;
+                return {
+                  ...s,
+                  ttsPlayback: enabled,
+                  // 启用语音播报时自动关闭打字音效，防止冲突
+                  typingSound: enabled ? 'off' : s.typingSound
+                };
+              })}
             />
             <span className="toggle-slider" />
           </label>
