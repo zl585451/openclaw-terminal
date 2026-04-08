@@ -27,6 +27,45 @@ export interface ChatTabRightPanelProps {
   localDate: string;
 }
 
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  'qwen3.5-plus': 131072,
+  'qwen3-max': 131072,
+  'qwen3-max-2026-01-23': 131072,
+  'qwen-plus': 131072,
+  'qwen-max': 131072,
+  'qwen-turbo': 1000000,
+  'qwen3-coder-next': 262144,
+  'qwen3-coder-plus': 262144,
+  'kimi-k2.5': 131072,
+  'MiniMax-M2.5': 1048576,
+  'MiniMax-M2.7': 1000000,
+  'MiniMax-M2.7-highspeed': 1000000,
+  'MiniMax-M2.5-standalone': 1000000,
+  'MiniMax-M2.5-highspeed': 1000000,
+  'MiniMax-M2.1': 1000000,
+  'MiniMax-M2.1-highspeed': 1000000,
+  'MiniMax-M2': 1000000,
+  'glm-5': 131072,
+  'glm-4.7': 131072,
+  'deepseek-v3': 65536,
+  'deepseek-r1': 65536,
+  'deepseek-chat': 65536,
+  'deepseek-reasoner': 65536,
+};
+
+function inferContextWindow(modelName: string): number | null {
+  const modelId = String(modelName || '').trim();
+  if (!modelId) return null;
+  if (MODEL_CONTEXT_WINDOWS[modelId] != null) return MODEL_CONTEXT_WINDOWS[modelId];
+  const matchedKey = Object.keys(MODEL_CONTEXT_WINDOWS).find((key) => modelId.startsWith(key));
+  return matchedKey ? MODEL_CONTEXT_WINDOWS[matchedKey] : null;
+}
+
+function formatTokenK(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '--';
+  return `${(value / 1000).toFixed(1)}k`;
+}
+
 /**
  * 右侧栏独立成子组件：折叠状态在内部，切换时不会触发 ChatTab 主列（含 MessageList）重渲染。
  */
@@ -44,6 +83,12 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   localDate,
 }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const effectiveCtxMax = ctxMax ?? inferContextWindow(modelName);
+  const effectiveCtxUsed = ctxUsed ?? tokenIn ?? null;
+  const isEstimatedCtxUsed = ctxUsed == null && effectiveCtxUsed != null;
+  const ctxPercent = effectiveCtxUsed != null && effectiveCtxMax != null && effectiveCtxMax > 0
+    ? Math.max(0, Math.min(100, Math.round((effectiveCtxUsed / effectiveCtxMax) * 100)))
+    : null;
 
   const toggleSidebar = () => {
     startTransition(() => setSidebarCollapsed((v) => !v));
@@ -83,7 +128,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
               style={{
                 fontSize: 'var(--text-xs)',
                 color: 'var(--text-tertiary)',
-                fontFamily: 'var(--font-mono)',
+                fontFamily: 'var(--font-sans)',
               }}
             >
               GW
@@ -104,7 +149,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
               style={{
                 fontSize: 'var(--text-xs)',
                 color: 'var(--text-tertiary)',
-                fontFamily: 'var(--font-mono)',
+                fontFamily: 'var(--font-sans)',
               }}
             >
               MEM
@@ -143,7 +188,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
               style={{
                 fontSize: 'var(--text-xs)',
                 color: 'var(--text-secondary)',
-                fontFamily: 'var(--font-mono)',
+                fontFamily: 'var(--font-sans)',
                 letterSpacing: '0.5px',
                 lineHeight: 1,
               }}
@@ -161,7 +206,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
             borderBottom: '1px solid var(--border-subtle)',
             gap: '8px',
             fontSize: 'var(--text-sm)',
-            fontFamily: 'var(--font-mono)',
+            fontFamily: 'var(--font-sans)',
           }}
         >
           <div style={{ display: 'flex', gap: '4px' }}>
@@ -171,8 +216,8 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
           <div style={{ display: 'flex', gap: '4px' }}>
             <span style={{ color: 'var(--text-tertiary)' }}>TOK</span>
             <span style={{ color: 'var(--accent-primary)' }}>
-              {tokenIn != null ? `${(tokenIn / 1000).toFixed(1)}k` : '0'}/
-              {ctxMax != null ? `${(ctxMax / 1000).toFixed(0)}k` : '--'}
+              {formatTokenK(tokenIn)}/
+              {effectiveCtxMax != null ? `${Math.round(effectiveCtxMax / 1000)}k` : '--'}
             </span>
           </div>
           <div style={{ display: 'flex', gap: '4px' }}>
@@ -180,14 +225,17 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
             <span
               style={{
                 color:
-                  ctxUsed != null && ctxMax != null && ctxMax > 0 && ctxUsed / ctxMax > 0.8
+                  effectiveCtxUsed != null && effectiveCtxMax != null && effectiveCtxMax > 0 && effectiveCtxUsed / effectiveCtxMax > 0.8
                     ? 'var(--status-error)'
                     : 'var(--accent-primary)',
               }}
+              title={isEstimatedCtxUsed ? 'CTX 为估算值：厂商未返回显式 context 使用量，当前按输入 tokens 近似显示' : undefined}
             >
-              {ctxUsed != null && ctxMax != null && ctxMax > 0
-                ? `${(ctxUsed / 1000).toFixed(1)}k (${Math.round((ctxUsed / ctxMax) * 100)}%)`
-                : '0%'}
+              {effectiveCtxUsed != null && effectiveCtxMax != null && effectiveCtxMax > 0
+                ? `${isEstimatedCtxUsed ? '~' : ''}${formatTokenK(effectiveCtxUsed)} (${ctxPercent}%)`
+                : effectiveCtxUsed != null
+                  ? `${isEstimatedCtxUsed ? '~' : ''}${formatTokenK(effectiveCtxUsed)}`
+                  : '--'}
             </span>
           </div>
           {streak > 0 && (
@@ -218,7 +266,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
               flex: 1,
               padding: '4px 0',
               fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
+              fontFamily: 'var(--font-sans)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -237,7 +285,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
               flex: 1,
               padding: '4px 0',
               fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
+              fontFamily: 'var(--font-sans)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -256,7 +304,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
               flex: 1,
               padding: '4px 0',
               fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
+              fontFamily: 'var(--font-sans)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',
@@ -279,7 +327,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
               flex: 1,
               padding: '4px 0',
               fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
+              fontFamily: 'var(--font-sans)',
               background: 'transparent',
               borderRadius: '2px',
               cursor: 'pointer',

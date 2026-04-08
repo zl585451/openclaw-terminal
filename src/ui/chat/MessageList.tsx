@@ -826,6 +826,7 @@ export interface ChatMessageListProps {
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   usePlainStreamingText?: boolean;
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
+  allowCotDisplay?: boolean;
 }
 
 export const ChatMessageList = function ChatMessageList({
@@ -851,6 +852,7 @@ export const ChatMessageList = function ChatMessageList({
   streamingDomRef,
   usePlainStreamingText = false,
   markdownComponents,
+  allowCotDisplay = true,
 }: ChatMessageListProps) {
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
@@ -963,7 +965,7 @@ export const ChatMessageList = function ChatMessageList({
 
         // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
         const { cotContent: streamingCotContent, mainContent: mainTextFull } =
-          msg.role === 'assistant' && fullContent
+          allowCotDisplay && msg.role === 'assistant' && fullContent
             ? !hasAssistantCotMarkers(fullContent)
               ? { cotContent: null, mainContent: fullContent }
               : extractAssistantCotAndMain(fullContent)

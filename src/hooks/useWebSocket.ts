@@ -6,7 +6,7 @@ const ipcRenderer = typeof window !== 'undefined' && typeof (window as any).requ
   : { invoke: () => Promise.resolve(null), on: () => {}, off: () => {}, removeListener: () => {} };
 
 interface UseWebSocketOptions {
-  onChatDelta: (content: string, isDelta: boolean) => void;
+  onChatDelta: (content: string, isDelta: boolean, isSystemReply: boolean) => void;
   onChatDone: (content: string, isSystemReply: boolean) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: any) => void;
@@ -50,6 +50,14 @@ function extractContent(data: any): string {
   if (data.content !== undefined) return String(data.content || '');
 
   return '';
+}
+
+function extractEmbeddedUsage(data: any): any {
+  if (!data) return null;
+  return data.payload?.usage
+    ?? data.data?.usage
+    ?? data.usage
+    ?? null;
 }
 
 export function useWebSocket(options: UseWebSocketOptions) {
@@ -108,6 +116,14 @@ export function useWebSocket(options: UseWebSocketOptions) {
         return;
       }
 
+      const embeddedUsage = extractEmbeddedUsage(data);
+      if (embeddedUsage) {
+        opt.onUsage(embeddedUsage, true);
+        if (embeddedUsage.model != null) {
+          opt.onModelName(String(embeddedUsage.model));
+        }
+      }
+
       let content = extractContent(data);
       content = (content || '').replace(/\u200B/g, '');
       const done = (data.done === true) || (data.payload?.done === true);
@@ -125,12 +141,13 @@ export function useWebSocket(options: UseWebSocketOptions) {
       if (!content && !done) return;
 
       const isSystemReply = data.type === 'system' || data.event === 'system' ||
-        (data.payload && data.payload.type === 'system');
+        (data.payload && (data.payload.type === 'system' || data.payload.isSystemReply === true)) ||
+        (data as any).isSystemReply === true;
 
       if (done) {
         opt.onChatDone(content, isSystemReply);
       } else {
-        opt.onChatDelta(content, isDelta);
+        opt.onChatDelta(content, isDelta, isSystemReply);
       }
     };
 

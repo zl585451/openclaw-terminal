@@ -34,6 +34,8 @@ const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('./logger');
 const log = createLogger('ai');
+const ProviderRouter = require('./runtime/providerRouter');
+const ToolLoop = require('./runtime/toolLoop');
 
 // ═══════════════════════════════════════════════════════════════
 // AI 上下文截断优化
@@ -42,6 +44,15 @@ const MAX_HISTORY_ROUNDS = 12; // 最多保留最近 12 轮对话
 const MAX_CONTEXT_CHARS = 60000; // 上下文字符上限（约 15k tokens）
 const MAX_TOOL_ROUNDS = 10;
 const MAX_IDENTICAL_TOOL_SIGNATURES = 4;
+const providerRouter = new ProviderRouter({ config });
+const toolLoop = new ToolLoop({
+  toolLoader,
+  log,
+  streamChat: (options) => streamChat(options),
+  buildToolSignature,
+  maxToolRounds: MAX_TOOL_ROUNDS,
+  maxIdenticalToolSignatures: MAX_IDENTICAL_TOOL_SIGNATURES,
+});
 
 function truncateHistory(messages) {
   if (!messages || messages.length === 0) return messages;
@@ -662,22 +673,18 @@ async function streamChat({
   toolRound = 0,
   toolSignatures = [],
 }) {
-  const provider = config.getProviderConfig();
-  const apiKey = provider.apiKey;
-  const baseUrl = provider.baseUrl;
-  const model = config.DASHSCOPE_MODEL;
+  const resolved = providerRouter.resolve();
+  const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 
   // 上下文截断优化：防止消息过长
   const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages);
   getContextUsageRatio(truncatedMessages, model);
 
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
-  const canFallbackToDeepseek = !!(config.DEEPSEEK_API_KEY)
-    && !baseUrl.includes('deepseek');
+  const canFallbackToDeepseek = fallback.canFallbackToDeepseek;
   
   // MiniMax 官方 API 失败时，fallback 到百炼版 MiniMax
-  const canFallbackToBailian = baseUrl.includes('minimaxi.com') 
-    && !!(config.DASHSCOPE_API_KEY);
+  const canFallbackToBailian = fallback.canFallbackToBailian;
 
   log.info('request start', { provider: provider.name, model, messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0 });
 
@@ -723,20 +730,6 @@ async function streamChat({
       m.content.some(c => c.type === 'image_url')
     );
 
-    // 从 provider 或 MODEL_REGISTRY 获取模型能力
-    const modelDef = provider.models.find(m => m.id === model);
-    // modelDef.tools 可能为 undefined（loadAvailableModels 返回的简化对象没有 tools 字段）
-    // 此时 fallback 到 MODEL_REGISTRY（getModelCaps）获取真实能力
-    const registryCaps = config.getModelCaps(model);
-    const caps = modelDef
-      ? {
-          supportsTools: modelDef.tools !== undefined ? modelDef.tools : registryCaps.supportsTools,
-          supportsStreamOptions: provider.supportsStreamOptions,
-          supportsThinking: registryCaps.supportsThinking ?? false,
-          thinkingFormat: registryCaps.thinkingFormat ?? null,
-          maxTokens: modelDef.maxTokens || registryCaps.maxTokens || 4096,
-        }
-      : registryCaps;
     log.info('model caps', { model, supportsTools: caps.supportsTools, supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions });
 
     _thinkTagMode = caps.thinkingFormat === 'think_tags';
@@ -1028,85 +1021,19 @@ async function streamChat({
           stopHeartbeat();
           // 不要在这里 flushThinkState！thinking 状态要保持打开，
           // 等工具返回后继续的 streamChat 会继续处理 thinking 内容
-          const normalizedToolCalls = toolCalls.filter(Boolean);
-          const toolSignature = buildToolSignature(normalizedToolCalls);
-          const repeatedCount = toolSignatures.filter((sig) => sig === toolSignature).length;
-          if (toolRound >= MAX_TOOL_ROUNDS || repeatedCount >= MAX_IDENTICAL_TOOL_SIGNATURES) {
-            const stopReason =
-              toolRound >= MAX_TOOL_ROUNDS
-                ? `工具探索轮次已达到上限（${MAX_TOOL_ROUNDS} 轮）`
-                : '检测到重复的工具调用模式';
-            const gracefulStop =
-              `${fullText ? `${fullText}\n\n` : ''}` +
-              `⚠️ ${stopReason}，我先停止继续自动试探工具，避免一直卡住。` +
-              `\n\n目前已拿到一部分工具结果，但还没整理成最终结论。你可以：` +
-              `\n1. 让我基于当前结果直接总结` +
-              `\n2. 把问题缩小到更明确的文件或模块` +
-              `\n3. 让我优先用 read_file 分析，少用命令行工具`;
-            log.warn('tool loop guard triggered', {
-              toolRound,
-              repeatedCount,
-              signaturePreview: toolSignature.slice(0, 240),
-            });
-            flushThinkAtEnd();
-            onDone(gracefulStop, totalUsage, responseModel);
-            return;
-          }
-          log.info('tool_calls', { count: normalizedToolCalls.length, toolRound: toolRound + 1 });
-          const toolResults = [];
-          for (const tc of normalizedToolCalls) {
-            let args = {};
-            try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
-            log.info('tool call', { name: tc.function.name, args });
-            const toolName = tc.function.name;
-            if (onToolEvent) {
-              try { onToolEvent({ type: 'tool_call', tool: toolName, args, callId: tc.id, state: 'executing' }); } catch {}
-            }
-            const result = await Promise.race([
-              toolLoader.executeTool(toolName, args),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error(`工具 ${toolName} 超时（30秒）`)), 30000)
-              )
-            ]).catch(e => {
-              log.error(`工具 ${toolName} 执行失败: ${e.message}`);
-              if (onToolEvent) {
-                try { onToolEvent({ type: 'tool_result', tool: toolName, callId: tc.id, state: 'error', error: e.message }); } catch {}
-              }
-              return `工具执行失败: ${e.message}，请稍后重试或换个方式表达需求。`;
-            });
-            if (result && typeof result === 'object' && result.canvasEvent && onToolEvent) {
-              try {
-                onToolEvent({
-                  type: 'canvas',
-                  action: result.canvasEvent.action,
-                  payload: result.canvasEvent.payload,
-                });
-              } catch {}
-            }
-            if (onToolEvent) {
-              try { onToolEvent({ type: 'tool_result', tool: toolName, callId: tc.id, state: 'done', resultPreview: JSON.stringify(result).slice(0, 200) }); } catch {}
-            }
-            toolResults.push({
-              tool_call_id: tc.id,
-              role: 'tool',
-              content: JSON.stringify(result),
-            });
-          }
-
-          const continuedMessages = [
-            ...truncatedMessages,
-            { role: 'assistant', content: fullText || '', tool_calls: normalizedToolCalls },
-            ...toolResults,
-          ];
-          await streamChat({
-            messages: continuedMessages,
+          await toolLoop.handleToolCalls({
+            toolCalls,
+            toolRound,
+            toolSignatures,
+            fullText,
+            totalUsage,
+            responseModel,
+            truncatedMessages,
             onDelta,
             onDone,
             onError,
             onToolEvent,
-            preserveToolChain: true,
-            toolRound: toolRound + 1,
-            toolSignatures: [...toolSignatures, toolSignature].slice(-8),
+            flushThinkAtEnd,
           });
           return;
         }

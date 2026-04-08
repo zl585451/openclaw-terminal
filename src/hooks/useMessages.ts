@@ -118,6 +118,7 @@ export interface UseMessagesReturn {
   ctxUsed: number | null;
   ctxMax: number | null;
   modelName: string;
+  thinkMode: string;
   pendingPills: string[] | null;
   streak: number;
   fullTextRef: MutableRefObject<string>;
@@ -157,7 +158,7 @@ export function useMessages({
   const [, setCost] = useState<number | null>(null);
   const [, setSession] = useState<string | null>(null);
   const [, setApiKeyInfo] = useState<string>('--');
-  const [, setThinkMode] = useState<string>('off');
+  const [thinkMode, setThinkMode] = useState<string>('off');
   const [, setRuntimeMode] = useState<string>('direct');
   const [, setCompactions] = useState<number | null>(null);
   const [, setQueueInfo] = useState<string>('--');
@@ -188,6 +189,7 @@ export function useMessages({
   const runStreamPaintTickRef = useRef<() => void>(() => {});
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
+  const systemReplyBufferRef = useRef('');
   // ── isStreaming (memo) ────────────────────────────────────────────────────
   const isStreaming = useMemo(() => {
     const lf = deriveLegacyFlags(fsmPhase);
@@ -414,20 +416,18 @@ export function useMessages({
 
   // ── useWebSocket ──────────────────────────────────────────────────────────
   const ws = useWebSocket({
-    onChatDelta: (content, isDelta) => {
+    onChatDelta: (content, isDelta, isSystemReply) => {
       if (!content) return;
-      setAwaitingResponse(false);
-      if (isDelta) setAgentPhase('typing');
+      if (!isSystemReply) {
+        setAwaitingResponse(false);
+        if (isDelta) setAgentPhase('typing');
+      }
 
-      const pendingSysDelta = pendingSystemReplyMap.current.get(lastSentRequestId.current) ?? false;
+      const pendingSysDelta = isSystemReply || (pendingSystemReplyMap.current.get(lastSentRequestId.current) ?? false);
       if (pendingSysDelta) {
-        if (isDelta) {
-          streamingMessageRef.current += content;
-          fullTextRef.current += content;
-        } else {
-          streamingMessageRef.current = content;
-          fullTextRef.current = content;
-        }
+        systemReplyBufferRef.current = isDelta
+          ? systemReplyBufferRef.current + content
+          : content;
         // 系统命令只保留一份最终输出，不走流式占位，避免重复渲染。
       } else {
         if (isDelta) {
@@ -446,13 +446,16 @@ export function useMessages({
       }
     },
 
-    onChatDone: (content) => {
-      setAwaitingResponse(false);
-      setAgentPhase('idle');
-      setActiveTools([]);
+    onChatDone: (content, systemReplyHint) => {
       const currentRequestId = lastSentRequestId.current;
-      const systemReply = pendingSystemReplyMap.current.get(currentRequestId) ?? false;
+      const systemReply = systemReplyHint || (pendingSystemReplyMap.current.get(currentRequestId) ?? false);
       pendingSystemReplyMap.current.delete(currentRequestId);
+
+      if (!systemReply) {
+        setAwaitingResponse(false);
+        setAgentPhase('idle');
+        setActiveTools([]);
+      }
 
       if (!systemReply) {
         const fallbackText = stripTextToolAnnotations(stripThinkModeMarker(String(content || '').trim()));
@@ -480,10 +483,13 @@ export function useMessages({
         return;
       }
 
-      let finalStreamContent = streamingMessageRef.current || content;
+      let finalStreamContent = systemReplyBufferRef.current || content;
+      systemReplyBufferRef.current = '';
       if (finalStreamContent) {
-        streamingMessageRef.current = finalStreamContent;
-        fullTextRef.current = finalStreamContent;
+        if (!systemReply) {
+          streamingMessageRef.current = finalStreamContent;
+          fullTextRef.current = finalStreamContent;
+        }
       }
 
       const text = finalStreamContent;
@@ -731,6 +737,8 @@ export function useMessages({
     const newRequestId = Date.now().toString();
     lastSentRequestId.current = newRequestId;
     const cmdIsSystem = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
+    const thinkCmdMatch = fullContentForAMY.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
+    if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
     pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
     streamingMessageRef.current = '';
     fullTextRef.current = '';
@@ -829,6 +837,8 @@ export function useMessages({
     const newRequestId = Date.now().toString();
     lastSentRequestId.current = newRequestId;
     const isSystem = isSystemCommand(content.trim());
+    const thinkCmdMatch = content.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
+    if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
     pendingSystemReplyMap.current.set(newRequestId, isSystem);
     streamingMessageRef.current = '';
     fullTextRef.current = '';
@@ -913,6 +923,7 @@ export function useMessages({
     ctxUsed,
     ctxMax,
     modelName,
+    thinkMode,
     pendingPills,
     streak,
     fullTextRef,

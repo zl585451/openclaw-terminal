@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-08（新增 AI 入口层，修正文档入口与当前实现关系）  
+> **最后更新**：2026-04-08（补充 oct-gateway 联调修复、任务看板与右栏状态显示）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -40,6 +40,10 @@
 
 ### 基础设施（第一层）
 - **Gateway WebSocket**：前端 ↔ AI 的桥梁，OCT 自有 token 认证（无 ECDSA）
+- **Transport 分层**：`transport/ws.js` / `transport/http.js` / `transport/protocol.js` 已接管网络生命周期，仍保留 legacy fallback 便于联调
+- **Gateway 分层**：`gateway/router.js` / `gateway/slash.js` 承接请求路由与稳定 Slash 命令
+- **Runtime 分层**：`runtime/chatEngine.js` / `contextBuilder.js` / `streamController.js` / `providerRouter.js` / `toolLoop.js`
+- **Service 分层**：`services/postProcessor.js` / `imageService.js`
 - **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由
 - **后台任务队列**：task_queue + worker，持久化、60s 超时
 - **AI 对话引擎**：Provider 抽象，支持百炼/DeepSeek/硅基/Groq/OpenAI/Ollama 等
@@ -99,6 +103,21 @@
 - **结果**：
   - 发布默认人格为中性可配置
 - 私人化人格改为用户自己的本地配置，而不是写死在仓库主链里
+
+### 2026-04-08 oct-gateway 分层重构收口
+- **Service 层**：后处理链与图片路由已从 `index.js` 抽到 `services/`
+- **Gateway 层**：`MessageRouter` 现已统一承接 Slash、`sessions.list`、普通 `chat.send`
+- **Runtime 层**：`ChatEngine` / `ContextBuilder` / `ProviderRouter` / `ToolLoop` 已接线
+- **Transport 层**：`WsTransport` / `HttpTransport` / `protocol` 已接线，协议格式保持不变
+- **现状**：Feature Flag 与 legacy fallback 仍保留，等待联调后进入清理阶段
+
+### 2026-04-08 联调修复与右栏状态增强
+- **系统消息隔离**：Electron 仅信任 gateway 显式 `isSystemReply/type=system` 标记，普通 AI 回复不再误进系统气泡。
+- **并发消息修复**：Slash 系统命令会先中断当前流；系统回复和普通流式正文分缓冲处理，避免 `/status` 插入搜索流后串流。
+- **思考模式展示修复**：`/think off` 会关闭本地 CoT 面板渲染，正文与思考块不再交织。
+- **图片识别降级增强**：`image_analyzer` 云端失败时会继续尝试本地降级，并在最终回复中明确说明视觉分析状态。
+- **任务看板体验修复**：任务面板前端快速添加、Electron 本地任务写入、gateway `task_add/tasks_add` 均新增去重保护；任务与停车场项支持 hover 查看完整内容。
+- **右栏 TOK/CTX**：`electron/main.ts` 和 `main_utf8.ts` 对多 provider usage 做统一抽取；右栏在厂商未返回显式上下文占用时，会基于模型窗口显示近似 `CTX`。
 
 ### 2026-04-06 语音助手与能力路由产品化
 - **目标**：把语音能力做成产品级 capability routing，而不是 MiniMax 私有定制链

@@ -59,6 +59,37 @@ const PRIORITY_ORDER = ['p0', 'p1', 'p2', 'none'] as const;
 
 const TASKS_PER_PAGE = 5;
 
+function normalizeTaskContent(content: string): string {
+  return content.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function isLikelyDuplicateTaskContent(a: string, b: string): boolean {
+  const left = normalizeTaskContent(a);
+  const right = normalizeTaskContent(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  const shorter = left.length <= right.length ? left : right;
+  const longer = left.length <= right.length ? right : left;
+  if (shorter.length < 4) return false;
+
+  return longer.includes(shorter) && longer.length - shorter.length <= 16;
+}
+
+function dedupeTasks(taskList: TaskItem[]): TaskItem[] {
+  const deduped: TaskItem[] = [];
+
+  for (const task of taskList) {
+    const duplicate = deduped.find(existing => {
+      if (existing.done !== task.done) return false;
+      return isLikelyDuplicateTaskContent(existing.content, task.content);
+    });
+    if (!duplicate) deduped.push(task);
+  }
+
+  return deduped;
+}
+
 function getTodayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -112,7 +143,7 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
           updatedAt: data?.updatedAt || '',
         });
       } catch {}
-      const taskList = (data?.tasks || []).map((t: any) => ({
+      const taskList = dedupeTasks((data?.tasks || []).map((t: any) => ({
         id: t.id,
         content: t.content,
         priority: (t.priority || 'p2').toLowerCase() as 'p0' | 'p1' | 'p2' | 'none',
@@ -120,7 +151,7 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
         archived: false,
         source: t.source || 'user',
         createdAt: t.createdAt || '',
-      }));
+      })));
       taskList.sort((a: TaskItem, b: TaskItem) => {
         if (a.done !== b.done) return a.done ? 1 : -1;
         const order = { p0: 0, p1: 1, p2: 2, none: 3 };
@@ -213,6 +244,11 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
     if (e.key !== 'Enter') return;
     const text = quickInput.trim();
     if (!text) return;
+    const duplicate = tasks.find(task => !task.done && isLikelyDuplicateTaskContent(task.content, text));
+    if (duplicate) {
+      setQuickInput('');
+      return;
+    }
     const newTask: TaskItem = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       content: text,
@@ -241,6 +277,18 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
       source: 'user',
       createdAt: item.createdAt || new Date().toISOString(),
     };
+    const duplicate = tasks.find(task => !task.done && isLikelyDuplicateTaskContent(task.content, newTask.content));
+    if (duplicate) {
+      const nextParking = parkingLot.filter(p => p.id !== item.id);
+      setParkingLot(nextParking);
+      try {
+        await persistTasks(tasks, nextParking);
+      } catch (e) {
+        console.error('[TaskBoard] 去重停车场项失败:', e);
+        loadTasks();
+      }
+      return;
+    }
     const nextTasks = [newTask, ...tasks];
     const nextParking = parkingLot.filter(p => p.id !== item.id);
     setTasks(nextTasks);
@@ -320,7 +368,7 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
           ) : visibleTasks.length > 0 ? (
             <>
               {visibleTasks.map((task) => (
-                <div key={task.id} className="tb-task-item">
+                <div key={task.id} className="tb-task-item" title={task.content}>
                   {/* 优先级圆点 */}
                   <span
                     className="tb-priority-dot"
@@ -330,7 +378,7 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
                   />
                   
                   {/* 任务内容 */}
-                  <span className="tb-task-content">{task.content}</span>
+                  <span className="tb-task-content" title={task.content}>{task.content}</span>
                   
                   {/* 操作按钮 - hover显示 */}
                   <div className="tb-task-actions">
@@ -397,9 +445,9 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
           <div className="tb-parking-header">停车场 · 暂存</div>
           {parkingLot.length > 0 ? (
             parkingLot.slice(0, 3).map((item) => (
-              <div key={item.id} className="tb-parking-item">
+              <div key={item.id} className="tb-parking-item" title={item.content}>
                 <span className="tb-parking-tag">P</span>
-                <span className="tb-parking-content">{item.content}</span>
+                <span className="tb-parking-content" title={item.content}>{item.content}</span>
                 <div className="tb-parking-actions">
                   <button
                     type="button"
@@ -480,14 +528,14 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
           ) : visibleTasks.length > 0 ? (
             <>
               {visibleTasks.map((task) => (
-                <div key={task.id} className="tb-task-item">
+                <div key={task.id} className="tb-task-item" title={task.content}>
                   <span
                     className="tb-priority-dot"
                     style={{ background: PRIORITY_CONFIG[task.priority]?.color || THEME.textSecondary }}
                     onClick={(e) => cyclePriority(task.id, e)}
                     title="点击切换优先级"
                   />
-                  <span className="tb-task-content">{task.content}</span>
+                  <span className="tb-task-content" title={task.content}>{task.content}</span>
                   <div className="tb-task-actions">
                     <button
                       type="button"
@@ -547,9 +595,9 @@ const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose,
           <div className="tb-parking-header">停车场 · 暂存</div>
           {parkingLot.length > 0 ? (
             parkingLot.map((item) => (
-              <div key={item.id} className="tb-parking-item">
+              <div key={item.id} className="tb-parking-item" title={item.content}>
                 <span className="tb-parking-tag">P</span>
-                <span className="tb-parking-content">{item.content}</span>
+                <span className="tb-parking-content" title={item.content}>{item.content}</span>
                 <div className="tb-parking-actions">
                   <button
                     type="button"

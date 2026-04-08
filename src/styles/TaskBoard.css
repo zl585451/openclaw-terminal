@@ -9,7 +9,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   background: var(--bg-sidebar);
 }
 
@@ -404,7 +404,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
   overflow: hidden;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .tb-full-header {

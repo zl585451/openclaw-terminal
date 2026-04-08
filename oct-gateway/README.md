@@ -2,8 +2,8 @@
 
 OCT 独立 AI Gateway，替换 OpenClaw Gateway。
 
-> **最新状态**: Phase 4 已完成 ✅ (2026-03-28)  
-> **版本**: v0.4.0
+> **最新状态**: 分层重构 Phase 1～4 已完成开发侧收口，Phase 5 处于“联调修复 + 低风险清理”阶段 ✅ (2026-04-08)  
+> **版本**: v0.5.0-dev
 
 ## 启动
 
@@ -28,13 +28,40 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 
 ## 架构概览
 
+- **Transport**：`transport/ws.js`、`transport/http.js`、`transport/protocol.js`
+- **Gateway**：`gateway/router.js`、`gateway/slash.js`
+- **Runtime**：`runtime/chatEngine.js`、`runtime/contextBuilder.js`、`runtime/streamController.js`、`runtime/providerRouter.js`、`runtime/toolLoop.js`
+- **Services**：`services/postProcessor.js`、`services/imageService.js`
+- **入口**：`index.js` 仍保留 legacy fallback 与启动胶水，待 Phase 5 清理
+
 - **连接层**：WebSocket 18789，OCT 自有 token 认证（无 ECDSA 签名）
 - **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由扩展
 - **工具层**：`tool_loader.js` 动态加载 `tools/*.js`，含 http_request、image_gen 等 25+ 工具
 - **OpenClaw Skills**：`skill_adapter.js` 解析 `skills/` 下的 SKILL.md，注入到系统提示词
 - **后台任务**：`task_queue.js` + `worker.js`，任务持久化到 `tasks_runtime.json`，60 秒超时
 
-## Phase 4 新功能 (v0.4.0)
+## 重构开关
+
+- `OCT_USE_NEW_ROUTER=1`：Slash、`sessions.list`、普通 `chat.send` 优先走 `MessageRouter`
+- `OCT_USE_NEW_CHAT_ENGINE=1`：普通聊天主链切到 `ChatEngine`
+- `OCT_USE_NEW_TRANSPORT=1`：WS/HTTP 生命周期切到 `transport/*`
+
+## 当前实现说明
+
+- 新旧路径目前并存，这是有意保留的联调保护带
+- 连接协议仍保持原样：`req` / `res` / `event` JSON 结构未改
+- `ai.js` 已明显瘦身，但最终的 flag 清理和 legacy 删除仍留在 Phase 5
+
+## 2026-04-08 联调修复摘要
+
+- **系统命令与正文隔离**：`/status`、`/help`、`/think off` 等系统回复不再和普通 assistant 流式正文共用缓冲，避免消息串流/跑进系统气泡。
+- **思考模式展示修复**：`think off` 时前端不再继续渲染 CoT 面板；系统提示与展示行为保持一致。
+- **图片链路增强**：图片 analyzer 云端失败时会更积极尝试本地降级；失败提示更明确，不再表现成“AI 没收到图”。
+- **任务看板修复**：右侧任务面板增加重复任务拦截；鼠标悬停可查看完整任务文本。
+- **右栏用量显示**：`TOK / CTX` 已支持更多 provider 的 usage 字段；当厂商不返回显式上下文占用时，会按模型窗口给出近似 `CTX` 显示。
+- **右栏字体优化**：状态区和任务看板切回 `font-sans`，只保留数字/日志区的等宽字体。
+
+## Phase 4 新功能 (v0.5.0-dev)
 
 ### ✅ 图片分析增强
 - **云端优先**: 阿里云百炼 qwen-vl-max（高精度，识别红框/箭头/标注）
@@ -120,12 +147,12 @@ npm run build
 # 4. 更新官网下载链接
 ```
 
-### 🚀 Phase 5 规划
-- Gateway 生态扩展（Agent 路由、多模型负载均衡）
-- 定时任务系统（心跳、定期备份）
-- 性能监控与告警
+### 🚀 下一阶段
+- 先做 Transport / Router / Runtime 联调验收
+- 再进入 Phase 5：删除 legacy fallback、收紧 `index.js`、清理 Feature Flag
+- 最后再考虑 Gateway 生态扩展（Agent 路由、多模型负载均衡）
 
 ---
 
 > **维护者**: OpenClaw Team  
-> **最后更新**: 2026-03-28 (Phase 4 完成)
+> **最后更新**: 2026-04-08（分层重构 Phase 1～4 开发侧收口）

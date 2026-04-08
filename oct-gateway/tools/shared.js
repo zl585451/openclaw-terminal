@@ -63,6 +63,27 @@ function saveTasksData(data) {
   }
 }
 
+function normalizeTaskContent(content) {
+  return String(content || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function isLikelyDuplicateTaskContent(a, b) {
+  const left = normalizeTaskContent(a);
+  const right = normalizeTaskContent(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  const shorter = left.length <= right.length ? left : right;
+  const longer = left.length <= right.length ? right : left;
+  if (shorter.length < 4) return false;
+
+  return longer.includes(shorter) && longer.length - shorter.length <= 16;
+}
+
+function findOpenDuplicateTask(tasks, content) {
+  return (tasks || []).find(task => !task?.done && isLikelyDuplicateTaskContent(task?.content, content)) || null;
+}
+
 // memory_write 队列
 const WRITE_QUEUE = [];
 let isProcessingQueue = false;
@@ -224,6 +245,9 @@ module.exports = {
   log,
   loadTasksData,
   saveTasksData,
+  normalizeTaskContent,
+  isLikelyDuplicateTaskContent,
+  findOpenDuplicateTask,
   setOnTaskBoardUpdate,
   getOnTaskBoardUpdate,
   enqueueWrite,

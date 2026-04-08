@@ -1,7 +1,20 @@
 # OCT v2 迁移状态
 
-> **上次更新**：2026-03-30  
-> **更新人**：维护记录（ChatTab 四步抽离已归档）
+> **上次更新**：2026-04-09  
+> **更新人**：维护记录（oct-gateway Phase 1～5 状态 + 联调修复）
+
+## oct-gateway 分层重构（独立轨道）
+
+与下方 **OCT v2（ChatTab）迁移** 并行，进度见专用文档：
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| Phase 1 Service 抽取 | ✅ 2026-04-08 | 见 [oct-gateway-refactor-execution.md](./oct-gateway-refactor-execution.md) 验收记录 |
+| Phase 2 Gateway 首轮 | ✅ 2026-04-08 | `router.js` / `slash.js` / `REFACTOR_FLAGS.USE_NEW_ROUTER`；验收见同文档 Phase 2 |
+| Phase 3 Runtime 首轮 | ✅ 2026-04-08 | `runtime/*`、`USE_NEW_CHAT_ENGINE`、`ProviderRouter`/`ToolLoop` 接入 `ai.js`；见同文档 Phase 3 |
+| Phase 4 Transport 收口 | ✅ 2026-04-08 | `transport/*`、`USE_NEW_TRANSPORT`；`handleChatRequest` + Router；legacy fallback 保留；见同文档 Phase 4 |
+| Phase 5 | ✅ 2026-04-09 | 联调修复 + 低风险清理已完成；核心重构交付完成，Flag/legacy 保留作为安全边界 |
+| Phase 6+ | 未开始 | 后续扩展项 |
 
 ## 当前阶段
 
@@ -190,6 +203,11 @@ Phase 4 完成了 StreamRouter 与 ChatTab.v2 的集成，打字机改为 16ms �
 | 2026-03-28 | Phase 4 | UI 集成（ChatTab.v2）+ 测试 + 用户验收 | ⚠️ 部分 |
 | 2026-03-29 | 审计修复 | P0 问题修复：TurnPhase 冲突、ERROR/CANCELLED 状态、blockRouter ID、subscriber 保护、空响应处理 | ✅ |
 | 2026-03-30 | ChatTab 四步抽离 | markdown 工具 / markdown 组件 / useGateway / useWebSocket；tool_loader 跳过非工具脚本 | ✅ 详见 `_archive/historical_refactors/REFACTOR_4STEP_CHATTAB.md` |
+| 2026-04-08 | oct-gateway Phase 1 | Service 层：`postProcessor` / `imageService` / `eventBus` 占位；`index.js` 接入前两者 | ✅ 见 `oct-gateway-refactor-execution.md` |
+| 2026-04-08 | oct-gateway Phase 2 | Gateway：`MessageRouter` / `SlashHandler`；`USE_NEW_ROUTER`；`systemPromptReady` 初始化顺序修复 | ✅ 见 `oct-gateway-refactor-execution.md` |
+| 2026-04-08 | oct-gateway Phase 3 | Runtime：`ChatEngine` / `ContextBuilder` / `StreamController` / `ProviderRouter` / `ToolLoop`；`USE_NEW_CHAT_ENGINE` | ✅ 见 `oct-gateway-refactor-execution.md` |
+| 2026-04-08 | oct-gateway Phase 4 | Transport + Router 收口：`handleChatRequest`、`USE_NEW_ROUTER` 全量、`USE_NEW_TRANSPORT`、`protocol.js` | ✅ 见 `oct-gateway-refactor-execution.md` |
+| 2026-04-09 | oct-gateway Phase 5 | 联调修复与收口：系统消息隔离、`/think off` CoT 展示修复、图片链路/MCP 参数兼容、任务看板去重与 hover、右栏 TOK/CTX 统一显示、记忆写入修复、legacy 外壳收口 | ✅ 完成 |
 
 ---
 

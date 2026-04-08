@@ -1,5 +1,3 @@
-const { WebSocketServer } = require('ws');
-const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
@@ -15,9 +13,35 @@ const memoryManagementAgent = require('./memory_management_agent');
 const reviewQueueMaintenance = require('./review_queue_maintenance');
 const reviewQueueActions = require('./review_queue_actions');
 const imageAnalyzer = require('./image_analyzer');
+const ImageService = require('./services/imageService');
+const PostProcessor = require('./services/postProcessor');
+const {
+  scheduleNocturneHeartbeat,
+  scheduleReviewQueueMaintenance,
+  scheduleMemoryGovernanceReport,
+  startMemoryMonitor,
+} = require('./services/opsScheduler');
+const MessageRouter = require('./gateway/router');
+const SlashHandler = require('./gateway/slash');
+const WsTransport = require('./transport/ws');
+const HttpTransport = require('./transport/http');
+const { startLegacyTransport } = require('./transport/legacyTransport');
+const createHttpRequestHandler = require('./transport/httpRoutes');
+const {
+  sendCanvasTransportEvent,
+  sendCanvasEvent,
+} = require('./transport/helpers');
+const ChatEngine = require('./runtime/chatEngine');
+const StreamController = require('./runtime/streamController');
+const ContextBuilder = require('./runtime/contextBuilder');
+const { createStreamSmoother } = require('./runtime/streamUtils');
+const {
+  extractMemorySearchTerms,
+  hasRecallIntent,
+  isProjectAnalysisRequest,
+} = require('./runtime/contextHelpers');
 const tools = require('./tools');
 const toolLoader = require('./tool_loader');
-const crypto = require('crypto');
 // const selfEval = require('./self_eval');  // 自评估系统已停用 2026-03-22
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
@@ -27,8 +51,81 @@ const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
 const { createLogger } = require('./logger');
+const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const log = createLogger('gateway');
 const memLog = createLogger('mem');
+let wss = null;
+let httpServer = null;
+
+const systemPromptReady = (async () => {
+  SYSTEM_PROMPT = await loadSystemPrompt(config.PROMPTS_DIR);
+  log.info('System prompt loaded', { len: SYSTEM_PROMPT.length });
+  taskQueue.checkTimeouts();
+  taskQueue.cleanup();
+  memoryHistory.cleanupOldHistory().catch(() => {});
+  memorySearch.warmGlossaryCache().catch(() => {});
+  return SYSTEM_PROMPT;
+})();
+
+const imageService = new ImageService({ imageAnalyzer, logger: log });
+const postProcessor = new PostProcessor({
+  memoryModule: memory,
+  sessionModule: session,
+  streamChat,
+  memoryGovernor,
+  memoryFeedback,
+  memoryHistory,
+  clarificationMemory,
+  nocturneQueue,
+  logger: log,
+});
+const slashHandler = new SlashHandler({
+  session,
+  memory,
+  config,
+  aiLibrary,
+  systemPromptReady,
+  handleLegacyCommand: ({ command, request, connection }) =>
+    handleSlashCommand(connection.ws, request?.id, command, request?.params?.sessionKey || 'main'),
+});
+const messageRouter = new MessageRouter({
+  slashHandler,
+  sessionManager: session,
+  chatHandler: handleChatRequest,
+});
+const chatEngine = new ChatEngine({
+  streamChat,
+  session,
+  postProcessor,
+  sanitizeAssistantReply,
+  streamControllerFactory: (emitter, pacingMs) => new StreamController({
+    emitter,
+    pacingMs,
+    smootherFactory: createStreamSmoother,
+  }),
+  logger: log,
+});
+const contextBuilder = new ContextBuilder({
+  session,
+  memory,
+  memorySearch,
+  nocturneQueue,
+  memoryGovernor,
+  contextManager,
+  aiLibrary,
+  hypothesis,
+  imageService,
+  config,
+  logger: log,
+  helpers: {
+    hasRecallIntent,
+    isProjectAnalysisRequest,
+    extractMemorySearchTerms,
+    stripCotText,
+    sanitizeMemoryNodeContent,
+    getCompletedTasksContext: (sessionKey) => orchestrator.getCompletedTasksContext(sessionKey),
+  },
+});
 
 const PORT = config.PORT;
 let SYSTEM_PROMPT = '';
@@ -49,1237 +146,286 @@ function getModelContextLimit(modelId) {
   return MODEL_CONTEXT_LIMITS[id] || MODEL_CONTEXT_LIMITS[modelId.split('/').pop()] || 128000;
 }
 
-const systemPromptReady = (async () => {
-  SYSTEM_PROMPT = await loadSystemPrompt(config.PROMPTS_DIR);
-  log.info('System prompt loaded', { len: SYSTEM_PROMPT.length });
-  taskQueue.checkTimeouts();
-  taskQueue.cleanup();
-  memoryHistory.cleanupOldHistory().catch(() => {});
-  memorySearch.warmGlossaryCache().catch(() => {});
-  return SYSTEM_PROMPT;
-})();
-
 const mcpManager = require('./mcp/manager');
 // MCP 初始化（非致命，失败不阻断 Gateway 启动）
 mcpManager.init().catch(e => log.warn('MCP 初始化失败（非致命）', { error: e.message }));
 
-// 记忆健康检查
-async function checkMemoryHealth() {
-  try {
-    const alive = await memory.isAlive();
-    if (!alive) {
-      log.warn('Nocturne offline, memory disabled');
-      return;
-    }
-
-    const CORE_URIS = [
-      'core://agent/identity',
-      'core://my_user/profile',
-      'core://agent/rules/output_format',
-      'core://my_user/preferences',
-      'core://my_user/communication',
-      'core://project/oct/status',
-      'core://project/oct/decisions',
-    ];
-
-    const missing = [];
-    for (const uri of CORE_URIS) {
-      const r = await memory.readMemory(uri, { treat404AsDebug: true });
-      const content = r.data?.node?.content || r.data?.content || '';
-      if (!r.ok || !content) missing.push(uri);
-    }
-
-    if (missing.length === 0) {
-      log.info('Core memory health ok', { total: CORE_URIS.length });
-    } else {
-      log.warn('Core memory missing', { missing });
-    }
-  } catch (e) {
-    log.warn('Memory health check failed', { error: e?.message || String(e) });
-  }
-}
-
-// 启动 3 秒后运行健康检查（等 Nocturne 完全就绪）
-setTimeout(checkMemoryHealth, 3000);
-
-// ═══════════════════════════════════════════════════════════════
-// Nocturne 心跳检查（可配置，默认 5 分钟）
-// ═══════════════════════════════════════════════════════════════
-const heartbeatIntervalMs = (config.nocturne?.heartbeat_interval_seconds ?? 300) * 1000;
-setInterval(async () => {
-  try {
-    const alive = await memory.isAlive();
-    if (alive) {
-      nocturneQueue.invalidateHealthCache();
-      log.info('Nocturne 心跳正常');
-    } else {
-      log.warn('Nocturne 心跳检查：离线，记忆操作降级');
-    }
-  } catch (e) {
-    log.warn('Nocturne 心跳检查失败', { error: e?.message || String(e) });
-  }
-}, heartbeatIntervalMs);
-
-// ═══════════════════════════════════════════════════════════════
-// Review Queue 维护：低频软过期弱候选，避免 review_queue 越堆越多
-// 仅标记 expired，不做物理删除，保持可审计性
-// ═══════════════════════════════════════════════════════════════
-const reviewQueueMaintenanceEnabled = process.env.OCT_REVIEW_QUEUE_MAINTENANCE_ENABLED !== '0';
-const reviewQueueMaintenanceIntervalMs = Number(process.env.OCT_REVIEW_QUEUE_MAINTENANCE_INTERVAL_MS || 6 * 60 * 60 * 1000);
-const reviewQueueMaintenanceStartupDelayMs = Number(process.env.OCT_REVIEW_QUEUE_MAINTENANCE_STARTUP_DELAY_MS || 10 * 60 * 1000);
-const reviewQueueMaintenanceDryRun = process.env.OCT_REVIEW_QUEUE_MAINTENANCE_DRY_RUN === '1';
-
-function scheduleReviewQueueMaintenance() {
-  if (!reviewQueueMaintenanceEnabled) {
-    log.info('Review queue maintenance disabled');
-    return;
-  }
-
-  const runMaintenance = () => {
-    nocturneQueue.enqueue(async () => {
-      const healthy = await nocturneQueue.isNocturneHealthy();
-      if (!healthy) {
-        log.debug('Skip review queue maintenance: Nocturne offline');
-        return;
-      }
-
-      const report = await reviewQueueMaintenance.expireStaleReviewCandidates({
-        dryRun: reviewQueueMaintenanceDryRun,
-      });
-
-        log.debug('Review queue maintenance finished', {
-        scanned: report.scanned,
-        expired: report.expired,
-        updated: report.updated.length,
-        failed: report.failed.length,
-        dryRun: report.dryRun,
-      });
-    }, 'reviewQueueMaintenance');
-  };
-
-  setTimeout(runMaintenance, reviewQueueMaintenanceStartupDelayMs);
-  setInterval(runMaintenance, reviewQueueMaintenanceIntervalMs);
-
-    log.debug('Review queue maintenance scheduled', {
-    intervalMs: reviewQueueMaintenanceIntervalMs,
-    startupDelayMs: reviewQueueMaintenanceStartupDelayMs,
-    dryRun: reviewQueueMaintenanceDryRun,
-  });
-}
-
-scheduleReviewQueueMaintenance();
-
-// ═══════════════════════════════════════════════════════════════
-// Memory Management Agent：低频巡检 review_queue，输出治理建议
-// 先做报告，不自动改写记忆，避免引入新的不确定性
-// ═══════════════════════════════════════════════════════════════
-const memoryGovernanceReportEnabled = process.env.OCT_MEMORY_GOVERNANCE_REPORT_ENABLED !== '0';
-const memoryGovernanceReportIntervalMs = Number(process.env.OCT_MEMORY_GOVERNANCE_REPORT_INTERVAL_MS || 12 * 60 * 60 * 1000);
-const memoryGovernanceReportStartupDelayMs = Number(process.env.OCT_MEMORY_GOVERNANCE_REPORT_STARTUP_DELAY_MS || 15 * 60 * 1000);
-
-function scheduleMemoryGovernanceReport() {
-  if (!memoryGovernanceReportEnabled) {
-    log.info('Memory governance report disabled');
-    return;
-  }
-
-  const runReport = () => {
-    nocturneQueue.enqueue(async () => {
-      const healthy = await nocturneQueue.isNocturneHealthy();
-      if (!healthy) {
-        log.debug('Skip memory governance report: Nocturne offline');
-        return;
-      }
-      await memoryManagementAgent.runMemoryGovernancePass();
-    }, 'memoryGovernanceReport');
-  };
-
-  setTimeout(runReport, memoryGovernanceReportStartupDelayMs);
-  setInterval(runReport, memoryGovernanceReportIntervalMs);
-
-    log.debug('Memory governance report scheduled', {
-    intervalMs: memoryGovernanceReportIntervalMs,
-    startupDelayMs: memoryGovernanceReportStartupDelayMs,
-  });
-}
-
-scheduleMemoryGovernanceReport();
-
-function extractMemorySearchTerms(text) {
-  const source = String(text || '').trim();
-  if (!source) return [];
-
-  const terms = [];
-  const quoted = source.match(/["“”'‘’]([^"'“”‘’]{2,40})["“”'‘’]/g) || [];
-  for (const token of quoted) {
-    terms.push(token.replace(/["“”'‘’]/g, '').trim());
-  }
-
-  const enWords = source.match(/[a-zA-Z][a-zA-Z0-9_\-\.]{2,}/g) || [];
-  terms.push(...enWords.slice(0, 5));
-
-  const zhWords = source.match(/[\u4e00-\u9fa5]{2,8}/g) || [];
-  terms.push(...zhWords.slice(0, 6));
-
-  return [...new Set(terms.map((item) => item.trim()).filter(Boolean))];
-}
-
-function hasRecallIntent(text) {
-  return /(还记得|记不记得|之前说过|之前那个|上次|刚才那个|那个方案|那个链路|前面聊过|以前提过|之前提过|我们前面|你记得吗)/.test(String(text || ''));
-}
-
-function isProjectAnalysisRequest(text) {
-  return /(gateway|oct-gateway|前端|后端|ui|界面|canvas|架构|耦合|模块|链路|流程图|线路图|结构图|代码|文件|目录|hook|hooks|组件|context|contexts|streamrouter|turnfsm|messagelist|chattab|memory|orchestrator|index\.js|\.tsx|\.ts|\.js)/i.test(String(text || ''));
-}
-
-function isLocalInternalRequest(req) {
-  const remote = String(req.socket?.remoteAddress || '');
-  return (
-    remote === '127.0.0.1' ||
-    remote === '::1' ||
-    remote === '::ffff:127.0.0.1'
-  );
-}
-
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', (chunk) => { body += chunk; });
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(body || '{}'));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 流平滑器：让打字机输出更丝滑
-// 改为更细的 grapheme 粒度，避免“逐词一坨坨”体感
-// ═══════════════════════════════════════════════════════════════
-/**
- * 按目标打字速度（pacingMs/字符）均匀释放流式内容的 smoother。
- * 使用 grapheme 粒度接近逐字显示，避免按词切块导致的“蹦字感”。
- *
- * @param {function} onChunk - 每当有字符可释放时调用
- * @param {number} pacingMs - 每次释放的间隔（毫秒），默认 28ms ≈ 中速 35字/秒
- */
-function createStreamSmoother(onChunk, pacingMs = 4) {
-  const buffer = [];
-  let timer = null;
-  let isEnding = false;
-  let endCallback = null;
-
-  const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' });
-
-  function getNextUnit() {
-    if (buffer.length === 0) return null;
-    const bufferStr = buffer.join('');
-    const segments = [...segmenter.segment(bufferStr)];
-    if (segments.length === 0) return null;
-
-    const first = segments[0];
-    // 空 segment：移除一个原始字符避免死循环
-    if (!first.segment || !first.segment.length) {
-      buffer.splice(0, 1);
-      return null;
-    }
-
-    buffer.splice(0, first.segment.length);
-    return first.segment;
-  }
-
-  function tick() {
-    if (buffer.length === 0) {
-      if (isEnding) {
-        if (timer) { clearInterval(timer); timer = null; }
-        if (endCallback) { const cb = endCallback; endCallback = null; cb(); }
-      }
-      return;
-    }
-
-    const unit = getNextUnit();
-    if (unit) {
-      onChunk(unit);
-    }
-  }
-
-  function start() {
-    if (timer) return;
-    timer = setInterval(tick, pacingMs);
-  }
-
-  function feed(text) {
-    if (!text) return;
-    for (const char of text) {
-      buffer.push(char);
-    }
-    start();
-  }
-
-  function end(callback) {
-    isEnding = true;
-    endCallback = callback;
-    if (buffer.length === 0) {
-      if (timer) { clearInterval(timer); timer = null; }
-      if (endCallback) { const cb = endCallback; endCallback = null; cb(); }
-    }
-  }
-
-  function flush() {
-    if (buffer.length > 0) {
-      onChunk(buffer.join(''));
-      buffer.length = 0;
-    }
-    if (timer) { clearInterval(timer); timer = null; }
-  }
-
-  return { feed, end, flush };
-}
-
-/** 流式合并：微批量发送，保持打字机流畅度的同时减少 WebSocket 帧数 */
-function createStreamMergeDelta(cfg, onChunk) {
-  const maxChars = (cfg?.max_chars ?? 15);
-  const idleMs = (cfg?.idle_ms ?? 25);
-  let buf = '';
-  let idleTimer = null;
-
-  function flush() {
-    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-    if (buf.length > 0) { onChunk(buf); buf = ''; }
-  }
-
-  return {
-    onDelta: (delta) => {
-      if (!delta) return;
-      buf += delta;
-      // 超过上限立即发送
-      if (buf.length >= maxChars) { flush(); return; }
-      // 否则用短定时器做微批处理（25ms 内的连续 delta 合并为一帧）
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(flush, idleMs);
-    },
-    flush,
-  };
-}
-
-function sendCanvasEvent(ws, action, payload) {
-  if (!ws || ws.readyState !== ws.OPEN) return;
-  ws.send(JSON.stringify({
-    type: 'event',
-    event: 'canvas',
-    action,
-    payload,
-  }));
-}
-
-const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
-
-// ═══════════════════════════════════════════════════════════════
-// 全局内存监控（每 5 分钟打印一次）
-// ═══════════════════════════════════════════════════════════════
-const MEM_MON_INTERVAL_MS = Number(process.env.OCT_MEM_MON_INTERVAL_MS || 5 * 60 * 1000);
-const MEM_WARN_RSS_MB = Number(process.env.OCT_MEM_WARN_RSS_MB || 500);
-setInterval(() => {
-  const usage = process.memoryUsage();
-  const rss = (usage.rss / 1024 / 1024).toFixed(1);
-  const heap = (usage.heapUsed / 1024 / 1024).toFixed(1);
-  const heapTotal = (usage.heapTotal / 1024 / 1024).toFixed(1);
-
-  memLog.info(`RSS=${rss}MB | Heap=${heap}/${heapTotal}MB`, {
-    rssMb: Number(rss),
-    heapUsedMb: Number(heap),
-    heapTotalMb: Number(heapTotal),
-    externalMb: Number((usage.external / 1024 / 1024).toFixed(1)),
-    arrayBuffersMb: Number(((usage.arrayBuffers || 0) / 1024 / 1024).toFixed(1)),
-    uptimeSec: Math.round(process.uptime()),
-  });
-
-  // 超过阈值时告警（默认 500MB，可通过环境变量覆盖）
-  if (usage.rss > MEM_WARN_RSS_MB * 1024 * 1024) {
-    memLog.warn(`Memory over ${MEM_WARN_RSS_MB}MB`, { rssMb: Number(rss) });
-  }
-}, MEM_MON_INTERVAL_MS);
-wss.on('error', (err) => {
-  log.error('Server error', { error: err?.message || String(err), code: err?.code || '' });
-  if (err.code === 'EADDRINUSE') {
-    log.error('Port in use', { port: PORT });
-  }
-  process.exit(1);
+scheduleMemoryHealthCheck({
+  memory,
+  logger: log,
 });
-log.info('WebSocket listening', { url: 'ws://0.0.0.0:' + PORT });
 
-// 任务看板工具执行成功后，广播刷新事件给所有连接的前端
-if (tools.setOnTaskBoardUpdate) {
-  tools.setOnTaskBoardUpdate(() => {
-    const msg = JSON.stringify({ type: 'event', event: 'task-board-update' });
-    wss.clients.forEach((client) => {
-      if (client.readyState === 1) client.send(msg);
-    });
-  });
-}
+scheduleNocturneHeartbeat({
+  config,
+  memory,
+  nocturneQueue,
+  logger: log,
+});
 
-// HTTP 服务：提供手机端 mobile.html
-const HTTP_PORT = PORT + 1;
-const httpServer = http.createServer((req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+scheduleReviewQueueMaintenance({
+  nocturneQueue,
+  reviewQueueMaintenance,
+  logger: log,
+});
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
-  }
+scheduleMemoryGovernanceReport({
+  nocturneQueue,
+  memoryManagementAgent,
+  logger: log,
+});
 
-  if (req.method === 'GET' && req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, service: 'oct-vault' }));
-    return;
-  }
+const handleTransportHttpRequest = createHttpRequestHandler({
+  memory,
+  memoryManagementAgent,
+  reviewQueueActions,
+  toolLoader,
+  mcpManager,
+  mobileHtmlPath: path.join(__dirname, 'mobile.html'),
+});
+const handleLegacyHttpRequest = createHttpRequestHandler({
+  memory,
+  memoryManagementAgent,
+  reviewQueueActions,
+  toolLoader,
+  mcpManager,
+  mobileHtmlPath: path.join(__dirname, 'mobile.html'),
+});
 
-  if (req.url?.startsWith('/internal/memory/')) {
-    if (!isLocalInternalRequest(req)) {
-      res.writeHead(403, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: 'internal_endpoint_local_only' }));
+async function handleChatRequest(request, connection) {
+  const params = request?.params || {};
+  const sessionKey = params?.sessionKey || 'main';
+  const userMessage = params?.message || '';
+  const attachments = params?.attachments || [];
+  const canvasContext = params?.canvasContext || null;
+
+  const sendToolEvent = (evt) => {
+    if (!connection.isOpen()) return;
+    if (evt?.type === 'canvas' && evt.action) {
+      sendCanvasTransportEvent(connection, evt.action, evt.payload || {});
       return;
     }
+    connection.send({ type: 'event', event: 'tool', payload: evt });
+    if (evt.type === 'tool_call') {
+      connection.send({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool });
+    }
+    if (evt.type === 'tool_result') {
+      connection.send({ type: 'event', event: 'agent-phase', phase: 'thinking' });
+    }
+  };
 
-    if (req.method === 'GET' && req.url === '/internal/memory/governance/latest') {
-      memory.readMemory('core://agent/governance/latest', { treat404AsDebug: true })
-        .then((result) => {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(result));
-        })
-        .catch((e) => {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: e?.message || String(e) }));
+  const orchResult = await orchestrator.dispatch(userMessage, sessionKey, sendToolEvent);
+
+  if (userMessage.startsWith('/')) {
+    await handleSlashCommand(connection.ws, request?.id, userMessage.trim(), sessionKey);
+    return;
+  }
+
+  const systemPrompt = await systemPromptReady;
+  const { messages, history } = await contextBuilder.build({
+    sessionKey,
+    userMessage,
+    attachments,
+    canvasContext,
+    orchestratorResult: orchResult,
+    systemPrompt,
+  });
+
+  connection.send({ type: 'event', event: 'agent-phase', phase: 'thinking' });
+  connection.startThinkingPulse?.(8000);
+  connection.abortCurrent?.();
+  let cancelled = false;
+  connection.setAbort?.(() => { cancelled = true; });
+
+  const prevAssistantReplyForPost = history.filter((m) => m.role === 'assistant').slice(-1)[0]?.content || '';
+
+  if (config.REFACTOR_FLAGS?.USE_NEW_CHAT_ENGINE) {
+    await chatEngine.execute({
+      sessionKey,
+      userMessage,
+      messages,
+      prevAssistantReply: prevAssistantReplyForPost,
+      options: {
+        pacingMs: typeof params?.pacingMs === 'number' ? params.pacingMs : 4,
+      },
+    }, {
+      onStart: (streamCtrl) => {
+        connection.setAbort?.(() => {
+          cancelled = true;
+          streamCtrl.cancel();
         });
-      return;
-    }
-
-    if (req.method === 'POST' && req.url === '/internal/memory/governance/run') {
-      readJsonBody(req).then(async (body) => {
-        const result = await memoryManagementAgent.runMemoryGovernancePass(body || {});
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, result }));
-      }).catch((e) => {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e?.message || String(e) }));
-      });
-      return;
-    }
-
-    if (req.method === 'POST' && req.url === '/internal/memory/review-action') {
-      readJsonBody(req).then(async (body) => {
-        const action = String(body?.action || '').trim();
-        const uri = String(body?.uri || '').trim();
-        let result;
-
-        if (action === 'approve') {
-          result = await reviewQueueActions.approveReviewCandidate(uri, body || {});
-        } else if (action === 'reject') {
-          result = await reviewQueueActions.rejectReviewCandidate(uri, body || {});
-        } else if (action === 'archive') {
-          result = await reviewQueueActions.archiveReviewCandidate(uri, body || {});
-        } else if (action === 'merge') {
-          result = await reviewQueueActions.mergeReviewCandidate(uri, body || {});
-        } else {
-          result = { ok: false, error: 'unsupported_review_action' };
-        }
-
-        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-      }).catch((e) => {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e?.message || String(e) }));
-      });
-      return;
-    }
-  }
-
-  if (req.method === 'POST' && req.url === '/tool') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', async () => {
-      try {
-        const { tool, args } = JSON.parse(body || '{}');
-        const result = await toolLoader.executeTool(tool, args || {});
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, result }));
-      } catch (e) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: e?.message || String(e) }));
-      }
-    });
-    return;
-  }
-
-  // MCP 管理路由
-  if (req.method === 'GET' && req.url === '/mcp/status') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(mcpManager.getStatus()));
-    return;
-  }
-
-  if (req.method === 'POST' && req.url === '/mcp/server') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', async () => {
-      try {
-        const parsed = JSON.parse(body);
-        const name = parsed.name;
-        let command;
-        let args;
-        let env;
-        if (parsed.config && typeof parsed.config === 'object') {
-          ({ command, args, env } = parsed.config);
-        } else {
-          ({ command, args, env } = parsed);
-        }
-        const config = { command, args, env: env || {} };
-        const status = await mcpManager.addServer(name, config);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, status }));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  if (req.method === 'DELETE' && req.url?.startsWith('/mcp/server/')) {
-    const name = req.url.replace('/mcp/server/', '');
-    mcpManager.removeServer(name);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true }));
-    return;
-  }
-
-  if (req.url === '/' || req.url === '/mobile') {
-    const htmlPath = path.join(__dirname, 'mobile.html');
-    try {
-      const html = fs.readFileSync(htmlPath, 'utf-8');
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(html);
-    } catch (e) {
-      res.writeHead(500);
-      res.end('mobile.html not found: ' + e.message);
-    }
-  } else {
-    res.writeHead(404);
-    res.end('Not found');
-  }
-});
-httpServer.listen(HTTP_PORT, '0.0.0.0', () => {
-  log.info('Mobile HTTP listening', { url: 'http://0.0.0.0:' + HTTP_PORT });
-  log.info('Mobile HTTP local', { url: 'http://localhost:' + HTTP_PORT });
-  console.log('[Gateway] HTTP 工具端口已启动:', HTTP_PORT);
-});
-
-httpServer.on('error', (err) => {
-  log.error('Mobile HTTP start failed', { error: err?.message || String(err) });
-});
-
-const authenticatedClients = new Set();
-
-wss.on('connection', (ws) => {
-  const clientId = crypto.randomUUID();
-  log.info('client connected', { clientId });
-
-  // 每个 ws 连接独立维护一个取消令牌，用于中止上一个流
-  let currentAbort = null;
-  let thinkingPulseInterval = null;
-  let thinkingSeconds = 0;
-
-  try {
-    const nonce = crypto.randomBytes(16).toString('hex');
-    ws._nonce = nonce;
-    ws._clientId = clientId;
-
-    ws.send(JSON.stringify({
-      type: 'event',
-      event: 'connect.challenge',
-      payload: { nonce },
-    }));
-  } catch (e) {
-    log.error('send challenge failed', { clientId, error: e?.message || String(e) });
-    try { ws.close(1011, 'Server error'); } catch (_) {}
-    return;
-  }
-
-  ws.on('message', async (data) => {
-    let msg;
-    try {
-      msg = JSON.parse(data.toString());
-    } catch {
-      return;
-    }
-
-    const { type, id, method, params } = msg;
-
-    if (type === 'req' && method === 'connect') {
-      const token = params?.auth?.token ?? params?.token ?? '';
-      const configToken = process.env.OCT_GATEWAY_TOKEN || '';
-      if (configToken && token !== configToken) {
-        ws.send(JSON.stringify({ type: 'res', id, ok: false, error: { message: 'Invalid token' } }));
-        return;
-      }
-      authenticatedClients.add(ws);
-      ws.send(JSON.stringify({
-        type: 'res',
-        id,
-        ok: true,
-        payload: {
-          type: 'hello-ok',
-          model: config.DASHSCOPE_MODEL,
-          agent: { model: config.DASHSCOPE_MODEL },
-        },
-      }));
-      log.info('client authenticated', { clientId });
-      return;
-    }
-
-    if (!authenticatedClients.has(ws)) {
-      ws.send(JSON.stringify({ type: 'res', id, ok: false, error: { message: 'Not authenticated' } }));
-      return;
-    }
-
-    if (type === 'req' && method === 'chat.send') {
-      const sessionKey = params?.sessionKey || 'main';
-      const userMessage = params?.message || '';
-      const attachments = params?.attachments || [];
-      const canvasContext = params?.canvasContext || null;
-
-      // 工具事件回调：Worker 执行后台任务时向前端推送工具调用卡片
-      const sendToolEvent = (evt) => {
-        if (ws.readyState !== ws.OPEN) return;
-        if (evt?.type === 'canvas' && evt.action) {
-          sendCanvasEvent(ws, evt.action, evt.payload || {});
-          return;
-        }
-        ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
-        if (evt.type === 'tool_call') {
-          ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool }));
-        }
-        if (evt.type === 'tool_result') {
-          ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
-        }
-      };
-      const orchResult = await orchestrator.dispatch(userMessage, sessionKey, sendToolEvent);
-      // orchResult 包含 intent/agent/shouldDelegate 信息，日志已在 orchestrator 内打印
-      // 现阶段不改变后续流程，预留为未来 Agent 路由扩展点
-
-      if (userMessage.startsWith('/')) {
-        await handleSlashCommand(ws, id, userMessage.trim(), sessionKey);
-        return;
-      }
-
-      const imageAttachments = (params?.attachments || []).filter(a => a.type === 'image');
-      let messageContent;
-
-      if (imageAttachments.length > 0) {
-        const textPart = userMessage || '请分析这张图片';
-        const providerConfig = config.getProviderConfig();
-        const currentModel = config.DASHSCOPE_MODEL;
-        const currentModelDef = providerConfig.models.find((m) => m.id === currentModel);
-        const supportsInlineVision =
-          currentModelDef?.vision === true
-          || /(?:^|[-_/])vl(?:[-_/]|$)/i.test(currentModel)
-          || /vision/i.test(currentModel);
-
-        log.info('image request routing', {
-          model: currentModel,
-          provider: providerConfig.name,
-          imageCount: imageAttachments.length,
-          supportsInlineVision,
-          route: supportsInlineVision ? 'inline_vision' : 'image_analyzer_fallback',
+      },
+      onDelta: (chunk) => {
+        if (cancelled || !connection.isOpen()) return;
+        connection.send({
+          type: 'event',
+          event: 'chat',
+          payload: { delta: chunk, state: 'delta', done: false },
         });
-
-        if (supportsInlineVision) {
-          // 视觉模型直接接收图片，保留完整多模态输入
-          const contentParts = [];
-          if (textPart) {
-            contentParts.push({ type: 'text', text: textPart });
-          }
-          imageAttachments.forEach((a) => {
-            const imageUrl = a.content?.startsWith('data:')
-              ? a.content
-              : `data:${a.mimeType};base64,${a.content}`;
-            contentParts.push({
-              type: 'image_url',
-              image_url: { url: imageUrl }
-            });
-          });
-          messageContent = contentParts.length > 1 ? contentParts : textPart;
-        } else {
-          // 非视觉模型先做图片理解，再走稳定的文本对话链路，避免图片请求把主会话流打断
-          let imageSummary = '';
-          try {
-            imageSummary = await imageAnalyzer.analyzeImages(imageAttachments);
-          } catch (e) {
-            log.warn('image analysis failed, fallback to text-only prompt', { error: e?.message || String(e) });
-          }
-          messageContent = [textPart, imageSummary].filter(Boolean).join('\n\n');
-          log.info('image attachments normalized to text context', {
-            model: currentModel,
-            provider: providerConfig.name,
-            imageCount: imageAttachments.length,
-            imageSummaryLen: imageSummary.length,
-            hasImageSummary: !!imageSummary,
-          });
-        }
-      } else {
-        messageContent = userMessage;
-      }
-
-      // 在 streamChat 调用前，构建上下文记忆注入（Nocturne 超时/离线不阻塞，继续对话）
-      let contextMemory = '';
-      try {
-        const nocturneAlive = await nocturneQueue.isNocturneHealthy();
-        if (nocturneAlive && userMessage.length > 1) {
-          const recallIntent = hasRecallIntent(userMessage);
-          const projectAnalysisIntent = isProjectAnalysisRequest(userMessage);
-          const shouldInjectContextMemory = recallIntent || !projectAnalysisIntent;
-          const history = session.getHistory(sessionKey) || [];
-          const recentContextTexts = recallIntent
-            ? history
-                .slice(-6)
-                .map((m) => (typeof m?.content === 'string' ? m.content : ''))
-                .filter(Boolean)
-            : [];
-
-          // 1. 提取当前消息与最近上下文里的实体词，弱指代场景额外借最近历史补召回。
-          const entityWords = [
-            ...extractMemorySearchTerms(userMessage),
-            ...recentContextTexts.flatMap((text) => extractMemorySearchTerms(text).slice(0, 2)),
-          ];
-
-          // 2. 去重搜索；弱指代场景稍微放宽一点。并行化，加速首字
-          const searchWords = [...new Set(entityWords)].slice(0, recallIntent ? 5 : 3);
-          const memContents = [];
-          const seenUris = new Set();
-
-          // 并行发起所有搜索请求，而非串行 await（大幅降低首字延迟）
-          const searchResults = await Promise.all(
-            searchWords.map(word =>
-              memorySearch.searchMemory(word, {
-                domain: 'core',
-                limit: recallIntent ? 3 : 2,
-                include_content: true,
-              }).catch(() => ({ ok: false, data: null }))
-            )
-          );
-
-          for (const r of searchResults) {
-            if (!r.ok || !r.data) continue;
-            for (const item of r.data) {
-              if (seenUris.has(item.uri)) continue;
-              // 跳过历史记录节点（太多会撑爆上下文）
-              if (item.uri.includes('/history/')) continue;
-              seenUris.add(item.uri);
-              const content = stripCotText(item.content || '').slice(0, 200);
-              if (content) {
-                memContents.push({
-                  uri: item.uri,
-                  content: `[${item.uri}] ${content}`,
-                  priority: item.priority || 2,
-                  match_score: item.match_score || 0.5,
-                });
-              }
-            }
-          }
-
-          // 3. 加载最近 3 条对话历史摘要（404 静默返回空）
-          try {
-            const todayStr = new Date().toISOString().slice(0, 10);
-            const historyResult = await memory.readMemory(
-              `core://my_user/history/${todayStr}`,
-              { treat404AsDebug: true }
-            );
-            if (historyResult.ok && historyResult.data) {
-              const children = historyResult.data?.node?.children
-                || historyResult.data?.children || [];
-              // 取最后 3 条（时间戳最新的）
-              const recent = children.slice(-3);
-              for (const child of recent) {
-                const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
-                if (!childPath) continue;
-                const r = await memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
-                if (!r.ok) continue;
-                const content = r.data?.node?.content || r.data?.content || '';
-                if (!content) continue;
-                try {
-                  const sanitized = sanitizeMemoryNodeContent(content);
-                  const parsed = sanitized.data || JSON.parse(sanitized.content);
-                  if (parsed.user && parsed.amy) {
-                    memContents.push({
-                      uri: `core://${childPath}`,
-                      content: `[近期对话] 用户说：${parsed.user.slice(0, 50)} → AI：${parsed.amy.slice(0, 80)}`,
-                      priority: 1,
-                      match_score: 0.2,
-                    });
-                  }
-                } catch {}
-              }
-            }
-          } catch {}
-
-          if (shouldInjectContextMemory) {
-            const selectedMemories = memoryGovernor.selectForInjection(
-              memContents,
-              { limit: recallIntent ? 6 : 4, maxChars: recallIntent ? 1000 : 700 }
-            );
-            if (selectedMemories.length > 0) {
-              log.info('contextMemory selected', {
-                recallIntent,
-                projectAnalysisIntent,
-                searchWords,
-                selectedUris: selectedMemories.map((item) => item.uri),
-                count: selectedMemories.length,
-              });
-            }
-
-            if (selectedMemories.length > 0) {
-              contextMemory = '\n\n[相关记忆]\n' + selectedMemories.map((item) => item.content).join('\n');
-            }
-          } else {
-            log.info('contextMemory skipped for project analysis request', {
-              recallIntent,
-              projectAnalysisIntent,
-              searchWords,
-            });
-          }
-        }
-      } catch (e) {
-        log.debug('contextMemory 加载失败，继续对话', { error: e?.message || String(e) });
-      }
-
-      // 后台任务已派发时，提示 AMY 简短回复，不要在主对话中再次调用工具
-      let backgroundTaskNotice = '';
-      if (orchResult?.hasBackgroundTask) {
-        backgroundTaskNotice = '\n\n[系统] 用户这条消息已派发后台任务执行（如查邮件），请简短回复「好的，我已经派出去查了，我们继续聊」之类，不要在主对话中调用 email_reader 等工具。';
-      }
-
-      let canvasSuggestionNotice = '';
-      if (orchResult?.canvasIntent?.shouldUseCanvas) {
-        const suggestedType = orchResult.canvasIntent.artifactType || 'document';
-        const reason = orchResult.canvasIntent.reason || '这条请求适合结构化表达';
-        canvasSuggestionNotice =
-          `\n\n[系统] 这条请求适合使用 Canvas 表达。优先考虑调用 canvas 工具创建一个 ${suggestedType} artifact。原因：${reason}。` +
-          ' 先在聊天中用一句话说明你要产出什么，再创建 Canvas 内容。';
-      }
-
-      let canvasRoundtripNotice = '';
-      if (canvasContext?.activeDocument) {
-        const summary = {
-          intent: canvasContext.intent || 'continue',
-          activeDocumentId: canvasContext.activeDocumentId || null,
-          activeDocument: {
-            id: canvasContext.activeDocument.id,
-            title: canvasContext.activeDocument.title,
-            artifactType: canvasContext.activeDocument.artifactType,
-            mode: canvasContext.activeDocument.mode,
-            language: canvasContext.activeDocument.language,
-            version: canvasContext.activeDocument.version,
-            status: canvasContext.activeDocument.status,
-            explanation: canvasContext.activeDocument.explanation || '',
-            content: canvasContext.activeDocument.content,
-          },
-          documents: Array.isArray(canvasContext.documents) ? canvasContext.documents : [],
-        };
-        canvasRoundtripNotice =
-          '\n\n[Canvas Context] 以下是当前 Canvas 工作区上下文。' +
-          ' 你正在基于这份 artifact 协作，请优先围绕 activeDocument 继续工作。' +
-          ' 如果当前任务是 Continue、Explain 或 Rewrite，且你要修改现有成果物，请优先调用 canvas(action="update", documentId=activeDocumentId, ...) 更新当前文档。' +
-          ' 只有在确实需要新增并行成果物时，才使用 create。\n' +
-          `${JSON.stringify(summary, null, 2)}`;
-      }
-
-      const lastUserMsg = typeof messageContent === 'string'
-        ? messageContent + contextMemory + backgroundTaskNotice + canvasSuggestionNotice + canvasRoundtripNotice
-        : [
-            ...messageContent,
-            ...(contextMemory ? [{ type: 'text', text: contextMemory }] : []),
-            ...(backgroundTaskNotice ? [{ type: 'text', text: backgroundTaskNotice }] : []),
-            ...(canvasSuggestionNotice ? [{ type: 'text', text: canvasSuggestionNotice }] : []),
-            ...(canvasRoundtripNotice ? [{ type: 'text', text: canvasRoundtripNotice }] : []),
-          ];
-
-      session.addMessage(sessionKey, 'user',
-        typeof messageContent === 'string' ? messageContent : userMessage
-      );
-
-      const systemPrompt = await systemPromptReady;
-      const history = session.getHistory(sessionKey);
-
-      // 假设验证（非阻塞：不 await，后台进行，不影响首字延迟）
-      let hypothesisResult = null;
-      if (!userMessage.startsWith('/') && userMessage.length > 15 && imageAttachments.length === 0) {
-        // 设置 2 秒超时，避免阻塞
-        hypothesis.selectBestApproach(userMessage, systemPrompt, history.slice(-6))
-          .then(result => {
-            if (result) hypothesisResult = result;  // 仅作为改进，不阻塞
-          })
-          .catch(() => {});  // 失败忽略
-      }
-
-      // 如果假设验证建议质疑，注入到系统提示
-      let finalSystemPrompt = systemPrompt;
-      if (hypothesisResult?.should_challenge
-          && hypothesisResult?.challenge_point) {
-        finalSystemPrompt = systemPrompt + `\n\n[内部指令] 用户这条消息有值得质疑的地方：${hypothesisResult.challenge_point}。请在回复中适当提出，不要一味认同。`;
-      }
-
-      // 根据思考模式注入相应的引导指令
-      const thinkMode = session.getThinkMode(sessionKey);
-      if (thinkMode && thinkMode !== 'off') {
-        const thinkPrompts = {
-          'low': '\n\n[思考模式：LOW] 允许内部思考，但最终只输出对用户可见的简洁答案。严禁输出思考过程、草稿、自言自语、[cot] 或 <think> 标签。',
-          'medium': '\n\n[思考模式：MEDIUM] 允许内部思考，但最终只输出结构化结论与行动建议。严禁输出思考过程、草稿、自言自语、[cot] 或 <think> 标签。',
-          'high': '\n\n[思考模式：HIGH] 允许深度内部推理，但最终只输出清晰完整的正式回复。严禁输出思考过程、草稿、自言自语、[cot] 或 <think> 标签。',
-        };
-        finalSystemPrompt = finalSystemPrompt + thinkPrompts[thinkMode];
-      }
-
-      // 注入当前时间（柳州 UTC+8）
-      const now = new Date();
-      // 使用 Intl.DateTimeFormat 获取准确的时区时间，不依赖服务器时区
-      const liuzhouFormatter = new Intl.DateTimeFormat('zh-CN', {
-        timeZone: 'Asia/Shanghai',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-      const parts = liuzhouFormatter.formatToParts(now);
-      const timeMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
-      const timeStr = `${timeMap.year}-${timeMap.month}-${timeMap.day} ${timeMap.hour}:${timeMap.minute}:${timeMap.second}`;
-      const timeContext = `\n\n[当前时间] ${timeStr} (UTC+8 柳州)`;
-      const modelContext = `[当前运行模型] 你当前运行的底层大模型是：\`${config.DASHSCOPE_MODEL}\`。当用户问「你是什么大模型」「基于什么模型」时，必须如实回答当前模型名称，严禁说自己是 DeepSeek、GPT、Claude 或其他任何模型。\n\n`;
-
-      // AI.library 知识检索（未启动时静默跳过，不影响对话）
-      let knowledgeContext = '';
-      try {
-        const knowledge = await aiLibrary.searchKnowledge(userMessage);
-        knowledgeContext = aiLibrary.formatKnowledgeForPrompt(knowledge);
-      } catch (e) {
-        log.debug('AI.library 检索失败，跳过', { error: e?.message || String(e) });
-      }
-
-      // 智能上下文窗口：前 3 轮完整 + 中间段压缩 + 后 6 轮完整
-      // 详见 context_manager.js
-      const fullSystemPrompt = modelContext + finalSystemPrompt + timeContext + knowledgeContext;
-      const messages = contextManager.buildApiMessages(history, fullSystemPrompt, lastUserMsg);
-      log.info('context window', contextManager.summarize(messages));
-
-      const taskContext = orchestrator.getCompletedTasksContext(sessionKey);
-      if (taskContext) {
-        const lastIdx = messages.length - 1;
-        if (messages[lastIdx]?.role === 'user') {
-          const content = messages[lastIdx].content;
-          messages[lastIdx] = {
-            ...messages[lastIdx],
-            content: typeof content === 'string'
-              ? content + taskContext
-              : [...(Array.isArray(content) ? content : []), { type: 'text', text: taskContext }]
-          };
-          log.info('已注入后台任务结果到上下文');
-        }
-      }
-
-      ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
-
-      // 思考心跳：每 8 秒向前端发送 thinking 事件，防止假断开
-      thinkingSeconds = 0;
-      thinkingPulseInterval = setInterval(() => {
-        thinkingSeconds += 8;
-        if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'event',
-            event: 'agent-phase',
-            phase: 'thinking',
-            elapsed: thinkingSeconds,
-          }));
-        }
-      }, 8000);
-
-      // 中止上一个流（如果有）
-      if (currentAbort) currentAbort();
-      let cancelled = false;
-      currentAbort = () => { cancelled = true; };
-
-      let fullReply = '';
-      // pacingMs：传输层尽量快，主要观感交给前端打字机控制
-      const pacingMs = typeof params?.pacingMs === 'number' ? params.pacingMs : 4;
-      const smoother = createStreamSmoother((chunk) => {
+      },
+      onToolEvent: sendToolEvent,
+      onBeforeDone: () => {
+        connection.setAbort?.(null);
+        connection.stopThinkingPulse?.();
+      },
+      onDone: ({ reply, usage, model: responseModel }) => {
+        if (cancelled || !connection.isOpen()) return;
+        const donePayload = { text: reply, state: 'done', done: true };
+        if (usage) donePayload.usage = usage;
+        if (responseModel) donePayload.model = responseModel;
+        connection.send({ type: 'event', event: 'chat', payload: donePayload });
+        connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
+      },
+      onError: (err) => {
         if (cancelled) return;
-        fullReply += chunk;
-        if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'event',
-            event: 'chat',
-            payload: { delta: chunk, state: 'delta', done: false },
-          }));
-        }
+        connection.setAbort?.(null);
+        connection.stopThinkingPulse?.();
+        log.error('AI error', { error: err?.message || String(err) });
+        if (!connection.isOpen()) return;
+        connection.send({
+          type: 'event',
+          event: 'chat',
+          payload: { text: `❌ AI 调用失败：${err.message}`, state: 'done', done: true },
+        });
+        connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
+      },
+    });
+    return;
+  }
+
+  let fullReply = '';
+  const smoother = createStreamSmoother((chunk) => {
+    if (cancelled) return;
+    fullReply += chunk;
+    if (!connection.isOpen()) return;
+    connection.send({
+      type: 'event',
+      event: 'chat',
+      payload: { delta: chunk, state: 'delta', done: false },
+    });
+  }, typeof params?.pacingMs === 'number' ? params.pacingMs : 4);
+
+  await streamChat({
+    messages,
+    onDelta: smoother.feed,
+    onToolEvent: sendToolEvent,
+    onDone: (_text, usage, responseModel) => {
+      if (cancelled) return;
+      connection.setAbort?.(null);
+      connection.stopThinkingPulse?.();
+      smoother.flush();
+      const finalizedReply = fullReply || _text || '';
+      const sanitizedReply = sanitizeAssistantReply(finalizedReply);
+      if (sanitizedReply) {
+        session.addMessage(sessionKey, 'assistant', sanitizedReply);
+        const latestHistory = session.getHistory(sessionKey) || [];
+        const prevAssistantMsgs = latestHistory.filter(m => m.role === 'assistant').slice(-2);
+        const prevAssistantReply = prevAssistantMsgs.length >= 2
+          ? prevAssistantMsgs[prevAssistantMsgs.length - 2]?.content || ''
+          : '';
+        postProcessor.process({
+          userMessage,
+          assistantReply: sanitizedReply,
+          sessionKey,
+          prevAssistantReply,
+        });
+      }
+
+      if (!connection.isOpen()) return;
+      const donePayload = { text: sanitizedReply, state: 'done', done: true };
+      if (usage) donePayload.usage = usage;
+      if (responseModel) donePayload.model = responseModel;
+      connection.send({ type: 'event', event: 'chat', payload: donePayload });
+      connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
+      log.info('stream done', { len: sanitizedReply.length });
+    },
+    onError: (err) => {
+      if (cancelled) return;
+      connection.setAbort?.(null);
+      connection.stopThinkingPulse?.();
+      log.error('AI error', { error: err?.message || String(err) });
+      if (!connection.isOpen()) return;
+      connection.send({
+        type: 'event',
+        event: 'chat',
+        payload: { text: `❌ AI 调用失败：${err.message}`, state: 'done', done: true },
       });
-
-      await streamChat({
-        messages,
-        onDelta: smoother.feed,
-        onToolEvent: (evt) => {
-          if (cancelled || ws.readyState !== ws.OPEN) return;
-          if (evt?.type === 'canvas' && evt.action) {
-            sendCanvasEvent(ws, evt.action, evt.payload || {});
-            return;
-          }
-          ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
-          if (evt.type === 'tool_call') {
-            ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool }));
-          }
-          if (evt.type === 'tool_result') {
-            ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'thinking' }));
-          }
-        },
-        onDone: (_text, usage, responseModel) => {
-          if (cancelled) return;
-          currentAbort = null;
-          if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
-          smoother.flush();
-          const finalizedReply = fullReply || _text || '';
-          const sanitizedReply = sanitizeAssistantReply(finalizedReply);
-          if (sanitizedReply) {
-            session.addMessage(sessionKey, 'assistant', sanitizedReply);
-
-            // 后台队列串行执行，限流避免压垮 Nocturne；失败记录日志不阻塞
-            nocturneQueue.enqueue(
-              () => memoryFeedback.detectAndSaveFeedback(userMessage, sanitizedReply),
-              'memoryFeedback'
-            );
-            nocturneQueue.enqueue(
-              () => detectAndSaveParking(userMessage, sessionKey),
-              'detectAndSaveParking'
-            );
-            nocturneQueue.enqueue(
-              () => memoryHistory.saveHistorySummary(userMessage, sanitizedReply),
-              'memoryHistory'
-            );
-            nocturneQueue.enqueue(
-              () => extractAndSaveMemory(userMessage, sanitizedReply),
-              'extractAndSaveMemory'
-            );
-            const history = session.getHistory(sessionKey) || [];
-            const prevAssistantMsgs = history
-              .filter(m => m.role === 'assistant')
-              .slice(-2);
-            const prevAssistantReply = prevAssistantMsgs.length >= 2
-              ? prevAssistantMsgs[prevAssistantMsgs.length - 2]?.content || ''
-              : '';
-            nocturneQueue.enqueue(
-              () => clarificationMemory.detectAndSaveClarification(
-                userMessage, sanitizedReply, prevAssistantReply
-              ),
-              'clarificationMemory'
-            );
-            // 自评估系统已停用 2026-03-22
-            // nocturneQueue.enqueue(
-            //   () => selfEval.evaluateReply(userMessage, fullReply)
-            //     .then(() => selfEval.maybeDistill()),
-            //   'selfEval+maybeDistill'
-            // );
-          }
-
-          if (ws.readyState === ws.OPEN) {
-            const donePayload = { text: sanitizedReply, state: 'done', done: true };
-            if (usage) donePayload.usage = usage;
-            if (responseModel) donePayload.model = responseModel;
-            ws.send(JSON.stringify({ type: 'event', event: 'chat', payload: donePayload }));
-            ws.send(JSON.stringify({
-              type: 'event', event: 'agent-phase', phase: 'idle'
-            }));
-          }
-          log.info('stream done', { len: sanitizedReply.length });
-        },
-        onError: (err) => {
-          if (cancelled) return;
-          currentAbort = null;
-          if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
-          log.error('AI error', { error: err?.message || String(err) });
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({
-              type: 'event',
-              event: 'chat',
-              payload: {
-                text: `❌ AI 调用失败：${err.message}`,
-                state: 'done', done: true,
-              },
-            }));
-            ws.send(JSON.stringify({
-              type: 'event', event: 'agent-phase', phase: 'idle'
-            }));
-          }
-        },        
-      });
-      return;
-    }
-
-    if (type === 'req' && method === 'sessions.list') {
-      ws.send(JSON.stringify({
-        type: 'res', id, ok: true,
-        payload: { sessions: session.listSessions() },
-      }));
-      return;
-    }
-
-    ws.send(JSON.stringify({ type: 'res', id, ok: false, error: { message: `Unknown method: ${method}` } }));
+      connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
+    },
   });
+}
 
-  ws.on('close', () => {
-    if (currentAbort) currentAbort();
-    currentAbort = null;
-    if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
-    authenticatedClients.delete(ws);
-    log.info('client disconnected', { clientId });
-  });
+async function handleTransportMessage(msg, connection) {
+  const { type, id, method, params } = msg;
 
-  ws.on('error', (err) => {
-    log.error('client connection error', { clientId, error: err?.message || String(err) });
+  if (config.REFACTOR_FLAGS?.USE_NEW_ROUTER) {
+    const handled = await messageRouter.handleRequest(msg, connection);
+    if (handled) return;
+  }
+
+  if (type === 'req' && method === 'chat.send') {
+    await handleChatRequest(msg, connection);
+    return;
+  }
+
+  if (type === 'req' && method === 'sessions.list') {
+    connection.send({
+      type: 'res',
+      id,
+      ok: true,
+      payload: { sessions: session.listSessions() },
+    });
+    return;
+  }
+
+  connection.send({ type: 'res', id, ok: false, error: { message: `Unknown method: ${method}` } });
+}
+
+const HTTP_PORT = PORT + 1;
+let wsTransport = null;
+let httpTransport = null;
+
+if (config.REFACTOR_FLAGS?.USE_NEW_TRANSPORT) {
+  wsTransport = new WsTransport({
+    port: PORT,
+    logger: log,
+    modelProvider: () => config.DASHSCOPE_MODEL,
+    authTokenProvider: () => process.env.OCT_GATEWAY_TOKEN || '',
+    onAuthenticatedMessage: handleTransportMessage,
+  }).start();
+
+  httpTransport = new HttpTransport({
+    port: HTTP_PORT,
+    logger: log,
+    onRequest: handleTransportHttpRequest,
+  }).start();
+
+  if (tools.setOnTaskBoardUpdate) {
+    tools.setOnTaskBoardUpdate(() => {
+      wsTransport.broadcast({ type: 'event', event: 'task-board-update' });
+    });
+  }
+}
+
+if (!config.REFACTOR_FLAGS?.USE_NEW_TRANSPORT) {
+  startMemoryMonitor({ logger: memLog });
+  const legacyTransport = startLegacyTransport({
+    port: PORT,
+    logger: log,
+    authTokenProvider: () => process.env.OCT_GATEWAY_TOKEN || '',
+    modelProvider: () => config.DASHSCOPE_MODEL,
+    onAuthenticatedMessage: handleTransportMessage,
+    onHttpRequest: handleLegacyHttpRequest,
+    onTaskBoardUpdateRegister: tools.setOnTaskBoardUpdate ? (fn) => tools.setOnTaskBoardUpdate(fn) : null,
   });
-});
+  wss = legacyTransport.wss;
+  httpServer = legacyTransport.httpServer;
+}
 
 function slashReply(ws, text) {
   ws.send(JSON.stringify({
     type: 'event', event: 'chat',
     payload: { text, state: 'done', done: true, isSystemReply: true },
   }));
-}
-
-async function detectAndSaveParking(userMsg, sessionKey) {
-  const msg = (userMsg || '').trim();
-
-  // 检测停车信号
-  const parkingTriggers = [
-    '停车', '先记下来', '稍后处理', '先放着',
-    '待会处理', '暂时记录', '先不管', '记一下',
-    '回头再说', '先搁置',
-  ];
-
-  const isParking = parkingTriggers.some(t => msg.includes(t));
-  if (!isParking) return;
-
-  // 提取停车内容（去掉触发词）
-  let content = msg;
-  for (const t of parkingTriggers) {
-    content = content.replace(t, '').replace(/[：:]/g, '').trim();
-  }
-  if (!content || content.length < 2) return;
-
-  // 写入 Nocturne
-  const alive = await memory.isAlive();
-  if (!alive) return;
-
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const timeStr = now.toTimeString().slice(0, 5).replace(':', '-');
-  const uri = `core://my_user/daily/${dateStr}/parking_lot/${timeStr}`;
-
-  await memory.writeMemory(uri, JSON.stringify({
-    item: content,
-    time: now.toTimeString().slice(0, 5),
-    done: false,
-    session: sessionKey,
-  }), 1, '停车场待办，下次会话开始时检查');
-
-  log.info('parking saved', { content });
-}
-
-async function extractAndSaveMemory(userMsg, assistantReply) {
-  try {
-    const nocturneAlive = await memory.isAlive();
-    if (!nocturneAlive) return;
-    const cleanAssistantReply = sanitizeAssistantReply(assistantReply || '');
-
-    const triggers = [
-      '记住', '记一下', '我喜欢', '我不喜欢', '以后', '永远',
-      '我的', '我们的', '项目', '决定', '完成了', '发布了',
-    ];
-    const hasSignal = triggers.some(t =>
-      userMsg.includes(t) || cleanAssistantReply.includes(t)
-    );
-    if (!hasSignal) return;
-
-    await streamChat({
-      messages: [
-        {
-          role: 'system',
-          content: '你是记忆提炼助手。从对话中提炼值得长期记忆的关键信息。输出格式：\nURI: core://xxx/xxx\nContent: 简洁的记忆内容（50字内）\nPriority: 1或2\nDisclosure: 触发条件\n\n如果没有值得记忆的内容，只输出：SKIP',
-        },
-        {
-          role: 'user',
-          content: `用户说：${userMsg.slice(0, 200)}\nAI回复：${cleanAssistantReply.slice(0, 200)}`,
-        },
-      ],
-      onDelta: () => {},
-      onDone: async (text) => {
-        if (!text || text.includes('SKIP')) return;
-        const uriMatch = text.match(/URI:\s*(\S+)/);
-        const contentMatch = text.match(/Content:\s*(.+?)(?=\n|$)/s);
-        const priorityMatch = text.match(/Priority:\s*(\d)/);
-        const disclosureMatch = text.match(/Disclosure:\s*(.+?)(?=\n|$)/s);
-        if (uriMatch && contentMatch) {
-          const uri = uriMatch[1].trim();
-          const content = contentMatch[1].trim();
-          const priority = parseInt(priorityMatch?.[1] || '2', 10);
-          const disclosure = (disclosureMatch?.[1] || '').trim();
-          // 过滤掉任务看板相关路径，这些由专用工具处理
-          const blockedPaths = ['taskboard', 'tasks', 'parking', 'parking_lot'];
-          const isBlocked = blockedPaths.some(p => uri.toLowerCase().includes(p));
-          if (isBlocked) {
-            log.debug('memory extract skip blocked path', { uri });
-            return;
-          }
-          const routed = memoryGovernor.routeRecord({
-            source: 'extract_memory',
-            uri,
-            content,
-            priority,
-            disclosure,
-            userMsg,
-            assistantReply: cleanAssistantReply,
-          });
-
-          if (routed.decision === 'reject') {
-            log.debug('memory governor rejected extracted memory', { uri, reason: routed.reason });
-            return;
-          }
-
-          await memory.writeMemory(
-            routed.uri,
-            routed.content,
-            routed.priority ?? priority,
-            routed.disclosure ?? disclosure
-          );
-          log.info('memory extracted write ok', {
-            uri: routed.uri,
-            originalUri: uri,
-            contentLen: routed.content.length,
-            priority: routed.priority ?? priority,
-            decision: routed.decision,
-            layer: routed.layer,
-          });
-        }
-      },
-      onError: () => {},
-    });
-  } catch {
-    // 静默失败
-  }
 }
 
 async function handleSlashCommand(ws, id, cmd, sessionKey) {
@@ -2161,12 +1307,13 @@ async function handleSlashCommand(ws, id, cmd, sessionKey) {
   slashReply(ws, `未知命令：${cmd}\n输入 /help 查看可用命令`);
 }
 
-wss.on('error', (err) => {
-  log.error('WebSocket server error', { error: err?.message || String(err) });
-});
-
 process.on('SIGINT', () => {
   log.info('shutting down');
-  httpServer.close();
-  wss.close(() => process.exit(0));
+  if (config.REFACTOR_FLAGS?.USE_NEW_TRANSPORT) {
+    httpTransport?.close();
+    wsTransport?.close(() => process.exit(0));
+    return;
+  }
+  httpServer?.close();
+  wss?.close(() => process.exit(0));
 });

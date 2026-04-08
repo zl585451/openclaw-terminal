@@ -313,19 +313,37 @@ async function writeMemory(uri, content, priority = 2, disclosure = '', options)
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 第二层：createMemory → 直接创建节点（POST）
-  // ═══════════════════════════════════════════════════════════════
-  const cr = await createMemory(uri, content || '', priority, disclosure || '', { treat422AsDebug: true });
-  if (cr.ok) {
-    failedWrites.delete(uri);
-    log.info('[INFO] memory write ok (createMemory)', { uri, contentLen: String(content || '').length, priority });
-    return cr;
+  let exists = await readMemory(uri, { treat404AsDebug: true });
+  if (!exists.ok) {
+    const status = extractHttpStatusFromError(exists.error);
+    if (status !== 404) {
+      log.warn('[WARN] memory existence check failed, will still attempt write', {
+        uri,
+        error: exists.error,
+      });
+    }
   }
-  lastError = cr.error;
-  const crStatus = extractHttpStatusFromError(cr.error);
-  if (crStatus === 404 || crStatus === 405) {
-    log.warn('[WARN] createMemory failed (404/405), trying PUT overwrite', { uri, error: cr.error });
+
+  // ═══════════════════════════════════════════════════════════════
+  // 第二层：若节点不存在 → createMemory（POST）
+  // 关键修复：不能把“422 已存在”当作覆盖成功，否则会出现假成功但内容未更新
+  // ═══════════════════════════════════════════════════════════════
+  if (!exists.ok) {
+    const cr = await createMemory(uri, content || '', priority, disclosure || '', { treat422AsDebug: false });
+    if (cr.ok) {
+      failedWrites.delete(uri);
+      log.info('[INFO] memory write ok (createMemory)', { uri, contentLen: String(content || '').length, priority });
+      return { ...cr, created: true };
+    }
+    lastError = cr.error;
+    const crStatus = extractHttpStatusFromError(cr.error);
+    if (crStatus !== 422) {
+      log.warn('[WARN] createMemory failed, trying PUT overwrite as fallback', { uri, error: cr.error });
+    } else {
+      log.warn('[WARN] createMemory reported existing path during write, falling through to PUT overwrite', {
+        uri,
+      });
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -338,7 +356,7 @@ async function writeMemory(uri, content, priority = 2, disclosure = '', options)
   if (r.ok) {
     failedWrites.delete(uri);
     log.info('[INFO] memory write ok (PUT)', { uri, contentLen: String(content || '').length, priority });
-    return r;
+    return { ...r, updated: true };
   }
 
   // 完全失败：记录、计数、停车场

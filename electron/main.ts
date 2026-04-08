@@ -875,20 +875,107 @@ function extractTextFromPayload(payload: any): string {
   return '';
 }
 
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  'qwen3.5-plus': 131072,
+  'qwen3-max': 131072,
+  'qwen3-max-2026-01-23': 131072,
+  'qwen-plus': 131072,
+  'qwen-max': 131072,
+  'qwen-turbo': 1000000,
+  'qwen3-coder-next': 262144,
+  'qwen3-coder-plus': 262144,
+  'kimi-k2.5': 131072,
+  'MiniMax-M2.5': 1048576,
+  'MiniMax-M2.7': 1000000,
+  'MiniMax-M2.7-highspeed': 1000000,
+  'MiniMax-M2.5-standalone': 1000000,
+  'MiniMax-M2.5-highspeed': 1000000,
+  'MiniMax-M2.1': 1000000,
+  'MiniMax-M2.1-highspeed': 1000000,
+  'MiniMax-M2': 1000000,
+  'glm-5': 131072,
+  'glm-4.7': 131072,
+  'deepseek-v3': 65536,
+  'deepseek-r1': 65536,
+  'deepseek-chat': 65536,
+  'deepseek-reasoner': 65536,
+};
+
+function inferContextWindow(model: any): number | null {
+  const modelId = String(model || '').trim();
+  if (!modelId) return null;
+  if (MODEL_CONTEXT_WINDOWS[modelId] != null) return MODEL_CONTEXT_WINDOWS[modelId];
+  const exactKey = Object.keys(MODEL_CONTEXT_WINDOWS).find((key) => modelId.startsWith(key));
+  return exactKey ? MODEL_CONTEXT_WINDOWS[exactKey] : null;
+}
+
 function extractUsage(payload: any): { inputTokens?: number; outputTokens?: number; cost?: number; ctxUsed?: number; ctxMax?: number; session?: string; model?: string } | null {
   if (!payload) return null;
-  const usage = payload.usage ?? payload.token_usage;
-  const u = usage?.input_tokens ?? usage?.inputTokens ?? usage?.prompt_tokens;
-  const o = usage?.output_tokens ?? usage?.outputTokens ?? usage?.completion_tokens;
-  const cost = payload.cost ?? payload.total_cost ?? usage?.cost;
-  const ctxUsed = payload.ctx_used ?? usage?.context_tokens ?? payload.context_length;
-  const ctxMax = ctxUsed !== undefined
-    ? (payload.ctx_max ?? payload.max_context_length ?? null)
-    : null;
+  const usage = payload.usage ?? payload.token_usage ?? payload.metrics ?? payload.metadata?.usage ?? null;
+  const model =
+    payload.model
+    ?? payload.model_name
+    ?? payload.responseModel
+    ?? payload.response_model
+    ?? usage?.model
+    ?? usage?.model_name
+    ?? usage?.response_model;
+  const u =
+    usage?.input_tokens
+    ?? usage?.inputTokens
+    ?? usage?.prompt_tokens
+    ?? usage?.promptTokens
+    ?? usage?.prefill_tokens
+    ?? usage?.prompt_token_count;
+  const o =
+    usage?.output_tokens
+    ?? usage?.outputTokens
+    ?? usage?.completion_tokens
+    ?? usage?.completionTokens
+    ?? usage?.generated_tokens
+    ?? usage?.completion_token_count
+    ?? usage?.candidates_token_count;
+  const total =
+    usage?.total_tokens
+    ?? usage?.totalTokens
+    ?? usage?.token_count
+    ?? payload.total_tokens;
+  const cost = payload.cost ?? payload.total_cost ?? usage?.cost ?? usage?.total_cost;
+  const ctxUsedRaw =
+    payload.ctx_used
+    ?? usage?.context_tokens
+    ?? usage?.contextTokens
+    ?? payload.context_length
+    ?? usage?.context_length
+    ?? usage?.current_context_tokens
+    ?? usage?.input_tokens
+    ?? usage?.inputTokens
+    ?? usage?.prompt_tokens
+    ?? usage?.promptTokens
+    ?? total;
+  const ctxUsed = ctxUsedRaw != null ? Number(ctxUsedRaw) : undefined;
+  const inferredCtxMax = inferContextWindow(model);
+  const ctxMaxRaw =
+    payload.ctx_max
+    ?? payload.max_context_length
+    ?? usage?.max_context_length
+    ?? usage?.maxContextLength
+    ?? usage?.context_window
+    ?? usage?.contextWindow
+    ?? payload.context_window
+    ?? inferredCtxMax;
+  const ctxMax = ctxMaxRaw != null ? Number(ctxMaxRaw) : null;
   const session = payload.session ?? payload.session_id ?? payload.sessionId;
-  const model = payload.model ?? payload.model_name ?? usage?.model ?? usage?.model_name;
   if (u !== undefined || o !== undefined || cost !== undefined || session !== undefined || model !== undefined || ctxUsed !== undefined) {
-    return { inputTokens: u, outputTokens: o, cost, ctxUsed, ctxMax, session, model };
+    return {
+      inputTokens: u != null ? Number(u) : undefined,
+      outputTokens: o != null ? Number(o) : undefined,
+      cost,
+      ctxUsed,
+      ctxMax: ctxMax ?? undefined,
+      session,
+      model,
+    };
   }
   return null;
 }
@@ -901,8 +988,8 @@ function forwardChatToFrontend(payload: any, eventName?: string, isStreaming = f
     currentSessionKey = usage.session;
     saveSessionState({ ...(lastSessionState || {}), sessionKey: usage.session });
   }
-  // 斜杠命令的系统回复：payload 直接有 text，无 message.content
-  const isSystemReply = !!(payload?.text && typeof payload.text === 'string' && !payload?.message?.content);
+  // 只信任 Gateway 显式传来的 system 标记，避免把普通 AI 文本误判进系统气泡。
+  const isSystemReply = payload?.isSystemReply === true || payload?.type === 'system';
   
   // DEBUG: 当提取文本为空时，打印 payload 摘要帮助定位“正文丢失”
   try {
@@ -3730,6 +3817,35 @@ function saveTasksData(data: TasksData): boolean {
 }
 
 /** 读取所有任务（返回原始 JSON） */
+function normalizeTaskContent(content: string): string {
+  return String(content || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function isLikelyDuplicateTaskContent(a: string, b: string): boolean {
+  const left = normalizeTaskContent(a);
+  const right = normalizeTaskContent(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  const shorter = left.length <= right.length ? left : right;
+  const longer = left.length <= right.length ? right : left;
+  if (shorter.length < 4) return false;
+
+  return longer.includes(shorter) && longer.length - shorter.length <= 16;
+}
+
+function dedupeTaskItems(tasks: TaskItem[]): TaskItem[] {
+  const deduped: TaskItem[] = [];
+  for (const task of tasks || []) {
+    const duplicate = deduped.find(existing => {
+      if (!!existing.done !== !!task.done) return false;
+      return isLikelyDuplicateTaskContent(existing.content, task.content);
+    });
+    if (!duplicate) deduped.push(task);
+  }
+  return deduped;
+}
+
 ipcMain.handle('tasks-read', async () => {
   const filePath = path.join(app.getPath('userData'), 'tasks.json');
   try {
@@ -3739,15 +3855,17 @@ ipcMain.handle('tasks-read', async () => {
     return { tasks: [], parking: [], intention: '', updatedAt: '' };
   }
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  const dedupedTasks = dedupeTaskItems(raw.tasks || []);
   try {
     console.log('[TasksLocal] tasks-read counts:', {
       tasks: Array.isArray(raw?.tasks) ? raw.tasks.length : 0,
+      dedupedTasks: dedupedTasks.length,
       parking: Array.isArray(raw?.parking) ? raw.parking.length : 0,
       updatedAt: raw?.updatedAt || '',
     });
   } catch {}
   return {
-    tasks: raw.tasks || [],
+    tasks: dedupedTasks,
     parking: raw.parking || [],
     intention: raw.intention || '',
     updatedAt: raw.updatedAt || '',
@@ -3758,7 +3876,7 @@ ipcMain.handle('tasks-read', async () => {
 ipcMain.handle('tasks-write', async (_: Electron.IpcMainInvokeEvent, data: { tasks: TaskItem[]; parking: any[]; intention?: string }) => {
   const filePath = path.join(app.getPath('userData'), 'tasks.json');
   const payload = {
-    tasks: data.tasks || [],
+    tasks: dedupeTaskItems(data.tasks || []),
     parking: data.parking || [],
     intention: data.intention || '',
     updatedAt: new Date().toISOString(),
@@ -3778,6 +3896,10 @@ ipcMain.handle('tasks-add', async (_, { content, priority, source }: {
   source: 'amy' | 'user';
 }) => {
   const data = loadTasksData();
+  const duplicate = (data.tasks || []).find(t => !t.done && isLikelyDuplicateTaskContent(t.content, content));
+  if (duplicate) {
+    return { ok: true, taskId: duplicate.id, deduped: true };
+  }
   const newTask: TaskItem = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     content: content.trim(),
