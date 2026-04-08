@@ -24,8 +24,8 @@ function playTypewriter() {
   osc.type = 'square';
   filter.type = 'highpass';
   filter.frequency.value = 2000;
-  gain.gain.setValueAtTime(0.03, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
+  gain.gain.setValueAtTime(0.1, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.002, ctx.currentTime + 0.03);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.03);
 }
@@ -41,8 +41,8 @@ function playSoft() {
   gain.connect(ctx.destination);
   osc.frequency.value = 1200 + Math.random() * 200;
   osc.type = 'sine';
-  gain.gain.setValueAtTime(0.02, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.002, ctx.currentTime + 0.06);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.06);
 }
@@ -60,8 +60,8 @@ function playBubble() {
   osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
   osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.8, ctx.currentTime + 0.08);
   osc.type = 'sine';
-  gain.gain.setValueAtTime(0.04, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+  gain.gain.setValueAtTime(0.12, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.002, ctx.currentTime + 0.1);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.1);
 }
