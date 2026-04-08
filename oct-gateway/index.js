@@ -682,28 +682,56 @@ wss.on('connection', (ws) => {
       let messageContent;
 
       if (imageAttachments.length > 0) {
-        // 构建多模态消息内容
-        const contentParts = [];
-
-        // 先加文字
         const textPart = userMessage || '请分析这张图片';
-        if (textPart) {
-          contentParts.push({ type: 'text', text: textPart });
-        }
+        const providerConfig = config.getProviderConfig();
+        const currentModel = config.DASHSCOPE_MODEL;
+        const currentModelDef = providerConfig.models.find((m) => m.id === currentModel);
+        const supportsInlineVision =
+          currentModelDef?.vision === true
+          || /(?:^|[-_/])vl(?:[-_/]|$)/i.test(currentModel)
+          || /vision/i.test(currentModel);
 
-        // 直接把图片传给模型，不经过 imageAnalyzer 预分析
-        imageAttachments.forEach(a => {
-          const imageUrl = a.content?.startsWith('data:')
-            ? a.content
-            : `data:${a.mimeType};base64,${a.content}`;
-          contentParts.push({
-            type: 'image_url',
-            image_url: { url: imageUrl }
-          });
+        log.info('image request routing', {
+          model: currentModel,
+          provider: providerConfig.name,
+          imageCount: imageAttachments.length,
+          supportsInlineVision,
+          route: supportsInlineVision ? 'inline_vision' : 'image_analyzer_fallback',
         });
 
-        // 如果有图片，用数组格式；否则用纯文字
-        messageContent = contentParts.length > 1 ? contentParts : textPart;
+        if (supportsInlineVision) {
+          // 视觉模型直接接收图片，保留完整多模态输入
+          const contentParts = [];
+          if (textPart) {
+            contentParts.push({ type: 'text', text: textPart });
+          }
+          imageAttachments.forEach((a) => {
+            const imageUrl = a.content?.startsWith('data:')
+              ? a.content
+              : `data:${a.mimeType};base64,${a.content}`;
+            contentParts.push({
+              type: 'image_url',
+              image_url: { url: imageUrl }
+            });
+          });
+          messageContent = contentParts.length > 1 ? contentParts : textPart;
+        } else {
+          // 非视觉模型先做图片理解，再走稳定的文本对话链路，避免图片请求把主会话流打断
+          let imageSummary = '';
+          try {
+            imageSummary = await imageAnalyzer.analyzeImages(imageAttachments);
+          } catch (e) {
+            log.warn('image analysis failed, fallback to text-only prompt', { error: e?.message || String(e) });
+          }
+          messageContent = [textPart, imageSummary].filter(Boolean).join('\n\n');
+          log.info('image attachments normalized to text context', {
+            model: currentModel,
+            provider: providerConfig.name,
+            imageCount: imageAttachments.length,
+            imageSummaryLen: imageSummary.length,
+            hasImageSummary: !!imageSummary,
+          });
+        }
       } else {
         messageContent = userMessage;
       }
@@ -890,7 +918,7 @@ wss.on('connection', (ws) => {
 
       // 假设验证（非阻塞：不 await，后台进行，不影响首字延迟）
       let hypothesisResult = null;
-      if (!userMessage.startsWith('/') && userMessage.length > 15) {
+      if (!userMessage.startsWith('/') && userMessage.length > 15 && imageAttachments.length === 0) {
         // 设置 2 秒超时，避免阻塞
         hypothesis.selectBestApproach(userMessage, systemPrompt, history.slice(-6))
           .then(result => {
@@ -1024,7 +1052,8 @@ wss.on('connection', (ws) => {
           currentAbort = null;
           if (thinkingPulseInterval) { clearInterval(thinkingPulseInterval); thinkingPulseInterval = null; }
           smoother.flush();
-          const sanitizedReply = sanitizeAssistantReply(fullReply || '');
+          const finalizedReply = fullReply || _text || '';
+          const sanitizedReply = sanitizeAssistantReply(finalizedReply);
           if (sanitizedReply) {
             session.addMessage(sessionKey, 'assistant', sanitizedReply);
 

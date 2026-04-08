@@ -224,6 +224,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     setMessages,
     permissions,
     streamSpeedMs,
+    typingSound: settings.typingSound,
+    typingSoundVolume: settings.typingSoundVolume,
     onStatusChange,
   });
 

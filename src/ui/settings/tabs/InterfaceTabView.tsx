@@ -160,14 +160,36 @@ export function InterfaceTabView({
           </label>
         </div>
         {local.typingSound !== 'off' && (
-          <div className="settings-row">
-            <label>音效风格</label>
-            <select value={local.typingSound} onChange={(e) => setLocal((s) => ({ ...s, typingSound: e.target.value as TypingSoundMode }))}>
-              <option value="typewriter">键盘（清脆机械声）</option>
-              <option value="soft">气泡（柔和提示音）</option>
-              <option value="bubble">水泡（低频水滴声）</option>
-            </select>
-          </div>
+          <>
+            <div className="settings-row">
+              <label>音效风格</label>
+              <select value={local.typingSound} onChange={(e) => setLocal((s) => ({ ...s, typingSound: e.target.value as TypingSoundMode }))}>
+                <option value="typewriter">键盘（清脆机械声）</option>
+                <option value="soft">气泡（柔和提示音）</option>
+                <option value="bubble">水泡（低频水滴声）</option>
+              </select>
+            </div>
+            <div className="settings-row">
+              <label>音量</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 220 }}>
+                <input
+                  type="range"
+                  min="0"
+                  max="150"
+                  step="5"
+                  value={Math.round((local.typingSoundVolume ?? 0.9) * 100)}
+                  onChange={(e) => setLocal((s) => ({
+                    ...s,
+                    typingSoundVolume: Number(e.target.value) / 100,
+                  }))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ minWidth: 44, textAlign: 'right' }}>
+                  {Math.round((local.typingSoundVolume ?? 0.9) * 100)}%
+                </span>
+              </div>
+            </div>
+          </>
         )}
       </section>
 

@@ -12,6 +12,7 @@ import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile } from '../ui/chat/ChatTab.v2';
 import { extractAssistantCotAndMain, hasAssistantCotMarkers, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
+import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 
 // ── Streak helpers ────────────────────────────────────────────────────────────
 function getTodayStr(): string {
@@ -88,6 +89,8 @@ export interface UseMessagesOptions {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   permissions: PermissionConfig;
   streamSpeedMs: number;
+  typingSound: TypingSoundMode;
+  typingSoundVolume: number;
   onStatusChange?: (
     wsConnected: boolean,
     isStreaming: boolean,
@@ -132,6 +135,8 @@ export function useMessages({
   setMessages,
   permissions,
   streamSpeedMs,
+  typingSound,
+  typingSoundVolume,
   onStatusChange,
 }: UseMessagesOptions): UseMessagesReturn {
   const canvasBridge = useCanvasBridge();
@@ -314,6 +319,11 @@ export function useMessages({
         shown = Math.min(targetLen, shown + step);
         streamPaintShownLenRef.current = shown;
         el.textContent = main.slice(0, shown);
+        if (typingSound !== 'off') {
+          for (let i = 0; i < step; i++) {
+            playClickSound(typingSound, typingSoundVolume);
+          }
+        }
       }
     } else if (targetLen > 0) {
       el.textContent = main;
@@ -737,6 +747,7 @@ export function useMessages({
       streamPaintRafRef.current = null;
     }
     typewriter.reset();
+    resetSoundCounter();
     oct.ingest.reset();
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
@@ -834,6 +845,7 @@ export function useMessages({
       streamPaintRafRef.current = null;
     }
     typewriter.reset();
+    resetSoundCounter();
     oct.ingest.reset();
     if (!isSystem) {
       setAwaitingResponse(true);

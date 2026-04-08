@@ -79,6 +79,7 @@ export const THEME_PRESETS: Record<Exclude<ThemeColor, 'custom'>, { label: strin
 export interface Settings {
   streamSpeed: StreamSpeed;
   typingSound: TypingSoundMode;
+  typingSoundVolume: number;
   ttsPlayback: boolean;
   ttsProvider: TtsProvider;
   theme: ThemeColor;
@@ -91,6 +92,7 @@ export interface Settings {
 const DEFAULT: Settings = {
   streamSpeed: 'medium',
   typingSound: 'off',
+  typingSoundVolume: 0.9,
   ttsPlayback: false,
   ttsProvider: 'auto',
   theme: 'matrix',
@@ -132,6 +134,12 @@ function normalizeTheme(raw: string | undefined): ThemeColor {
   return 'matrix';
 }
 
+function normalizeVolume(raw: unknown, fallback: number): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(1.5, Math.max(0, n));
+}
+
 export function getActiveThemeVars(settings: Settings): ThemeVars {
   if (settings.theme === 'custom' && settings.customTheme) return settings.customTheme;
   const key = normalizeTheme(settings.theme);
@@ -155,6 +163,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           typingSound: data.typingSound === true ? 'typewriter'
             : data.typingSound === false ? 'off'
             : (['off', 'typewriter', 'soft', 'bubble'].includes(data.typingSound) ? data.typingSound : DEFAULT.typingSound),
+          typingSoundVolume: normalizeVolume(data.typingSoundVolume, DEFAULT.typingSoundVolume),
           ttsPlayback: typeof data.ttsPlayback === 'boolean'
             ? data.ttsPlayback
             : (data.voicePlayback === true ? true : DEFAULT.ttsPlayback),

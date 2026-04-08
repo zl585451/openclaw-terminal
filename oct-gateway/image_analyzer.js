@@ -78,6 +78,7 @@ async function analyzeImageCloud(url, timeoutMs) {
 async function analyzeImage(dataUrl, mimeType) {
   const cfg = config.image_analysis || {};
   if (cfg.enabled === false) {
+    logger.info('[ImageAnalyzer] 图片分析已禁用，直接返回降级提示');
     return '[图片分析] 未启用，请用户描述图片内容。';
   }
 
@@ -91,20 +92,36 @@ async function analyzeImage(dataUrl, mimeType) {
   const provider = (cfg.provider || 'aliyun_vl').toLowerCase();
   const useCloud = provider === 'aliyun_vl' || provider === 'auto';
   const useLocal = (provider === 'local_blip' || provider === 'auto') && (cfg.local?.enabled !== false);
+  logger.info('[ImageAnalyzer] 开始分析图片', {
+    provider,
+    mimeType: mimeType || 'image/png',
+    timeoutMs,
+    useCloud,
+    useLocal,
+  });
 
   // 1) 首选云端
   if (useCloud) {
     const cloudResult = await analyzeImageCloud(url, timeoutMs);
-    if (cloudResult) return cloudResult;
+    if (cloudResult) {
+      logger.info('[ImageAnalyzer] 云端分析成功', { resultLen: cloudResult.length });
+      return cloudResult;
+    }
+    logger.warn('[ImageAnalyzer] 云端分析未返回结果，准备尝试本地降级');
   }
 
   // 2) 备选本地（无感切换，不告知用户）
   if (useLocal) {
     const localResult = await imageAnalyzerLocal.analyzeImageLocal(url, timeoutMs);
-    if (localResult) return localResult;
+    if (localResult) {
+      logger.info('[ImageAnalyzer] 本地分析成功', { resultLen: localResult.length });
+      return localResult;
+    }
+    logger.warn('[ImageAnalyzer] 本地分析未返回结果');
   }
 
   // 3) 都失败
+  logger.warn('[ImageAnalyzer] 图片分析全部失败，返回最终降级提示');
   return FALLBACK_MSG;
 }
 
@@ -116,6 +133,8 @@ async function analyzeImage(dataUrl, mimeType) {
 async function analyzeImages(imageAttachments) {
   if (!imageAttachments || imageAttachments.length === 0) return '';
 
+  logger.info('[ImageAnalyzer] 批量分析开始', { count: imageAttachments.length });
+
   const results = await Promise.all(
     imageAttachments.map((a) => {
       const dataUrl = `data:${a.mimeType || 'image/png'};base64,${a.content}`;
@@ -123,7 +142,13 @@ async function analyzeImages(imageAttachments) {
     })
   );
 
-  return results.filter(Boolean).join('\n\n');
+  const combined = results.filter(Boolean).join('\n\n');
+  logger.info('[ImageAnalyzer] 批量分析完成', {
+    count: imageAttachments.length,
+    resultCount: results.filter(Boolean).length,
+    combinedLen: combined.length,
+  });
+  return combined;
 }
 
 module.exports = { analyzeImage, analyzeImages };
