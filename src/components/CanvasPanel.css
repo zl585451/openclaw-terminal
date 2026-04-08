@@ -289,25 +289,40 @@
 }
 
 .canvas-mermaid-stage--compact {
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* Wide flowcharts: polishSvg may exceed bubble width — scroll sideways */
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 228px;
+  max-height: 440px;
   padding: 8px 10px;
   border-radius: 10px;
   background: transparent;
   border: none;
 }
 
+/* Inner cell: at least full stage width so small diagrams stay centered; wide SVG expands for scroll */
+.canvas-mermaid-stage--compact-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
 .canvas-mermaid-zoom {
-  transform-origin: top center;
+  /* Using CSS zoom (not transform) so layout reflows correctly.
+     transform: scale() leaves layout-box unchanged and causes
+     left-side clipping when zoom > 1. */
   width: fit-content;
   min-width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .canvas-mermaid-zoom--compact {
   min-width: auto;
-  margin: 0 auto;
+  flex-shrink: 0;
 }
 
 .canvas-mermaid-preview svg {

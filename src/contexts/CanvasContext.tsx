@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback, useRef } from 'react';
 
 export type CanvasMode = 'markdown' | 'code' | 'html';
-export type CanvasArtifactType = 'document' | 'diagram' | 'code' | 'ui-draft' | 'react-flow';
+export type CanvasArtifactType = 'document' | 'diagram' | 'code' | 'ui-draft' | 'react-flow' | 'echart';
 export type CanvasDocumentStatus = 'draft' | 'refining' | 'final';
 
 export interface CanvasDocument {
@@ -64,6 +64,10 @@ interface CanvasContextValue extends CanvasState {
   mode: CanvasMode;
   title: string;
   language: string;
+  /** Called when a user clicks a node in a Canvas diagram to ask AI about it */
+  onNodeInspect: ((nodeLabel: string, nodeGroup?: string) => void) | null;
+  /** Register the chat's send function so Canvas renderers can trigger AI queries */
+  setNodeInspectHandler: (fn: ((nodeLabel: string, nodeGroup?: string) => void) | null) => void;
   openPanel: () => void;
   openCanvas: (
     content: string,
@@ -115,6 +119,19 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     documents: [],
     activeDocumentId: null,
   });
+
+  // Node-inspect handler lives in a ref so renderer reads the latest
+  // version without needing to be in the dependency array.
+  const nodeInspectRef = useRef<((nodeLabel: string, nodeGroup?: string) => void) | null>(null);
+  const [nodeInspectVersion, setNodeInspectVersion] = useState(0); // force re-render when set
+
+  const setNodeInspectHandler = useCallback(
+    (fn: ((nodeLabel: string, nodeGroup?: string) => void) | null) => {
+      nodeInspectRef.current = fn;
+      setNodeInspectVersion((v) => v + 1); // expose to consumers
+    },
+    []
+  );
 
   const activeDocument = useMemo(
     () => state.documents.find((document) => document.id === state.activeDocumentId) ?? null,
@@ -267,6 +284,8 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     mode: activeDocument?.mode ?? 'markdown',
     title: activeDocument?.title ?? '',
     language: activeDocument?.language ?? 'text',
+    onNodeInspect: nodeInspectRef.current,
+    setNodeInspectHandler,
     openPanel,
     openCanvas,
     closeCanvas,
@@ -276,7 +295,10 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     createDocument,
     updateDocument,
     applyCanvasEvent,
-  }), [activeDocument, applyCanvasEvent, closeCanvas, createDocument, deleteDocument, openCanvas, openPanel, setActiveDocument, state, updateContent, updateDocument]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [activeDocument, applyCanvasEvent, closeCanvas, createDocument, deleteDocument,
+      nodeInspectVersion, openCanvas, openPanel, setActiveDocument, setNodeInspectHandler,
+      state, updateContent, updateDocument]);
 
   return (
     <CanvasContext.Provider value={value}>

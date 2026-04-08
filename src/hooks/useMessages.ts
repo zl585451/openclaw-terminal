@@ -52,15 +52,19 @@ function recoverOctStreamFromEndFailure(oct: { stream: StreamRouter; fsm: TurnFS
   }
   try {
     if (oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
-      oct.fsm.onToken();
+      oct.fsm.onToken();                  // → STREAMING
     }
-    if (oct.fsm.getPhase() === TurnPhase.STREAMING) {
-      oct.fsm.onStreamEnd();
-      oct.fsm.onRenderDone();
+    if (oct.fsm.getPhase() === TurnPhase.STREAMING ||
+        oct.fsm.getPhase() === TurnPhase.STREAM_PAUSED) {
+      oct.fsm.onStreamEnd();              // → STREAM_COMPLETE
     }
-    oct.fsm.onTurnFinish();
+    if (oct.fsm.getPhase() === TurnPhase.STREAM_COMPLETE) {
+      oct.fsm.onRenderDone();             // → RENDER_COMPLETE
+    }
+    oct.fsm.onTurnFinish();               // → TURN_FINISHED → IDLE
   } catch (e) {
     console.warn('[useMessages] recoverOctStreamFromEndFailure', e);
+    oct.fsm.resetToIdle();                // last-resort force reset
   }
 }
 
@@ -199,7 +203,22 @@ export function useMessages({
     streamPaintShownLenRef.current = 0;
     streamPaintBudgetRef.current = 0;
     streamPaintLastTsRef.current = 0;
-    try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[useMessages] fsm.onTurnFinish', e); }
+    // Advance FSM through any intermediate states that may have been skipped,
+    // then complete the turn. If anything throws, force-reset to IDLE so the
+    // next turn can start cleanly.
+    try {
+      const p = oct.fsm.getPhase();
+      if (p === TurnPhase.STREAMING || p === TurnPhase.STREAM_PAUSED) {
+        oct.fsm.onStreamEnd();    // → STREAM_COMPLETE
+      }
+      if (oct.fsm.getPhase() === TurnPhase.STREAM_COMPLETE) {
+        oct.fsm.onRenderDone();   // → RENDER_COMPLETE
+      }
+      oct.fsm.onTurnFinish();     // → TURN_FINISHED → IDLE
+    } catch (e) {
+      console.warn('[useMessages] fsm.onTurnFinish error, force-resetting to IDLE:', e);
+      oct.fsm.resetToIdle();
+    }
     oct.ingest.reset();
     setMessages((prev) => {
       const last = prev[prev.length - 1];
@@ -273,17 +292,22 @@ export function useMessages({
     }
 
     if (behind > 0) {
-      let effectiveMs = Math.max(3, streamSpeedMsRef.current);
-      if (behind > 32) effectiveMs *= 0.9;
-      if (behind > 96) effectiveMs *= 0.82;
-      if (pendingStreamFinalizeRef.current) effectiveMs *= 0.7;
+      // effectiveMs: controls chars/sec via budget accumulation.
+      // Deliberately avoid large catch-up multipliers — they make text
+      // feel like it "dumps all at once" when the model responds fast.
+      let effectiveMs = Math.max(6, streamSpeedMsRef.current);
+      // Mild catch-up when far behind (still streaming): slightly faster
+      if (!pendingStreamFinalizeRef.current && behind > 80) effectiveMs *= 0.85;
+      // After stream ends: finish at a capped speed, not an instant dump
+      if (pendingStreamFinalizeRef.current) effectiveMs = Math.max(6, effectiveMs * 0.75);
 
       streamPaintBudgetRef.current += dt / effectiveMs;
       let step = Math.floor(streamPaintBudgetRef.current);
       if (step <= 0 && streamPaintBudgetRef.current >= 0.82) {
         step = 1;
       }
-      step = Math.min(behind, Math.max(0, Math.min(step, pendingStreamFinalizeRef.current ? 5 : 3)));
+      // Step cap: 4 chars/tick max — keeps animation visible at any speed setting
+      step = Math.min(behind, Math.max(0, Math.min(step, 4)));
 
       if (step > 0) {
         streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
@@ -610,6 +634,11 @@ export function useMessages({
       }
         if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
         queueMicrotask(() => {
+          // 取消 fallback 定时器：流式结束，由 runStreamPaintTick 负责终止，不需要 fallback 抢先
+          if (finalizeFallbackTimerRef.current != null) {
+            clearTimeout(finalizeFallbackTimerRef.current);
+            finalizeFallbackTimerRef.current = null;
+          }
           pendingStreamFinalizeRef.current = true;
           scheduleStreamUiTick();
           try { stream.close(); } catch (e) { console.warn('[useMessages] stream.close', e); }

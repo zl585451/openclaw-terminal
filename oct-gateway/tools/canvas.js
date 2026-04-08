@@ -8,7 +8,7 @@ function normalizeMode(mode, artifactType) {
 function normalizeArtifactType(artifactType, mode) {
   if (artifactType === 'document' || artifactType === 'diagram' ||
       artifactType === 'ui-draft' || artifactType === 'code' ||
-      artifactType === 'react-flow') {
+      artifactType === 'react-flow' || artifactType === 'echart') {
     return artifactType;
   }
   if (mode === 'code') return 'code';
@@ -67,8 +67,8 @@ module.exports = {
           },
           artifactType: {
             type: 'string',
-            enum: ['document', 'diagram', 'ui-draft', 'code', 'react-flow'],
-            description: 'Artifact category: document=markdown文档, diagram=Mermaid图, react-flow=交互式节点图(JSON格式), ui-draft=HTML, code=代码',
+            enum: ['document', 'diagram', 'ui-draft', 'code', 'react-flow', 'echart'],
+            description: 'Artifact category: document=markdown文档, diagram=Mermaid图, react-flow=交互式节点图(JSON格式), echart=ECharts数据图表(bar/line/pie/scatter等), ui-draft=HTML, code=代码',
           },
           mode: {
             type: 'string',
@@ -77,7 +77,7 @@ module.exports = {
           },
           content: {
             type: 'string',
-            description: 'Artifact content. markdown for documents; pure Mermaid DSL for diagram; {"nodes":[...],"edges":[...],"direction":"LR","title":"..."} JSON for react-flow; HTML for ui-draft; raw code for code.',
+            description: 'Artifact content. markdown for documents; pure Mermaid DSL for diagram; {"nodes":[...],"edges":[...],"direction":"LR","title":"..."} JSON for react-flow; {"title":"...","option":{...ECharts option...}} JSON for echart; HTML for ui-draft; raw code for code.',
           },
           language: {
             type: 'string',

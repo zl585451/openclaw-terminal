@@ -12,9 +12,11 @@
  *   "title": "可选标题"
  * }
  */
-import { useMemo, useCallback } from 'react';
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
   Background,
   Controls,
   MiniMap,
@@ -23,8 +25,10 @@ import {
   type Node,
   type Edge,
   type NodeProps,
+  type NodeMouseHandler,
   BackgroundVariant,
 } from '@xyflow/react';
+import { useCanvas } from '../../contexts/CanvasContext';
 import '@xyflow/react/dist/style.css';
 import './ReactFlowRenderer.css';
 
@@ -63,8 +67,11 @@ const GROUP_PALETTE = [
 
 // ─── BFS layout ───────────────────────────────────────────────────────────────
 
-const GAP_MAIN = 220;   // spacing along main axis (between levels)
-const GAP_CROSS = 100;  // spacing along cross axis (between siblings)
+const GAP_MAIN  = 240;  // spacing along main axis (between levels)
+const GAP_CROSS = 130;  // spacing along cross axis (between siblings)
+// Estimated node dimensions for layout (actual size depends on label length + CSS)
+const EST_NODE_W = 150;
+const EST_NODE_H = 48;
 
 function computeLayout(
   nodes: RFNodeDef[],
@@ -135,24 +142,29 @@ function computeLayout(
 
 interface OCTNodeData extends Record<string, unknown> {
   label: string;
+  group?: string;
   shape?: RFNodeDef['shape'];
   colorScheme: { bg: string; border: string; text: string };
+  /** Set by FlowCanvas when this node is selected */
+  selected?: boolean;
 }
 
 function OCTNode({ data }: NodeProps<Node<OCTNodeData>>) {
-  const { label, colorScheme } = data;
+  const { label, colorScheme, selected } = data;
   return (
     <div
-      className="oct-rf-node"
+      className={`oct-rf-node${selected ? ' oct-rf-node--selected' : ''}`}
       style={{
         background: colorScheme.bg,
         borderColor: colorScheme.border,
         color: colorScheme.text,
       }}
+      title="点击让 AI 解释此节点"
     >
       <Handle type="target" position={Position.Left}  className="oct-rf-handle" />
       <Handle type="target" position={Position.Top}   className="oct-rf-handle" />
       <span className="oct-rf-node-label">{label}</span>
+      {selected && <span className="oct-rf-node-inspect-hint">💬</span>}
       <Handle type="source" position={Position.Right}  className="oct-rf-handle" />
       <Handle type="source" position={Position.Bottom} className="oct-rf-handle" />
     </div>
@@ -180,74 +192,213 @@ function parseContent(raw: string): RFGraphData | null {
   }
 }
 
-export default function ReactFlowRenderer({ content }: ReactFlowRendererProps) {
-  const data = useMemo(() => parseContent(content), [content]);
+// ─── PNG export: build a static SVG from measured node/edge positions ────────
 
-  const { rfNodes, rfEdges } = useMemo(() => {
-    if (!data || !Array.isArray(data.nodes)) return { rfNodes: [], rfEdges: [] };
+function buildExportSvg(
+  nodes: Node[],
+  edges: Edge[],
+  title?: string,
+): string {
+  if (!nodes.length) return '';
 
-    const direction = (data.direction ?? 'LR') as 'LR' | 'TB' | 'RL' | 'BT';
-    const positions = computeLayout(data.nodes, data.edges ?? [], direction);
+  const PAD = 40;
+  const NW  = EST_NODE_W;  // estimated node width for export SVG
+  const NH  = EST_NODE_H;
+  const R   = 10;          // corner radius
 
-    // Map group names → colour index
-    const groupIndex = new Map<string, number>();
-    data.nodes.forEach((n) => {
-      if (n.group && !groupIndex.has(n.group)) {
-        groupIndex.set(n.group, groupIndex.size % GROUP_PALETTE.length);
-      }
-    });
+  // Bounding box
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodes.forEach((n) => {
+    const w = (n.measured?.width  ?? (n as any).width  ?? NW);
+    const h = (n.measured?.height ?? (n as any).height ?? NH);
+    minX = Math.min(minX, n.position.x);
+    minY = Math.min(minY, n.position.y);
+    maxX = Math.max(maxX, n.position.x + w);
+    maxY = Math.max(maxY, n.position.y + h);
+  });
 
-    const rfNodes: Node[] = data.nodes.map((n) => {
-      const pos = positions.get(n.id) ?? { x: 0, y: 0 };
-      const idx = n.group != null ? (groupIndex.get(n.group) ?? 0) : 0;
-      const colorScheme = GROUP_PALETTE[idx];
-      return {
-        id: n.id,
-        type: 'octNode',
-        position: pos,
-        data: { label: n.label, shape: n.shape ?? 'rect', colorScheme } satisfies OCTNodeData,
-      };
-    });
+  const titleH = title ? 28 : 0;
+  const svgW = (maxX - minX) + PAD * 2;
+  const svgH = (maxY - minY) + PAD * 2 + titleH;
+  const ox = PAD - minX;   // origin offset
+  const oy = PAD - minY + titleH;
 
-    const rfEdges: Edge[] = (data.edges ?? []).map((e, i) => ({
-      id: `e${i}`,
-      source: e.source,
-      target: e.target,
-      label: e.label,
-      type: 'smoothstep',
-      animated: false,
-      style: { stroke: 'var(--mermaid-line, #8ea2ff)', strokeWidth: 1.5 },
-      labelStyle: { fill: 'var(--text-secondary)', fontSize: 12 },
-      labelBgStyle: { fill: 'var(--bg-panel)', fillOpacity: 0.85 },
-      ...(e.style === 'dashed' ? { strokeDasharray: '5,4' } : {}),
-    }));
+  const lines: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">`,
+    `<rect width="100%" height="100%" fill="#0d1117"/>`,
+  ];
 
-    return { rfNodes, rfEdges };
-  }, [data]);
-
-  const onInit = useCallback((instance: any) => {
-    // fitView after a short delay so the layout has settled
-    setTimeout(() => instance.fitView({ padding: 0.18, duration: 300 }), 60);
-  }, []);
-
-  if (!data) {
-    return (
-      <div className="oct-rf-error">
-        <span>⚠ 无法解析图表数据</span>
-        <pre>{content}</pre>
-      </div>
+  if (title) {
+    lines.push(
+      `<text x="${svgW / 2}" y="20" text-anchor="middle" font-family="sans-serif" ` +
+      `font-size="14" font-weight="600" fill="#c9d1d9">${escXml(title)}</text>`
     );
   }
 
+  // Edges (draw behind nodes)
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  edges.forEach((e) => {
+    const s = nodeMap.get(e.source);
+    const t = nodeMap.get(e.target);
+    if (!s || !t) return;
+    const sw = (s.measured?.width  ?? s.width  ?? NW);
+    const sh = (s.measured?.height ?? s.height ?? NH);
+    const tw = (t.measured?.width  ?? t.width  ?? NW);
+    const th = (t.measured?.height ?? t.height ?? NH);
+    const x1 = s.position.x + sw / 2 + ox;
+    const y1 = s.position.y + sh / 2 + oy;
+    const x2 = t.position.x + tw / 2 + ox;
+    const y2 = t.position.y + th / 2 + oy;
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    const edgeLabel = typeof e.label === 'string' ? e.label : '';
+    lines.push(
+      `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ` +
+      `fill="none" stroke="#4a7fa8" stroke-width="1.5" marker-end="url(#arr)"/>`
+    );
+    if (edgeLabel) {
+      lines.push(
+        `<text x="${mx}" y="${my - 4}" text-anchor="middle" font-family="sans-serif" ` +
+        `font-size="11" fill="#8b949e">${escXml(edgeLabel)}</text>`
+      );
+    }
+  });
+
+  // Nodes
+  nodes.forEach((n) => {
+    const w  = (n.measured?.width  ?? n.width  ?? NW);
+    const h  = (n.measured?.height ?? n.height ?? NH);
+    const x  = n.position.x + ox;
+    const y  = n.position.y + oy;
+    const cs = (n.data as OCTNodeData).colorScheme;
+    // color-mix() isn't understood by SVG renderers — use flat fallback colour
+    const bg     = '#1c2a38';
+    const border = cs?.border ?? '#4a7fa8';
+    const label  = String((n.data as OCTNodeData).label ?? n.id);
+    lines.push(
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${R}" ry="${R}" ` +
+      `fill="${bg}" stroke="${border}" stroke-width="1.5"/>`,
+      `<text x="${x + w / 2}" y="${y + h / 2 + 5}" text-anchor="middle" ` +
+      `font-family="sans-serif" font-size="12" font-weight="600" fill="#e6edf3">${escXml(label)}</text>`
+    );
+  });
+
+  lines.push(
+    `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" ` +
+    `markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#4a7fa8"/></marker></defs>`,
+    `</svg>`
+  );
+  return lines.join('\n');
+}
+
+function escXml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function svgToPng(svgStr: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const img  = new Image();
+    img.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width  = img.naturalWidth  * scale;
+      canvas.height = img.naturalHeight * scale;
+      const ctx = canvas.getContext('2d')!;
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('SVG render failed')); };
+    img.src = url;
+  });
+}
+
+// ─── Inner canvas (needs to be inside ReactFlowProvider to use useReactFlow) ──
+
+interface FlowCanvasProps {
+  rfNodes: Node[];
+  rfEdges: Edge[];
+  title?: string;
+}
+
+function FlowCanvas({ rfNodes, rfEdges, title }: FlowCanvasProps) {
+  const { fitView, getNodes, getEdges } = useReactFlow();
+  const [exporting, setExporting] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const { onNodeInspect } = useCanvas();
+
+  // Re-centre whenever the node/edge set changes (e.g. after initial mount)
+  useEffect(() => {
+    const t = setTimeout(() => fitView({ padding: 0.18, duration: 300 }), 150);
+    return () => clearTimeout(t);
+  }, [rfNodes, rfEdges, fitView]);
+
+  // Clear selection when graph data changes
+  useEffect(() => { setSelectedNodeId(null); }, [rfNodes]);
+
+  const handleNodeClick: NodeMouseHandler = useCallback((_evt, node) => {
+    const nodeData = node.data as OCTNodeData;
+    setSelectedNodeId(node.id);
+    onNodeInspect?.(nodeData.label, nodeData.group);
+  }, [onNodeInspect]);
+
+  // Inject selected flag into node data
+  const displayNodes = useMemo(
+    () => rfNodes.map((n) => ({
+      ...n,
+      data: { ...n.data, selected: n.id === selectedNodeId },
+    })),
+    [rfNodes, selectedNodeId]
+  );
+
+  const handleExport = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      // Use measured node positions/sizes from live React Flow state
+      const liveNodes = getNodes();
+      const liveEdges = getEdges();
+      const svgStr = buildExportSvg(liveNodes, liveEdges, title);
+      if (!svgStr) return;
+      const pngUrl = await svgToPng(svgStr);
+      const a = document.createElement('a');
+      a.href = pngUrl;
+      a.download = `reactflow-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.warn('[ReactFlowRenderer] Export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, getNodes, getEdges, title]);
+
   return (
     <div className="oct-rf-wrapper">
-      {data.title && <div className="oct-rf-title">{data.title}</div>}
+      <div className="oct-rf-titlebar">
+        {title
+          ? <span className="oct-rf-title">{title}</span>
+          : <span />
+        }
+        <button
+          className="oct-rf-export-btn"
+          onClick={handleExport}
+          disabled={exporting}
+          title="Export as PNG"
+        >
+          {exporting ? 'Exporting…' : 'PNG'}
+        </button>
+      </div>
       <div className="oct-rf-canvas">
         <ReactFlow
-          nodes={rfNodes}
+          nodes={displayNodes}
           edges={rfEdges}
           nodeTypes={NODE_TYPES}
-          onInit={onInit}
+          onNodeClick={handleNodeClick}
           fitView
           fitViewOptions={{ padding: 0.18 }}
           minZoom={0.2}
@@ -273,5 +424,68 @@ export default function ReactFlowRenderer({ content }: ReactFlowRendererProps) {
         </ReactFlow>
       </div>
     </div>
+  );
+}
+
+// ─── Main renderer ────────────────────────────────────────────────────────────
+
+export default function ReactFlowRenderer({ content }: ReactFlowRendererProps) {
+  const data = useMemo(() => parseContent(content), [content]);
+
+  const { rfNodes, rfEdges } = useMemo(() => {
+    if (!data || !Array.isArray(data.nodes)) return { rfNodes: [], rfEdges: [] };
+
+    const direction = (data.direction ?? 'LR') as 'LR' | 'TB' | 'RL' | 'BT';
+    const positions = computeLayout(data.nodes, data.edges ?? [], direction);
+
+    // Map group names → colour index
+    const groupIndex = new Map<string, number>();
+    data.nodes.forEach((n) => {
+      if (n.group && !groupIndex.has(n.group)) {
+        groupIndex.set(n.group, groupIndex.size % GROUP_PALETTE.length);
+      }
+    });
+
+    const rfNodes: Node[] = data.nodes.map((n) => {
+      const pos = positions.get(n.id) ?? { x: 0, y: 0 };
+      const idx = n.group != null ? (groupIndex.get(n.group) ?? 0) : 0;
+      const colorScheme = GROUP_PALETTE[idx];
+      return {
+        id: n.id,
+        type: 'octNode',
+        position: pos,
+        data: { label: n.label, group: n.group, shape: n.shape ?? 'rect', colorScheme } satisfies OCTNodeData,
+      };
+    });
+
+    const rfEdges: Edge[] = (data.edges ?? []).map((e, i) => ({
+      id: `e${i}`,
+      source: e.source,
+      target: e.target,
+      label: e.label,
+      type: 'smoothstep',
+      animated: false,
+      style: { stroke: 'var(--mermaid-line, #8ea2ff)', strokeWidth: 1.5 },
+      labelStyle: { fill: 'var(--text-secondary)', fontSize: 12 },
+      labelBgStyle: { fill: 'var(--bg-panel)', fillOpacity: 0.85 },
+      ...(e.style === 'dashed' ? { strokeDasharray: '5,4' } : {}),
+    }));
+
+    return { rfNodes, rfEdges };
+  }, [data]);
+
+  if (!data) {
+    return (
+      <div className="oct-rf-error">
+        <span>⚠ 无法解析图表数据</span>
+        <pre>{content}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <ReactFlowProvider>
+      <FlowCanvas rfNodes={rfNodes} rfEdges={rfEdges} title={data.title} />
+    </ReactFlowProvider>
   );
 }

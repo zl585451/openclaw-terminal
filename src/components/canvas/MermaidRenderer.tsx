@@ -3,7 +3,7 @@ import mermaid from 'mermaid';
 import { useTheme } from '../../themes/ThemeProvider';
 
 const renderCache = new Map<string, string>();
-const CACHE_VERSION = 'v9'; // bump when source normalization or polishSvg logic changes
+const CACHE_VERSION = 'v10'; // bump when source normalization or polishSvg logic changes
 // Guard: only call mermaid.initialize() when theme+compact actually changes.
 // mermaid.initialize() is synchronous and rebuilds global config — no need to
 // repeat it for every cache-hit render or StrictMode re-invoke.
@@ -37,6 +37,14 @@ function normalizeMermaidSource(source: string): string {
 
   // Common AI mistake: empty stadium nodes like A([]) or malformed placeholder labels.
   next = next.replace(/\b([A-Za-z][A-Za-z0-9_]*)\(\[\]\)/g, (_m, id) => `${id}["${id}"]`);
+
+  // AI often writes multi-line node labels: ["客户端\nSYN_SEND"] or ["line1\nline2"].
+  // Mermaid renders both lines but node height is fixed — the second line is clipped.
+  // Fix: replace \n (both the literal escape sequence and real newlines) inside any
+  // double-quoted string with a single space, keeping all content on one line.
+  next = next.replace(/"([^"]*?)"/g, (_m, inner) =>
+    '"' + inner.replace(/\\n/g, ' ').replace(/\n/g, ' ').trim() + '"'
+  );
 
   return next.trim();
 }
@@ -135,14 +143,26 @@ function polishSvg(rawSvg: string, compact: boolean): string {
     const themeText   = cssVar('--mermaid-node-text',    '#f5f7ff');
     const themeEdge   = cssVar('--mermaid-line',         themeStroke);
 
+    // Helper: strip fill/stroke from style="" attribute, return cleaned string
+    const stripStyleColors = (styleAttr: string) =>
+      styleAttr
+        .replace(/\bfill\s*:[^;]+;?/gi, '')
+        .replace(/\bstroke\s*:[^;]+;?/gi, '')
+        .trim();
+
     svgEl.querySelectorAll<SVGElement>('.node rect, .node circle, .node ellipse, .node polygon').forEach((shape) => {
-      const inlineFill = shape.getAttribute('fill');
-      // Only overwrite if the AI explicitly injected a non-default colour that
-      // differs from the theme. We detect "AI injection" by checking whether the
-      // fill is not already a CSS var reference and not transparent/none.
-      if (inlineFill && inlineFill !== 'none' && !inlineFill.startsWith('var(')) {
+      const inlineFill  = shape.getAttribute('fill') ?? '';
+      const styleAttr   = shape.getAttribute('style') ?? '';
+      const hasFillAttr = inlineFill && inlineFill !== 'none' && !inlineFill.startsWith('var(');
+      // Mermaid may inject colors via style="fill:#xxx" rather than fill="" attribute
+      const hasFillStyle = /\bfill\s*:/.test(styleAttr);
+
+      if (hasFillAttr || hasFillStyle) {
         shape.setAttribute('fill',   themeFill);
         shape.setAttribute('stroke', themeStroke);
+        const cleaned = stripStyleColors(styleAttr);
+        if (cleaned) shape.setAttribute('style', cleaned);
+        else shape.removeAttribute('style');
       }
       shape.setAttribute('rx', nodeRadius);
       shape.setAttribute('ry', nodeRadius);
@@ -150,17 +170,29 @@ function polishSvg(rawSvg: string, compact: boolean): string {
 
     // Restore text colour on nodes that may have been re-coloured
     svgEl.querySelectorAll<SVGElement>('.node .label text, .node .label tspan').forEach((t) => {
-      const inlineFill = t.getAttribute('fill');
-      if (inlineFill && inlineFill !== 'none' && !inlineFill.startsWith('var(')) {
+      const inlineFill = t.getAttribute('fill') ?? '';
+      const styleAttr  = t.getAttribute('style') ?? '';
+      const hasFillAttr  = inlineFill && inlineFill !== 'none' && !inlineFill.startsWith('var(');
+      const hasFillStyle = /\bfill\s*:/.test(styleAttr);
+      if (hasFillAttr || hasFillStyle) {
         t.setAttribute('fill', themeText);
+        const cleaned = stripStyleColors(styleAttr);
+        if (cleaned) t.setAttribute('style', cleaned);
+        else t.removeAttribute('style');
       }
     });
 
     // Restore edge/link colours
     svgEl.querySelectorAll<SVGElement>('.edgePath path, .flowchart-link').forEach((path) => {
-      const inlineStroke = path.getAttribute('stroke');
-      if (inlineStroke && inlineStroke !== 'none' && !inlineStroke.startsWith('var(')) {
+      const inlineStroke = path.getAttribute('stroke') ?? '';
+      const styleAttr    = path.getAttribute('style') ?? '';
+      const hasStrokeAttr  = inlineStroke && inlineStroke !== 'none' && !inlineStroke.startsWith('var(');
+      const hasStrokeStyle = /\bstroke\s*:/.test(styleAttr);
+      if (hasStrokeAttr || hasStrokeStyle) {
         path.setAttribute('stroke', themeEdge);
+        const cleaned = stripStyleColors(styleAttr);
+        if (cleaned) path.setAttribute('style', cleaned);
+        else path.removeAttribute('style');
       }
     });
 
@@ -237,8 +269,10 @@ export default function MermaidRenderer({
     if (!svgNode) return null;
 
     const viewBox = svgNode.viewBox?.baseVal;
-    const rawWidth = viewBox?.width || svgNode.getBBox?.().width || svgNode.clientWidth;
-    const rawHeight = viewBox?.height || svgNode.getBBox?.().height || svgNode.clientHeight;
+    // viewBox values are unaffected by CSS zoom — prefer them.
+    // getBBox() returns intrinsic geometry; clientWidth is zoom-scaled (avoid as fallback).
+    const rawWidth  = (viewBox?.width  || 0) || svgNode.getBBox?.().width  || svgNode.clientWidth;
+    const rawHeight = (viewBox?.height || 0) || svgNode.getBBox?.().height || svgNode.clientHeight;
     if (!rawWidth || !rawHeight) return null;
 
     return { stageWidth: stage.clientWidth, stageHeight: stage.clientHeight, rawWidth, rawHeight };
@@ -481,10 +515,7 @@ export default function MermaidRenderer({
         ) : (
           <div
             className="canvas-mermaid-zoom"
-            style={{
-              transform: `scale(${zoom})`,
-              transformOrigin: 'top center',
-            }}
+            style={{ zoom }}
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         )}

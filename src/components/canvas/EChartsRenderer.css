@@ -1,0 +1,85 @@
+/* ── EChartsRenderer — OCT 主题适配 ─────────────────────────────────────── */
+
+.oct-ec-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--mermaid-stage-bg, var(--bg-code));
+}
+
+/* ── Titlebar (mirrors ReactFlowRenderer) ────────────────────────────────── */
+
+.oct-ec-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 0;
+  flex-shrink: 0;
+}
+
+.oct-ec-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  letter-spacing: 0.02em;
+}
+
+.oct-ec-export-btn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-family: var(--font-sans);
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.oct-ec-export-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+.oct-ec-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Chart area ──────────────────────────────────────────────────────────── */
+
+.oct-ec-canvas {
+  flex: 1;
+  min-height: 360px;   /* hard floor so ECharts sees a non-zero height on init */
+  padding: 8px 12px 12px;
+  /* Explicit height so child height:100% resolves correctly */
+  height: 0;           /* combined with flex:1 this makes 100% children work */
+  box-sizing: border-box;
+}
+
+/* ReactECharts renders a single wrapping div — fill the padded area */
+.oct-ec-canvas > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ── Error state ─────────────────────────────────────────────────────────── */
+
+.oct-ec-error {
+  padding: 24px;
+  color: var(--status-warning, #ffab40);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.oct-ec-error pre {
+  margin-top: 12px;
+  background: var(--bg-code);
+  padding: 12px;
+  border-radius: 8px;
+  overflow: auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+}

@@ -19,6 +19,7 @@ import { BlockIngest } from '../../core/blockIngest';
 import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { useCanvasBridge } from '../../hooks/useCanvasBridge';
+import { useCanvas } from '../../contexts/CanvasContext';
 // playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
 import { extractAssistantCotAndMain } from '../../utils/cotExtract';
@@ -121,6 +122,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
   const canvasBridge = useCanvasBridge();
+  const { setNodeInspectHandler } = useCanvas();
 
   const mdComponents = useMemo(
     () => createMarkdownComponents(canvasBridge.openCanvas),
@@ -224,6 +226,19 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     streamSpeedMs,
     onStatusChange,
   });
+
+  // Register the chat's quickSend as the node-inspect handler so Canvas
+  // renderers can trigger "explain this node" queries without prop drilling.
+  // useEffect keeps registration in sync if quickSend identity changes.
+  useEffect(() => {
+    setNodeInspectHandler((nodeLabel: string, nodeGroup?: string) => {
+      const groupHint = nodeGroup ? `（所属分组：${nodeGroup}）` : '';
+      msgs.quickSend(`请详细说明节点「${nodeLabel}」${groupHint}的含义、作用及与其他节点的关系。`);
+    });
+    return () => setNodeInspectHandler(null);
+  // msgs.quickSend is stable (useCallback), setNodeInspectHandler is stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setNodeInspectHandler]);
 
   const scroll = useScrollManager({
     fsm: oct.fsm,

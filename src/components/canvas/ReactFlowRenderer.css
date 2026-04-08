@@ -16,14 +16,42 @@
   background: var(--mermaid-stage-bg, var(--bg-code));
 }
 
-.oct-rf-title {
+.oct-rf-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 10px 16px 0;
+  flex-shrink: 0;
+}
+
+.oct-rf-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   font-family: var(--font-sans);
   letter-spacing: 0.02em;
-  flex-shrink: 0;
+}
+
+.oct-rf-export-btn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-family: var(--font-sans);
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.oct-rf-export-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+.oct-rf-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .oct-rf-canvas {
@@ -66,11 +94,39 @@
   /* subtle glass feel */
   backdrop-filter: blur(4px);
   transition: box-shadow 0.15s ease, transform 0.1s ease;
+  position: relative;
 }
 
 .oct-rf-node:hover {
   box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 30%, transparent);
   transform: translateY(-1px);
+  cursor: pointer;
+}
+
+/* Selected / AI-inspect active state */
+.oct-rf-node--selected {
+  box-shadow:
+    0 0 0 2px var(--accent-primary, #5b8af5),
+    0 0 12px 2px color-mix(in srgb, var(--accent-primary, #5b8af5) 40%, transparent);
+  transform: translateY(-1px);
+  z-index: 10;
+}
+
+/* 💬 badge shown on selected node */
+.oct-rf-node-inspect-hint {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  font-size: 14px;
+  line-height: 1;
+  pointer-events: none;
+  animation: oct-rf-bounce 0.5s ease;
+}
+
+@keyframes oct-rf-bounce {
+  0%   { transform: scale(0.5) translateY(4px); opacity: 0; }
+  60%  { transform: scale(1.2) translateY(-2px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 .oct-rf-node-label {

@@ -141,6 +141,8 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xyflow/react": "^12.10.2",
     "dotenv": "^16.3.1",
+    "echarts": "^6.0.0",
+    "echarts-for-react": "^3.0.6",
     "katex": "^0.16.45",
     "mermaid": "^11.14.0",
     "node-pty": "^1.1.0",

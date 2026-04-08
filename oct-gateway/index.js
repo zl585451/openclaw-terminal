@@ -24,6 +24,7 @@ const clarificationMemory = require('./clarification_memory');
 const nocturneQueue = require('./nocturne_task_queue');
 const aiLibrary = require('./tools/ai_library');
 const orchestrator = require('./orchestrator');
+const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
 const { createLogger } = require('./logger');
 const log = createLogger('gateway');
@@ -729,17 +730,23 @@ wss.on('connection', (ws) => {
             ...recentContextTexts.flatMap((text) => extractMemorySearchTerms(text).slice(0, 2)),
           ];
 
-          // 2. 去重搜索；弱指代场景稍微放宽一点。
+          // 2. 去重搜索；弱指代场景稍微放宽一点。并行化，加速首字
           const searchWords = [...new Set(entityWords)].slice(0, recallIntent ? 5 : 3);
           const memContents = [];
           const seenUris = new Set();
 
-          for (const word of searchWords) {
-            const r = await memorySearch.searchMemory(word, {
-              domain: 'core',
-              limit: recallIntent ? 3 : 2,
-              include_content: true,
-            });
+          // 并行发起所有搜索请求，而非串行 await（大幅降低首字延迟）
+          const searchResults = await Promise.all(
+            searchWords.map(word =>
+              memorySearch.searchMemory(word, {
+                domain: 'core',
+                limit: recallIntent ? 3 : 2,
+                include_content: true,
+              }).catch(() => ({ ok: false, data: null }))
+            )
+          );
+
+          for (const r of searchResults) {
             if (!r.ok || !r.data) continue;
             for (const item of r.data) {
               if (seenUris.has(item.uri)) continue;
@@ -879,27 +886,17 @@ wss.on('connection', (ws) => {
       );
 
       const systemPrompt = await systemPromptReady;
-      let history = session.getHistory(sessionKey);
+      const history = session.getHistory(sessionKey);
 
-      // 对话历史限制：最多保留最近 20 条消息
-      const MAX_HISTORY_MESSAGES = 20;
-      if (history.length > MAX_HISTORY_MESSAGES) {
-        history = [
-          history[0],
-          ...history.slice(-(MAX_HISTORY_MESSAGES - 1)),
-        ];
-        log.info('[Gateway] 历史消息已截断', { original: session.getHistory(sessionKey).length, kept: history.length });
-      }
-
-      // 假设验证（异步，不阻塞主流程）
+      // 假设验证（非阻塞：不 await，后台进行，不影响首字延迟）
       let hypothesisResult = null;
-      // 只对非斜杠命令、消息长度合适的情况触发
       if (!userMessage.startsWith('/') && userMessage.length > 15) {
-        hypothesisResult = await hypothesis.selectBestApproach(
-          userMessage,
-          systemPrompt,
-          history.slice(-6)
-        ).catch(() => null);
+        // 设置 2 秒超时，避免阻塞
+        hypothesis.selectBestApproach(userMessage, systemPrompt, history.slice(-6))
+          .then(result => {
+            if (result) hypothesisResult = result;  // 仅作为改进，不阻塞
+          })
+          .catch(() => {});  // 失败忽略
       }
 
       // 如果假设验证建议质疑，注入到系统提示
@@ -948,11 +945,11 @@ wss.on('connection', (ws) => {
         log.debug('AI.library 检索失败，跳过', { error: e?.message || String(e) });
       }
 
-      const messages = [
-        { role: 'system', content: modelContext + finalSystemPrompt + timeContext + knowledgeContext },
-        ...history.slice(0, -1).map(h => ({ role: h.role, content: h.content })),
-        { role: 'user', content: lastUserMsg },
-      ];
+      // 智能上下文窗口：前 3 轮完整 + 中间段压缩 + 后 6 轮完整
+      // 详见 context_manager.js
+      const fullSystemPrompt = modelContext + finalSystemPrompt + timeContext + knowledgeContext;
+      const messages = contextManager.buildApiMessages(history, fullSystemPrompt, lastUserMsg);
+      log.info('context window', contextManager.summarize(messages));
 
       const taskContext = orchestrator.getCompletedTasksContext(sessionKey);
       if (taskContext) {

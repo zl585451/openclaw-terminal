@@ -702,7 +702,10 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     isMobileViewport = false,
   } = props;
 
+  // showCotInline: finalized CoT (not streaming) — show full summarized content
   const showCotInline = msg.role === 'assistant' && !isStreamingMsg && cotContent != null;
+  // showCotStreaming: CoT is actively being streamed right now
+  const showCotStreaming = msg.role === 'assistant' && isStreamingMsg && !!cotStreaming && cotContent != null;
   const displayCotContent = showCotInline
     ? summarizeCotForDisplay(cotContent, textToShow || raw || '', { compact: isMobileViewport })
     : null;
@@ -710,8 +713,9 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     msg.role === 'assistant' &&
     isStreamingMsg &&
     !inlineThinkingPlaceholder &&
+    !showCotStreaming &&  // suppress badge when real CoT is streaming
     agentPhase === 'thinking';
-  const showHeaderBand = showCotInline || inlineThinkingPlaceholder || showLightweightThinkingBadge;
+  const showHeaderBand = showCotInline || showCotStreaming || inlineThinkingPlaceholder || showLightweightThinkingBadge;
 
   return (
     <MessageRow
@@ -732,8 +736,12 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
           />
           <div className="cot-stream-wrapper cot-stream-wrapper--header-inline">
             <CoTBlock
-              content={showCotInline ? (displayCotContent ?? cotContent ?? '') : ''}
-              isStreaming={inlineThinkingPlaceholder || showLightweightThinkingBadge || !!cotStreaming}
+              content={
+                showCotInline    ? (displayCotContent ?? cotContent ?? '')
+                : showCotStreaming ? (cotContent ?? '')
+                : ''
+              }
+              isStreaming={inlineThinkingPlaceholder || showLightweightThinkingBadge || showCotStreaming}
               isPlaceholder={inlineThinkingPlaceholder}
               compactStreaming={showLightweightThinkingBadge}
               labelOverride={showLightweightThinkingBadge ? '思考中' : undefined}
@@ -1068,8 +1076,8 @@ export const ChatMessageList = function ChatMessageList({
             streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
             usePlainStreamingText={usePlainStreamingText}
               markdownComponents={markdownComponents}
-            cotContent={msg.role === 'assistant' && !isStreamingMsg ? streamingCotContent : undefined}
-              cotStreaming={false}
+            cotContent={msg.role === 'assistant' && streamingCotContent != null ? streamingCotContent : undefined}
+              cotStreaming={isStreamingMsg && !!streamingCotContent}
               inlineThinkingPlaceholder={inlineThinkingPlaceholder}
               isMobileViewport={isMobileViewport}
             />

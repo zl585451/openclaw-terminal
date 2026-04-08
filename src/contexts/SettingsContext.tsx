@@ -101,11 +101,15 @@ const DEFAULT: Settings = {
 
 const STORAGE_KEY = 'claw-terminal-settings';
 // 打字机速度：毫秒/字（时间驱动，不依赖帧率）
-// 平衡流畅感和速度：既要有打字机动画，又不能让人着急
+// step cap = 3 chars/tick, tick interval ≈ 24ms
+// → chars/sec = (budget / effectiveMs) capped at step_cap
+// fast:   effectiveMs=8  → budget=3.0/tick → 3chars × 42ticks/s ≈ 125 chars/s
+// medium: effectiveMs=18 → budget=1.3/tick → 1-2chars × 42ticks/s ≈ 50 chars/s
+// slow:   effectiveMs=36 → budget=0.67/tick → 1char  every 2 ticks ≈ 22 chars/s
 const SPEED_MS: Record<StreamSpeed, number> = {
-  fast: 4,     // 快速：更接近 Claude/GPT 的连续感
-  medium: 10,  // 适中：有流动感，仍能看出打字动画
-  slow: 18,    // 慢速：保留节奏感
+  fast: 8,    // 快速：流畅连续，适合快节奏阅读（≈125字/秒）
+  medium: 18, // 适中：有节奏感，清晰可见打字动画（≈50字/秒）
+  slow: 36,   // 慢速：逐字出现，适合慢读或演示（≈22字/秒）
 };
 
 function applyThemeVars(vars: ThemeVars) {
