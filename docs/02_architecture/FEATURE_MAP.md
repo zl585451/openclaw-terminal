@@ -1,8 +1,8 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-06（语音能力路由产品化：云端 TTS 按当前 Provider 能力启用）  
-> **详细说明**：查看 `docs/feature-map/` 文件夹中的分模块文档
+> **最后更新**：2026-04-08（新增 AI 入口层，修正文档入口与当前实现关系）  
+> **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
 
@@ -10,28 +10,29 @@
 
 | 层级 | 模块 | 文件 |
 |------|------|------|
-| 第一层 | 基础设施 | [`01_infrastructure.md`](./feature-map/01_infrastructure.md) |
-| 第二层 | 对话后自动处理管线 | [`02_auto_pipeline.md`](./feature-map/02_auto_pipeline.md) |
-| 第三层 | 前置思考管线 | [`03_hypothesis.md`](./feature-map/03_hypothesis.md) |
-| 第四层 | 记忆搜索与启动加载 | [`04_memory_search.md`](./feature-map/04_memory_search.md) |
-| 第五层 | 图片处理 | [`05_image.md`](./feature-map/05_image.md) |
-| 第六层 | Slash 命令 | [`06_commands.md`](./feature-map/06_commands.md) |
-| 第七层 | Electron 桌面应用 | [`07_electron.md`](./feature-map/07_electron.md) |
-| 第八层 | 提示词系统 | [`08_prompts.md`](./feature-map/08_prompts.md) |
-| 第九层 | 工具系统 | [`09_tools.md`](./feature-map/09_tools.md) |
+| **AI 协作** | 入口总览 | [`../00_ai_entry/README.md`](../00_ai_entry/README.md) |
+| **AI 协作** | 聊天流式入口 | [`../00_ai_entry/chat-stream-entry.md`](../00_ai_entry/chat-stream-entry.md) |
+| **AI 协作** | 图片链路入口 | [`../00_ai_entry/image-flow-entry.md`](../00_ai_entry/image-flow-entry.md) |
+| **AI 协作** | 音频链路入口 | [`../00_ai_entry/audio-entry.md`](../00_ai_entry/audio-entry.md) |
+| **AI 协作** | 排错顺序 | [`../00_ai_entry/bug-triage.md`](../00_ai_entry/bug-triage.md) |
+| 第一层 | Gateway/基础设施 | [`01-gateway.md`](./01-gateway.md) |
+| 第二层 | 对话后自动处理管线 | [`02-auto-pipeline.md`](./02-auto-pipeline.md) |
+| 第三层 | 前置思考管线 | [`03-hypothesis.md`](./03-hypothesis.md) |
+| 第四层 | 记忆搜索与启动加载 | [`04-memory-search.md`](./04-memory-search.md) |
+| 第五层 | 图片处理 | [`05-image-file.md`](./05-image-file.md) |
+| 第六层 | Slash 命令 | [`06-slash-commands.md`](./06-slash-commands.md) |
+| 第七层 | Electron 桌面应用 | [`07-electron.md`](./07-electron.md) |
+| 第八层 | 提示词系统 | [`08-prompts.md`](./08-prompts.md) |
+| 第九层 | 工具系统 | [`09-tools.md`](./09-tools.md) |
+| 附录 | 数据流向 | [`98_data_flow.md`](./98_data_flow.md) |
+| 附录 | Provider 系统 | [`provider-system.md`](./provider-system.md) |
 | 附录 | AI.library 集成 | [`AI_LIBRARY_OCT.md`](./AI_LIBRARY_OCT.md) |
-| 附录 | Provider 系统 | [`provider-system.md`](./feature-map/provider-system.md) |
-| 附录 | 已知问题 | [`99_known_issues.md`](./feature-map/99_known_issues.md) |
-| 附录 | 数据流向 | [`98_data_flow.md`](./feature-map/98_data_flow.md) |
 | **AI 协作** | 项目总览 | [`AI_PROJECT_OVERVIEW.md`](./AI_PROJECT_OVERVIEW.md) |
-| **AI 协作** | IPC 通道 | [`ELECTRON_IPC_CHANNELS.md`](./ELECTRON_IPC_CHANNELS.md) |
-| **AI 协作** | WebSocket 协议 | [`WEBSOCKET_PROTOCOL.md`](./WEBSOCKET_PROTOCOL.md) |
-| **AI 协作** | 提示词加载 | [`PROMPT_LOADING_ORDER.md`](./PROMPT_LOADING_ORDER.md) |
-| **AI 协作** | 选项框解析 | [`OPTIONBOX_PARSER_REFERENCE.md`](./OPTIONBOX_PARSER_REFERENCE.md) |
-| **AI 协作** | Skills 目录 | [`SKILLS_DIRECTORY.md`](./SKILLS_DIRECTORY.md) |
-| **AI 协作** | 文档差距报告 | [`DOCUMENTATION_GAP_REPORT.md`](./DOCUMENTATION_GAP_REPORT.md) |
+| **AI 协作** | IPC 通道 | [`../03_specs/ELECTRON_IPC_CHANNELS.md`](../03_specs/ELECTRON_IPC_CHANNELS.md) |
+| **AI 协作** | WebSocket 协议 | [`../03_specs/WEBSOCKET_PROTOCOL.md`](../03_specs/WEBSOCKET_PROTOCOL.md) |
+| **AI 协作** | 文档差距报告（历史） | [`../03_specs/DOCUMENTATION_GAP_REPORT.md`](../03_specs/DOCUMENTATION_GAP_REPORT.md) |
 
-> AI 协作文档补全于 2026-03-24 · CURSOR
+> 注意：旧的 `feature-map/` 子目录引用已废弃，现已统一指向实际存在的文档路径。
 
 ---
 
@@ -195,4 +196,4 @@
 
 ---
 
-**📖 详细文档**：进入 [`docs/feature-map/`](./feature-map/) 查看各模块完整说明
+**📖 详细文档**：AI 排错优先进入 [`../00_ai_entry/README.md`](../00_ai_entry/README.md)，架构补充再看本目录各模块文档。

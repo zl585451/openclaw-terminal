@@ -1,4 +1,4 @@
-# OCT 系统提示词 v2.2.0
+# OCT 系统提示词 v2.3.0
 
 > 这是 OCT Terminal 的专属提示词系统，定义了产品默认人格模板、调度规则和前端交互协议。
 
@@ -7,8 +7,8 @@
 ## 📁 文件结构
 
 ```
-docs/01_系统提示词/
-├── README.md           ← 本文件（集成指南）
+docs/01_system_prompts/
+├── 00_README.md        ← 本文件（集成指南）
 ├── SOUL.md            ← 核心人格层（稳定）
 ├── AGENTS.md          ← 调度规则层（中频更新）
 ├── USER.md            ← 用户档案层（中频更新）
@@ -77,7 +77,7 @@ docs/01_系统提示词/
 const promptPath = 'C:\\Users\\zilong_wu\\.openclaw\\workspace\\AGENTS.md';
 
 // 新路径（OCT 内置）
-const promptPath = path.join(__dirname, '../docs/01_系统提示词');
+const promptPath = path.join(__dirname, '../docs/01_system_prompts');
 ```
 
 ### 步骤 2：合并提示词文件
@@ -89,7 +89,7 @@ const fs = require('fs');
 const path = require('path');
 
 function loadSystemPrompt() {
-  const promptDir = path.join(__dirname, '../docs/01_系统提示词');
+  const promptDir = path.join(__dirname, '../docs/01_system_prompts');
   
   const files = [
     'SOUL.md',
@@ -198,9 +198,12 @@ OCT 接下来应该优先做什么？
 
 ### 当前版本
 
-**v2.2.0** (2026-04-06) - 人格配置分层
+**v2.3.0** (2026-04-08) - 工程师 AI 文档入口规则
 
 **变更**：
+- 代码修改 / bug 排查任务新增 docs 入口层规则
+- 工程师 AI 执行代码前必须先看 `docs/00_ai_entry/README.md`
+- 修改完成后必须同步更新入口文档与 changelog
 - system prompt 改为“产品默认人格 + 用户可配置层”
 - 模板保留 `{{AI_NAME}}`、`{{USER_NAME}}`，运行时替换
 - 发布版默认不再绑定 `AMY / 少爷`

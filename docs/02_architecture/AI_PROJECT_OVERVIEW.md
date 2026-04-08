@@ -1,8 +1,10 @@
 # OCT 项目总览 · AI 协作入口
 
-> **最后更新时间**：2026-03-24  
+> **状态**：REFERENCE  
+> **最后更新时间**：2026-04-08  
 > **为谁而写**：AI 协作伙伴（Claude/Cursor/GPT 等）  
-> **用途**：快速理解项目结构、关键入口、目录映射，辅助修改/调试
+> **用途**：快速理解项目结构、关键入口、目录映射，辅助修改/调试  
+> **先读**：具体排错请先看 `docs/00_ai_entry/README.md`
 
 ---
 
@@ -46,7 +48,7 @@ OpenClaw-Terminal/
 │   ├── 05_changelog/       # 更新日志、修复报告
 │   ├── 06_release/         # 发布文档
 │   ├── 07_research/        # 研究文档
-│   ├── 08_for_claude/      # 给Claude的上下文
+│   ├── _archive/           # 历史资料、旧 review、旧重构稿、旧模型上下文
 │   ├── task-queue.md       # 运行时通信文件（不要移动）
 │   └── task-result.md      # 运行时通信文件（不要移动）
 ├── resources/          # Nocturne、打包资源
@@ -60,10 +62,11 @@ OpenClaw-Terminal/
 | 入口 | 文件 | 说明 |
 |------|------|------|
 | 应用启动 | `electron/main.ts` | 创建窗口、启动 Gateway、Nocturne、AI.library |
-| 消息收发 | `electron/main.ts` → `handleMessage` | 前端通过 openclaw-send 发消息，main 转发到 WebSocket |
+| 消息收发 | `electron/main.ts` → `openclaw-send` / `handleMessage` | 前端通过 openclaw-send 发消息，main 转发到 WebSocket |
 | Gateway 消息 | `oct-gateway/index.js` | 收到 `chat.send` → `handleSlashCommand` 或 `streamChat` |
 | AI 调用 | `oct-gateway/ai.js` → `streamChat` | 调用 Provider API、处理 tool_calls |
-| 前端渲染 | `src/components/ChatTab.tsx` | 渲染消息、调用 optionBoxParser 解析交互标签 |
+| 前端渲染 | `src/ui/chat/ChatTab.v2.tsx` | 当前聊天页宿主；实际流式显示主逻辑在 `useMessages.ts` |
+| 流式显示 | `src/hooks/useMessages.ts` | 当前真实的流式 UI 渲染、收尾、状态更新入口 |
 | 交互解析 | `src/utils/optionBoxParser.ts` | 解析 [pills]/[question]/[tasklist] 等成对标签 |
 
 ---
@@ -83,22 +86,19 @@ OpenClaw-Terminal/
 
 | 主题 | 文档 |
 |------|------|
-| 功能活地图 | `docs/FEATURE_MAP.md` |
-| 架构设计 | `docs/architecture/OCT_MAS_ARCHITECTURE.md` |
-| 交互协议 | `docs/01_system_prompts/OCT_PROTOCOL.md` |
-| 渲染标签 | `docs/RENDER_PROTOCOL.md` |
-| IPC 通道 | `docs/ELECTRON_IPC_CHANNELS.md` |
-| WebSocket 协议 | `docs/WEBSOCKET_PROTOCOL.md` |
-| 提示词加载 | `docs/PROMPT_LOADING_ORDER.md` |
-| 选项框解析 | `docs/OPTIONBOX_PARSER_REFERENCE.md` |
-| 工具列表 | `docs/feature-map/09_tools.md` |
-| Slash 命令 | `docs/feature-map/06_commands.md` |
+| AI 入口总览 | `docs/00_ai_entry/README.md` |
+| 聊天流式链路 | `docs/00_ai_entry/chat-stream-entry.md` |
+| 图片链路 | `docs/00_ai_entry/image-flow-entry.md` |
+| 音频链路 | `docs/00_ai_entry/audio-entry.md` |
+| 功能活地图 | `docs/02_architecture/FEATURE_MAP.md` |
+| IPC 通道 | `docs/03_specs/ELECTRON_IPC_CHANNELS.md` |
+| WebSocket 协议 | `docs/03_specs/WEBSOCKET_PROTOCOL.md` |
 
 ---
 
 ## 六、常见修改场景
 
-- **改交互协议**：改 `OCT_PROTOCOL.md`、`RENDER_PROTOCOL.md`，前端 `optionBoxParser.ts` 需对应
+- **改交互协议**：先看 `docs/00_ai_entry/chat-stream-entry.md` 和 `docs/03_specs/WEBSOCKET_PROTOCOL.md`
 - **加工具**：在 `oct-gateway/tools/` 新增 `.js` 文件，实现 `{ name, definition, execute }`
 - **加 Slash 命令**：在 `oct-gateway/index.js` 的 `handleSlashCommand` 中加分支
 - **加 IPC**：`electron/main.ts` 注册 `ipcMain.handle`，`electron/preload.ts` 暴露 API
