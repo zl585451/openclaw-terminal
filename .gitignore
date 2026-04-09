@@ -42,6 +42,7 @@ backups/
 .DS_Store
 
 # Claude Code 临时工作树（本地 IDE 工作区）
+.claude/
 .claude/worktrees/
 
 # 本机状态 / 不提交（仓库保持干净：单人+AI 本地配置与运行时数据）
