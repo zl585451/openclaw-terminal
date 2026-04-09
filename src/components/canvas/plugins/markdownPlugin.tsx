@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import MermaidRenderer from '../MermaidRenderer';
 import { markdownComponents } from '../../../ui/chat/markdownComponents';
+import { diagramSpecToMermaid, parseDiagramSpec } from '../../../utils/diagramSchema';
 import type { CanvasRendererPlugin } from './types';
 
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
@@ -21,6 +22,12 @@ const canvasMarkdownComponents = {
     if (isBlock && language === 'mermaid') {
       return <MermaidRenderer content={code} />;
     }
+    if (isBlock && language === 'json') {
+      const spec = parseDiagramSpec(code);
+      if (spec) {
+        return <MermaidRenderer content={diagramSpecToMermaid(spec)} />;
+      }
+    }
 
     const DefaultCode = baseMarkdownComponents.code;
     if (DefaultCode) {
@@ -36,6 +43,12 @@ const canvasMarkdownComponents = {
       const code = String(codeChildren ?? '').replace(/\n$/, '');
       if (language === 'mermaid') {
         return <MermaidRenderer content={code} />;
+      }
+      if (language === 'json') {
+        const spec = parseDiagramSpec(code);
+        if (spec) {
+          return <MermaidRenderer content={diagramSpecToMermaid(spec)} />;
+        }
       }
     }
 

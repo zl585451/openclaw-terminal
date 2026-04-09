@@ -367,12 +367,15 @@ export function useMessages({
     pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
       pendingFullTextSyncRafRef.current = null;
       const buf = fullTextRef.current;
+      const visibleMain = hasAssistantCotMarkers(buf)
+        ? extractAssistantCotAndMain(buf).mainContent
+        : buf;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
           return prev;
         }
-        if (!buf || !buf.trim()) return prev;
+        if (!visibleMain || !visibleMain.trim()) return prev;
         return [
           ...prev,
           {
@@ -761,6 +764,7 @@ export function useMessages({
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
+    setActiveTools([]);
     setStreak(touchStreak());
     setPendingPills(null);
     setMessages((prev) => {
@@ -862,6 +866,7 @@ export function useMessages({
       setAwaitingResponse(true);
       setAgentPhase('thinking');
     }
+    setActiveTools([]);
     setPendingPills(null);
     setMessages((prev) => {
       const next: ChatMessage[] = [

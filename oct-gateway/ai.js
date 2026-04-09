@@ -486,7 +486,14 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - 单次回复最多输出 2 个 Mermaid 图；超过 2 个时只保留最重要的，多余的不要提及也不要写”已省略”
   - 图表之外只补必要短说明；不要用散文重复解释图里已经表达的结构
   - code block 只用于真正的代码；关系/结构示意不允许放进代码块伪装成图示
-  - 如果 artifactType 是 diagram，content 必须是纯 Mermaid 定义，不要混入 Markdown 标题、表格、普通说明文字或 ASCII 线框图
+  - 如果 artifactType 是 diagram，content 优先使用纯 JSON 图定义（由系统自动转换成 Mermaid）；不要混入 Markdown 标题、表格、普通说明文字或 ASCII 线框图
+      · flowchart JSON 格式：
+        {"diagramType":"flowchart","title":"标题","direction":"TD","nodes":[{"id":"start","label":"开始"}],"edges":[{"from":"start","to":"end","label":"下一步"}]}
+      · pie JSON 格式：
+        {"diagramType":"pie","title":"标题","data":[{"label":"A","value":45},{"label":"B","value":25}]}
+      · hierarchy JSON 格式：
+        {"diagramType":"hierarchy","title":"标题","direction":"TD","items":[{"id":"root","label":"主节点"},{"id":"child_a","label":"子节点A","parentId":"root"}]}
+      · 只有在无法稳定给出上述 JSON 时，才退回纯 Mermaid DSL
   - 【严禁在节点 label 里换行】不论是聊天区还是 Canvas，Mermaid 节点标签内绝对禁止 \n 换行符
       · 错误：A["客户端\nSYN SEND"]   A["Step 1\nDetail"]
       · 正确：A["客户端 SYN SEND"]    A["Step1: Detail"]
@@ -532,7 +539,7 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - 只有在确实需要新增并行成果物时才调用 create
   - 简单问答不要滥用 canvas
   - artifact 类型选择规则：
-      · 简单线性流程（≤5步 flowchart / pie 占比）→ 直接在 chat 输出 Mermaid 代码块，不需要 canvas
+      · 简单线性流程（≤5步 flowchart / pie 占比 / 小型 hierarchy）→ 直接在 chat 输出 \`\`\`json 代码块（diagramType=flowchart/pie/hierarchy），系统会自动渲染成图，不需要 canvas
       · 【react-flow】以下场景必须用 react-flow，不得用 Mermaid 代替：
           - 结构图 / 组成图 / 层次图（任何描述"X由哪些部分组成"的图）
           - 架构图 / 模块关系 / 依赖图 / 组件关系图

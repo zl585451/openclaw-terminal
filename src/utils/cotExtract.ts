@@ -212,5 +212,12 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
 /** 用于 UI：是否应走「行内 CoT」分支（避免双指示器） */
 export function hasAssistantCotMarkers(text: string): boolean {
   if (!text) return false;
-  return text.includes(BRACKET_OPEN) || text.includes(THINK_OPEN) || text.includes(REDACTED_THINK_OPEN);
+  return (
+    text.includes(BRACKET_OPEN) ||
+    text.includes(BRACKET_CLOSE) ||
+    text.includes(THINK_OPEN) ||
+    text.includes(THINK_CLOSE) ||
+    text.includes(REDACTED_THINK_OPEN) ||
+    text.includes(REDACTED_THINK_CLOSE)
+  );
 }

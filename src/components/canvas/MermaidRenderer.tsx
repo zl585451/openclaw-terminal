@@ -207,41 +207,50 @@ function polishSvg(rawSvg: string, compact: boolean): string {
       }
     });
 
-    // For compact (chat) mode: bake the target dimensions into the SVG itself.
-    // This is more reliable than CSS transform scaling, which doesn't affect layout
-    // and causes the content to be clipped by overflow:hidden.
-    if (compact) {
-      const vbAttr = svgEl.getAttribute('viewBox');
-      if (vbAttr) {
-        const parts = vbAttr.trim().split(/[\s,]+/).map(Number);
-        if (parts.length >= 4 && !parts.some(Number.isNaN)) {
-          const [, , vbw, vbh] = parts;
-          if (vbw > 0 && vbh > 0) {
-            // Chat bubble: only scale DOWN to fit within 520×400.
-            // Never scale UP — upscaling inflates AI-generated large nodes even more.
-            // Small diagrams (e.g. 2-node TD chains) stay at their natural size;
-            // the stage centres them with flexbox.
-            const maxW = 520;
-            const maxH = 400;
-
-            // scale ≤ 1: only shrink, never enlarge
-            const scale = Math.min(maxW / vbw, maxH / vbh, 1);
-
-            svgEl.setAttribute('width', String(Math.round(vbw * scale)));
-            svgEl.setAttribute('height', String(Math.round(vbh * scale)));
-          }
-        }
-      }
-      // Remove Mermaid's inline max-width so our explicit dimensions take effect
-      const style = svgEl.getAttribute('style') ?? '';
-      const cleaned = style.replace(/max-width\s*:[^;]+;?\s*/gi, '').trim();
-      if (cleaned) svgEl.setAttribute('style', cleaned);
-      else svgEl.removeAttribute('style');
-    }
+    // Always remove Mermaid's inline max-width so our viewer controls can
+    // determine the final viewport size and zoom behavior.
+    const style = svgEl.getAttribute('style') ?? '';
+    const cleaned = style.replace(/max-width\s*:[^;]+;?\s*/gi, '').trim();
+    if (cleaned) svgEl.setAttribute('style', cleaned);
+    else svgEl.removeAttribute('style');
 
     return new XMLSerializer().serializeToString(svgEl);
   } catch {
     return rawSvg;
+  }
+}
+
+function getDiagramKind(source: string): string {
+  const firstDirective =
+    String(source || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith('%%')) || '';
+  const typeMatch = firstDirective.match(
+    /^(flowchart|graph|sequencediagram|classdiagram|erdiagram|statediagram(?:-v2)?|gantt|pie|mindmap|journey|timeline|quadrantchart|requirementdiagram|gitgraph)\b/i
+  );
+  return (typeMatch?.[1] || 'unknown').toLowerCase();
+}
+
+function getSvgBounds(rawSvg: string): { width: number; height: number } | null {
+  if (!rawSvg || typeof DOMParser === 'undefined') return null;
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawSvg, 'image/svg+xml');
+    const svgEl = doc.querySelector('svg');
+    if (!svgEl) return null;
+
+    const viewBox = svgEl.getAttribute('viewBox')?.trim().split(/\s+/).map(Number) || [];
+    const widthAttr = Number(svgEl.getAttribute('width'));
+    const heightAttr = Number(svgEl.getAttribute('height'));
+    const width = Number.isFinite(viewBox[2]) ? viewBox[2] : widthAttr;
+    const height = Number.isFinite(viewBox[3]) ? viewBox[3] : heightAttr;
+    if (!width || !height) return null;
+
+    return { width, height };
+  } catch {
+    return null;
   }
 }
 
@@ -255,12 +264,22 @@ export default function MermaidRenderer({
   const { themeId } = useTheme();
   const graphId = useId().replace(/:/g, '_');
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const fullShellRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number; dragging: boolean } | null>(null);
+  const manualZoomRef = useRef(false);
+  const zoomRafRef = useRef<number | null>(null);
   const [svg, setSvg] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [viewMode, setViewMode] = useState<'diagram' | 'code'>('diagram');
 
-  const clampZoom = (value: number) => Math.min(2.6, Math.max(0.55, value));
+  const source = normalizeMermaidSource(extractMermaidSource(content));
+  const diagramKind = getDiagramKind(source);
+  const isPieDiagram = diagramKind === 'pie';
+  const isHierarchyDiagram = diagramKind === 'hierarchy';
+  const svgBounds = getSvgBounds(svg);
+  const compactFitMaxZoom = 2.4;
+  const clampZoom = (value: number) => Math.min(compact ? 6 : 5, Math.max(compact ? 0.35 : 0.55, value));
 
   const getDiagramSize = () => {
     const stage = stageRef.current;
@@ -279,19 +298,79 @@ export default function MermaidRenderer({
   };
 
   const fitToStage = () => {
+    if (manualZoomRef.current) return;
     const size = getDiagramSize();
     if (!size) return;
     // 同时按宽度/高度适配，避免出现“下半区大片空白”。
-    const widthPaddingRatio = compact ? 0.9 : 0.94;
-    const heightPaddingRatio = compact ? 0.86 : 0.9;
+    const widthPaddingRatio = compact ? (isPieDiagram ? 0.96 : 0.94) : 0.94;
+    const heightPaddingRatio = compact ? (isPieDiagram ? 0.92 : 0.9) : 0.9;
     const scaleByWidth = (size.stageWidth * widthPaddingRatio) / size.rawWidth;
     const scaleByHeight = (size.stageHeight * heightPaddingRatio) / size.rawHeight;
-    const nextZoom = clampZoom(Math.min(scaleByWidth, scaleByHeight));
+    const nextZoom = compact
+      ? Math.min(compactFitMaxZoom, clampZoom(Math.min(scaleByWidth, scaleByHeight)))
+      : Math.min(1, clampZoom(Math.min(scaleByWidth, scaleByHeight)));
     setZoom(nextZoom);
+    if (!compact) {
+      requestAnimationFrame(() => {
+        const stage = stageRef.current;
+        if (!stage) return;
+        stage.scrollLeft = 0;
+        stage.scrollTop = 0;
+      });
+    }
+  };
+
+  const centerViewport = () => {
+    if (!compact) return;
+    if (manualZoomRef.current) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const maxLeft = Math.max(0, stage.scrollWidth - stage.clientWidth);
+    const maxTop = Math.max(0, stage.scrollHeight - stage.clientHeight);
+    stage.scrollLeft = Math.round(maxLeft / 2);
+    stage.scrollTop = compact ? 0 : Math.round(maxTop / 2);
+  };
+
+  const stepZoom = (direction: 1 | -1) => {
+    const stage = stageRef.current;
+    manualZoomRef.current = true;
+    setZoom((prev) => {
+      const factor = compact
+        ? (direction > 0 ? 1.35 : 1 / 1.35)
+        : (direction > 0 ? 1.22 : 1 / 1.22);
+      const next = clampZoom(prev * factor);
+      if (stage && next !== prev) {
+        if (compact) {
+          const centerX = stage.scrollLeft + stage.clientWidth / 2;
+          const centerY = stage.scrollTop + stage.clientHeight / 2;
+          const ratio = next / prev;
+          if (zoomRafRef.current) cancelAnimationFrame(zoomRafRef.current);
+          zoomRafRef.current = requestAnimationFrame(() => {
+            stage.scrollLeft = Math.max(0, centerX * ratio - stage.clientWidth / 2);
+            stage.scrollTop = Math.max(0, centerY * ratio - stage.clientHeight / 2);
+          });
+        } else if (svgBounds) {
+          const centerX = stage.scrollLeft + stage.clientWidth / 2;
+          const centerY = stage.scrollTop + stage.clientHeight / 2;
+          const ratio = next / prev;
+          if (zoomRafRef.current) cancelAnimationFrame(zoomRafRef.current);
+          zoomRafRef.current = requestAnimationFrame(() => {
+            stage.scrollLeft = Math.max(
+              0,
+              Math.min(centerX * ratio - stage.clientWidth / 2, Math.max(0, svgBounds.width * next - stage.clientWidth))
+            );
+            stage.scrollTop = Math.max(
+              0,
+              Math.min(centerY * ratio - stage.clientHeight / 2, Math.max(0, svgBounds.height * next - stage.clientHeight))
+            );
+          });
+        }
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
-    const source = normalizeMermaidSource(extractMermaidSource(content));
     let cancelled = false;
 
     async function renderDiagram() {
@@ -345,6 +424,7 @@ export default function MermaidRenderer({
           if (firstKey) renderCache.delete(firstKey);
         }
         if (!cancelled) {
+          manualZoomRef.current = false;
           setSvg(polishedSvg);
           setError(null);
           // fitToStage is called by the svg useEffect after React commits the DOM
@@ -365,92 +445,133 @@ export default function MermaidRenderer({
     return () => {
       cancelled = true;
     };
-  }, [compact, content, graphId, themeId]);
+  }, [compact, graphId, source, themeId]);
 
   // Fit after SVG is committed to DOM (ResizeObserver alone misses cases where
   // the stage size doesn't change, e.g. compact mode with a fixed min-height).
   useEffect(() => {
-    if (!svg) return;
+    if (!svg || viewMode !== 'diagram') return;
     let frameId: number = 0;
+    let centerId: number = 0;
     const outer = requestAnimationFrame(() => {
       frameId = requestAnimationFrame(() => {
         fitToStage();
+        centerId = requestAnimationFrame(() => {
+          centerViewport();
+        });
       });
     });
     return () => {
       cancelAnimationFrame(outer);
       cancelAnimationFrame(frameId);
+      cancelAnimationFrame(centerId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [svg]);
+  }, [svg, viewMode]);
+
+  useEffect(() => {
+    if (viewMode !== 'diagram') {
+      manualZoomRef.current = false;
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    return () => {
+      if (zoomRafRef.current) {
+        cancelAnimationFrame(zoomRafRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const stage = stageRef.current;
-    if (!stage || typeof ResizeObserver === 'undefined') return;
+    if (!stage || typeof ResizeObserver === 'undefined' || viewMode !== 'diagram') return;
 
     const observer = new ResizeObserver(() => {
       requestAnimationFrame(() => {
         fitToStage();
+        requestAnimationFrame(() => {
+          centerViewport();
+        });
       });
     });
 
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [svg]);
+  }, [svg, viewMode]);
 
-  const exportPng = async () => {
-    if (!svg || exporting) return;
-    setExporting(true);
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(svg, 'image/svg+xml');
-      const svgEl = doc.querySelector('svg');
-      if (!svgEl) throw new Error('Invalid svg');
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || viewMode !== 'diagram') return;
 
-      const viewBox = svgEl.getAttribute('viewBox')?.trim().split(/\s+/).map(Number) || [];
-      const widthAttr = Number(svgEl.getAttribute('width'));
-      const heightAttr = Number(svgEl.getAttribute('height'));
-
-      const rawWidth = Number.isFinite(viewBox[2]) ? viewBox[2] : widthAttr;
-      const rawHeight = Number.isFinite(viewBox[3]) ? viewBox[3] : heightAttr;
-      if (!rawWidth || !rawHeight) throw new Error('Cannot detect diagram size');
-
-      const scale = 2;
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(rawWidth * scale));
-      canvas.height = Math.max(1, Math.round(rawHeight * scale));
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Cannot create canvas context');
-
-      const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-      const svgUrl = URL.createObjectURL(svgBlob);
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => {
-            ctx.setTransform(scale, 0, 0, scale, 0, 0);
-            ctx.clearRect(0, 0, rawWidth, rawHeight);
-            ctx.drawImage(img, 0, 0, rawWidth, rawHeight);
-            resolve();
-          };
-          img.onerror = () => reject(new Error('Failed to render SVG'));
-          img.src = svgUrl;
-        });
-      } finally {
-        URL.revokeObjectURL(svgUrl);
+    const handleWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        stepZoom(event.deltaY > 0 ? -1 : 1);
+        return;
       }
 
-      const pngUrl = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = pngUrl;
-      a.download = `diagram-${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (err) {
-      console.warn('Failed to export Mermaid PNG:', err);
-    } finally {
-      setExporting(false);
+      if (compact) {
+        const canScrollY = stage.scrollHeight > stage.clientHeight;
+        const canScrollX = stage.scrollWidth > stage.clientWidth;
+        if (!canScrollY && !canScrollX) return;
+
+        event.preventDefault();
+        if (canScrollY && event.deltaY) stage.scrollTop += event.deltaY;
+        if (canScrollX && event.deltaX) stage.scrollLeft += event.deltaX;
+        return;
+      }
+    };
+
+    stage.addEventListener('wheel', handleWheel, { passive: false });
+    return () => stage.removeEventListener('wheel', handleWheel);
+  }, [viewMode]);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (viewMode !== 'diagram') return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (event.button !== 0) return;
+    const canPan = stage.scrollWidth > stage.clientWidth || stage.scrollHeight > stage.clientHeight;
+    if (!canPan) return;
+    dragStateRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: stage.scrollLeft,
+      scrollTop: stage.scrollTop,
+      dragging: true,
+    };
+    stage.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const stage = stageRef.current;
+    const drag = dragStateRef.current;
+    if (!stage || !drag?.dragging) return;
+    event.preventDefault();
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    stage.scrollLeft = drag.scrollLeft - dx;
+    stage.scrollTop = drag.scrollTop - dy;
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const stage = stageRef.current;
+    if (stage) {
+      stage.releasePointerCapture?.(event.pointerId);
+    }
+    if (dragStateRef.current) {
+      dragStateRef.current.dragging = false;
+    }
+  };
+
+  const toggleFullscreen = async () => {
+    const el = fullShellRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      await el.requestFullscreen();
+    } else {
+      await document.exitFullscreen();
     }
   };
 
@@ -458,68 +579,202 @@ export default function MermaidRenderer({
     return (
       <div className="canvas-mermaid-fallback">
         <div className="canvas-mermaid-error">Mermaid render failed: {error}</div>
-        <pre className="canvas-code-preview">{extractMermaidSource(content)}</pre>
+        <pre className="canvas-code-preview">{source}</pre>
       </div>
     );
   }
 
   return (
     <div className={`canvas-mermaid-preview${compact ? ' canvas-mermaid-preview--compact' : ''}`}>
-      {!compact && (
-        <div className="canvas-mermaid-toolbar">
-          <button
-            type="button"
-            className="canvas-mermaid-btn"
-            onClick={() => {
-              const next = clampZoom(zoom - 0.15);
-              setZoom(next);
-            }}
-          >
-            -
-          </button>
-          <button type="button" className="canvas-mermaid-btn" onClick={fitToStage}>
-            Fit
-          </button>
-          <button
-            type="button"
-            className="canvas-mermaid-btn"
-            onClick={() => {
-              setZoom(1);
-            }}
-          >
-            100%
-          </button>
-          <button
-            type="button"
-            className="canvas-mermaid-btn"
-            onClick={() => {
-              const next = clampZoom(zoom + 0.15);
-              setZoom(next);
-            }}
-          >
-            +
-          </button>
-          <button type="button" className="canvas-mermaid-btn" onClick={exportPng} disabled={!svg || exporting}>
-            {exporting ? 'Exporting...' : 'PNG'}
-          </button>
+      {compact ? (
+        <>
+          <div className="canvas-mermaid-toolbar canvas-mermaid-toolbar--compact">
+            <div className="canvas-mermaid-segmented" role="tablist" aria-label="Mermaid view mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'diagram'}
+                className={`canvas-mermaid-segmented__option${viewMode === 'diagram' ? ' is-active' : ''}`}
+                onClick={() => setViewMode('diagram')}
+                title="查看图形预览"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M1.5 8c1.7-2.8 4-4.2 6.5-4.2S12.8 5.2 14.5 8c-1.7 2.8-4 4.2-6.5 4.2S3.2 10.8 1.5 8Z" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                  <circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'code'}
+                className={`canvas-mermaid-segmented__option${viewMode === 'code' ? ' is-active' : ''}`}
+                onClick={() => setViewMode('code')}
+                title="查看源码"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M6 4 2.8 8 6 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="m10 4 3.2 4-3.2 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="canvas-mermaid-stage-shell canvas-mermaid-stage-shell--compact">
+        <div
+          className={`canvas-mermaid-stage canvas-mermaid-stage--compact${compact && isPieDiagram ? ' canvas-mermaid-stage--compact-pie' : ''}${compact && isHierarchyDiagram ? ' canvas-mermaid-stage--compact-centered' : ''}${viewMode === 'diagram' ? ' is-draggable' : ''}`}
+          ref={stageRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            >
+              {viewMode === 'code' ? (
+                <pre className="canvas-code-preview">{source}</pre>
+              ) : (
+                <div className="canvas-mermaid-stage--compact-inner">
+                  <div
+                    className="canvas-mermaid-scale-shell"
+                    style={{
+                      width: svgBounds ? Math.max(svgBounds.width * zoom, stageRef.current?.clientWidth || 0) : '100%',
+                      height: svgBounds ? svgBounds.height * zoom : undefined,
+                    }}
+                  >
+                    <div
+                      className="canvas-mermaid-zoom canvas-mermaid-zoom--compact"
+                      style={{
+                        width: svgBounds ? svgBounds.width : undefined,
+                        height: svgBounds ? svgBounds.height : undefined,
+                        transform: `scale(${zoom})`,
+                        transformOrigin: 'top left',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: svg }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            {viewMode === 'diagram' ? (
+              <div className="canvas-mermaid-zoomdock canvas-mermaid-zoomdock--compact">
+                <button
+                  type="button"
+                  className="canvas-mermaid-zoomdock__btn"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => stepZoom(1)}
+                  aria-label="Zoom in"
+                  title="放大"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  className="canvas-mermaid-zoomdock__btn"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => stepZoom(-1)}
+                  aria-label="Zoom out"
+                  title="缩小"
+                >
+                  -
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <div className="canvas-mermaid-workbench" ref={fullShellRef}>
+          <div className="canvas-mermaid-workbench__toolbar">
+            <div className="canvas-mermaid-workbench__meta">
+              <span className="canvas-mermaid-workbench__chip">Mermaid</span>
+              <span className="canvas-mermaid-workbench__label">diagram renderer</span>
+              <div className="canvas-mermaid-segmented" role="tablist" aria-label="Mermaid view mode">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === 'diagram'}
+                  className={`canvas-mermaid-segmented__option${viewMode === 'diagram' ? ' is-active' : ''}`}
+                  onClick={() => setViewMode('diagram')}
+                  title="查看图形预览"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M1.5 8c1.7-2.8 4-4.2 6.5-4.2S12.8 5.2 14.5 8c-1.7 2.8-4 4.2-6.5 4.2S3.2 10.8 1.5 8Z" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                    <circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === 'code'}
+                  className={`canvas-mermaid-segmented__option${viewMode === 'code' ? ' is-active' : ''}`}
+                  onClick={() => setViewMode('code')}
+                  title="查看源码"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M6 4 2.8 8 6 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="m10 4 3.2 4-3.2 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="canvas-mermaid-workbench__actions">
+              {viewMode === 'diagram' && (
+                <>
+                  <button type="button" className="canvas-mermaid-btn canvas-mermaid-btn--icon" onClick={() => stepZoom(-1)} title="缩小">
+                    -
+                  </button>
+                  <button type="button" className="canvas-mermaid-btn canvas-mermaid-btn--icon" onClick={fitToStage} title="适配视图">
+                    适配
+                  </button>
+                  <button type="button" className="canvas-mermaid-btn canvas-mermaid-btn--icon" onClick={() => stepZoom(1)} title="放大">
+                    +
+                  </button>
+                </>
+              )}
+              <button type="button" className="canvas-mermaid-btn" onClick={toggleFullscreen}>
+                全屏
+              </button>
+            </div>
+          </div>
+          {viewMode === 'code' ? (
+            <pre className="canvas-code-preview canvas-code-preview--workbench">{source}</pre>
+          ) : (
+            <div
+              className={`canvas-mermaid-pane__viewport canvas-mermaid-pane__viewport--full${viewMode === 'diagram' ? ' is-draggable' : ''}`}
+              ref={stageRef}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            >
+              {error ? (
+                <pre className="canvas-mermaid-pane__error">{error}</pre>
+              ) : (
+                <div
+                  className="canvas-mermaid-pane__surface"
+                  style={{
+                    width: svgBounds ? Math.max(svgBounds.width * zoom, stageRef.current?.clientWidth || 0) : '100%',
+                    height: svgBounds ? Math.max(svgBounds.height * zoom, stageRef.current?.clientHeight || 0) : '100%',
+                    justifyContent:
+                      svgBounds && stageRef.current
+                        ? svgBounds.width * zoom <= stageRef.current.clientWidth
+                          ? 'center'
+                          : 'flex-start'
+                        : 'center',
+                  }}
+                >
+                  <div
+                    className="canvas-mermaid-pane__svg"
+                    style={{
+                      width: svgBounds ? svgBounds.width : undefined,
+                      height: svgBounds ? svgBounds.height : undefined,
+                      transform: `scale(${zoom})`,
+                      transformOrigin: 'top left',
+                    }}
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
-      <div className={`canvas-mermaid-stage${compact ? ' canvas-mermaid-stage--compact' : ''}`} ref={stageRef}>
-        {compact ? (
-          <div className="canvas-mermaid-stage--compact-inner">
-            <div
-              className="canvas-mermaid-zoom canvas-mermaid-zoom--compact"
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
-          </div>
-        ) : (
-          <div
-            className="canvas-mermaid-zoom"
-            style={{ zoom }}
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
-        )}
-      </div>
     </div>
   );
 }

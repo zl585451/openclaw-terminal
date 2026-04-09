@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import CodeBlock from '../../components/CodeBlock';
 import MermaidRenderer from '../../components/canvas/MermaidRenderer';
 import { highlightCode } from '../../utils/codeHighlight';
+import { diagramSpecToMermaid, parseDiagramSpec } from '../../utils/diagramSchema';
 
 // ── Chat inline preview: ONLY these types are shown directly in the chat window.
 // Everything else is redirected to Canvas (with an Open button).
@@ -96,6 +97,14 @@ function getMermaidSummaryLabel(diagramType: string) {
   return CANVAS_MERMAID_LABEL[diagramType] ?? 'Mermaid 图';
 }
 
+function getDiagramJsonSummaryLabel(code: string) {
+  const spec = parseDiagramSpec(code);
+  if (!spec) return null;
+  if (spec.diagramType === 'pie') return '饼图';
+  if (spec.diagramType === 'hierarchy') return '层级图';
+  return '流程图';
+}
+
 export function createMarkdownComponents(
   openCanvas?: (
     content: string,
@@ -152,6 +161,8 @@ export function createMarkdownComponents(
       );
     }
     const code = String(children);
+    const normalizedLanguage = (className?.replace('language-', '') || 'text').toLowerCase();
+    const diagramSpec = normalizedLanguage === 'json' ? parseDiagramSpec(code) : null;
     if (isBlock && (className?.replace('language-', '') || 'text').toLowerCase() === 'mermaid') {
       const MermaidBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
         const [copied, setCopied] = React.useState(false);
@@ -216,6 +227,69 @@ export function createMarkdownComponents(
       };
 
       return <MermaidBlock __octBlockCode />;
+    }
+
+    if (isBlock && diagramSpec) {
+      const MermaidFromJsonBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
+        const [copied, setCopied] = React.useState(false);
+        const mermaidCode = React.useMemo(() => diagramSpecToMermaid(diagramSpec), []);
+        const previewDecision = React.useMemo(() => shouldRenderChatMermaidPreview(mermaidCode), [mermaidCode]);
+        const summaryLabel = getDiagramJsonSummaryLabel(code) || getMermaidSummaryLabel(previewDecision.meta.diagramType);
+
+        const handleCopy = () => {
+          navigator.clipboard.writeText(code);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        };
+
+        return (
+          <div
+            className="chat-mermaid-card"
+            data-oct-block-code={__octBlockCode ? '1' : undefined}
+          >
+            <div className="chat-mermaid-card__header">
+              <span className="chat-mermaid-card__label">
+                diagram json
+              </span>
+              <div className="chat-mermaid-card__actions">
+                {openCanvas && (
+                  <button
+                    onClick={() => openCanvas(code, 'markdown', `${summaryLabel} Diagram`, 'json', 'diagram')}
+                    className="chat-mermaid-card__action"
+                  >
+                    Open
+                  </button>
+                )}
+                <button
+                  onClick={handleCopy}
+                  className={`chat-mermaid-card__action${copied ? ' is-copied' : ''}`}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div className="chat-mermaid-card__body">
+              {previewDecision.allowPreview ? (
+                <MermaidRenderer content={mermaidCode} compact />
+              ) : (
+                <div className="chat-mermaid-summary">
+                  <div className="chat-mermaid-summary__title">
+                    {summaryLabel} 已转为 Canvas 完整展示
+                  </div>
+                  <div className="chat-mermaid-summary__meta">
+                    {previewDecision.meta.lineCount} 行 · {previewDecision.meta.charCount} 字符
+                  </div>
+                  <div className="chat-mermaid-summary__copy">
+                    这张图更适合在 Canvas 里查看，点击 Open 查看完整版。
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      return <MermaidFromJsonBlock __octBlockCode />;
     }
 
     const CodeBlockWithCopy = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {

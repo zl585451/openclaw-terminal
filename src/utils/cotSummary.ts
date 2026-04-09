@@ -1,8 +1,3 @@
-function hasEnoughChinese(text: string): boolean {
-  const matches = text.match(/[\u4e00-\u9fff]/g);
-  return (matches?.length ?? 0) >= 12;
-}
-
 function collectFileRefs(text: string): string[] {
   const matches = text.match(/\b[\w./-]+\.(?:ts|tsx|js|jsx|css|json|md)\b/g) ?? [];
   return [...new Set(matches)].slice(0, 3);
@@ -32,7 +27,6 @@ export function summarizeCotForDisplay(
 ): string | null {
   const cot = (rawCot || '').trim();
   if (!cot) return null;
-  if (hasEnoughChinese(cot)) return cot;
   const compact = options.compact === true;
 
   const haystack = `${cot}\n${mainContent}`.toLowerCase();

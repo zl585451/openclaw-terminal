@@ -1,3 +1,5 @@
+const { normalizeDiagramContent } = require('../diagram_schema');
+
 function normalizeMode(mode, artifactType) {
   if (mode === 'markdown' || mode === 'code' || mode === 'html') return mode;
   if (artifactType === 'code') return 'code';
@@ -38,8 +40,8 @@ function extractMermaidContent(content) {
   return raw;
 }
 
-function normalizeDiagramContent(content) {
-  return extractMermaidContent(content);
+function normalizeDiagramPayload(content) {
+  return extractMermaidContent(normalizeDiagramContent(content));
 }
 
 module.exports = {
@@ -108,7 +110,7 @@ module.exports = {
       const artifactType = normalizeArtifactType(args.artifactType, mode);
       // react-flow content is JSON — never run it through the Mermaid extractor
       const normalizedContent = artifactType === 'diagram'
-        ? normalizeDiagramContent(args.content)
+        ? normalizeDiagramPayload(args.content)
         : args.content;
       const payload = {
         document: {
@@ -144,7 +146,7 @@ module.exports = {
       if (typeof args.title === 'string') patch.title = args.title;
       if (typeof args.content === 'string') {
         const artifactType = typeof args.artifactType === 'string' ? args.artifactType : undefined;
-        patch.content = artifactType === 'diagram' ? normalizeDiagramContent(args.content) : args.content;
+        patch.content = artifactType === 'diagram' ? normalizeDiagramPayload(args.content) : args.content;
       }
       if (typeof args.language === 'string') patch.language = args.language;
       if (typeof args.explanation === 'string') patch.explanation = args.explanation;

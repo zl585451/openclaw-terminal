@@ -190,13 +190,13 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   }, []);
 
   const apply = async () => {
+    const api = (window as any).electronAPI;
     setSettings({ ...local, aiName, userName, personaStyle: personaStyle as 'neutral' | 'warm' | 'companion' });
     setPermissions(localPerm);
     saveShortcut();
     saveAdvancedSettings();
 
     setApplyError('');
-    const api = (window as any).electronAPI;
     if (api?.savePersonaSettings || ipcRenderer) {
       const payload = {
         OCT_AI_NAME: aiName,
@@ -212,37 +212,12 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         return;
       }
     }
-    if (api?.saveApiKeys) {
-      setApplyStatus('saving');
-      const keysToSave = {
-        ...apiKeys,
-        TTS_MINIMAX_VOICE_ID: apiKeys.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse',
-        BRAVE_SEARCH_API_KEY: searchKeysRef.current.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
-        TAVILY_API_KEY: searchKeysRef.current.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
-      };
-
-      try {
-        const result = await api.saveApiKeys(keysToSave);
-        if (result.success) {
-          setApplyStatus('success');
-          setTimeout(() => {
-            onClose();
-          }, 1200);
-        } else {
-          setApplyStatus('error');
-          setApplyError(result.error || '保存失败，请重试');
-        }
-      } catch (err: any) {
-        setApplyStatus('error');
-        setApplyError(err?.message || '保存异常，请重试');
-      }
-    } else {
-      setApplyStatus('error');
-      setApplyError('保存功能不可用');
-    }
-    if (!api?.saveApiKeys) {
+    // API / Gateway 配置只在「连接配置」页通过专用按钮保存并重连。
+    // 这里的应用仅处理本地界面、人设、权限与高级设置，避免主题应用误触发 Gateway 断线重连。
+    setApplyStatus('success');
+    setTimeout(() => {
       onClose();
-    }
+    }, 600);
   };
 
   const clearData = () => {

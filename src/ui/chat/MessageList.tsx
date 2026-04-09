@@ -1084,7 +1084,7 @@ export const ChatMessageList = function ChatMessageList({
               isMobileViewport={isMobileViewport}
             />
             {/* 工具调用卡片：紧跟当前 streaming assistant 消息之后 */}
-            {isStreamingMsg && activeTools.length > 0 && (
+            {isStreamingMsg && msg.id === lastAssistantId && activeTools.length > 0 && (
               <div className="tool-calls-container">
                 {activeTools.map((tool) => (
                   <div

@@ -67,10 +67,10 @@ const GROUP_PALETTE = [
 
 // ─── BFS layout ───────────────────────────────────────────────────────────────
 
-const GAP_MAIN  = 240;  // spacing along main axis (between levels)
-const GAP_CROSS = 130;  // spacing along cross axis (between siblings)
+const GAP_MAIN  = 280;  // spacing along main axis (between levels)
+const GAP_CROSS = 150;  // spacing along cross axis (between siblings)
 // Estimated node dimensions for layout (actual size depends on label length + CSS)
-const EST_NODE_W = 150;
+const EST_NODE_W = 180;
 const EST_NODE_H = 48;
 
 function computeLayout(
@@ -80,11 +80,18 @@ function computeLayout(
 ): Map<string, { x: number; y: number }> {
   // Build adjacency
   const outEdges = new Map<string, string[]>();
+  const inEdges = new Map<string, string[]>();
   const inDegree  = new Map<string, number>();
-  nodes.forEach((n) => { outEdges.set(n.id, []); inDegree.set(n.id, 0); });
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  nodes.forEach((n) => {
+    outEdges.set(n.id, []);
+    inEdges.set(n.id, []);
+    inDegree.set(n.id, 0);
+  });
   edges.forEach((e) => {
     if (outEdges.has(e.source) && inDegree.has(e.target)) {
       outEdges.get(e.source)!.push(e.target);
+      inEdges.get(e.target)!.push(e.source);
       inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
     }
   });
@@ -122,11 +129,41 @@ function computeLayout(
 
   const positions = new Map<string, { x: number; y: number }>();
   const isLR = direction === 'LR' || direction === 'RL';
+  const reverseMainAxis = direction === 'RL' || direction === 'BT';
+  const levelOrder = new Map<string, number>();
 
-  byDepth.forEach((ids, d) => {
+  const getBarycenter = (nodeId: string): number | null => {
+    const parents = (inEdges.get(nodeId) ?? []).filter((id) => levelOrder.has(id));
+    if (parents.length === 0) return null;
+    const sum = parents.reduce((acc, id) => acc + (levelOrder.get(id) ?? 0), 0);
+    return sum / parents.length;
+  };
+
+  Array.from(byDepth.entries())
+    .sort(([a], [b]) => a - b)
+    .forEach(([d, ids]) => {
+    ids.sort((a, b) => {
+      const baryA = getBarycenter(a);
+      const baryB = getBarycenter(b);
+      if (baryA != null && baryB != null && baryA !== baryB) return baryA - baryB;
+      if (baryA != null && baryB == null) return -1;
+      if (baryA == null && baryB != null) return 1;
+
+      const groupA = nodeMap.get(a)?.group ?? '';
+      const groupB = nodeMap.get(b)?.group ?? '';
+      if (groupA !== groupB) return groupA.localeCompare(groupB, 'zh-CN');
+
+      const outA = outEdges.get(a)?.length ?? 0;
+      const outB = outEdges.get(b)?.length ?? 0;
+      if (outA !== outB) return outB - outA;
+
+      return (nodeMap.get(a)?.label ?? a).localeCompare(nodeMap.get(b)?.label ?? b, 'zh-CN');
+    });
+
     const total = ids.length;
     ids.forEach((id, i) => {
-      const mainAxis = d * GAP_MAIN;
+      levelOrder.set(id, i);
+      const mainAxis = d * GAP_MAIN * (reverseMainAxis ? -1 : 1);
       // Centre the group around 0 on the cross axis
       const crossAxis = (i - (total - 1) / 2) * GAP_CROSS;
       positions.set(id, isLR
