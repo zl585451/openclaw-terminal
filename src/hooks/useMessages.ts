@@ -42,7 +42,7 @@ function touchStreak(): number {
 // ── Util helpers ──────────────────────────────────────────────────────────────
 function isSystemCommand(text: string): boolean {
   const t = (text || '').trim();
-  return /^\/(status|restart|stop|new|think\s+\w+|model|provider|memory|help)\b/.test(t);
+  return /^\/\w/.test(t);
 }
 
 function recoverOctStreamFromEndFailure(oct: { stream: StreamRouter; fsm: TurnFSM }): void {
@@ -792,9 +792,10 @@ export function useMessages({
     if (!cmdIsSystem) {
       try {
         oct.stream.abortToIdle();
-        if (oct.fsm.getPhase() === TurnPhase.IDLE) {
-          oct.fsm.onUserTyping();
+        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
+          oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
         }
+        oct.fsm.onUserTyping();
         oct.fsm.onUserSubmit();
         oct.fsm.onRequestStart();
         oct.ingest.reset();
@@ -883,9 +884,10 @@ export function useMessages({
     if (!isSystem) {
       try {
         oct.stream.abortToIdle();
-        if (oct.fsm.getPhase() === TurnPhase.IDLE) {
-          oct.fsm.onUserTyping();
+        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
+          oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
         }
+        oct.fsm.onUserTyping();
         oct.fsm.onUserSubmit();
         oct.fsm.onRequestStart();
         oct.ingest.reset();

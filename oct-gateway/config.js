@@ -172,6 +172,7 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: true,
     supportsThinking: true,
+    supportsVision: true,
     thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
@@ -181,6 +182,7 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: true,
     supportsThinking: true,
+    supportsVision: true,
     thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
@@ -190,6 +192,7 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: true,
     supportsThinking: true,
+    supportsVision: true,
     thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
@@ -199,6 +202,7 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: true,
     supportsThinking: true,
+    supportsVision: true,
     thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
@@ -541,11 +545,6 @@ const config = {
     const fromFile = _fileConfig.ai_library && typeof _fileConfig.ai_library === 'object' ? _fileConfig.ai_library : {};
     return { ...def, ...fromFile };
   })(),
-  REFACTOR_FLAGS: {
-    USE_NEW_ROUTER: process.env.OCT_USE_NEW_ROUTER === '1' || _fileConfig?.refactorFlags?.USE_NEW_ROUTER === true,
-    USE_NEW_CHAT_ENGINE: process.env.OCT_USE_NEW_CHAT_ENGINE === '1' || _fileConfig?.refactorFlags?.USE_NEW_CHAT_ENGINE === true,
-    USE_NEW_TRANSPORT: process.env.OCT_USE_NEW_TRANSPORT === '1' || _fileConfig?.refactorFlags?.USE_NEW_TRANSPORT === true,
-  },
 
   // MCP Server 配置（由前端设置面板写入 config.json）
   MCP_SERVERS: _fileConfig.mcpServers || {},

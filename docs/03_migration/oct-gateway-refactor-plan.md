@@ -1,7 +1,7 @@
 # OCT Gateway 分层重构计划书
 
-> 版本：v1.0 | 日期：2026-04-08
-> 状态：核心重构已完成（Phase 1～5 已于 2026-04-09 完成开发侧收口与联调修复；当前剩余工作以可选优化、日志降噪和后续 legacy/flag 收缩为主） | 作者：AI Architect + 少爷
+> 版本：v1.1 | 日期：2026-04-09
+> 状态：Phase 1～6 已完成，`handleSlashCommand` 已迁入 `SlashHandler`，Feature Flag 已全量验证并清理，`legacyTransport` 已删除。剩余：`ai.js` 进一步拆分（可选）、Runtime 层测试补强 | 作者：AI Architect + 少爷
 
 ---
 
@@ -11,8 +11,9 @@
 
 | 文件 | 行数 | 职责（现状） |
 |------|------|-------------|
-| `index.js` | **2172** | WS 服务器、HTTP 路由、认证、消息分发、流控、Slash 命令、内存后处理、停车检测、Canvas 事件 |
-| `ai.js` | **1198** | 上下文截断、Provider 路由、流式调用、工具循环、System Prompt 组装 |
+| `index.js` | **267** | 入口装配：初始化 Transport / Gateway / Runtime / Services，并连接依赖 |
+| `gateway/slash.js` | **740** | 所有 Slash 命令的解析、路由与回复 |
+| `ai.js` | **1009** | Provider 调用、流式执行、工具循环、System Prompt 组装 |
 | `context_manager.js` | 159 | 上下文窗口策略 |
 | `session.js` | 152 | 会话存储 |
 | `orchestrator.js` | 258 | 意图分类 + 后台任务分发 |

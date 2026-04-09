@@ -1,4 +1,3 @@
-const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const { streamChat, loadSystemPrompt } = require('./ai');
@@ -25,12 +24,8 @@ const MessageRouter = require('./gateway/router');
 const SlashHandler = require('./gateway/slash');
 const WsTransport = require('./transport/ws');
 const HttpTransport = require('./transport/http');
-const { startLegacyTransport } = require('./transport/legacyTransport');
 const createHttpRequestHandler = require('./transport/httpRoutes');
-const {
-  sendCanvasTransportEvent,
-  sendCanvasEvent,
-} = require('./transport/helpers');
+const { sendCanvasTransportEvent } = require('./transport/helpers');
 const ChatEngine = require('./runtime/chatEngine');
 const StreamController = require('./runtime/streamController');
 const ContextBuilder = require('./runtime/contextBuilder');
@@ -54,8 +49,6 @@ const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const log = createLogger('gateway');
 const memLog = createLogger('mem');
-let wss = null;
-let httpServer = null;
 
 const systemPromptReady = (async () => {
   SYSTEM_PROMPT = await loadSystemPrompt(config.PROMPTS_DIR);
@@ -82,11 +75,12 @@ const postProcessor = new PostProcessor({
 const slashHandler = new SlashHandler({
   session,
   memory,
+  memoryFeedback,
   config,
   aiLibrary,
+  tools: toolLoader,
   systemPromptReady,
-  handleLegacyCommand: ({ command, request, connection }) =>
-    handleSlashCommand(connection.ws, request?.id, command, request?.params?.sessionKey || 'main'),
+  logger: log,
 });
 const messageRouter = new MessageRouter({
   slashHandler,
@@ -130,21 +124,6 @@ const contextBuilder = new ContextBuilder({
 const PORT = config.PORT;
 let SYSTEM_PROMPT = '';
 
-/** 模型上下文上限（tokens），用于 CTX 使用率分母 */
-const MODEL_CONTEXT_LIMITS = {
-  'qwen-plus': 128000,
-  'qwen3.5-plus': 128000,
-  'qwen3-max-2026-01-23': 128000,
-  'qwen-vl-max': 32768,
-  'qwen2-vl-7b': 32768,
-  'deepseek-chat': 64000,
-  'deepseek-reasoner': 64000,
-};
-function getModelContextLimit(modelId) {
-  if (!modelId || typeof modelId !== 'string') return 128000;
-  const id = modelId.toLowerCase().replace(/\s/g, '');
-  return MODEL_CONTEXT_LIMITS[id] || MODEL_CONTEXT_LIMITS[modelId.split('/').pop()] || 128000;
-}
 
 const mcpManager = require('./mcp/manager');
 // MCP 初始化（非致命，失败不阻断 Gateway 启动）
@@ -182,14 +161,6 @@ const handleTransportHttpRequest = createHttpRequestHandler({
   mcpManager,
   mobileHtmlPath: path.join(__dirname, 'mobile.html'),
 });
-const handleLegacyHttpRequest = createHttpRequestHandler({
-  memory,
-  memoryManagementAgent,
-  reviewQueueActions,
-  toolLoader,
-  mcpManager,
-  mobileHtmlPath: path.join(__dirname, 'mobile.html'),
-});
 
 async function handleChatRequest(request, connection) {
   const params = request?.params || {};
@@ -215,11 +186,6 @@ async function handleChatRequest(request, connection) {
 
   const orchResult = await orchestrator.dispatch(userMessage, sessionKey, sendToolEvent);
 
-  if (userMessage.startsWith('/')) {
-    await handleSlashCommand(connection.ws, request?.id, userMessage.trim(), sessionKey);
-    return;
-  }
-
   const systemPrompt = await systemPromptReady;
   const { messages, history } = await contextBuilder.build({
     sessionKey,
@@ -238,105 +204,41 @@ async function handleChatRequest(request, connection) {
 
   const prevAssistantReplyForPost = history.filter((m) => m.role === 'assistant').slice(-1)[0]?.content || '';
 
-  if (config.REFACTOR_FLAGS?.USE_NEW_CHAT_ENGINE) {
-    await chatEngine.execute({
-      sessionKey,
-      userMessage,
-      messages,
-      prevAssistantReply: prevAssistantReplyForPost,
-      options: {
-        pacingMs: typeof params?.pacingMs === 'number' ? params.pacingMs : 4,
-      },
-    }, {
-      onStart: (streamCtrl) => {
-        connection.setAbort?.(() => {
-          cancelled = true;
-          streamCtrl.cancel();
-        });
-      },
-      onDelta: (chunk) => {
-        if (cancelled || !connection.isOpen()) return;
-        connection.send({
-          type: 'event',
-          event: 'chat',
-          payload: { delta: chunk, state: 'delta', done: false },
-        });
-      },
-      onToolEvent: sendToolEvent,
-      onBeforeDone: () => {
-        connection.setAbort?.(null);
-        connection.stopThinkingPulse?.();
-      },
-      onDone: ({ reply, usage, model: responseModel }) => {
-        if (cancelled || !connection.isOpen()) return;
-        const donePayload = { text: reply, state: 'done', done: true };
-        if (usage) donePayload.usage = usage;
-        if (responseModel) donePayload.model = responseModel;
-        connection.send({ type: 'event', event: 'chat', payload: donePayload });
-        connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
-      },
-      onError: (err) => {
-        if (cancelled) return;
-        connection.setAbort?.(null);
-        connection.stopThinkingPulse?.();
-        log.error('AI error', { error: err?.message || String(err) });
-        if (!connection.isOpen()) return;
-        connection.send({
-          type: 'event',
-          event: 'chat',
-          payload: { text: `❌ AI 调用失败：${err.message}`, state: 'done', done: true },
-        });
-        connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
-      },
-    });
-    return;
-  }
-
-  let fullReply = '';
-  const smoother = createStreamSmoother((chunk) => {
-    if (cancelled) return;
-    fullReply += chunk;
-    if (!connection.isOpen()) return;
-    connection.send({
-      type: 'event',
-      event: 'chat',
-      payload: { delta: chunk, state: 'delta', done: false },
-    });
-  }, typeof params?.pacingMs === 'number' ? params.pacingMs : 4);
-
-  await streamChat({
+  await chatEngine.execute({
+    sessionKey,
+    userMessage,
     messages,
-    onDelta: smoother.feed,
+    prevAssistantReply: prevAssistantReplyForPost,
+    options: {
+      pacingMs: typeof params?.pacingMs === 'number' ? params.pacingMs : 4,
+    },
+  }, {
+    onStart: (streamCtrl) => {
+      connection.setAbort?.(() => {
+        cancelled = true;
+        streamCtrl.cancel();
+      });
+    },
+    onDelta: (chunk) => {
+      if (cancelled || !connection.isOpen()) return;
+      connection.send({
+        type: 'event',
+        event: 'chat',
+        payload: { delta: chunk, state: 'delta', done: false },
+      });
+    },
     onToolEvent: sendToolEvent,
-    onDone: (_text, usage, responseModel) => {
-      if (cancelled) return;
+    onBeforeDone: () => {
       connection.setAbort?.(null);
       connection.stopThinkingPulse?.();
-      smoother.flush();
-      const finalizedReply = fullReply || _text || '';
-      const sanitizedReply = sanitizeAssistantReply(finalizedReply);
-      if (sanitizedReply) {
-        session.addMessage(sessionKey, 'assistant', sanitizedReply);
-        const latestHistory = session.getHistory(sessionKey) || [];
-        const prevAssistantMsgs = latestHistory.filter(m => m.role === 'assistant').slice(-2);
-        const prevAssistantReply = prevAssistantMsgs.length >= 2
-          ? prevAssistantMsgs[prevAssistantMsgs.length - 2]?.content || ''
-          : '';
-        postProcessor.process({
-          userMessage,
-          assistantReply: sanitizedReply,
-          sessionKey,
-          prevAssistantReply,
-        });
-      }
-
-      if (!connection.isOpen()) return;
-      const donePayload = { text: sanitizedReply, state: 'done', done: true };
+    },
+    onDone: ({ reply, usage, model: responseModel }) => {
+      if (cancelled || !connection.isOpen()) return;
+      const donePayload = { text: reply, state: 'done', done: true };
       if (usage) donePayload.usage = usage;
       if (responseModel) donePayload.model = responseModel;
       connection.send({ type: 'event', event: 'chat', payload: donePayload });
       connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
-      log.info('stream done', { len: sanitizedReply.length });
     },
     onError: (err) => {
       if (cancelled) return;
@@ -355,965 +257,36 @@ async function handleChatRequest(request, connection) {
 }
 
 async function handleTransportMessage(msg, connection) {
-  const { type, id, method, params } = msg;
-
-  if (config.REFACTOR_FLAGS?.USE_NEW_ROUTER) {
-    const handled = await messageRouter.handleRequest(msg, connection);
-    if (handled) return;
-  }
-
-  if (type === 'req' && method === 'chat.send') {
-    await handleChatRequest(msg, connection);
-    return;
-  }
-
-  if (type === 'req' && method === 'sessions.list') {
-    connection.send({
-      type: 'res',
-      id,
-      ok: true,
-      payload: { sessions: session.listSessions() },
-    });
-    return;
-  }
-
-  connection.send({ type: 'res', id, ok: false, error: { message: `Unknown method: ${method}` } });
+  await messageRouter.handleRequest(msg, connection);
 }
 
 const HTTP_PORT = PORT + 1;
-let wsTransport = null;
-let httpTransport = null;
 
-if (config.REFACTOR_FLAGS?.USE_NEW_TRANSPORT) {
-  wsTransport = new WsTransport({
-    port: PORT,
-    logger: log,
-    modelProvider: () => config.DASHSCOPE_MODEL,
-    authTokenProvider: () => process.env.OCT_GATEWAY_TOKEN || '',
-    onAuthenticatedMessage: handleTransportMessage,
-  }).start();
+startMemoryMonitor({ logger: memLog });
 
-  httpTransport = new HttpTransport({
-    port: HTTP_PORT,
-    logger: log,
-    onRequest: handleTransportHttpRequest,
-  }).start();
+const wsTransport = new WsTransport({
+  port: PORT,
+  logger: log,
+  modelProvider: () => config.DASHSCOPE_MODEL,
+  authTokenProvider: () => process.env.OCT_GATEWAY_TOKEN || '',
+  onAuthenticatedMessage: handleTransportMessage,
+}).start();
 
-  if (tools.setOnTaskBoardUpdate) {
-    tools.setOnTaskBoardUpdate(() => {
-      wsTransport.broadcast({ type: 'event', event: 'task-board-update' });
-    });
-  }
-}
+const httpTransport = new HttpTransport({
+  port: HTTP_PORT,
+  logger: log,
+  onRequest: handleTransportHttpRequest,
+}).start();
 
-if (!config.REFACTOR_FLAGS?.USE_NEW_TRANSPORT) {
-  startMemoryMonitor({ logger: memLog });
-  const legacyTransport = startLegacyTransport({
-    port: PORT,
-    logger: log,
-    authTokenProvider: () => process.env.OCT_GATEWAY_TOKEN || '',
-    modelProvider: () => config.DASHSCOPE_MODEL,
-    onAuthenticatedMessage: handleTransportMessage,
-    onHttpRequest: handleLegacyHttpRequest,
-    onTaskBoardUpdateRegister: tools.setOnTaskBoardUpdate ? (fn) => tools.setOnTaskBoardUpdate(fn) : null,
+if (tools.setOnTaskBoardUpdate) {
+  tools.setOnTaskBoardUpdate(() => {
+    wsTransport.broadcast({ type: 'event', event: 'task-board-update' });
   });
-  wss = legacyTransport.wss;
-  httpServer = legacyTransport.httpServer;
 }
 
-function slashReply(ws, text) {
-  ws.send(JSON.stringify({
-    type: 'event', event: 'chat',
-    payload: { text, state: 'done', done: true, isSystemReply: true },
-  }));
-}
-
-async function handleSlashCommand(ws, id, cmd, sessionKey) {
-  const parts = cmd.split(/\s+/);
-  const base = parts[0].toLowerCase();
-
-  if (base === '/new' || base === '/reset') {
-    session.clearSession(sessionKey);
-    session.clearThinkMode(sessionKey);
-    slashReply(ws, '✅ 会话已重置，记忆已清空。');
-    return;
-  }
-
-  if (base === '/status') {
-    const sp = await systemPromptReady;
-    const sessions = session.listSessions();
-    const mem = require('./memory');
-    const nocturneAlive = await mem.isAlive();
-    const aiLibEnabled = (config.ai_library || {}).enabled !== false;
-    const aiLibraryAlive = aiLibEnabled ? await aiLibrary.checkHealth().catch(() => false) : false;
-    const currentHistory = session.getHistory(sessionKey);
-    const historyChars = currentHistory.reduce((acc, m) => acc + (m.content?.length || 0), 0);
-    const estimatedTokens = Math.round(historyChars / 2);
-    const systemPromptTokens = Math.round(sp.length / 2);
-    const totalEstimated = estimatedTokens + systemPromptTokens;
-    ws.send(JSON.stringify({
-      type: 'event',
-      event: 'chat',
-      payload: {
-        text: [
-          '🦞 **OCT Gateway**',
-          '',
-          `📡 Model: \`${config.DASHSCOPE_MODEL}\``,
-          `🧠 Nocturne: ${nocturneAlive ? '✅ 在线' : '❌ 离线'}`,
-          `📚 AI.library：${aiLibraryAlive ? '✅ 在线' : '⚫ 未启动'}`,
-          `💬 当前会话：${currentHistory.length} 条消息`,
-          `📊 上下文估算：~${totalEstimated.toLocaleString()} tokens（含 system prompt ~${systemPromptTokens.toLocaleString()}）`,
-          `🗂️ 所有会话：${sessions.length > 0 ? sessions.join(', ') : 'none'}`,
-          `⏱️ Uptime：${Math.round(process.uptime())}s`,
-          '',
-          '**口令**：`/status` `/model` `/provider` `/memory boot|read|search|status` `/new` `/help`',
-        ].join('\n'),
-        state: 'done',
-        done: true,
-      },
-    }));
-    return;
-  }
-
-  if (base === '/model') {
-    const modelName = parts.slice(1).join(' ').trim();
-    const provider = config.getProviderConfig();
-
-    if (!modelName) {
-      const modelList = provider.models
-        .map(m => {
-          const cur = m.id === config.DASHSCOPE_MODEL ? ' ◀ 当前' : '';
-          const toolTag = m.tools ? '🔧' : '  ';
-          const thinkTag = m.thinking ? '🧠' : '  ';
-          return `  ${toolTag}${thinkTag} \`${m.id}\`${cur}\n       ${m.label}`;
-        })
-        .join('\n');
-      const legend = '\n\n🔧 = 支持工具调用  🧠 = 支持深度思考';
-      ws.send(JSON.stringify({
-        type: 'event', event: 'chat',
-        payload: {
-          text: `当前服务商：${provider.name}\n当前模型：\`${config.DASHSCOPE_MODEL}\`\n\n可用模型：\n${modelList || '  （无预设模型，可直接输入 /model 模型名）'}${legend}\n\n切换：\`/model 模型名\``,
-          state: 'done', done: true,
-        },
-      }));
-    } else {
-      config.DASHSCOPE_MODEL = modelName;
-      const modelDef = provider.models.find(m => m.id === modelName);
-      const caps = modelDef ? { supportsTools: modelDef.tools, supportsThinking: modelDef.thinking, label: modelDef.label }
-        : config.getModelCaps(modelName);
-      const warnings = [];
-      if (!caps.supportsTools) {
-        warnings.push('⚠️ 该模型不支持工具调用（天气/搜索/文件操作等功能将暂时不可用）');
-      }
-      if (caps.supportsThinking) {
-        warnings.push('💡 该模型支持深度思考（reasoning），回复可能较慢但质量更高');
-      }
-      const warningText = warnings.length > 0 ? '\n\n' + warnings.join('\n') : '';
-      ws.send(JSON.stringify({
-        type: 'event', event: 'chat',
-        payload: {
-          text: `✅ 已切换为：\`${modelName}\`（${caps.label || modelName}）${warningText}`,
-          state: 'done', done: true,
-        },
-      }));
-    }
-    return;
-  }
-
-  if (base === '/provider') {
-    const providerId = parts.slice(1).join(' ').trim().toLowerCase();
-    const providers = config.PROVIDERS;
-    if (!providerId) {
-      const list = Object.entries(providers)
-        .map(([id, p]) => {
-          const cur = id === config.currentProvider ? ' ◀ 当前' : '';
-          return `  ■ \`${id}\` — ${p.name}${cur}`;
-        })
-        .join('\n');
-      ws.send(JSON.stringify({
-        type: 'event', event: 'chat',
-        payload: {
-          text: `当前服务商：\`${config.currentProvider}\`（${(providers[config.currentProvider] || {}).name || '未知'}）\n\n可用服务商：\n${list}\n\n切换：\`/provider 服务商id\`（如 /provider deepseek）\n\n💡 切换后需在设置中填入对应 API Key，并重启 Gateway 生效`,
-          state: 'done', done: true,
-        },
-      }));
-      return;
-    }
-    if (providers[providerId]) {
-      config.currentProvider = providerId;
-      const p = providers[providerId];
-      config.DASHSCOPE_MODEL = p.defaultModel || config.DASHSCOPE_MODEL;
-      ws.send(JSON.stringify({
-        type: 'event', event: 'chat',
-        payload: {
-          text: `✅ 已切换为：\`${providerId}\`（${p.name}）\n\n当前模型：\`${config.DASHSCOPE_MODEL}\`\n\n⚠️ 请在设置中填入 ${p.name} 的 API Key，并重启 Gateway 使配置生效`,
-          state: 'done', done: true,
-        },
-      }));
-    } else {
-      slashReply(ws, `未知服务商 \`${providerId}\`，请输入 \`/provider\` 查看可用列表`);
-    }
-    return;
-  }
-
-  if (base === '/memory') {
-    const subCmd = (parts[1] || '').toLowerCase();
-    const mem = require('./memory');
-
-    if (subCmd === 'boot') {
-      const alive = await mem.isAlive();
-      if (!alive) {
-        slashReply(ws, '❌ Nocturne 后端不可用，请检查是否已启动');
-        return;
-      }
-      const coreUris = ['core://agent/identity', 'core://my_user/profile', 'core://agent/my_user'];
-      const bootContent = await mem.loadBootMemory(coreUris);
-      const bootText = bootContent
-        ? `✅ 核心记忆已重载\n\n${bootContent.slice(0, 800)}`
-        : '⚠️ 未找到核心记忆';
-      ws.send(JSON.stringify({
-        type: 'event',
-        event: 'chat',
-        payload: { text: bootText, state: 'done', done: true, isSystemReply: true },
-      }));
-      return;
-    }
-
-    if (subCmd === 'search') {
-      const query = parts.slice(2).join(' ').trim();
-      if (!query) { slashReply(ws, '用法：/memory search <关键词>'); return; }
-      const result = await mem.searchMemory(query);
-      if (!result.ok || !result.data?.length) {
-        slashReply(ws, `🔍 未找到匹配「${query}」的记忆`);
-      } else {
-        const list = result.data.map(m => `  ${m.uri}`).join('\n');
-        slashReply(ws, `🔍 找到 ${result.data.length} 条记忆：\n${list}`);
-      }
-      return;
-    }
-
-    if (subCmd === 'read') {
-      const memArg = parts.slice(2).join(' ').trim();
-      if (!memArg) {
-        slashReply(ws, '用法：/memory read <uri>');
-        return;
-      }
-      const r = await mem.readMemory(memArg, { treat404AsDebug: true });
-      const nodeData = r.ok ? r.data : null;
-      const content = nodeData?.node?.content || nodeData?.content || '';
-      const priority = nodeData?.node?.priority ?? nodeData?.priority ?? '--';
-      const disclosure = nodeData?.node?.disclosure || nodeData?.disclosure || '--';
-
-      const text = r.ok
-        ? `📖 ${memArg}\n\nPriority: ${priority}\nDisclosure: ${disclosure}\n\n${content || '（空）'}`
-        : `❌ ${r.error}`;
-
-      ws.send(JSON.stringify({
-        type: 'event',
-        event: 'chat',
-        payload: { text, state: 'done', done: true, isSystemReply: true },
-      }));
-      return;
-    }
-
-    if (subCmd === 'write') {
-      const memArg = parts.slice(2).join(' ').trim();
-      const firstSpace = memArg.indexOf(' ');
-      const uri = firstSpace >= 0 ? memArg.slice(0, firstSpace).trim() : memArg;
-      const content = firstSpace >= 0 ? memArg.slice(firstSpace + 1).trim() : '';
-      if (!uri || !content) {
-        ws.send(JSON.stringify({
-          type: 'event',
-          event: 'chat',
-          payload: {
-            text: '[text]用法：/memory write core://xxx 内容[/text]',
-            state: 'done',
-            done: true,
-          },
-        }));
-        return;
-      }
-      const r = await mem.writeMemory(uri, content, 2, '');
-      ws.send(JSON.stringify({
-        type: 'event',
-        event: 'chat',
-        payload: {
-          text: r.ok ? `✅ 已写入 ${uri}` : `❌ ${r.error}`,
-          state: 'done',
-          done: true,
-        },
-      }));
-      return;
-    }
-
-    if (subCmd === 'status') {
-      const alive = await mem.isAlive();
-      slashReply(ws, alive ? '✅ Nocturne Memory 在线' : '❌ Nocturne Memory 离线');
-      return;
-    }
-
-    // /memory today — 显示今天的对话摘要（404 静默返回空）
-    if (subCmd === 'today') {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const r = await mem.readMemory(`core://my_user/history/${todayStr}`, { treat404AsDebug: true });
-      if (!r.ok || !r.data) {
-        slashReply(ws, `今天（${todayStr}）暂无对话记录`);
-        return;
-      }
-      const children = r.data?.node?.children || r.data?.children || [];
-      if (children.length === 0) {
-        slashReply(ws, `今天（${todayStr}）暂无对话记录`);
-        return;
-      }
-      // 读取最近 5 条
-      const recent = children.slice(-5);
-      const lines = [`📅 今天的对话摘要（${todayStr}，共 ${children.length} 条）\n`];
-      for (const child of recent) {
-        const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
-        if (!childPath) continue;
-        const cr = await mem.readMemory(`core://${childPath}`, { treat404AsDebug: true });
-        if (!cr.ok) continue;
-        const content = cr.data?.node?.content || cr.data?.content || '';
-        try {
-          const parsed = JSON.parse(content);
-          const time = (parsed.timestamp || '').slice(11, 16);
-          lines.push(`[${time}] 用户：${(parsed.user || '').slice(0, 40)}…\n      AI：${(parsed.amy || '').slice(0, 60)}…`);
-        } catch {
-          lines.push(content.slice(0, 80));
-        }
-      }
-      slashReply(ws, lines.join('\n'));
-      return;
-    }
-
-    // /memory feedback — 显示最近反馈记录
-    if (subCmd === 'feedback') {
-      const feedbackText = await memoryFeedback.loadFeedbackForBoot();
-      if (!feedbackText || feedbackText.trim().length < 10) {
-        slashReply(ws, '暂无反馈记录');
-        return;
-      }
-      slashReply(ws, feedbackText.replace('## 📌 反馈与纠正（启动时加载）\n\n', '📌 最近反馈记录\n\n'));
-      return;
-    }
-
-    // /memory stats — 显示记忆统计
-    if (subCmd === 'stats') {
-      const alive = await mem.isAlive();
-      if (!alive) {
-        slashReply(ws, '❌ Nocturne 离线');
-        return;
-      }
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const historyToday = await mem.readMemory(`core://my_user/history/${todayStr}`, { treat404AsDebug: true });
-      const todayCount = (historyToday.data?.node?.children || historyToday.data?.children || []).length;
-      const historyRoot = await mem.readMemory('core://my_user/history', { treat404AsDebug: true });
-      const totalDays = (historyRoot.data?.node?.children || historyRoot.data?.children || []).length;
-      slashReply(ws, [
-        '📊 记忆系统统计',
-        '',
-        `今日对话：${todayCount} 条`,
-        `历史天数：${totalDays} 天`,
-        `Nocturne：✅ 在线`,
-        '',
-        '口令：/memory boot|read|search|status|today|feedback|stats',
-      ].join('\n'));
-      return;
-    }
-
-    slashReply(ws, [
-      '可用记忆口令：',
-      '/memory boot — 重载核心记忆',
-      '/memory today — 今天的对话摘要',
-      '/memory feedback — 最近反馈记录',
-      '/memory stats — 记忆统计',
-      '/memory read core://xxx — 读取节点',
-      '/memory search 关键词 — 搜索',
-      '/memory status — 检查状态',
-    ].join('\n'));
-    return;
-  }
-
-  if (base === '/export') {
-    const subCmd = parts[1] || '';
-
-    if (subCmd === 'training-data') {
-      slashReply(ws, '⏳ 正在导出训练数据，请稍候...');
-
-      try {
-        const outputDir = path.join(
-          config.PROMPTS_DIR, '..', '..', 'training-data'
-        );
-        if (!fs.existsSync(outputDir)) {
-          fs.mkdirSync(outputDir, { recursive: true });
-        }
-
-        const dateStr = new Date().toISOString().slice(0, 10);
-        const outputPath = path.join(
-          outputDir, `amy-training-${dateStr}.jsonl`
-        );
-
-        // 从 Nocturne 拉取历史对话
-        log.info('export training-data: read history root');
-        const testAlive = await memory.isAlive();
-        log.info('export training-data: nocturne alive', { alive: !!testAlive });
-
-        const historyRoot = await memory.readMemory(
-          'core://my_user/daily',
-          { treat404AsDebug: true }
-        );
-        log.debug('export training-data: history root result', { preview: JSON.stringify(historyRoot).slice(0, 300) });
-
-        if (!historyRoot.ok) {
-          // 检查是否是路径不存在
-          if (historyRoot.error && (historyRoot.error.includes('not found') || historyRoot.error.includes('404'))) {
-            slashReply(ws, [
-              '⚠️ 暂无历史记录',
-              '',
-              'core://my_user/daily 路径不存在，',
-              '说明对话历史还没有开始写入。',
-              '',
-              '可能原因：',
-              '1. memory_history.js 的 auto_save_history 未开启',
-              '2. 历史记录还没有触发写入',
-              '',
-              '先发几条消息，再试 /export training-data',
-            ].join('\n'));
-          } else {
-            slashReply(ws, `❌ 无法读取历史记录：${historyRoot.error}`);
-          }
-          return;
-        }
-
-        const dateDirs = historyRoot.data?.node?.children
-          || historyRoot.data?.children || [];
-
-        const lines = [];
-        let total = 0;
-        let exported = 0;
-
-        // 读取自我评估分数
-        const evalScores = new Map();
-        try {
-          const evalRoot = await memory.readMemory(
-            'core://agent/self_eval',
-            { treat404AsDebug: true }
-          );
-          if (evalRoot.ok) {
-            const evalDates = evalRoot.data?.node?.children
-              || evalRoot.data?.children || [];
-            for (const ed of evalDates.slice(-30)) {
-              const edPath = ed.path
-                || ed.uri?.replace(/^[^:]+:\/\//, '') || '';
-              if (!edPath) continue;
-              const edr = await memory.readMemory(`core://${edPath}`, { treat404AsDebug: true });
-              if (!edr.ok) continue;
-              const evalTimes = edr.data?.node?.children
-                || edr.data?.children || [];
-              for (const et of evalTimes) {
-                const etPath = et.path
-                  || et.uri?.replace(/^[^:]+:\/\//, '') || '';
-                if (!etPath) continue;
-                const etr = await memory.readMemory(`core://${etPath}`, { treat404AsDebug: true });
-                if (!etr.ok) continue;
-                const evalContent = etr.data?.node?.content
-                  || etr.data?.content || '';
-                try {
-                  const evalData = JSON.parse(evalContent);
-                  // 用时间戳作为 key 匹配
-                  if (evalData.timestamp) {
-                    evalScores.set(
-                      evalData.timestamp.slice(0, 16),
-                      evalData.score || 3
-                    );
-                  }
-                } catch {}
-              }
-            }
-          }
-        } catch {}
-
-        // 遍历所有日期目录
-        for (const dateDir of dateDirs) {
-          const datePath = dateDir.path
-            || dateDir.uri?.replace(/^[^:]+:\/\//, '') || '';
-          if (!datePath) continue;
-
-          // 读取每个日期目录下的子节点
-          const dr = await memory.readMemory(`core://${datePath}`, { treat404AsDebug: true });
-          if (!dr.ok) continue;
-
-          const dayChildren = dr.data?.node?.children
-            || dr.data?.children || [];
-
-          // 跳过非历史节点（tasks/parking_lot/summary/cursor_summary/intention）
-          const NON_HISTORY_NODES = [
-            'tasks', 'parking_lot', 'summary',
-            'cursor_summary', 'intention',
-          ];
-          const historyEntries = dayChildren.filter(child => {
-            const name = child.name
-              || child.path?.split('/').pop() || '';
-            return !NON_HISTORY_NODES.includes(name);
-          });
-
-          for (const entry of historyEntries) {
-            const entryPath = entry.path
-              || entry.uri?.replace(/^[^:]+:\/\//, '') || '';
-            if (!entryPath) continue;
-
-            const er = await memory.readMemory(`core://${entryPath}`, { treat404AsDebug: true });
-            if (!er.ok) continue;
-
-            const content = er.data?.node?.content
-              || er.data?.content || '';
-
-            try {
-              const data = JSON.parse(content);
-              total++;
-
-              // 检查评分（没有评分默认3分，只导出2分以上）
-              const timeKey = (data.timestamp || '').slice(0, 16);
-              const score = evalScores.get(timeKey) || 3;
-              if (score < 2) continue;
-
-              // 跳过太短的对话
-              if (!data.user || !data.amy) continue;
-              if (data.user.length < 5 || data.amy.length < 10) continue;
-
-              // 百炼 SFT 格式
-              const trainingItem = {
-                messages: [
-                  {
-                    role: 'system',
-                    content: '你是 AI，用户的私人助手和朋友。用中文回复，简洁有温度，称呼用户为"用户"。',
-                  },
-                  {
-                    role: 'user',
-                    content: data.user,
-                  },
-                  {
-                    role: 'assistant',
-                    content: data.amy,
-                  },
-                ],
-              };
-              lines.push(JSON.stringify(trainingItem));
-              exported++;
-            } catch {}
-          }
-        }
-
-        if (lines.length === 0) {
-          slashReply(ws, '⚠️ 暂无可导出的数据，继续积累对话后再试');
-          return;
-        }
-
-        // 写入文件
-        fs.writeFileSync(outputPath, lines.join('\n'), 'utf-8');
-
-        // 同时生成一个统计报告
-        const reportPath = path.join(
-          outputDir, `amy-training-${dateStr}-report.txt`
-        );
-        const report = [
-          `导出时间：${new Date().toLocaleString('zh-CN')}`,
-          `总对话数：${total} 条`,
-          `导出数量：${exported} 条（3分以上）`,
-          `过滤数量：${total - exported} 条（低分或太短）`,
-          `文件路径：${outputPath}`,
-          '',
-          '下一步：',
-          '1. 打开 https://bailian.console.aliyun.com',
-          '2. 进入「模型调优」→「数据集管理」',
-          '3. 上传 ' + path.basename(outputPath),
-          '4. 选择 qwen-turbo 或 qwen-plus 作为基础模型',
-          '5. 开始 SFT 微调训练',
-          '',
-          `当前进度：${exported} / 1000 条`,
-          `距离可微调还需：${Math.max(0, 1000 - exported)} 条`,
-        ].join('\n');
-
-        fs.writeFileSync(reportPath, report, 'utf-8');
-
-        slashReply(ws, [
-          `✅ 训练数据导出完成！`,
-          ``,
-          `📊 统计：`,
-          `总对话：${total} 条`,
-          `导出：${exported} 条（3分以上）`,
-          `过滤：${total - exported} 条`,
-          ``,
-          `📁 文件：`,
-          `training-data/amy-training-${dateStr}.jsonl`,
-          ``,
-          `📈 微调进度：${exported}/1000 条`,
-          exported >= 1000
-            ? `🎉 数据量已达标，可以开始微调了！`
-            : `还需积累 ${1000 - exported} 条高分对话`,
-          ``,
-          `口令：/export training-data`,
-        ].join('\n'));
-
-      } catch (e) {
-        slashReply(ws, `❌ 导出失败：${e.message}`);
-      }
-      return;
-    }
-
-    // /export 无参数时显示帮助
-    slashReply(ws, [
-      '📦 导出功能：',
-      '/export training-data — 导出微调训练数据（JSONL格式）',
-    ].join('\n'));
-    return;
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // /think 思考模式命令（/cot 兼容别名）
-  // ═══════════════════════════════════════════════════════════════
-  if (base === '/think' || base === '/cot') {
-    const level = (parts[1] || '').toLowerCase();
-    const validLevels = ['off', 'low', 'medium', 'high'];
-
-    if (!level || !validLevels.includes(level)) {
-      const currentLevel = session.getThinkMode(sessionKey) || 'off';
-      slashReply(ws, [
-        '🧠 思考模式',
-        '',
-        `当前状态：${currentLevel.toUpperCase()}`,
-        '',
-        '可用级别：',
-        '  /cot off    — 关闭思考模式',
-        '  /cot low    — 低强度思考引导',
-        '  /cot medium — 中等强度思考引导',
-        '  /cot high   — 高强度思考引导',
-      ].join('\n'));
-      return;
-    }
-
-    session.setThinkMode(sessionKey, level);
-
-    const levelDesc = {
-      'off': '已关闭思考模式',
-      'low': '已开启低强度思考引导（轻量级提示）',
-      'medium': '已开启中等强度思考引导（结构化分析）',
-      'high': '已开启高强度思考引导（深度推理）',
-    };
-
-    slashReply(ws, `🧠 ${levelDesc[level]}\n\n下次对话将应用此设置。`);
-    return;
-  }
-
-  if (base === '/help') {
-    slashReply(ws, [
-      '📋 OCT Gateway 命令：',
-      '  /status   — 查看 Gateway 状态',
-      '  /model [名称] — 查看/切换模型',
-      '  /provider [id] — 查看/切换 AI 服务商',
-      '  /memory   — 记忆系统管理',
-      '  /think [off/low/medium/high] — 思考模式',
-      '  /task add [内容] [p0/p1/p2] — 添加任务',
-      '  /task done [序号] — 标记任务完成',
-      '  /task list — 列出今日任务',
-      '  /task clear — 清空已完成任务',
-      '  /new      — 重置当前会话',
-      '  /help     — 显示此帮助',
-    ].join('\n'));
-    return;
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // /task 任务管理命令（改用本地存储，脱离 Nocturne）
-  // ═══════════════════════════════════════════════════════════════
-  if (base === '/task') {
-    const subCmd = (parts[1] || '').toLowerCase();
-    const todayStr = new Date().toISOString().slice(0, 10);
-
-    // /task add [内容] [p0/p1/p2]
-    if (subCmd === 'add') {
-      const args = parts.slice(2);
-      if (args.length === 0) {
-        slashReply(ws, '用法：/task add 任务内容 [p0/p1/p2]\n示例：/task add 修复登录Bug p1');
-        return;
-      }
-
-      let priority = 'p2';
-      let content = args.join(' ');
-      const lastArg = args[args.length - 1]?.toLowerCase();
-      if (lastArg === 'p0' || lastArg === 'p1' || lastArg === 'p2') {
-        priority = lastArg;
-        content = args.slice(0, -1).join(' ');
-      }
-
-      if (!content.trim()) {
-        slashReply(ws, '❌ 任务内容不能为空');
-        return;
-      }
-
-      // 使用本地存储
-      const result = await tools.executeTool('tasks_add', {
-        content: content.trim(),
-        priority,
-      });
-
-      if (result.success) {
-        const priorityIcon = priority === 'p0' ? '🔴' : priority === 'p1' ? '🟡' : '🟢';
-        slashReply(ws, `✅ 任务已添加\n${priorityIcon} [${priority.toUpperCase()}] ${content.trim()}`);
-      } else {
-        slashReply(ws, `❌ 添加任务失败: ${result.error}`);
-      }
-      return;
-    }
-
-    // /task done [序号]
-    if (subCmd === 'done') {
-      const index = parseInt(parts[2] || '', 10);
-      if (isNaN(index) || index < 1) {
-        slashReply(ws, '用法：/task done <序号>\n先用 /task list 查看任务序号');
-        return;
-      }
-
-      const dataResult = await tools.executeTool('tasks_read', {});
-      if (!dataResult.success) {
-        slashReply(ws, '❌ 无法读取任务列表');
-        return;
-      }
-
-      const pendingTasks = (dataResult.data.tasks || []).filter(t => !t.done);
-
-      if (index > pendingTasks.length) {
-        slashReply(ws, `❌ 序号 ${index} 超出范围，当前有 ${pendingTasks.length} 个待办任务`);
-        return;
-      }
-
-      const task = pendingTasks[index - 1];
-      if (!task) {
-        slashReply(ws, '❌ 找不到该任务');
-        return;
-      }
-
-      const updateResult = await tools.executeTool('tasks_update', {
-        taskId: task.id,
-        done: true,
-      });
-
-      if (updateResult.success) {
-        slashReply(ws, `✅ 任务已完成\n~~${task.content}~~`);
-      } else {
-        slashReply(ws, `❌ 更新失败: ${updateResult.error}`);
-      }
-      return;
-    }
-
-    // /task list
-    if (subCmd === 'list') {
-      const dataResult = await tools.executeTool('tasks_read', {});
-      if (!dataResult.success) {
-        slashReply(ws, '❌ 无法读取任务列表');
-        return;
-      }
-
-      const tasks = dataResult.data.tasks || [];
-      const intention = dataResult.data.intention || '';
-
-      if (tasks.length === 0) {
-        slashReply(ws, `📅 今日任务 (${todayStr})\n\n暂无任务\n\n用 /task add 添加任务`);
-        return;
-      }
-
-      const pending = tasks.filter(t => !t.done);
-      const completed = tasks.filter(t => t.done);
-
-      const lines = [`📅 今日任务 (${todayStr})`];
-      if (intention) {
-        lines.push(`\n🎯 今日意图：${intention}`);
-      }
-
-      lines.push(`\n📋 待办 (${pending.length})`);
-      pending.forEach((t, i) => {
-        const icon = t.priority === 'p0' ? '🔴' : t.priority === 'p1' ? '🟡' : '🟢';
-        const source = t.source === 'amy' ? 'AI' : '用户';
-        lines.push(`  ${i + 1}. ${icon} ${t.content} [${source}]`);
-      });
-
-      if (completed.length > 0) {
-        lines.push(`\n✅ 已完成 (${completed.length})`);
-        completed.forEach(t => {
-          lines.push(`  ~~${t.content}~~`);
-        });
-      }
-
-      lines.push('\n口令：/task done <序号> | /task add | /task clear');
-      slashReply(ws, lines.join('\n'));
-      return;
-    }
-
-    // /task clear — 清空已完成任务
-    if (subCmd === 'clear') {
-      const dataResult = await tools.executeTool('tasks_read', {});
-      if (!dataResult.success) {
-        slashReply(ws, '❌ 无法读取任务列表');
-        return;
-      }
-
-      const completedCount = (dataResult.data.tasks || []).filter(t => t.done).length;
-      if (completedCount === 0) {
-        slashReply(ws, '✅ 没有任务需要清理');
-        return;
-      }
-
-      // 直接操作文件
-      const fs = require('fs');
-      const path = require('path');
-      const os = require('os');
-      const tasksPath = path.join(os.homedir(), '.openclaw', 'tasks.json');
-
-      try {
-        const data = JSON.parse(fs.readFileSync(tasksPath, 'utf-8'));
-        data.tasks = data.tasks.filter(t => !t.done);
-        data.updatedAt = new Date().toISOString();
-        fs.writeFileSync(tasksPath, JSON.stringify(data, null, 2), 'utf-8');
-        slashReply(ws, `✅ 已清理 ${completedCount} 条已完成任务\n刷新任务看板即可生效`);
-      } catch (e) {
-        slashReply(ws, `❌ 清理失败: ${e.message}`);
-      }
-      return;
-    }
-
-    // /task migrate — 从 Nocturne 迁移数据到本地
-    if (subCmd === 'migrate') {
-      const alive = await memory.isAlive();
-      if (!alive) {
-        slashReply(ws, '❌ Nocturne 离线，无法迁移');
-        return;
-      }
-
-      slashReply(ws, '🔄 正在从 Nocturne 迁移任务数据...');
-
-      const fs = require('fs');
-      const path = require('path');
-      const os = require('os');
-      const tasksPath = path.join(os.homedir(), '.openclaw', 'tasks.json');
-
-      let localData = { tasks: [], parking: [], intention: '', updatedAt: '' };
-      try {
-        if (fs.existsSync(tasksPath)) {
-          localData = JSON.parse(fs.readFileSync(tasksPath, 'utf-8'));
-        }
-      } catch {}
-
-      let migratedTasks = 0;
-      let migratedParking = 0;
-
-      try {
-        // 迁移任务
-        const tasksResult = await memory.readMemory(`core://my_user/daily/${todayStr}/tasks`, { treat404AsDebug: true });
-        if (tasksResult.ok && tasksResult.data) {
-          const children = tasksResult.data?.node?.children || tasksResult.data?.children || [];
-          for (const child of children) {
-            const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
-            if (!childPath) continue;
-            const taskResult = await memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
-            if (!taskResult.ok) continue;
-            const content = taskResult.data?.node?.content || taskResult.data?.content || '';
-            try {
-              const parsed = JSON.parse(content);
-              if (parsed.archived) continue;
-              const existingId = childPath.split('/').pop();
-              if (!localData.tasks.find(t => t.id === existingId)) {
-                localData.tasks.push({
-                  id: existingId,
-                  content: parsed.label || parsed.content || '未命名任务',
-                  priority: parsed.priority || 'p2',
-                  done: parsed.done || false,
-                  source: parsed.source || 'amy',
-                  createdAt: parsed.created || parsed.createdAt || '',
-                });
-                migratedTasks++;
-              }
-            } catch {}
-          }
-        }
-
-        // 迁移停车场
-        const parkingResult = await memory.readMemory(`core://my_user/daily/${todayStr}/parking_lot`, { treat404AsDebug: true });
-        if (parkingResult.ok && parkingResult.data) {
-          const children = parkingResult.data?.node?.children || parkingResult.data?.children || [];
-          for (const child of children) {
-            const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
-            if (!childPath) continue;
-            const itemResult = await memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
-            if (!itemResult.ok) continue;
-            const content = itemResult.data?.node?.content || itemResult.data?.content || '';
-            try {
-              const parsed = JSON.parse(content);
-              const existingId = childPath.split('/').pop();
-              if (!localData.parking.find(p => p.id === existingId)) {
-                localData.parking.push({
-                  id: existingId,
-                  content: parsed.item || content.slice(0, 50),
-                  priority: 'p2',
-                  done: false,
-                  source: 'amy',
-                  createdAt: parsed.time || '',
-                });
-                migratedParking++;
-              }
-            } catch {
-              if (content && content !== '[DELETED]') {
-                const existingId = childPath.split('/').pop();
-                if (!localData.parking.find(p => p.id === existingId)) {
-                  localData.parking.push({
-                    id: existingId,
-                    content: content.slice(0, 50),
-                    priority: 'p2',
-                    done: false,
-                    source: 'amy',
-                    createdAt: '',
-                  });
-                  migratedParking++;
-                }
-              }
-            }
-          }
-        }
-
-        // 保存
-        localData.updatedAt = new Date().toISOString();
-        const dir = path.dirname(tasksPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(tasksPath, JSON.stringify(localData, null, 2), 'utf-8');
-
-        slashReply(ws, `✅ 迁移完成\n已从 Nocturne 迁移 ${migratedTasks} 条任务和 ${migratedParking} 条停车场项目\n\n原始数据保留在 Nocturne 中作为备份`);
-      } catch (e) {
-        slashReply(ws, `❌ 迁移失败: ${e.message}`);
-      }
-      return;
-    }
-
-    // /task 无参数时显示帮助
-    slashReply(ws, [
-      '📋 任务管理命令：',
-      '/task add <内容> [p0/p1/p2] — 添加任务',
-      '/task done <序号> — 标记完成',
-      '/task list — 列出今日任务',
-      '/task clear — 清空已完成任务',
-      '/task migrate — 从 Nocturne 迁移数据',
-    ].join('\n'));
-    return;
-  }
-
-  slashReply(ws, `未知命令：${cmd}\n输入 /help 查看可用命令`);
-}
 
 process.on('SIGINT', () => {
   log.info('shutting down');
-  if (config.REFACTOR_FLAGS?.USE_NEW_TRANSPORT) {
-    httpTransport?.close();
-    wsTransport?.close(() => process.exit(0));
-    return;
-  }
-  httpServer?.close();
-  wss?.close(() => process.exit(0));
+  httpTransport?.close();
+  wsTransport?.close(() => process.exit(0));
 });
