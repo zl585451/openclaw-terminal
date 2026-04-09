@@ -342,6 +342,7 @@ function buildIdentityContract() {
 - 你必须绝对诚实：没执行的事不能说已执行，没写入记忆的事不能说已写入，不确定的事要明确说不确定。
 - 诚实不等于冷淡。${styleGuide}
 - 除非用户明确要求简短，否则回答不要只给最短结论；应兼顾结论、原因、下一步建议。
+- 【严禁 emoji】回复正文、解释文字、总结中不得使用任何 emoji（😊📊🎯✅ 等）。唯一允许的场景是用户自己先使用了 emoji 并明确要求你也用。
 `;
 }
 
@@ -440,6 +441,15 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - 需要流程图、架构图、时序图、关系图
   - 需要页面草图、布局草图、信息架构
   - 需要持续迭代的代码草稿或组件草稿
+- 【图表硬性门禁 — 生成任何图之前必须先自检，不符合则禁止输出】
+  ① react-flow 总节点 ≤ 15、总边 ≤ 20。生成前先数一遍，超出时必须合并同层同类节点。
+    合并示例：用户要"电商完整架构"→ 微服务层不要拆成 订单/商品/用户/支付/库存/物流/搜索 7 个独立节点，
+    而应合并为 1 个"核心业务服务(7)"节点，在 chat 文字中列出明细。同理 Redis/MQ/ES 合并为"中间件集群"。
+    合并后的总览图通常只需 8-12 个节点。用户说"展开微服务层"时再画子图
+  ② 聊天区 Mermaid：节点 ≤ 6、边 ≤ 5、方向 TD
+  ③ 回复正文和 explanation 中严禁任何 emoji
+  ④ 已在 chat 渲染的简单图，禁止同时创建 Canvas artifact
+  违反以上任意一条的图表输出视为生成失败。
 - 使用原则：
   - 先用 chat 简短说明你正在产出什么，再调用 canvas
   - artifact 标题要清晰，解释 explanation 要简洁
@@ -505,6 +515,7 @@ URI 路径：core://my_user/[分类]/[具体节点]
       · 唯一允许的 classDef 用途：改变节点形状（如 round、diamond），不得携带 fill/stroke/color 属性
       · 如果想表达"重点节点"，用节点形状区分（圆角矩形 vs 菱形 vs 圆形），不要用颜色
   - 当信息量过大时先输出”总览图”（分组/分层），再按用户要求继续细化子图，不要一次堆满所有细节
+  - 【总览图硬上限】总览图节点数 ≤ 15 个、边数 ≤ 20 条。超出时必须合并同类节点（如 8 个微服务合并为 1 个”微服务集群”节点），细节留到用户要求”展开某一层”时再画
   - ★【结构图/依赖图/组件图 → 一律使用 react-flow，禁止使用 Mermaid】★
     “依赖图 / 结构图 / 组件关系图 / 页面关系图 / 模块关系图 / 内部结构图 / 层次图” 这类场景
     必须调用 canvas() 工具，artifactType=”react-flow”。不得退回 Mermaid、不得输出成表格。
@@ -513,6 +524,8 @@ URI 路径：core://my_user/[分类]/[具体节点]
     - 每个分组最多 4-5 个代表节点；超出的折叠成”其他…”
     - 默认只画主依赖和代表性依赖，优先可读性不优先完整性
     - 结构图先输出”主结构总览”，不要一次展开所有细节
+    - 【连线精简原则】总边数 ≤ 节点数 × 1.5；宁可省略次要连线也不能出现蜘蛛网。优先画”主调用链路”（如 客户端→网关→BFF→微服务→数据库），次要关系（如 微服务→缓存/MQ）只保留 1-2 条代表性连线，其余在 explanation 文字中说明
+    - 【分层布局强制】当节点 ≥ 10 个时，必须按逻辑分层（如 接入层/业务层/数据层），同层节点 group 值相同，不同层之间只画跨层主链路。禁止所有节点平铺在同一层导致连线交叉
   - 对”思维导图/脑图/策略图”场景，也优先使用 react-flow（树形/金字塔结构），
     仅在内容是纯线性步骤链时才退而使用 Mermaid flowchart TD
   - 画布填充优先：diagram 需要尽量覆盖画布主体区域，避免节点全部挤在上半区；层级建议 3-4 层、每层节点数量控制在可读范围
@@ -540,6 +553,7 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - 简单问答不要滥用 canvas
   - artifact 类型选择规则：
       · 简单线性流程（≤5步 flowchart / pie 占比 / 小型 hierarchy）→ 直接在 chat 输出 \`\`\`json 代码块（diagramType=flowchart/pie/hierarchy），系统会自动渲染成图，不需要 canvas
+        【严禁重复】当内容已在 chat 区以 JSON 代码块输出并自动渲染时，禁止同时调用 canvas() 创建相同内容的 artifact。chat 渲染的图就是最终成果，Canvas 不是"备份"——重复创建会导致 Canvas 面板渲染异常（节点散列、连线丢失）
       · 【react-flow】以下场景必须用 react-flow，不得用 Mermaid 代替：
           - 结构图 / 组成图 / 层次图（任何描述"X由哪些部分组成"的图）
           - 架构图 / 模块关系 / 依赖图 / 组件关系图
@@ -576,6 +590,7 @@ URI 路径：core://my_user/[分类]/[具体节点]
     · label 写人类可读的中文或英文短语，不要写技术标识符
     · group 用于颜色分组，如"接口层""业务层""基础设施层"
     · 不要在 JSON 外面加任何 Markdown 说明文字，content 必须是纯合法 JSON
+    · edge label ≤ 10 个字符（中文）/ ≤ 20 个字符（英文）；超长描述拆成多条边，或放在 explanation 字段里。反例："鉴权请求并返回Token和鉴权结果" → 正例：拆成两条边 "发起鉴权" + "返回Token"
 
   - 【echart JSON 格式规范】（当 artifactType="echart" 时，content 必须严格符合此格式）：
     {
@@ -701,6 +716,7 @@ async function streamChat({
   }
 
   let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用
+  let assistantResponseContent = '';
   const _thinkState = {
     inThink: false,
     cotOpen: false,
@@ -812,6 +828,7 @@ async function streamChat({
       // 先过滤掉 [TOOL_CALL] / [TOOL_CALLS] 等误输出的标记
       const cleaned = _stripToolCallMarkers(raw);
       if (!cleaned) return;
+      assistantResponseContent += cleaned;
 
       // 标准化思考标签：将标准 <think> 转换为 <redacted_thinking> 格式
       const { normalized, hadCotOpen, hadCotClose } = _normalizeThinkTags(cleaned);
@@ -1035,6 +1052,11 @@ async function streamChat({
             fullText,
             totalUsage,
             responseModel,
+            assistantResponseMessage: {
+              role: 'assistant',
+              content: assistantResponseContent || '',
+              tool_calls: toolCalls.filter(Boolean),
+            },
             truncatedMessages,
             onDelta,
             onDone,

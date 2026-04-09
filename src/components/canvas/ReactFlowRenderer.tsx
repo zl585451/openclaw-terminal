@@ -69,6 +69,7 @@ const GROUP_PALETTE = [
 
 const GAP_MAIN  = 280;  // spacing along main axis (between levels)
 const GAP_CROSS = 150;  // spacing along cross axis (between siblings)
+const GAP_GROUP = 80;   // extra spacing between different groups within the same level
 // Estimated node dimensions for layout (actual size depends on label length + CSS)
 const EST_NODE_W = 180;
 const EST_NODE_H = 48;
@@ -160,12 +161,24 @@ function computeLayout(
       return (nodeMap.get(a)?.label ?? a).localeCompare(nodeMap.get(b)?.label ?? b, 'zh-CN');
     });
 
-    const total = ids.length;
+    // Compute cross-axis offsets with extra spacing between different groups
+    const offsets: number[] = [];
+    let cumOffset = 0;
+    ids.forEach((id, i) => {
+      if (i > 0) {
+        const prevGroup = nodeMap.get(ids[i - 1])?.group ?? '';
+        const curGroup  = nodeMap.get(id)?.group ?? '';
+        cumOffset += GAP_CROSS + (prevGroup !== curGroup && (prevGroup || curGroup) ? GAP_GROUP : 0);
+      }
+      offsets.push(cumOffset);
+    });
+    // Centre around 0
+    const midOffset = offsets.length > 0 ? offsets[offsets.length - 1] / 2 : 0;
+
     ids.forEach((id, i) => {
       levelOrder.set(id, i);
       const mainAxis = d * GAP_MAIN * (reverseMainAxis ? -1 : 1);
-      // Centre the group around 0 on the cross axis
-      const crossAxis = (i - (total - 1) / 2) * GAP_CROSS;
+      const crossAxis = offsets[i] - midOffset;
       positions.set(id, isLR
         ? { x: mainAxis, y: crossAxis }
         : { x: crossAxis, y: mainAxis });
