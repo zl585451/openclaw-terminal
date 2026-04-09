@@ -751,12 +751,7 @@ export default function MermaidRenderer({
                   style={{
                     width: svgBounds ? Math.max(svgBounds.width * zoom, stageRef.current?.clientWidth || 0) : '100%',
                     height: svgBounds ? Math.max(svgBounds.height * zoom, stageRef.current?.clientHeight || 0) : '100%',
-                    justifyContent:
-                      svgBounds && stageRef.current
-                        ? svgBounds.width * zoom <= stageRef.current.clientWidth
-                          ? 'center'
-                          : 'flex-start'
-                        : 'center',
+                    justifyContent: 'flex-start',
                   }}
                 >
                   <div

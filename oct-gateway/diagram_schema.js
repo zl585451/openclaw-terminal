@@ -49,8 +49,8 @@ function parseFlowchartSpec(obj) {
   const nextEdges = edges
     .map((edge) => {
       if (!edge || typeof edge !== 'object') return null;
-      const from = sanitizeNodeId(edge.from);
-      const to = sanitizeNodeId(edge.to);
+      const from = sanitizeNodeId(edge.from ?? edge.source);
+      const to = sanitizeNodeId(edge.to ?? edge.target);
       if (!knownIds.has(from) || !knownIds.has(to)) return null;
       const label = sanitizeText(edge.label);
       return { from, to, label: label || undefined };
@@ -134,6 +134,12 @@ function parseDiagramSpec(raw) {
     }
     if (diagramType === 'hierarchy') {
       return parseHierarchySpec(parsed);
+    }
+    if (Array.isArray(parsed?.nodes) && Array.isArray(parsed?.edges)) {
+      return parseFlowchartSpec(parsed);
+    }
+    if (Array.isArray(parsed?.items) && parsed.items.every((item) => item && typeof item === 'object' && 'value' in item)) {
+      return parsePieSpec(parsed);
     }
     return null;
   } catch {

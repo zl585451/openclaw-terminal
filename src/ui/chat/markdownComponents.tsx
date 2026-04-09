@@ -361,6 +361,14 @@ export function createMarkdownComponents(
                       openCanvas(code, 'markdown', 'Mermaid Diagram', 'mermaid', 'diagram');
                       return;
                     }
+                    if (language.toLowerCase() === 'json') {
+                      const spec = parseDiagramSpec(code);
+                      if (spec) {
+                        const title = `${getDiagramJsonSummaryLabel(code) || 'Diagram'} Diagram`;
+                        openCanvas(code, 'markdown', title, 'json', 'diagram');
+                        return;
+                      }
+                    }
                     openCanvas(code, 'code', language || 'code', language || 'text', 'code');
                   }}
                   style={{

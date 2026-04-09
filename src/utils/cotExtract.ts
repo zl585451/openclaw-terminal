@@ -23,6 +23,8 @@ const REDACTED_THINK_CLOSE = '</redacted_thinking>';
 export type CotExtractResult = {
   cotContent: string | null;
   cotDone: boolean;
+  /** 是否已检测到 CoT 起始标记；用于首 token 即显示思维块 */
+  cotStarted: boolean;
   /** 去掉思维链内文后的正文（供 Markdown / 打字机） */
   mainContent: string;
 };
@@ -164,7 +166,7 @@ function sanitizeCotContent(text: string): string {
 
 export function extractAssistantCotAndMain(fullContent: string): CotExtractResult {
   if (!fullContent) {
-    return { cotContent: null, cotDone: true, mainContent: fullContent };
+    return { cotContent: null, cotDone: true, cotStarted: false, mainContent: fullContent };
   }
 
   const normalizedContent = stripTextToolAnnotations(fullContent);
@@ -172,6 +174,7 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
   const mainParts: string[] = [];
   let cursor = 0;
   let cotDone = true;
+  let cotStarted = false;
 
   while (cursor < normalizedContent.length) {
     const next = findNextTag(normalizedContent, cursor);
@@ -184,6 +187,7 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
       mainParts.push(normalizedContent.slice(cursor, next.index));
     }
 
+    cotStarted = true;
     const afterOpen = next.index + next.spec.open.length;
     const closeIdx = normalizedContent.indexOf(next.spec.close, afterOpen);
     if (closeIdx === -1) {
@@ -206,7 +210,7 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-  return { cotContent: sanitizeCotContent(cotContent) || null, cotDone, mainContent };
+  return { cotContent: sanitizeCotContent(cotContent) || null, cotDone, cotStarted, mainContent };
 }
 
 /** 用于 UI：是否应走「行内 CoT」分支（避免双指示器） */

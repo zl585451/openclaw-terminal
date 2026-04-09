@@ -22,6 +22,7 @@ class ToolLoop {
     fullText,
     totalUsage,
     responseModel,
+    assistantResponseMessage,
     truncatedMessages,
     onDelta,
     onDone,
@@ -109,10 +110,17 @@ class ToolLoop {
       });
     }
 
-    const assistantToolMessage = {
-      role: 'assistant',
-      tool_calls: normalizedToolCalls,
-    };
+    const assistantToolMessage = assistantResponseMessage && typeof assistantResponseMessage === 'object'
+      ? {
+          role: 'assistant',
+          content: assistantResponseMessage.content || '',
+          tool_calls: normalizedToolCalls,
+        }
+      : {
+          role: 'assistant',
+          content: '',
+          tool_calls: normalizedToolCalls,
+        };
 
     const continuedMessages = [
       ...truncatedMessages,

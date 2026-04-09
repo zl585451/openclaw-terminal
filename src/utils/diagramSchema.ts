@@ -100,8 +100,8 @@ function parseFlowchartSpec(value: unknown): FlowchartDiagramSpec | null {
     .map((edge) => {
       if (!edge || typeof edge !== 'object') return null;
       const item = edge as Record<string, unknown>;
-      const from = sanitizeNodeId(item.from);
-      const to = sanitizeNodeId(item.to);
+      const from = sanitizeNodeId(item.from ?? item.source);
+      const to = sanitizeNodeId(item.to ?? item.target);
       if (!knownIds.has(from) || !knownIds.has(to)) return null;
       const label = sanitizeText(item.label);
       return { from, to, label: label || undefined } as DiagramEdge;
@@ -193,6 +193,12 @@ export function parseDiagramSpec(raw: string): SupportedDiagramSpec | null {
     }
     if (diagramType === 'hierarchy') {
       return parseHierarchySpec(parsed);
+    }
+    if (Array.isArray(parsed?.nodes) && Array.isArray(parsed?.edges)) {
+      return parseFlowchartSpec(parsed);
+    }
+    if (Array.isArray(parsed?.items) && parsed.items.every((item) => item && typeof item === 'object' && 'value' in (item as Record<string, unknown>))) {
+      return parsePieSpec(parsed);
     }
     return null;
   } catch {

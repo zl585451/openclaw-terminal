@@ -262,6 +262,8 @@ export interface ChatMessageItemProps {
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
   /** 从 [cot]…[/cot] 提取的思维链；null/undefined 表示本条无 CoT */
   cotContent?: string | null;
+  /** 已检测到 CoT 起始标记；即使正文尚未到达，也立即显示 CoT 头部块 */
+  cotStarted?: boolean;
   /** 兼容旧接口：当前已不再用于驱动思维链流式渲染 */
   cotStreaming?: boolean;
   /**
@@ -697,15 +699,16 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     usePlainStreamingText = false,
     markdownComponents,
     cotContent,
+    cotStarted = false,
     cotStreaming,
     inlineThinkingPlaceholder = false,
     isMobileViewport = false,
   } = props;
 
   // showCotInline: finalized CoT (not streaming) — show full summarized content
-  const showCotInline = msg.role === 'assistant' && !isStreamingMsg && cotContent != null;
+  const showCotInline = msg.role === 'assistant' && !isStreamingMsg && (cotContent != null || cotStarted);
   // showCotStreaming: CoT is actively being streamed right now
-  const showCotStreaming = msg.role === 'assistant' && isStreamingMsg && !!cotStreaming && cotContent != null;
+  const showCotStreaming = msg.role === 'assistant' && isStreamingMsg && (!!cotStreaming || cotStarted);
   const displayCotContent = showCotInline
     ? summarizeCotForDisplay(cotContent, textToShow || raw || '', { compact: isMobileViewport })
     : null;
@@ -735,20 +738,26 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             assistantName={assistantName}
           />
           <div className="cot-stream-wrapper cot-stream-wrapper--header-inline">
-            <CoTBlock
-              content={
-                showCotInline    ? (displayCotContent ?? cotContent ?? '')
-                : showCotStreaming ? (cotContent ?? '')
-                : ''
-              }
-              isStreaming={inlineThinkingPlaceholder || showLightweightThinkingBadge || showCotStreaming}
-              isPlaceholder={inlineThinkingPlaceholder}
-              compactStreaming={showLightweightThinkingBadge}
-              labelOverride={showLightweightThinkingBadge ? '思考中' : undefined}
-              placeholderHint={showLightweightThinkingBadge ? '思维链将在回复完成后显示。' : undefined}
-            />
+              <CoTBlock
+                content={
+                  showCotInline    ? (displayCotContent ?? cotContent ?? '')
+                  : showCotStreaming ? (cotContent ?? '')
+                  : ''
+                }
+                isStreaming={inlineThinkingPlaceholder || showLightweightThinkingBadge || showCotStreaming}
+                isPlaceholder={inlineThinkingPlaceholder}
+                compactStreaming={showLightweightThinkingBadge || (showCotStreaming && !(cotContent ?? '').trim())}
+                labelOverride={showLightweightThinkingBadge || showCotStreaming ? '思考中' : undefined}
+                placeholderHint={
+                  showLightweightThinkingBadge
+                    ? '思维链将在回复完成后显示。'
+                    : showCotStreaming && !(cotContent ?? '').trim()
+                      ? 'AI 已开始思考，正在输出思维链…'
+                      : undefined
+                }
+              />
+            </div>
           </div>
-        </div>
       ) : (
         <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} assistantName={assistantName} />
       )}
@@ -964,12 +973,12 @@ export const ChatMessageList = function ChatMessageList({
         const displayedLength = displayedText.length;
 
         // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
-        const { cotContent: streamingCotContent, mainContent: mainTextFull } =
+        const { cotContent: streamingCotContent, cotStarted: streamingCotStarted, mainContent: mainTextFull } =
           allowCotDisplay && msg.role === 'assistant' && fullContent
             ? !hasAssistantCotMarkers(fullContent)
-              ? { cotContent: null, mainContent: fullContent }
+              ? { cotContent: null, cotStarted: false, mainContent: fullContent }
               : extractAssistantCotAndMain(fullContent)
-            : { cotContent: null, mainContent: fullContent };
+            : { cotContent: null, cotStarted: false, mainContent: fullContent };
         const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
         const shouldBypassStreamingParse =
           usePlainStreamingText && msg.role === 'assistant' && isStreamingMsg;
@@ -1079,7 +1088,8 @@ export const ChatMessageList = function ChatMessageList({
             usePlainStreamingText={usePlainStreamingText}
               markdownComponents={markdownComponents}
             cotContent={msg.role === 'assistant' && streamingCotContent != null ? streamingCotContent : undefined}
-              cotStreaming={isStreamingMsg && !!streamingCotContent}
+              cotStarted={msg.role === 'assistant' && streamingCotStarted}
+              cotStreaming={isStreamingMsg && (streamingCotStarted || !!streamingCotContent)}
               inlineThinkingPlaceholder={inlineThinkingPlaceholder}
               isMobileViewport={isMobileViewport}
             />
