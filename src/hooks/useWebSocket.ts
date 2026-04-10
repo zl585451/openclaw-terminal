@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { CanvasEvent, CanvasRoundtripContext } from '../contexts/CanvasContext';
 
 const ipcRenderer = typeof window !== 'undefined' && typeof (window as any).require === 'function'
   ? (window as any).require('electron').ipcRenderer
@@ -9,6 +10,7 @@ interface UseWebSocketOptions {
   onChatDone: (content: string, isSystemReply: boolean) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: any) => void;
+  onCanvasEvent: (event: CanvasEvent) => void;
   onUsage: (usage: any, isSnapshot: boolean) => void;
   onModelName: (name: string) => void;
 }
@@ -62,7 +64,24 @@ export function useWebSocket(options: UseWebSocketOptions) {
 
 
   const handleIncomingMessage = (
-    data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean; elapsed?: number }
+    data: {
+      content?: string;
+      text?: string;
+      delta?: string;
+      done?: boolean;
+      type?: string;
+      phase?: string;
+      event?: string;
+      action?: string;
+      model?: string;
+      message?: any;
+      usage?: any;
+      payload?: any;
+      data?: any;
+      connected?: boolean;
+      snapshot?: boolean;
+      elapsed?: number;
+    }
   ) => {
     if (!data || data.type === 'status' || data.connected !== undefined) return;
 
@@ -80,6 +99,20 @@ export function useWebSocket(options: UseWebSocketOptions) {
     if (data.type === 'tool' || data.event === 'tool') {
       const payload = data.payload || data.data || data;
       options.onToolEvent(payload);
+      return;
+    }
+
+    if (data.type === 'canvas' || data.event === 'canvas') {
+      const payload = data.payload || data.data || data;
+      const action = data.action || payload?.action;
+      const canvasPayload = payload?.payload ?? payload;
+      if (action) {
+        options.onCanvasEvent({
+          type: 'canvas',
+          action,
+          payload: canvasPayload,
+        } as CanvasEvent);
+      }
       return;
     }
 
@@ -183,13 +216,20 @@ export function useWebSocket(options: UseWebSocketOptions) {
     };
   }, []);
 
-  const send = async (content: string, imageDataUrl?: string, files?: any[], pacingMs?: number): Promise<{success?: boolean}> => {
+  const send = async (
+    content: string,
+    imageDataUrl?: string,
+    files?: any[],
+    pacingMs?: number,
+    canvasContext?: CanvasRoundtripContext
+  ): Promise<{success?: boolean}> => {
     try {
       const result = await ipcRenderer.invoke('openclaw-send', {
         content: content.trim(),
         imageDataUrl,
         files,
         pacingMs,
+        canvasContext,
       });
       return result || {};
     } catch (error) {

@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-10 | 同步 `v0.2.0` Canvas artifact 链路回 `main`：恢复 `canvas` 工具、`canvas` WebSocket 事件、文档型 CanvasContext，以及 Mermaid/ECharts 渲染 | `oct-gateway/tools/canvas.js`, `oct-gateway/ai.js`, `oct-gateway/index.js`, `electron/main.ts`, `src/contexts/CanvasContext.tsx`, `src/hooks/useCanvasBridge.ts`, `src/hooks/useWebSocket.ts`, `src/hooks/useMessages.ts`, `src/components/CanvasPanel.tsx`, `src/components/canvas/*` | 详见 `docs/05_changelog/2026-04-10-canvas-artifact-sync-to-main.md` |
 | 2026-04-10 | GitHub 首页 README 更新为发布版口径：突出 `v0.2.0` 能力、跨平台下载链接、首次启动 API Key 引导和本地开发入口 | `README.md` | 仓库首页更适合作为产品主页和下载入口 |
 | 2026-04-03 | ChatTab.v2.tsx 完整拆分：6 步重构，~3000行 → 729行，拆出 useMessages/useScrollManager/useFileAttachment/useTimers/useContextMenu hooks 及 MessageList/ChatInput/ContextMenu 组件 | `src/hooks/useMessages.ts`, `src/hooks/useScrollManager.ts`, `src/hooks/useFileAttachment.ts`, `src/hooks/useTimers.ts`, `src/hooks/useContextMenu.ts`, `src/components/ContextMenu.tsx`, `src/ui/chat/MessageList.tsx`, `src/ui/chat/ChatInput.tsx`, `src/ui/chat/ChatTab.v2.tsx` | 详见 `docs/05_changelog/2026-04-03-ChatTab拆出useFileAttachment-useTimers-useContextMenu.md` |
 | 2026-04-03 | 流式打字机丝滑优化：Gateway 新增 createStreamSmoother（Intl.Segmenter 词边界分词），WebSocket 改用 smoother；恢复 useTypewriter RAF 逐字动画（MAX=6/BATCH=1/追赶提前） | `oct-gateway/index.js`, `src/hooks/useTypewriter.ts`, `oct-gateway/config.json`, `oct-gateway/config.js` | 用户"从容/细读"设置生效；详见 `docs/05_changelog/2026-04-03-流式打字机丝滑优化.md` |

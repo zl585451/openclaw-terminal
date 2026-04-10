@@ -788,6 +788,15 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
               }
               return `工具执行失败: ${e.message}，请稍后重试或换个方式表达需求。`;
             });
+            if (result && typeof result === 'object' && result.canvasEvent && onToolEvent) {
+              try {
+                onToolEvent({
+                  type: 'canvas',
+                  action: result.canvasEvent.action,
+                  payload: result.canvasEvent.payload,
+                });
+              } catch {}
+            }
             if (onToolEvent) {
               try { onToolEvent({ type: 'tool_result', tool: toolName, callId: tc.id, state: 'done', resultPreview: JSON.stringify(result).slice(0, 200) }); } catch {}
             }

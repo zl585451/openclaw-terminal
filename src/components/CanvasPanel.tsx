@@ -1,142 +1,112 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useCallback, useState } from 'react';
 import { useCanvas } from '../contexts/CanvasContext';
-import { markdownComponents } from '../ui/chat/markdownComponents';
-import { highlightCode } from '../utils/codeHighlight';
+import { resolveCanvasPlugin } from './canvas/plugins';
 import './CanvasPanel.css';
 
-export default function CanvasPanel({ onSendToChat }: { onSendToChat: (text: string) => void }) {
+export default function CanvasPanel({ onSendToChat: _onSendToChat }: { onSendToChat?: (text: string) => void }) {
   const canvas = useCanvas();
-  const [viewMode, setViewMode] = useState<'preview' | 'edit'>('preview');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // 进入编辑模式时自动 focus
-  useEffect(() => {
-    if (viewMode === 'edit' && textareaRef.current) {
-      textareaRef.current.focus();
-    }
-  }, [viewMode]);
+  const activeDocument = canvas.activeDocument;
+  const hasMultipleDocuments = canvas.documents.length > 1;
+  const [showDetails, setShowDetails] = useState(false);
+  const lineCount = activeDocument?.content ? activeDocument.content.split(/\r?\n/).length : 0;
+  const charCount = activeDocument?.content?.length || 0;
+  const updatedAtLabel = activeDocument
+    ? new Date(activeDocument.updatedAt).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
   const handleCopy = useCallback(async () => {
+    if (!activeDocument) return;
     try {
-      await navigator.clipboard.writeText(canvas.content);
+      await navigator.clipboard.writeText(activeDocument.content);
     } catch (err) {
       console.warn('Failed to copy to clipboard:', err);
     }
-  }, [canvas.content]);
+  }, [activeDocument]);
 
   const handleExport = useCallback(() => {
-    const blob = new Blob([canvas.content], { type: 'text/plain' });
+    if (!activeDocument) return;
+    const blob = new Blob([activeDocument.content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    
-    let filename = 'canvas';
-    if (canvas.mode === 'markdown') {
-      filename += '.md';
-    } else if (canvas.mode === 'html') {
-      filename += '.html';
-    } else if (canvas.mode === 'code' && canvas.language) {
-      const extMap: Record<string, string> = {
-        javascript: '.js',
-        typescript: '.ts',
-        python: '.py',
-        java: '.java',
-        cpp: '.cpp',
-        c: '.c',
-        rust: '.rs',
-        go: '.go',
-        php: '.php',
-        ruby: '.rb',
-        swift: '.swift',
-        kotlin: '.kt',
-        scala: '.scala',
-        css: '.css',
-        scss: '.scss',
-        less: '.less',
-        json: '.json',
-        xml: '.xml',
-        yaml: '.yaml',
-        yml: '.yml',
-        sql: '.sql',
-        shell: '.sh',
-        bash: '.sh',
-        powershell: '.ps1',
-      };
-      filename += extMap[canvas.language] || '.txt';
-    } else {
-      filename += '.txt';
-    }
-    
+    const plugin = resolveCanvasPlugin(activeDocument);
+    const filename = plugin?.getExportFilename?.(activeDocument) || 'canvas.txt';
     a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [canvas.content, canvas.mode, canvas.language]);
+  }, [activeDocument]);
+
+  const handleDelete = useCallback(() => {
+    if (!activeDocument) return;
+    canvas.deleteDocument(activeDocument.id);
+  }, [activeDocument, canvas]);
 
   const renderPreview = () => {
-    if (canvas.mode === 'markdown') {
-      return (
-        <div className="canvas-preview">
-          <div className="msg-content markdown-body">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-              {canvas.content}
-            </ReactMarkdown>
-          </div>
-        </div>
-      );
-    } else if (canvas.mode === 'code') {
-      return (
-        <div className="canvas-preview">
-          <pre className="canvas-code-preview">
-            <code
-              className="oct-prism-code"
-              dangerouslySetInnerHTML={{
-                __html: highlightCode(canvas.content, canvas.language || 'text'),
-              }}
-            />
-          </pre>
-        </div>
-      );
-    } else if (canvas.mode === 'html') {
-      return (
-        <div className="canvas-preview">
-          <iframe
-            className="canvas-html-preview"
-            srcDoc={canvas.content}
-            sandbox="allow-scripts"
-            title="HTML Preview"
-          />
-        </div>
-      );
-    }
-    return null;
+    if (!activeDocument) return null;
+    const plugin = resolveCanvasPlugin(activeDocument);
+    return plugin ? plugin.render(activeDocument) : null;
   };
+
+  const renderEmptyState = () => (
+    <div className="canvas-empty">
+      <div className="canvas-empty-title">Canvas Workspace</div>
+      <div className="canvas-empty-copy">
+        Open a code block or let the `canvas` tool create an artifact here.
+      </div>
+    </div>
+  );
 
   return (
     <div className="canvas-panel">
-      {/* 顶部工具栏 */}
       <div className="canvas-toolbar">
-        <div className="canvas-toolbar-title">
-          {canvas.title || 'Canvas'}
+        <div className="canvas-toolbar-title-group">
+          <div className="canvas-toolbar-title">
+            {activeDocument?.title || 'Canvas'}
+          </div>
+          {activeDocument && (
+            <div className="canvas-toolbar-meta">
+              {activeDocument.artifactType} · {activeDocument.origin} · v{activeDocument.version}
+            </div>
+          )}
         </div>
+        {hasMultipleDocuments && (
+          <div className="canvas-toolbar-switcher">
+            <select
+              className="canvas-document-select"
+              value={canvas.activeDocumentId ?? ''}
+              onChange={(e) => canvas.setActiveDocument(e.target.value)}
+            >
+              {canvas.documents.map((document) => (
+                <option key={document.id} value={document.id}>
+                  {document.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="canvas-toolbar-actions">
           <button
-            className={`canvas-mode-btn ${viewMode === 'preview' ? 'active' : ''}`}
-            onClick={() => setViewMode('preview')}
+            className="canvas-action-btn"
+            onClick={() => setShowDetails((prev) => !prev)}
+            disabled={!activeDocument}
           >
-            Preview
+            {showDetails ? 'Hide Details' : 'Details'}
           </button>
-          <button
-            className={`canvas-mode-btn ${viewMode === 'edit' ? 'active' : ''}`}
-            onClick={() => setViewMode('edit')}
-          >
-            Edit
-          </button>
-          <button className="canvas-action-btn" onClick={handleCopy}>
+          <button className="canvas-action-btn" onClick={handleCopy} disabled={!activeDocument}>
             Copy
+          </button>
+          <button className="canvas-action-btn" onClick={handleExport} disabled={!activeDocument}>
+            Export
+          </button>
+          <button className="canvas-action-btn canvas-delete-btn" onClick={handleDelete} disabled={!activeDocument}>
+            Delete
           </button>
           <button className="canvas-action-btn" onClick={canvas.closeCanvas}>
             ✕
@@ -144,32 +114,39 @@ export default function CanvasPanel({ onSendToChat }: { onSendToChat: (text: str
         </div>
       </div>
 
-      {/* 内容区 */}
-      <div className="canvas-content">
-        {viewMode === 'preview' ? (
-          renderPreview()
-        ) : (
-          <textarea
-            ref={textareaRef}
-            className="canvas-editor"
-            value={canvas.content}
-            onChange={(e) => canvas.updateContent(e.target.value)}
-            placeholder="Enter your content here..."
-          />
-        )}
-      </div>
+      {activeDocument && showDetails && (
+        <div className="canvas-details-panel">
+          <div className="canvas-studio-card">
+            <div className="canvas-studio-card-title">作品说明</div>
+            <div className="canvas-studio-card-body">
+              {activeDocument.explanation?.trim() || '当前产物暂无说明。'}
+            </div>
+          </div>
+          <div className="canvas-studio-card">
+            <div className="canvas-studio-card-title">元信息</div>
+            <div className="canvas-studio-meta-grid">
+              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">类型</span><span className="canvas-studio-meta-value">{activeDocument.artifactType}</span></div>
+              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">模式</span><span className="canvas-studio-meta-value">{activeDocument.mode}</span></div>
+              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">版本</span><span className="canvas-studio-meta-value">v{activeDocument.version}</span></div>
+              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">来源</span><span className="canvas-studio-meta-value">{activeDocument.origin}</span></div>
+              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">行数</span><span className="canvas-studio-meta-value">{lineCount}</span></div>
+              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">字符</span><span className="canvas-studio-meta-value">{charCount}</span></div>
+              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">更新</span><span className="canvas-studio-meta-value">{updatedAtLabel}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* 底部操作栏 */}
-      <div className="canvas-actions">
-        <button
-          className="canvas-action-btn"
-          onClick={() => onSendToChat(canvas.content)}
-        >
-          发送给 AMY
-        </button>
-        <button className="canvas-action-btn" onClick={handleExport}>
-          导出
-        </button>
+      <div className="canvas-workspace canvas-workspace--studio">
+        {!activeDocument ? (
+          <div className="canvas-content canvas-content--single">
+            {renderEmptyState()}
+          </div>
+        ) : (
+          <div className="canvas-content canvas-content--studio">
+            {renderPreview()}
+          </div>
+        )}
       </div>
     </div>
   );

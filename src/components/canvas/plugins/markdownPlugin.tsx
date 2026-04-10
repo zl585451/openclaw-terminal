@@ -1,0 +1,66 @@
+import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import MermaidRenderer from '../MermaidRenderer';
+import { markdownComponents } from '../../../ui/chat/markdownComponents';
+import { diagramSpecToMermaid, parseDiagramSpec } from '../../../utils/diagramSchema';
+import type { CanvasRendererPlugin } from './types';
+
+const baseMarkdownComponents = markdownComponents ?? {};
+
+const canvasMarkdownComponents = {
+  ...baseMarkdownComponents,
+  code: ({ children, className, inline }: { children?: React.ReactNode; className?: string; inline?: boolean }) => {
+    const language = className?.replace('language-', '').toLowerCase() || '';
+    const code = String(children ?? '').replace(/\n$/, '');
+    const isBlock = !inline && (className?.includes('language-') || code.includes('\n'));
+
+    if (isBlock && language === 'mermaid') {
+      return <MermaidRenderer content={code} />;
+    }
+    if (isBlock && language === 'json') {
+      const spec = parseDiagramSpec(code);
+      if (spec) return <MermaidRenderer content={diagramSpecToMermaid(spec)} />;
+    }
+
+    const DefaultCode = baseMarkdownComponents.code;
+    if (DefaultCode) {
+      return React.createElement(DefaultCode as React.ElementType, { children, className, inline });
+    }
+    return <code className={className}>{children}</code>;
+  },
+  pre: ({ children }: { children?: React.ReactNode }) => {
+    const child = React.Children.toArray(children)[0] as React.ReactElement | undefined;
+    if (child?.type === 'code') {
+      const { className, children: codeChildren } = child.props as { className?: string; children?: React.ReactNode };
+      const language = className?.replace('language-', '').toLowerCase() || '';
+      const code = String(codeChildren ?? '').replace(/\n$/, '');
+      if (language === 'mermaid') return <MermaidRenderer content={code} />;
+      if (language === 'json') {
+        const spec = parseDiagramSpec(code);
+        if (spec) return <MermaidRenderer content={diagramSpecToMermaid(spec)} />;
+      }
+    }
+
+    const DefaultPre = baseMarkdownComponents.pre;
+    if (DefaultPre) {
+      return React.createElement(DefaultPre as React.ElementType, { children });
+    }
+    return <pre>{children}</pre>;
+  },
+};
+
+export const markdownPlugin: CanvasRendererPlugin = {
+  id: 'markdown',
+  canRender: (document) => document.mode === 'markdown',
+  render: (document) => (
+    <div className="canvas-preview">
+      <div className="msg-content markdown-body">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={canvasMarkdownComponents}>
+          {document.content}
+        </ReactMarkdown>
+      </div>
+    </div>
+  ),
+  getExportFilename: () => 'canvas.md',
+};

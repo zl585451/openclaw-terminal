@@ -448,10 +448,15 @@ wss.on('connection', (ws) => {
       const sessionKey = params?.sessionKey || 'main';
       const userMessage = params?.message || '';
       const attachments = params?.attachments || [];
+      const canvasContext = params?.canvasContext || null;
 
       // 工具事件回调：Worker 执行后台任务时向前端推送工具调用卡片
       const sendToolEvent = (evt) => {
         if (ws.readyState !== ws.OPEN) return;
+        if (evt?.type === 'canvas' && evt.action) {
+          ws.send(JSON.stringify({ type: 'event', event: 'canvas', action: evt.action, payload: evt.payload || {} }));
+          return;
+        }
         ws.send(JSON.stringify({ type: 'event', event: 'tool', payload: evt }));
         if (evt.type === 'tool_call') {
           ws.send(JSON.stringify({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool }));

@@ -52,6 +52,11 @@
   "params": {
     "sessionKey": "main",
     "message": "用户输入的文本",
+    "canvasContext": {
+      "intent": "continue",
+      "activeDocumentId": "canvas_xxx",
+      "documents": []
+    },
     "attachments": [
       { "type": "image", "mimeType": "image/png", "content": "base64..." }
     ]
@@ -61,6 +66,7 @@
 
 - `message`：必填（可为空字符串，图片时可用 `[文件/图片]`）
 - `attachments`：图片等，Gateway 会转成多模态 content 格式给模型
+- `canvasContext`：可选。当前 Canvas 工作区上下文，供 `canvas` 工具继续更新已有图表/文档
 
 ---
 
@@ -97,7 +103,8 @@
 | `stream.delta` | 流式文本片段 |
 | `stream.done` | 流结束 |
 | `thinking` | 思考心跳（长任务时每 8 秒） |
-| `tool_call` | 工具调用（若需展示） |
+| `tool` | 工具调用与结果卡片 |
+| `canvas` | Canvas 产物事件：`create / update / focus / delete / explain` |
 | `error` | 错误 |
 
 ---

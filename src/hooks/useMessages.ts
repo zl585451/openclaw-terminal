@@ -4,6 +4,8 @@ import { TurnFSM, deriveLegacyFlags, TurnPhase } from '../core/turnFSM';
 import { StreamRouter, StreamState } from '../core/streamRouter';
 import { BlockIngest } from '../core/blockIngest';
 import { useWebSocket } from './useWebSocket';
+import type { CanvasRoundtripContext } from '../contexts/CanvasContext';
+import { useCanvasBridge } from './useCanvasBridge';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
@@ -111,7 +113,7 @@ export interface UseMessagesReturn {
   streak: number;
   fullTextRef: MutableRefObject<string>;
   streamingDomRef: MutableRefObject<HTMLPreElement | null>;
-  sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[]) => Promise<void>;
+  sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[], canvasContext?: CanvasRoundtripContext) => Promise<void>;
   quickSend: (content: string) => void;
 }
 
@@ -126,6 +128,7 @@ export function useMessages({
   streamSpeedMs,
   onStatusChange,
 }: UseMessagesOptions): UseMessagesReturn {
+  const canvasBridge = useCanvasBridge();
   // ── State ─────────────────────────────────────────────────────────────────
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
@@ -375,6 +378,10 @@ export function useMessages({
       }
     },
 
+    onCanvasEvent: (event) => {
+      canvasBridge.handleCanvasEvent(event);
+    },
+
     onUsage: (usage, isSnapshot) => {
       if (usage.inputTokens != null) {
         if (isSnapshot) setTokenIn(usage.inputTokens);
@@ -472,7 +479,12 @@ export function useMessages({
   }, []);
 
   // ── sendMessage ───────────────────────────────────────────────────────────
-  const sendMessage = useCallback(async (text: string, imageDataUrl: string | null, files?: UploadedFile[]) => {
+  const sendMessage = useCallback(async (
+    text: string,
+    imageDataUrl: string | null,
+    files?: UploadedFile[],
+    canvasContext?: CanvasRoundtripContext
+  ) => {
     if (!text.trim() && !imageDataUrl && !files?.length) return;
 
     let contentToSend = text;
@@ -562,7 +574,7 @@ export function useMessages({
       }
     }
 
-    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, streamSpeedMs);
+    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, streamSpeedMs, canvasContext);
     if (!result?.success && !cmdIsSystem) {
       setAwaitingResponse(false);
       console.warn('[useMessages] Send failed:', result);

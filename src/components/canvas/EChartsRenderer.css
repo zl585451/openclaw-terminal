@@ -1,0 +1,73 @@
+.oct-ec-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--mermaid-stage-bg, var(--bg-code));
+}
+
+.oct-ec-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 0;
+  flex-shrink: 0;
+}
+
+.oct-ec-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}
+
+.oct-ec-export-btn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-family: var(--font-sans);
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.oct-ec-export-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+.oct-ec-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.oct-ec-canvas {
+  flex: 1;
+  min-height: 360px;
+  padding: 8px 12px 12px;
+  height: 0;
+  box-sizing: border-box;
+}
+
+.oct-ec-canvas > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.oct-ec-error {
+  padding: 24px;
+  color: var(--status-warning, #ffab40);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.oct-ec-error pre {
+  margin-top: 12px;
+  background: var(--bg-code);
+  padding: 12px;
+  border-radius: 8px;
+  overflow: auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
