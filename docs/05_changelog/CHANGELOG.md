@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-10 | GitHub 首页 README 更新为发布版口径：突出 `v0.2.0` 能力、跨平台下载链接、首次启动 API Key 引导和本地开发入口 | `README.md` | 仓库首页更适合作为产品主页和下载入口 |
 | 2026-04-10 | Canvas 画图调用兜底：对命中画图意图的请求强制优先 `canvas` 工具；当底层模型把 `{tool => "canvas"...}` 伪调用吐成普通文本时，Gateway 会自动解析并转成真实 tool call，同时在最终回复中清洗残留 `TOOL_CALL` 文本 | `oct-gateway/index.js`, `oct-gateway/runtime/chatEngine.js`, `oct-gateway/ai.js`, `oct-gateway/cot_sanitize.js` | 修复客户端“AI 会说要画图，但实际没有落成 Canvas”的问题 |
 | 2026-04-10 | 发布版补齐 `oct-gateway` 打包与启动链路：将 Gateway 及其 `node_modules` 作为安装包资源带入，发布版改用 Electron 自带运行时拉起 Gateway；设置页在 provider 清单缺失时回退到内置服务商列表，避免安装包中出现“无法启动 Gateway / 服务商选项丢失” | `package.json`, `electron/main.ts`, `src/hooks/settings/useApiKeys.ts` | 修复 0.2.0 本地安装后启动失败与连接配置残缺 |
 | 2026-04-10 | 0.2.0 发布流程调整：版本号升至 `0.2.0`；保留本地 Windows 打包，GitHub Actions 的 tag 发布默认用于 `macOS` 与 `Linux` 产物，避免与本地 Windows 安装包重复 | `package.json`, `package-lock.json`, `.github/workflows/build-windows.yml` | 面向本地 Windows + CI 跨平台混合发布 |
