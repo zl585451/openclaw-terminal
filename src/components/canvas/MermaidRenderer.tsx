@@ -49,6 +49,31 @@ function normalizeMermaidSource(source: string): string {
   return next.trim();
 }
 
+function aggressivelySanitizeMermaidSource(source: string): string {
+  let next = normalizeMermaidSource(source);
+
+  // AI frequently uses Unicode arrows in Mermaid code blocks. Mermaid expects
+  // ASCII edge operators like --> / -.-> / ==>, so normalize the common case.
+  next = next.replace(/\s*[→⟶⟹⇢➜]+\s*/g, ' --> ');
+
+  // Mermaid labels do not reliably handle HTML line breaks in free-form AI output.
+  next = next.replace(/<br\s*\/?>/gi, ' ');
+
+  // Strip emoji/presentation selectors that commonly break parsing inside labels.
+  next = next
+    .replace(/[\u{1F000}-\u{1FAFF}]/gu, '')
+    .replace(/[\u{2600}-\u{27BF}]/gu, '')
+    .replace(/[\uFE0E\uFE0F]/g, '');
+
+  // Collapse repeated whitespace introduced by cleanup.
+  next = next
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[ \t]{2,}/g, ' ').trimEnd())
+    .join('\n');
+
+  return next.trim();
+}
+
 function cssVar(name: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback;
   const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -432,10 +457,27 @@ export default function MermaidRenderer({
           console.warn('[OCT Mermaid] render completed but effect was cancelled');
         }
       } catch (err) {
-        console.error('[OCT Mermaid] render error:', err);
-        if (!cancelled) {
-          setSvg('');
-          setError(err instanceof Error ? err.message : 'Mermaid render failed');
+        console.warn('[OCT Mermaid] primary render failed, retrying with sanitized source:', err);
+        try {
+          const fallbackSource = aggressivelySanitizeMermaidSource(source);
+          if (!fallbackSource || fallbackSource === source) throw err;
+          const retryId = `oct_mermaid_${graphId}_${Date.now()}_retry`;
+          const staleRetry = document.getElementById(retryId);
+          if (staleRetry) staleRetry.remove();
+          const { svg: retriedSvg } = await mermaid.render(retryId, fallbackSource);
+          const polishedSvg = polishSvg(retriedSvg, compact);
+          renderCache.set(cacheKey, polishedSvg);
+          if (!cancelled) {
+            manualZoomRef.current = false;
+            setSvg(polishedSvg);
+            setError(null);
+          }
+        } catch (retryErr) {
+          console.error('[OCT Mermaid] render error:', retryErr);
+          if (!cancelled) {
+            setSvg('');
+            setError(retryErr instanceof Error ? retryErr.message : 'Mermaid render failed');
+          }
         }
       }
     }

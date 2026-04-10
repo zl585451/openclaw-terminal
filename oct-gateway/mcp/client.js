@@ -5,6 +5,21 @@
 const { spawn } = require('child_process');
 const { createLogger } = require('../logger');
 
+function buildChildEnv(extraEnv) {
+  const env = { ...process.env, ...(extraEnv || {}) };
+  const noProxyValue = [env.NO_PROXY, env.no_proxy, 'localhost', '127.0.0.1', '::1']
+    .filter(Boolean)
+    .flatMap((value) => String(value).split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const mergedNoProxy = Array.from(new Set(noProxyValue)).join(',');
+  if (mergedNoProxy) {
+    env.NO_PROXY = mergedNoProxy;
+    env.no_proxy = mergedNoProxy;
+  }
+  return env;
+}
+
 class McpClient {
   constructor(serverName, config) {
     this.serverName = serverName;
@@ -25,7 +40,7 @@ class McpClient {
     this._log.info('启动 MCP Server', { command: this.config.command, args: this.config.args });
 
     this._proc = spawn(this.config.command, this.config.args || [], {
-      env: { ...process.env, ...(this.config.env || {}) },
+      env: buildChildEnv(this.config.env),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 

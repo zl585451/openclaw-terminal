@@ -12,7 +12,37 @@
 - `oct-gateway/providers.js` — 服务商预设注册表
 
 ## 数据源
-`OCT_CONFIG_FILE`（Electron userData/config.json）> `.env` > `~/.openclaw/openclaw.json` > 默认值
+`OCT_CONFIG_FILE`（Electron userData/config.json）> `.env` / `.env.local` > `~/.openclaw/openclaw.json` > 仓库默认值
+
+### 产品级配置分层
+
+为兼顾**发布安全**和**本地持续开发**，建议按以下三层理解：
+
+1. **仓库默认配置**
+   - 文件：`oct-gateway/config.json`
+   - 用途：产品默认值、可公开提交
+   - 约束：不得包含真实 API Key、个人代理偏好、个人服务地址
+
+2. **本地开发配置**
+   - 文件：项目根目录 `.env.local` / `.env`
+   - 用途：开发者自己的 API Key、本地联调覆盖项
+   - 约束：不提交到仓库
+
+3. **用户运行时配置**
+   - 文件：Electron `userData/config.json`
+   - 用途：安装包用户在设置页写入的 provider、model、API Key、个性化偏好
+   - 约束：运行时生成，不放仓库
+
+### 推荐实践
+
+- **发版前**：只保留仓库默认值，确保 `config.json` 不含真实密钥
+- **本地开发**：把 API Key 放进 `.env.local` 或设置页写入的 `userData/config.json`
+- **不要**依赖仓库内硬编码密钥维持开发体验
+
+### 示例文件
+
+- 安全示例：`oct-gateway/config.example.json`
+- 实际仓库默认值：`oct-gateway/config.json`
 
 ## 关键配置
 | 配置项 | 说明 |

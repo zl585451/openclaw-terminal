@@ -16,7 +16,7 @@ npm run start
 
 ## 环境变量
 
-在项目根目录的 `.env` 中配置：
+在项目根目录的 `.env.local`（推荐，本地开发）或 `.env` 中配置：
 
 ```
 DASHSCOPE_API_KEY=你的百炼 API Key
@@ -25,6 +25,22 @@ OCT_MODEL=qwen-plus
 OCT_GATEWAY_PORT=18789
 OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 ```
+
+### 配置分层建议
+
+- **产品默认值**：`oct-gateway/config.json`
+  - 可提交到仓库
+  - 不得包含真实 API Key
+- **本地开发覆盖**：根目录 `.env.local` / `.env`
+  - 推荐把你自己的 API Key 放这里
+  - 不提交到仓库
+- **最终用户设置**：Electron `userData/config.json`
+  - 由设置页写入
+  - 属于安装后的本机配置
+
+可参考安全示例：
+
+- `oct-gateway/config.example.json`
 
 ## 架构概览
 
@@ -134,7 +150,14 @@ main.ts 通过 `spawn('node', ['oct-gateway/index.js'])` 启动。
 
 ## 网络稳定性（代理环境）
 
-启用 V2RayN 等全局代理时，DashScope API 会自动直连（NO_PROXY），避免流式回复中断。fetch 支持 90 秒超时与重试，工具调用 30 秒超时隔离。
+OCT 默认会为 `localhost / 127.0.0.1 / ::1` 设置 `NO_PROXY`，保证本地 Gateway、MCP、本地能力服务不会被系统代理错误接管。
+
+对于外部模型 API：
+- 保留用户系统代理配置
+- 不再默认强制全量直连
+- 更适合普通用户和公司网络环境
+
+如果你的网络环境必须通过代理访问外部模型 API，请直接配置系统代理或对应环境变量即可。
 
 ## 下一步行动
 

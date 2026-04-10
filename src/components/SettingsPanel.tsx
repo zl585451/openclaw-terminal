@@ -44,6 +44,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     refetchApiKeys,
     currentProviderId,
     currentProvider,
+    hasGatewayConfigChanges,
     saveGatewayAndReconnect,
   } = useApiKeys();
 
@@ -191,12 +192,13 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   const apply = async () => {
     const api = (window as any).electronAPI;
+    setApplyStatus('saving');
+    setApplyError('');
     setSettings({ ...local, aiName, userName, personaStyle: personaStyle as 'neutral' | 'warm' | 'companion' });
     setPermissions(localPerm);
     saveShortcut();
     saveAdvancedSettings();
 
-    setApplyError('');
     if (api?.savePersonaSettings || ipcRenderer) {
       const payload = {
         OCT_AI_NAME: aiName,
@@ -212,8 +214,16 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         return;
       }
     }
-    // API / Gateway 配置只在「连接配置」页通过专用按钮保存并重连。
-    // 这里的应用仅处理本地界面、人设、权限与高级设置，避免主题应用误触发 Gateway 断线重连。
+
+    if (hasGatewayConfigChanges) {
+      const ok = await saveGatewayAndReconnect();
+      if (!ok) {
+        setApplyStatus('error');
+        setApplyError('连接配置保存失败，请稍后重试');
+        return;
+      }
+    }
+
     setApplyStatus('success');
     setTimeout(() => {
       onClose();

@@ -543,7 +543,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           getToolDisplayName={getToolDisplayName}
           streamingDomRef={msgs.streamingDomRef}
           markdownComponents={mdComponents}
-          allowCotDisplay={msgs.thinkMode !== 'off'}
+          allowCotDisplay={true}
         />
         {scroll.showScrollBtn && (
           <div

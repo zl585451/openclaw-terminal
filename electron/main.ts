@@ -25,6 +25,7 @@ let reconnectRetryCount = 0;
 /** 应用/主窗口正在关闭，避免 WebSocket 断开回调里向已销毁的窗口 send 导致报错 */
 let appQuitting = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let suppressAutoReconnect = false;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
 let currentSessionKey: string = 'main';
 const SESSION_STATE_FILE = path.join(app.getPath('userData'), 'session-state.json');
@@ -44,6 +45,21 @@ const DEFAULT_CONFIG = {
   /** SQLite busy_timeout(ms)，缓解 database is locked，默认 10000，可设为 5000~60000 */
   NOCTURNE_BUSY_TIMEOUT: 10000,
 };
+
+function buildOctChildEnv(extraEnv: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
+  const noProxyValue = [env.NO_PROXY, env.no_proxy, 'localhost', '127.0.0.1', '::1']
+    .filter(Boolean)
+    .flatMap((value) => String(value).split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const mergedNoProxy = Array.from(new Set(noProxyValue)).join(',');
+  if (mergedNoProxy) {
+    env.NO_PROXY = mergedNoProxy;
+    env.no_proxy = mergedNoProxy;
+  }
+  return env;
+}
 
 // （已移除授权码机制，公开发布版无需激活）
 
@@ -492,12 +508,11 @@ async function startAiLibraryBackend(): Promise<boolean> {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     detached: false,
-    env: {
-      ...process.env,
+    env: buildOctChildEnv({
       API_HOST: '0.0.0.0',
       API_PORT: String(octAiLibraryPort),
       PYTHONIOENCODING: 'utf-8',
-    },
+    }),
   });
 
   aiLibraryProcess.stderr?.on('data', (data: Buffer) => {
@@ -713,8 +728,24 @@ function sendConnLog(line: string) {
   mainWindow.webContents.send('openclaw-log-lines', [`[连接] ${line.trim()}`]);
 }
 
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect(delay: number) {
+  clearReconnectTimer();
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectOpenClaw();
+  }, delay);
+}
+
 function connectOpenClaw() {
-  if (openclawWs?.readyState === WebSocket.OPEN) return;
+  clearReconnectTimer();
+  if (openclawWs?.readyState === WebSocket.OPEN || openclawWs?.readyState === WebSocket.CONNECTING) return;
 
   openclawWs = null;
   console.log('[OCT] Connecting to', OPENCLAW_WS_URL, 'retry:', reconnectRetryCount);
@@ -772,11 +803,15 @@ function connectOpenClaw() {
   });
 
   let closeHandled = false;
-  const scheduleReconnect = () => {
+  const scheduleReconnectForSocket = () => {
     if (closeHandled || appQuitting) return;
     closeHandled = true;
     clearHeartbeat();
     openclawWs = null;
+    if (suppressAutoReconnect) {
+      sendConnLog('当前为主动重连流程，跳过自动退避重连');
+      return;
+    }
     if (!mainWindow) return;
     if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
     reconnectRetryCount++;
@@ -784,7 +819,7 @@ function connectOpenClaw() {
       const delay = Math.min(5000 * Math.pow(2, reconnectRetryCount - 1), 60000);
       sendStatus({ connected: false, reconnecting: true });
       sendConnLog(`${delay / 1000} 秒后重连`);
-      setTimeout(connectOpenClaw, delay);
+      scheduleReconnect(delay);
     } else {
       sendStatus({ connected: false, error: '连接失败，请检查Gateway' });
       sendConnLog('已停止自动重连，请检查 Gateway 是否启动或点击「重启」');
@@ -796,7 +831,7 @@ function connectOpenClaw() {
     const reasonStr = (reason?.length ? reason.toString('utf8') : '') || '(无)';
     console.log('[OCT] WebSocket disconnected', code, reasonStr);
     sendConnLog(`WebSocket 已断开 code=${code} reason=${reasonStr}，${reconnectRetryCount <= MAX_RECONNECT_RETRIES ? '将按退避延迟重连' : '已达重试上限'}`);
-    scheduleReconnect();
+    scheduleReconnectForSocket();
   });
 
   ws.on('error', (error) => {
@@ -808,8 +843,17 @@ function connectOpenClaw() {
       sendConnLog('提示: 若持续出现 ECONNRESET，可能是 18789 被其他程序占用，请点「停止」再「启动」或「重启」确保仅运行 OCT Gateway');
     }
     sendStatus({ connected: false, reconnecting: true, error: '连接失败: ' + msg });
-    scheduleReconnect();
+    scheduleReconnectForSocket();
   });
+}
+
+async function waitForPortRelease(port: number, timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const inUse = await isPortInUse(port);
+    if (!inUse) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 function sendStatus(status: { connected: boolean; error?: string; model?: string; reconnecting?: boolean }) {
@@ -1791,8 +1835,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
-      env: {
-        ...process.env,
+      env: buildOctChildEnv({
         OCT_GATEWAY_PORT: String(GATEWAY_PORT),
         OCT_PROMPTS_DIR: promptsDir,
         OCT_CONFIG_FILE: CONFIG_FILE,
@@ -1801,7 +1844,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         ...(resolvedAiLibraryUrlForGateway && !(process.env.AI_LIBRARY_URL || '').trim()
           ? { AI_LIBRARY_URL: resolvedAiLibraryUrlForGateway }
           : {}),
-      },
+      }),
     });
 
     octGatewayProcess.stdout?.on('data', (chunk: Buffer) => {
@@ -2121,14 +2164,13 @@ async function startNocturneBackend(): Promise<boolean> {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
-      env: {
-        ...process.env,
+      env: buildOctChildEnv({
         DATABASE_URL: dbUrl,
         CORE_MEMORY_URIS: 'core://agent/identity,core://agent/principles,core://my_user,core://my_user/profile,core://agent/my_user',
         VALID_DOMAINS: 'core,writer,notes,system',
         NOCTURNE_BUSY_TIMEOUT: nocturneBusyTimeout,
         PYTHONIOENCODING: 'utf-8',
-      },
+      }),
     });
   } else {
     // 回退：使用 Python 运行（开发环境）
@@ -2145,13 +2187,12 @@ async function startNocturneBackend(): Promise<boolean> {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
-      env: {
-        ...process.env,
+      env: buildOctChildEnv({
         DATABASE_URL: dbUrl,
         NOCTURNE_BUSY_TIMEOUT: nocturneBusyTimeout,
         PYTHONPATH: backendPath,
         PYTHONIOENCODING: 'utf-8',
-      },
+      }),
     });
   }
 
@@ -2609,9 +2650,12 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     }
 
     loadOpenClawConfig();
+    suppressAutoReconnect = true;
+    clearReconnectTimer();
     if (openclawWs) {
       openclawWs.close();
       openclawWs = null;
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
     // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
@@ -2628,7 +2672,8 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       octGatewayProcess.kill();
       octGatewayProcess = null;
       mainWindow?.webContents.send('openclaw-log-lines', ['[系统] AI 配置已更新，正在重启 Gateway...']);
-      await new Promise(r => setTimeout(r, 1500));
+      await waitForPortRelease(GATEWAY_PORT, 5000);
+      await new Promise(r => setTimeout(r, 500));
     }
     const inUse = await isPortInUse(GATEWAY_PORT);
     if (!inUse) {
@@ -2649,11 +2694,13 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     } else {
       mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 端口 18789 已占用，直接连接']);
     }
+    suppressAutoReconnect = false;
     reconnectRetryCount = 0;
     connectOpenClaw();
     
     return { success: true };
   } catch (e: any) {
+    suppressAutoReconnect = false;
     console.error('[API Keys] Failed to save:', e.message);
     return { success: false, error: e.message };
   }
@@ -2737,7 +2784,13 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
     const gatewayDir = path.dirname(getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js'));
     const providersPath = path.join(gatewayDir, 'providers.js');
     const { PROVIDERS } = fs.existsSync(providersPath) ? require(providersPath) : { PROVIDERS: {} };
-    const providerId = cfg.OCT_PROVIDER || ((cfg.DASHSCOPE_BASE_URL || '').includes('coding.dashscope') ? 'bailian-coding' : 'bailian');
+    const providerId =
+      (cfg.OCT_PROVIDER && String(cfg.OCT_PROVIDER).trim())
+      || (
+        (cfg.CUSTOM_BASE_URL || cfg.CUSTOM_API_KEY || cfg.CUSTOM_MODEL)
+          ? 'custom'
+          : ((cfg.DASHSCOPE_BASE_URL || '').includes('coding.dashscope') ? 'bailian-coding' : 'bailian')
+      );
     const provider = (PROVIDERS as Record<string, any>)[providerId] || (PROVIDERS as Record<string, any>)['bailian-coding'];
     const baseUrl =
       providerId === 'deepseek' ? (cfg.DEEPSEEK_BASE_URL || provider?.baseUrl || '')
