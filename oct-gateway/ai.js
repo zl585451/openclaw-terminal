@@ -553,6 +553,113 @@ function buildToolSignature(toolCalls) {
   );
 }
 
+function decodePseudoToolValue(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (value.startsWith('"') && value.endsWith('"')) {
+    try { return JSON.parse(value); } catch { return value.slice(1, -1); }
+  }
+  if (value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1).replace(/\\'/g, '\'').replace(/\\"/g, '"');
+  }
+  return value;
+}
+
+function parsePseudoToolArgs(blockText) {
+  const args = {};
+  const text = String(blockText || '');
+  const flagRe = /--([a-zA-Z][\w-]*)\s+/g;
+  let match;
+  while ((match = flagRe.exec(text)) !== null) {
+    const key = match[1];
+    const valueStart = flagRe.lastIndex;
+    const nextMatch = flagRe.exec(text);
+    const valueEnd = nextMatch ? nextMatch.index : text.length;
+    const rawValue = text.slice(valueStart, valueEnd).trim();
+    args[key] = decodePseudoToolValue(rawValue);
+    if (nextMatch) {
+      flagRe.lastIndex = nextMatch.index;
+    }
+  }
+  return args;
+}
+
+function extractPseudoToolCalls(text) {
+  const source = String(text || '');
+  if (!source || !/tool\s*=>/i.test(source) || !/args\s*=>/i.test(source)) {
+    return [];
+  }
+
+  const blocks = [];
+  const headerRe = /\{tool\s*=>\s*(?:"([^"]+)"|'([^']+)'|([a-zA-Z_][\w-]*))\s*,\s*args\s*=>\s*\{/gi;
+  let header;
+
+  while ((header = headerRe.exec(source)) !== null) {
+    const toolName = header[1] || header[2] || header[3] || '';
+    const argsOpenBracePos = source.indexOf('{', header.index + header[0].lastIndexOf('args'));
+    if (argsOpenBracePos < 0) continue;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let quoteChar = '"';
+    let i = argsOpenBracePos;
+    let argsClosePos = -1;
+
+    for (; i < source.length; i++) {
+      const ch = source[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === quoteChar) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quoteChar = ch;
+        continue;
+      }
+      if (ch === '{') {
+        depth += 1;
+        continue;
+      }
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          argsClosePos = i;
+          break;
+        }
+      }
+    }
+
+    if (argsClosePos < 0) continue;
+
+    const argsBlock = source.slice(argsOpenBracePos + 1, argsClosePos);
+    const parsedArgs = parsePseudoToolArgs(argsBlock);
+    if (!parsedArgs.action) continue;
+
+    blocks.push({
+      id: `pseudo-${Date.now()}-${blocks.length}`,
+      type: 'function',
+      function: {
+        name: toolName,
+        arguments: JSON.stringify(parsedArgs),
+      },
+    });
+  }
+
+  return blocks;
+}
+
 async function streamChat({
   messages,
   onDelta,
@@ -562,6 +669,7 @@ async function streamChat({
   preserveToolChain = false,
   toolRound = 0,
   toolSignatures = [],
+  toolChoice = 'auto',
 }) {
   const resolved = providerRouter.resolve();
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
@@ -826,7 +934,7 @@ async function streamChat({
     }
     if (caps.supportsTools) {
       requestBody.tools = toolLoader.getDefinitions();
-      requestBody.tool_choice = 'auto';
+      requestBody.tool_choice = toolChoice;
     }
 
     const res = await fetchWithRetry(`${baseUrl}/chat/completions`, {
@@ -949,6 +1057,33 @@ async function streamChat({
     }
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
+    const pseudoToolCalls = caps.supportsTools ? extractPseudoToolCalls(fullText || assistantResponseContent) : [];
+    if (pseudoToolCalls.length > 0) {
+      log.warn('pseudo tool call detected, coercing to structured tool execution', {
+        count: pseudoToolCalls.length,
+        tools: pseudoToolCalls.map((call) => call.function?.name).filter(Boolean),
+      });
+      await toolLoop.handleToolCalls({
+        toolCalls: pseudoToolCalls,
+        toolRound,
+        toolSignatures,
+        fullText: '',
+        totalUsage,
+        responseModel,
+        assistantResponseMessage: {
+          role: 'assistant',
+          content: '',
+          tool_calls: pseudoToolCalls,
+        },
+        truncatedMessages,
+        onDelta,
+        onDone,
+        onError,
+        onToolEvent,
+        flushThinkAtEnd,
+      });
+      return;
+    }
     // 关闭 MiniMax CoT 块并释放暂存正文（非 MiniMax 模型此函数直接跳过）
     if (_thinkTagMode) _flushThinkState();
     onDone(fullText, totalUsage, responseModel);

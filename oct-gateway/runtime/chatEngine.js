@@ -24,6 +24,7 @@ class ChatEngine {
 
     await this.streamChat({
       messages: request.messages,
+      toolChoice: request.toolChoice || 'auto',
       onDelta: smoother.feed,
       onToolEvent: (evt) => emitter.onToolEvent(evt),
       onDone: (_text, usage, responseModel) => {

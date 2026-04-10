@@ -24,72 +24,82 @@ function stripTextToolAnnotations(input) {
   const text = String(input || '');
   if (!text) return '';
 
-  const headerRe = /\[To=(?:"[^"]+"|'[^']+')\]\s*\{/g;
-  let out = '';
-  let cursor = 0;
-  let match;
+  function removeBalancedBlocks(source, headerRe) {
+    let out = '';
+    let cursor = 0;
+    let match;
 
-  while ((match = headerRe.exec(text)) !== null) {
-    const start = match.index;
-    const openBracePos = text.indexOf('{', start);
-    if (openBracePos < 0) break;
+    while ((match = headerRe.exec(source)) !== null) {
+      const start = match.index;
+      const openBracePos = source.indexOf('{', start);
+      if (openBracePos < 0) break;
 
-    out += text.slice(cursor, start);
+      out += source.slice(cursor, start);
 
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    let quoteChar = '"';
-    let i = openBracePos;
-    let foundEnd = false;
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      let quoteChar = '"';
+      let i = openBracePos;
+      let foundEnd = false;
 
-    for (; i < text.length; i++) {
-      const ch = text[i];
-      if (inString) {
-        if (escaped) {
-          escaped = false;
+      for (; i < source.length; i++) {
+        const ch = source[i];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (ch === '\\') {
+            escaped = true;
+            continue;
+          }
+          if (ch === quoteChar) {
+            inString = false;
+          }
           continue;
         }
-        if (ch === '\\') {
-          escaped = true;
+
+        if (ch === '"' || ch === "'") {
+          inString = true;
+          quoteChar = ch;
           continue;
         }
-        if (ch === quoteChar) {
-          inString = false;
+        if (ch === '{') {
+          depth += 1;
+          continue;
         }
-        continue;
-      }
-
-      if (ch === '"' || ch === "'") {
-        inString = true;
-        quoteChar = ch;
-        continue;
-      }
-      if (ch === '{') {
-        depth += 1;
-        continue;
-      }
-      if (ch === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          foundEnd = true;
-          i += 1;
-          break;
+        if (ch === '}') {
+          depth -= 1;
+          if (depth === 0) {
+            foundEnd = true;
+            i += 1;
+            break;
+          }
         }
       }
+
+      if (!foundEnd) {
+        cursor = start;
+        break;
+      }
+
+      cursor = i;
+      headerRe.lastIndex = i;
     }
 
-    if (!foundEnd) {
-      cursor = start;
-      break;
-    }
-
-    cursor = i;
-    headerRe.lastIndex = i;
+    out += source.slice(cursor);
+    return out;
   }
 
-  out += text.slice(cursor);
-  return out.replace(/\n{3,}/g, '\n\n').trim();
+  let out = removeBalancedBlocks(text, /\[To=(?:"[^"]+"|'[^']+')\]\s*\{/g);
+  out = removeBalancedBlocks(out, /\{tool\s*=>\s*(?:"[^"]+"|'[^']+'|[a-zA-Z_][\w-]*)\s*,\s*args\s*=>\s*\{/g);
+  out = out
+    .replace(/\[\/?TOOL_CALLS?\]/gi, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  return out;
 }
 
 function sanitizeAssistantReply(reply) {

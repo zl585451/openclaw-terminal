@@ -209,6 +209,7 @@ async function handleChatRequest(request, connection) {
     userMessage,
     messages,
     prevAssistantReply: prevAssistantReplyForPost,
+    toolChoice: orchResult?.canvasIntent?.shouldUseCanvas ? { type: 'function', function: { name: 'canvas' } } : 'auto',
     options: {
       pacingMs: typeof params?.pacingMs === 'number' ? params.pacingMs : 4,
     },
