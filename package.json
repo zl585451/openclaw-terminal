@@ -41,6 +41,27 @@
     ],
     "extraResources": [
       {
+        "from": "oct-gateway/node_modules",
+        "to": "oct-gateway/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "oct-gateway",
+        "to": "oct-gateway",
+        "filter": [
+          "**/*",
+          "!**/node_modules/**",
+          "!**/.git/**",
+          "!**/.temp/**",
+          "!**/docs/**",
+          "!**/$null",
+          "!**/tasks_runtime.json",
+          "!**/*.log"
+        ]
+      },
+      {
         "from": "resources/nocturne_memory",
         "to": "nocturne_memory",
         "filter": [

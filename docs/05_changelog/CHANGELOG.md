@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-10 | 发布版补齐 `oct-gateway` 打包与启动链路：将 Gateway 及其 `node_modules` 作为安装包资源带入，发布版改用 Electron 自带运行时拉起 Gateway；设置页在 provider 清单缺失时回退到内置服务商列表，避免安装包中出现“无法启动 Gateway / 服务商选项丢失” | `package.json`, `electron/main.ts`, `src/hooks/settings/useApiKeys.ts` | 修复 0.2.0 本地安装后启动失败与连接配置残缺 |
 | 2026-04-10 | 0.2.0 发布流程调整：版本号升至 `0.2.0`；保留本地 Windows 打包，GitHub Actions 的 tag 发布默认用于 `macOS` 与 `Linux` 产物，避免与本地 Windows 安装包重复 | `package.json`, `package-lock.json`, `.github/workflows/build-windows.yml` | 面向本地 Windows + CI 跨平台混合发布 |
 | 2026-04-03 | ChatTab.v2.tsx 完整拆分：6 步重构，~3000行 → 729行，拆出 useMessages/useScrollManager/useFileAttachment/useTimers/useContextMenu hooks 及 MessageList/ChatInput/ContextMenu 组件 | `src/hooks/useMessages.ts`, `src/hooks/useScrollManager.ts`, `src/hooks/useFileAttachment.ts`, `src/hooks/useTimers.ts`, `src/hooks/useContextMenu.ts`, `src/components/ContextMenu.tsx`, `src/ui/chat/MessageList.tsx`, `src/ui/chat/ChatInput.tsx`, `src/ui/chat/ChatTab.v2.tsx` | 详见 `docs/05_changelog/2026-04-03-ChatTab拆出useFileAttachment-useTimers-useContextMenu.md` |
 | 2026-04-03 | 流式打字机丝滑优化：Gateway 新增 createStreamSmoother（Intl.Segmenter 词边界分词），WebSocket 改用 smoother；恢复 useTypewriter RAF 逐字动画（MAX=6/BATCH=1/追赶提前） | `oct-gateway/index.js`, `src/hooks/useTypewriter.ts`, `oct-gateway/config.json`, `oct-gateway/config.js` | 用户"从容/细读"设置生效；详见 `docs/05_changelog/2026-04-03-流式打字机丝滑优化.md` |

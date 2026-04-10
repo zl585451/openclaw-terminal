@@ -34,14 +34,18 @@ function dataUrlToTempFile(dataUrl, mimeType) {
 
 async function analyzeImageViaMcp(dataUrl, mimeType) {
   const defs = toolLoader.getDefinitions?.() || [];
-  const hasMiniMaxMcpVision = defs.some((def) => def?.function?.name === 'mcp_minimax_understand_image');
-  if (!hasMiniMaxMcpVision) {
+  const visionToolName =
+    defs.find((def) => def?.function?.name === 'mcp_minimax_understand_image')?.function?.name
+    || defs.find((def) => /mcp_.*understand_image$/i.test(def?.function?.name || ''))?.function?.name
+    || defs.find((def) => /mcp_.*image/i.test(def?.function?.name || ''))?.function?.name
+    || '';
+  if (!visionToolName) {
     return null;
   }
 
   const { filePath, cleanup } = dataUrlToTempFile(dataUrl, mimeType);
   try {
-    const result = await toolLoader.executeTool('mcp_minimax_understand_image', {
+    const result = await toolLoader.executeTool(visionToolName, {
       image_source: filePath,
       image_url: filePath,
       prompt: '详细描述这张图片的内容，包括可见文字、界面布局、主要区域和关键信息。',
@@ -62,7 +66,7 @@ async function analyzeImageViaMcp(dataUrl, mimeType) {
     if (looksLikeToolError) {
       logger.warn('[ImageAnalyzer] MCP 图片理解返回错误文本', {
         preview: text.slice(0, 220),
-        tool: 'mcp_minimax_understand_image',
+        tool: visionToolName,
       });
       return null;
     }
@@ -72,7 +76,7 @@ async function analyzeImageViaMcp(dataUrl, mimeType) {
   } catch (error) {
     logger.warn('[ImageAnalyzer] MCP 图片理解失败', {
       error: error?.message || String(error),
-      tool: 'mcp_minimax_understand_image',
+      tool: visionToolName,
     });
     return null;
   } finally {

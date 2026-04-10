@@ -32,6 +32,70 @@ export interface ProviderEntry {
 
 export type ProvidersState = Record<string, ProviderEntry>;
 
+const FALLBACK_PROVIDERS: ProvidersState = {
+  'bailian-coding': {
+    id: 'bailian-coding',
+    name: '阿里云百炼 Coding Plan',
+    baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
+    keyLink: 'https://bailian.console.aliyun.com/',
+    keyPlaceholder: 'sk-sp-xxxxxxxxxxxxxxxx',
+    defaultModel: 'qwen3.5-plus',
+    models: [
+      { id: 'qwen3.5-plus', label: 'Qwen 3.5 Plus（推荐）', tools: true, thinking: true },
+      { id: 'qwen3-coder-next', label: 'Qwen 3 Coder Next（代码）', tools: true, thinking: false },
+      { id: 'kimi-k2.5', label: 'Kimi K2.5（月之暗面）', tools: true, thinking: false },
+      { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', tools: true, thinking: false },
+    ],
+  },
+  deepseek: {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    keyLink: 'https://platform.deepseek.com/',
+    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+    defaultModel: 'deepseek-chat',
+    models: [
+      { id: 'deepseek-chat', label: 'DeepSeek Chat（通用）', tools: true, thinking: false },
+      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（推理）', tools: false, thinking: true },
+    ],
+  },
+  minimax: {
+    id: 'minimax',
+    name: 'MiniMax',
+    baseUrl: 'https://api.minimaxi.com/v1',
+    keyLink: 'https://platform.minimaxi.com/docs/token-plan/intro',
+    keyPlaceholder: 'sk-cp-xxxxxxxxxxxxxxxx',
+    defaultModel: 'MiniMax-M2.7',
+    models: [
+      { id: 'MiniMax-M2.7', label: 'MiniMax M2.7（最新，自我迭代）', tools: true, thinking: false },
+      { id: 'MiniMax-M2.5', label: 'MiniMax M2.5（顶尖性能）', tools: true, thinking: false },
+      { id: 'MiniMax-M2.5-highspeed', label: 'MiniMax M2.5 极速版（100tps）', tools: true, thinking: false },
+    ],
+  },
+  siliconflow: {
+    id: 'siliconflow',
+    name: '硅基流动 SiliconFlow',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    keyLink: 'https://cloud.siliconflow.cn/',
+    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+    defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
+    models: [
+      { id: 'Qwen/Qwen2.5-72B-Instruct', label: 'Qwen 2.5 72B（免费）', tools: true, thinking: false },
+      { id: 'deepseek-ai/DeepSeek-V3', label: 'DeepSeek V3', tools: false, thinking: false },
+      { id: 'deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1（推理）', tools: false, thinking: true },
+    ],
+  },
+  custom: {
+    id: 'custom',
+    name: '自定义 OpenAI 兼容服务',
+    baseUrl: '',
+    keyLink: '',
+    keyPlaceholder: 'your-api-key',
+    defaultModel: '__custom__',
+    models: [{ id: '__custom__', label: '✏️ 自定义模型（手动输入）', tools: true, thinking: false }],
+  },
+};
+
 type GatewayConfigPayload = {
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
@@ -179,9 +243,17 @@ export function useApiKeys() {
       api
         .getProviderList()
         .then((result: any) => {
-          if (result.success && result.data) setProviders(result.data || {});
+          if (result.success && result.data && Object.keys(result.data).length > 0) {
+            setProviders(result.data || {});
+          } else {
+            setProviders(FALLBACK_PROVIDERS);
+          }
         })
-        .catch(() => {});
+        .catch(() => {
+          setProviders(FALLBACK_PROVIDERS);
+        });
+    } else {
+      setProviders(FALLBACK_PROVIDERS);
     }
   }, []);
 

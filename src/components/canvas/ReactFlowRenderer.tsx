@@ -229,14 +229,66 @@ interface ReactFlowRendererProps {
   content: string; // raw JSON string from CanvasDocument
 }
 
+function extractLikelyJson(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const fenced = trimmed.startsWith('```')
+    ? trimmed.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim()
+    : trimmed;
+
+  const tryParse = (value: string) => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  };
+
+  if (tryParse(fenced) !== null) return fenced;
+
+  const start = fenced.search(/[\{\[]/);
+  if (start < 0) return fenced;
+  const opener = fenced[start];
+  const closer = opener === '{' ? '}' : ']';
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < fenced.length; i += 1) {
+    const ch = fenced[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === opener) depth += 1;
+    if (ch === closer) {
+      depth -= 1;
+      if (depth === 0) {
+        return fenced.slice(start, i + 1);
+      }
+    }
+  }
+  return fenced.slice(start);
+}
+
 function parseContent(raw: string): RFGraphData | null {
-  const s = raw.trim();
-  // Strip markdown code fence if AI wrapped the JSON
-  const jsonStr = s.startsWith('```')
-    ? s.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim()
-    : s;
+  const jsonStr = extractLikelyJson(raw);
   try {
-    return JSON.parse(jsonStr) as RFGraphData;
+    const parsed = JSON.parse(jsonStr) as RFGraphData | RFGraphData[];
+    if (Array.isArray(parsed)) {
+      return (parsed.find((item) => item && Array.isArray(item.nodes) && Array.isArray(item.edges)) || null) as RFGraphData | null;
+    }
+    return parsed;
   } catch {
     return null;
   }

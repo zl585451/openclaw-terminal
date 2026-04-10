@@ -269,6 +269,87 @@ function getMiniMaxEndpoints(config: Record<string, any>) {
   return { httpBase: normalized, wsBase };
 }
 
+function getPromptsDir(): string {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'prompts'),
+    path.join(__dirname, '..', 'docs', '01_system_prompts'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return path.join(__dirname, '..', 'docs', '01_system_prompts');
+}
+
+function getFallbackProviders() {
+  return {
+    'bailian-coding': {
+      id: 'bailian-coding',
+      name: '阿里云百炼 Coding Plan',
+      baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
+      keyPlaceholder: 'sk-sp-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://bailian.console.aliyun.com/',
+      defaultModel: 'qwen3.5-plus',
+      models: [
+        { id: 'qwen3.5-plus', label: 'Qwen 3.5 Plus（推荐）', tools: true, thinking: true },
+        { id: 'qwen3-max-2026-01-23', label: 'Qwen 3 Max（最强推理）', tools: true, thinking: false },
+        { id: 'qwen3-coder-next', label: 'Qwen 3 Coder Next（代码）', tools: true, thinking: false },
+        { id: 'kimi-k2.5', label: 'Kimi K2.5（月之暗面）', tools: true, thinking: false },
+        { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', tools: true, thinking: false },
+      ],
+    },
+    deepseek: {
+      id: 'deepseek',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://platform.deepseek.com/',
+      defaultModel: 'deepseek-chat',
+      models: [
+        { id: 'deepseek-chat', label: 'DeepSeek Chat（通用）', tools: true, thinking: false },
+        { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（推理）', tools: false, thinking: true },
+      ],
+    },
+    minimax: {
+      id: 'minimax',
+      name: 'MiniMax',
+      baseUrl: 'https://api.minimaxi.com/v1',
+      keyPlaceholder: 'sk-cp-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://platform.minimaxi.com/docs/token-plan/intro',
+      defaultModel: 'MiniMax-M2.7',
+      models: [
+        { id: 'MiniMax-M2.7', label: 'MiniMax M2.7（最新，自我迭代）', tools: true, thinking: false },
+        { id: 'MiniMax-M2.5', label: 'MiniMax M2.5（顶尖性能）', tools: true, thinking: false },
+        { id: 'MiniMax-M2.5-highspeed', label: 'MiniMax M2.5 极速版（100tps）', tools: true, thinking: false },
+      ],
+    },
+    siliconflow: {
+      id: 'siliconflow',
+      name: '硅基流动 SiliconFlow',
+      baseUrl: 'https://api.siliconflow.cn/v1',
+      keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://cloud.siliconflow.cn/',
+      defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
+      models: [
+        { id: 'Qwen/Qwen2.5-72B-Instruct', label: 'Qwen 2.5 72B（免费）', tools: true, thinking: false },
+        { id: 'deepseek-ai/DeepSeek-V3', label: 'DeepSeek V3', tools: false, thinking: false },
+        { id: 'deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1（推理）', tools: false, thinking: true },
+      ],
+    },
+    custom: {
+      id: 'custom',
+      name: '自定义 OpenAI 兼容服务',
+      baseUrl: '',
+      keyPlaceholder: 'your-api-key',
+      keyLink: '',
+      defaultModel: '__custom__',
+      models: [
+        { id: '__custom__', label: '✏️ 自定义模型（手动输入）', tools: true, thinking: false, custom: true },
+      ],
+      allowCustomModel: true,
+    },
+  };
+}
+
 function pushUiLog(line: string) {
   try {
     mainWindow?.webContents.send('openclaw-log-lines', [line]);
@@ -1802,6 +1883,7 @@ function sendGatewayLogLine(line: string) {
 function getOctGatewayEntry(): string | null {
   const candidates = [
     path.join(process.resourcesPath || '', 'oct-gateway', 'index.js'),
+    path.join(process.resourcesPath || '', 'app.asar', 'oct-gateway', 'index.js'),
     path.join(__dirname, '..', 'oct-gateway', 'index.js'),
   ];
   for (const p of candidates) {
@@ -1825,17 +1907,20 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
     return { success: false, error: 'OCT Gateway 未找到' };
   }
 
-  const promptsDir = path.join(__dirname, '..', 'docs', '01_system_prompts');
+  const promptsDir = getPromptsDir();
   const tasksPath = path.join(app.getPath('userData'), 'tasks.json');
   const vaultPath = path.join(app.getPath('userData'), 'vault.enc');
+  const runtimeCommand = app.isPackaged ? process.execPath : 'node';
+  const runtimeArgs = [entry];
 
   try {
-    octGatewayProcess = spawn('node', [entry], {
+    octGatewayProcess = spawn(runtimeCommand, runtimeArgs, {
       cwd: path.dirname(entry),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
       env: buildOctChildEnv({
+        ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
         OCT_GATEWAY_PORT: String(GATEWAY_PORT),
         OCT_PROMPTS_DIR: promptsDir,
         OCT_CONFIG_FILE: CONFIG_FILE,
@@ -2764,13 +2849,13 @@ ipcMain.handle('get-provider-list', async () => {
     const gatewayDir = path.dirname(getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js'));
     const providersPath = path.join(gatewayDir, 'providers.js');
     if (!fs.existsSync(providersPath)) {
-      return { success: false, error: 'providers.js 未找到', data: null };
+      return { success: true, error: '', data: getFallbackProviders() };
     }
     const { PROVIDERS } = require(providersPath);
     return { success: true, data: PROVIDERS };
   } catch (e: any) {
     console.error('[get-provider-list]', e.message);
-    return { success: false, error: e.message, data: null };
+    return { success: true, error: e.message, data: getFallbackProviders() };
   }
 });
 
@@ -2783,7 +2868,7 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
     }
     const gatewayDir = path.dirname(getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js'));
     const providersPath = path.join(gatewayDir, 'providers.js');
-    const { PROVIDERS } = fs.existsSync(providersPath) ? require(providersPath) : { PROVIDERS: {} };
+    const { PROVIDERS } = fs.existsSync(providersPath) ? require(providersPath) : { PROVIDERS: getFallbackProviders() };
     const providerId =
       (cfg.OCT_PROVIDER && String(cfg.OCT_PROVIDER).trim())
       || (
