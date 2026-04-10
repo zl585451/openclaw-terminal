@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-10 | 0.2.0 发布流程调整：版本号升至 `0.2.0`；保留本地 Windows 打包，GitHub Actions 的 tag 发布默认用于 `macOS` 与 `Linux` 产物，避免与本地 Windows 安装包重复 | `package.json`, `package-lock.json`, `.github/workflows/build-windows.yml` | 面向本地 Windows + CI 跨平台混合发布 |
 | 2026-04-03 | ChatTab.v2.tsx 完整拆分：6 步重构，~3000行 → 729行，拆出 useMessages/useScrollManager/useFileAttachment/useTimers/useContextMenu hooks 及 MessageList/ChatInput/ContextMenu 组件 | `src/hooks/useMessages.ts`, `src/hooks/useScrollManager.ts`, `src/hooks/useFileAttachment.ts`, `src/hooks/useTimers.ts`, `src/hooks/useContextMenu.ts`, `src/components/ContextMenu.tsx`, `src/ui/chat/MessageList.tsx`, `src/ui/chat/ChatInput.tsx`, `src/ui/chat/ChatTab.v2.tsx` | 详见 `docs/05_changelog/2026-04-03-ChatTab拆出useFileAttachment-useTimers-useContextMenu.md` |
 | 2026-04-03 | 流式打字机丝滑优化：Gateway 新增 createStreamSmoother（Intl.Segmenter 词边界分词），WebSocket 改用 smoother；恢复 useTypewriter RAF 逐字动画（MAX=6/BATCH=1/追赶提前） | `oct-gateway/index.js`, `src/hooks/useTypewriter.ts`, `oct-gateway/config.json`, `oct-gateway/config.js` | 用户"从容/细读"设置生效；详见 `docs/05_changelog/2026-04-03-流式打字机丝滑优化.md` |
 | 2026-04-10 | 发布前配置收口：移除仓库默认 API Key，代理策略改为仅为本地服务设置 NO_PROXY，避免发布版强制全量直连 | `oct-gateway/config.json`, `electron/main.ts`, `oct-gateway/config.js`, `oct-gateway/mcp/client.js`, `oct-gateway/README.md` | 面向产品打包的默认安全配置 |
