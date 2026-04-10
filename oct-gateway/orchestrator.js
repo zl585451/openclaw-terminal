@@ -250,6 +250,7 @@ async function dispatch(userMessage, sessionKey, onToolEvent) {
   return {
     ...analysis,
     canvasIntent,
+    userMessage,
     sessionKey,
     timestamp: Date.now()
   };

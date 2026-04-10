@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-08（补充 oct-gateway 联调修复、任务看板与右栏状态显示）  
+> **最后更新**：2026-04-10（补充图形路由策略与结构图协议入口）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -15,6 +15,7 @@
 | **AI 协作** | 图片链路入口 | [`../00_ai_entry/image-flow-entry.md`](../00_ai_entry/image-flow-entry.md) |
 | **AI 协作** | 音频链路入口 | [`../00_ai_entry/audio-entry.md`](../00_ai_entry/audio-entry.md) |
 | **AI 协作** | 排错顺序 | [`../00_ai_entry/bug-triage.md`](../00_ai_entry/bug-triage.md) |
+| **AI 协作** | 图形路由策略 | [`diagram-routing-strategy.md`](./diagram-routing-strategy.md) |
 | 第一层 | Gateway/基础设施 | [`01-gateway.md`](./01-gateway.md) |
 | 第二层 | 对话后自动处理管线 | [`02-auto-pipeline.md`](./02-auto-pipeline.md) |
 | 第三层 | 前置思考管线 | [`03-hypothesis.md`](./03-hypothesis.md) |

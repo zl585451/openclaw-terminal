@@ -44,7 +44,8 @@ loadSystemPrompt(promptsDir)
 4. **bootMemory / 本地 MD 主体**（Nocturne 或 本地 4 个文件）
 5. **CLARIFICATION_PROTOCOL.md**（若存在）
 6. **adaptive-questioning-system.md**（若存在）
-7. **skillAdapter.formatSkillsForPrompt()** — 扫描 `oct-gateway/skills/` 下 SKILL.md，注入 `<skills>` 段落
+7. **DIAGRAM_PROTOCOL.md**（若存在）
+8. **skillAdapter.formatSkillsForPrompt()** — 扫描 `oct-gateway/skills/` 下 SKILL.md，注入 `<skills>` 段落
 
 ### 重要说明：人格已改为“产品默认 + 用户可配置层”
 
@@ -78,6 +79,7 @@ loadSystemPrompt(promptsDir)
 | MEMORY.md | 动态记忆（Nocturne 同步写回，与 Nocturne 一致） |
 | CLARIFICATION_PROTOCOL.md | 追问协议 |
 | adaptive-questioning-system.md | 自适应提问系统 |
+| DIAGRAM_PROTOCOL.md | 图形输出协议（结构图、聊天区小图、Canvas 路由） |
 
 ---
 

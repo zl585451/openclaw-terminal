@@ -368,6 +368,11 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
     readTextIfExists(promptsDir ? path.join(promptsDir, 'adaptive-questioning-system.md') : ''),
     8000
   );
+  const diagramProtocol = clampPromptBlock(
+    '结构图输出协议（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'DIAGRAM_PROTOCOL.md') : ''),
+    2000
+  );
 
   const nocturneInstructions = `
 ## 🧠 记忆系统（Nocturne Memory）
@@ -435,194 +440,56 @@ URI 路径：core://my_user/[分类]/[具体节点]
 
 **Canvas 工具**：
 - canvas(action, ...) — 在 Canvas 工作区创建或更新结构化成果物
-- 当内容更适合用文档、图示、UI 草图、代码产物表达时，优先考虑使用 canvas 工具
-- 适合使用 canvas 的场景：
-  - 需要梳理方案、提纲、PRD、结构化总结
-  - 需要流程图、架构图、时序图、关系图
-  - 需要页面草图、布局草图、信息架构
-  - 需要持续迭代的代码草稿或组件草稿
-- 【图表硬性门禁 — 生成任何图之前必须先自检，不符合则禁止输出】
-  ① react-flow 总节点 ≤ 15、总边 ≤ 20。生成前先数一遍，超出时必须合并同层同类节点。
-    合并示例：用户要"电商完整架构"→ 微服务层不要拆成 订单/商品/用户/支付/库存/物流/搜索 7 个独立节点，
-    而应合并为 1 个"核心业务服务(7)"节点，在 chat 文字中列出明细。同理 Redis/MQ/ES 合并为"中间件集群"。
-    合并后的总览图通常只需 8-12 个节点。用户说"展开微服务层"时再画子图
-  ② 聊天区 Mermaid：节点 ≤ 6、边 ≤ 5、方向 TD
-  ③ 回复正文和 explanation 中严禁任何 emoji
-  ④ 已在 chat 渲染的简单图，禁止同时创建 Canvas artifact
-  违反以上任意一条的图表输出视为生成失败。
-- 使用原则：
-  - 先用 chat 简短说明你正在产出什么，再调用 canvas
-  - artifact 标题要清晰，解释 explanation 要简洁
-  - 【回复格式决策树 — 顺序判断，命中即止，不得跳过或合并】
-    ① 内容有以下任意一种特征 → 用 Mermaid（类型见下方分区表）；不得改用表格或代码块来”示意”
-       · 流程 / 步骤 / 操作链路 / 事件推进
-       · 模块组成 / 技术栈架构 / 项目结构（模块数 ≤ 6）
-       · 组件关系 / 系统依赖 / 调用关系
-       · 层级结构 / 信息架构 / 分类树（节点 ≤ 6）
-       · 状态变化 / 生命周期 / 条件流转
-       · 路径对比 / 有无差异 / 前后变化（维度 ≤ 3）
-       【典型误判警告】”项目由 A + B + C 三部分组成” → 这是模块关系，走 ①，不要画成表格
-    ② 内容是以下特征 → 用 Markdown 表格
-       · 纯属性对比 / 参数清单（同一实体的多个字段）
-       · 多方案横向打分 / 维度 > 3 的对比矩阵
-       · 枚举对照表（如错误码列表、配置项说明）
-       · 目录 / 文件树结构 → 用代码块（├── 格式），不要画成 Mermaid
-    ③ 其他（纯叙述 / 单点问答 / 代码）→ 正文 + 代码块
-    否决规则（优先级高于上述所有条目）：
-    - ① 命中后，即使包含”对比项”，也先给 Mermaid，图下补 1 行关键差异，不单独加表格
-    - ② 命中后，绝不退回 ASCII 图或竖排列表
-    - 用户说”画图 / 用 Mermaid”：强制 ①，即使模型认为表格更合适
-    - 用户说”表格 / 列表 / 纯文字”：强制 ② 或 ③，不画图
-  - 图表类型选择（重要：聊天区只支持以下类型直接预览，其他类型请放入 Canvas）：
-    - 【聊天区可直接预览】flowchart / graph：流程/步骤/链路/依赖/架构
-        · 方向【必须】是 TD（上→下）。LR/RL/BT 一律放 Canvas，不得在聊天区生成
-        · 节点数 ≤ 6，边（箭头）数 ≤ 5；超出放 Canvas
-        · 说明性链路（A→B→C→D→E）用 TD 纵向排列，这样聊天区可以完整展示，用户不需要点开 Canvas
-        · 禁止以"内容天然横向"为由生成 LR；TD 竖向链路完全可读，不是"将就"
-        · 【节点标签规范】聊天区节点标签：纯文字，≤ 8 个字符，不加 emoji，不加换行符（\n）
-          反例（禁止）：A["🎯 节点\nNode"]   正例（正确）：A[节点]
-    - 【聊天区可直接预览】pie：数据占比/比例分析（项目不超过 8 个）
-    - 【必须放 Canvas】mindmap：思维导图（小卡片里难以阅读，放 Canvas 才清晰）
-    - 【必须放 Canvas】sequenceDiagram：时序交互
-    - 【必须放 Canvas】classDiagram：类结构
-    - 【必须放 Canvas】erDiagram：数据库实体关系
-    - 【必须放 Canvas】gantt：甘特图/时间线
-    - 【必须放 Canvas】gitGraph：分支图
-    - 【必须放 Canvas】stateDiagram：状态机
-    - 【禁止生成】sankey、xychart、bar（独立）、venn、kanban、architecture、radar、treemap、ishikawa、treeview、zenuml、block、packet：实验性或无效语法，渲染不稳定，不要使用
-      · 特别注意：Mermaid 里没有独立的 "bar" 图类型，想画柱状图/折线图/散点图必须用 artifactType="echart"，不能用 Mermaid
-    - 对比分析：如果问题核心是“路径、关系、流向、谁先经过谁、前后差异、有无代理、本地与远端”，优先 Mermaid；只有当维度明显多于路径关系时才优先表格
-    - 信息归类：优先分组图；只有内容本质是字段清单、参数对照、纯属性对比时才优先结构化表格
-  - 单次回复最多输出 2 个 Mermaid 图；超过 2 个时只保留最重要的，多余的不要提及也不要写”已省略”
-  - 图表之外只补必要短说明；不要用散文重复解释图里已经表达的结构
-  - code block 只用于真正的代码；关系/结构示意不允许放进代码块伪装成图示
-  - 如果 artifactType 是 diagram，content 优先使用纯 JSON 图定义（由系统自动转换成 Mermaid）；不要混入 Markdown 标题、表格、普通说明文字或 ASCII 线框图
-      · flowchart JSON 格式：
-        {"diagramType":"flowchart","title":"标题","direction":"TD","nodes":[{"id":"start","label":"开始"}],"edges":[{"from":"start","to":"end","label":"下一步"}]}
-      · pie JSON 格式：
-        {"diagramType":"pie","title":"标题","data":[{"label":"A","value":45},{"label":"B","value":25}]}
-      · hierarchy JSON 格式：
-        {"diagramType":"hierarchy","title":"标题","direction":"TD","items":[{"id":"root","label":"主节点"},{"id":"child_a","label":"子节点A","parentId":"root"}]}
-      · 只有在无法稳定给出上述 JSON 时，才退回纯 Mermaid DSL
-  - 【严禁在节点 label 里换行】不论是聊天区还是 Canvas，Mermaid 节点标签内绝对禁止 \n 换行符
-      · 错误：A["客户端\nSYN SEND"]   A["Step 1\nDetail"]
-      · 正确：A["客户端 SYN SEND"]    A["Step1: Detail"]
-      · 原因：OCT 的节点高度固定，\n 会导致第二行被截断，用户看不到完整文字
-  - diagram 默认优先可读性：避免把完整长段落塞进节点；节点文案尽量短句（≤ 12 字符），不要超宽
-  - Mermaid 语法必须合法：不要生成空标签节点或占位节点，例如 A(())、B(())、A([]) 这类写法是无效的；圆形节点必须写成 A((A))、A((文本)) 或其他带可见标签的合法形式
-  - 【严禁】在 Mermaid 图中使用 style、classDef（含颜色属性）、linkStyle 等内联颜色覆盖命令
-      · 原因：OCT 有 3 套主题，所有节点颜色由主题系统统一管理；手动 fill/stroke 会导致颜色与主题完全不匹配（在深色主题里出现刺眼的粉色、亮橙色节点）
-      · 唯一允许的 classDef 用途：改变节点形状（如 round、diamond），不得携带 fill/stroke/color 属性
-      · 如果想表达"重点节点"，用节点形状区分（圆角矩形 vs 菱形 vs 圆形），不要用颜色
-  - 当信息量过大时先输出”总览图”（分组/分层），再按用户要求继续细化子图，不要一次堆满所有细节
-  - 【总览图硬上限】总览图节点数 ≤ 15 个、边数 ≤ 20 条。超出时必须合并同类节点（如 8 个微服务合并为 1 个”微服务集群”节点），细节留到用户要求”展开某一层”时再画
-  - ★【结构图/依赖图/组件图 → 一律使用 react-flow，禁止使用 Mermaid】★
-    “依赖图 / 结构图 / 组件关系图 / 页面关系图 / 模块关系图 / 内部结构图 / 层次图” 这类场景
-    必须调用 canvas() 工具，artifactType=”react-flow”。不得退回 Mermaid、不得输出成表格。
-    react-flow 节点布局建议（这些场景的 JSON 构图原则）：
-    - 中间放 1 个主节点，周围放 3-5 个依赖分组，用 group 字段标注分组名称
-    - 每个分组最多 4-5 个代表节点；超出的折叠成”其他…”
-    - 默认只画主依赖和代表性依赖，优先可读性不优先完整性
-    - 结构图先输出”主结构总览”，不要一次展开所有细节
-    - 【连线精简原则】总边数 ≤ 节点数 × 1.5；宁可省略次要连线也不能出现蜘蛛网。优先画”主调用链路”（如 客户端→网关→BFF→微服务→数据库），次要关系（如 微服务→缓存/MQ）只保留 1-2 条代表性连线，其余在 explanation 文字中说明
-    - 【分层布局强制】当节点 ≥ 10 个时，必须按逻辑分层（如 接入层/业务层/数据层），同层节点 group 值相同，不同层之间只画跨层主链路。禁止所有节点平铺在同一层导致连线交叉
-  - 对”思维导图/脑图/策略图”场景，也优先使用 react-flow（树形/金字塔结构），
-    仅在内容是纯线性步骤链时才退而使用 Mermaid flowchart TD
-  - 画布填充优先：diagram 需要尽量覆盖画布主体区域，避免节点全部挤在上半区；层级建议 3-4 层、每层节点数量控制在可读范围
-  - flowchart 建议显式设置布局参数（如 nodeSpacing / rankSpacing / curve）来控制密度，保持均匀分布和连线清晰
-  - 对“线路图 / 路线图 / roadmap / 事件线路 / 阶段推进图”场景，默认优先使用适合展板展示的宽版 flowchart LR；除非用户明确要求自上而下，否则不要生成单列纵向长条图
-  - 线路图优先规则：
-    - 先按 3-4 个阶段组织，不以“越多越完整”为目标，优先适合展板展示
-    - 优先让整体宽高比接近 1.2:1 到 1.8:1，避免“高而细长”或“宽而过长”
-    - 如果阶段较多，不要单排横向铺满；优先拆成两行或 2x2 分组结构，让画布更均衡
-    - 阶段内部最多 2-3 个关键节点，避免一条竖线串到底
-    - 如果内容天然很多，先做“阶段总览线路图”，不要一次展开所有子步骤
-    - 当横向单排会过长时，优先改用“上层阶段总览 + 下层关键动作”的板式，而不是继续拉宽
-  - Mermaid 线路图建议包含初始化块来约束布局，例如：%%{init: { "flowchart": { "useMaxWidth": false, "nodeSpacing": 48, "rankSpacing": 68, "curve": "basis" } }}%%
-  - Mermaid 数量限制：单条回复默认最多输出 1 个 Mermaid 图；只有用户明确要求”对比多个图/给我两个版本/并排看方案”时，最多输出 2 个
-  - 不要在一次普通答复里连续输出 3 个或以上 Mermaid 代码块；这会显著降低阅读体验，也会增加前端渲染失败或空白卡片的概率
-  - 如果用户是在问”还能画什么 / 支持哪些图”，优先用文字列举类型，并只渲染 1 个最有代表性的示例图，不要把时序图、状态图、甘特图、饼图等一次全部画出来
-  - 如果需要展示多个方向，优先先给”图类型菜单 + 一句用途说明”，让用户选 1 个再生成；不要自作主张一次生成很多图
-  - 当你决定不画某张图时（因为超出数量限制）：
-      · 【禁止】写”已省略...请在 Canvas 查看””完整图集在 Canvas”等措辞 — Canvas 里没有这张图，这是误导
-      · 【正确做法】用一句话说明还有哪张图没画，并主动问用户”要继续看吗”，例如：”数据流向图较复杂，要我接着画吗？”
-      · 用户点击查看后再单独生成那张图，不要在同一条回复里堆叠
-  - 图的说明文字放在 explanation 字段或 chat 文本里，不要放进 diagram content
-  - 如果用户是在继续完善、解释、重写当前 Canvas 内容，优先调用 canvas(action="update", documentId=当前文档ID, ...)
-  - 只有在确实需要新增并行成果物时才调用 create
-  - 简单问答不要滥用 canvas
-  - artifact 类型选择规则：
-      · 简单线性流程（≤5步 flowchart / pie 占比 / 小型 hierarchy）→ 直接在 chat 输出 \`\`\`json 代码块（diagramType=flowchart/pie/hierarchy），系统会自动渲染成图，不需要 canvas
-        【严禁重复】当内容已在 chat 区以 JSON 代码块输出并自动渲染时，禁止同时调用 canvas() 创建相同内容的 artifact。chat 渲染的图就是最终成果，Canvas 不是"备份"——重复创建会导致 Canvas 面板渲染异常（节点散列、连线丢失）
-      · 【react-flow】以下场景必须用 react-flow，不得用 Mermaid 代替：
-          - 结构图 / 组成图 / 层次图（任何描述"X由哪些部分组成"的图）
-          - 架构图 / 模块关系 / 依赖图 / 组件关系图
-          - 树形分解图（父子层级 ≥ 2 层且总节点 ≥ 4）
-          - 用户明确说"画出…结构""详细结构""内部结构""可视化一下"
-          判断原则：如果图的本质是"展示某个事物的组成/层次/部件关系" → react-flow
-          content 必须是合法 react-flow JSON（见下方格式规范）
-          【禁止】把这类内容输出成 Mermaid、chat 表格或普通文本
-      · 【echart】数据对比 / 趋势 / 分布 / 占比 / 柱状 / 折线 / 散点 / 雷达图 → artifactType="echart"
-      · 【diagram（Mermaid）】只用于以下线性/流程类图，其他场景不得使用：
-          - flowchart：线性步骤流程、判断分支、状态转换路径
-          - sequenceDiagram：系统间/角色间的时序交互
-          - stateDiagram：有限状态机
-          - classDiagram / erDiagram：类结构、数据库关系
-          - gantt：时间线/甘特图
-          - pie：占比（≤8项，简单场景）
-      · 文档/文章/方案 → artifactType="document"，mode="markdown"
-      · 代码文件 → artifactType="code"，mode="code"
+- 适合场景：方案/提纲/PRD、流程图/架构图/时序图、页面草图、代码草稿
+- 使用原则：先 chat 一句话说明，再调用 canvas；更新已有文档用 update 不用 create；简单问答不滥用 canvas
 
-  - 【react-flow JSON 格式规范】（当 artifactType="react-flow" 时，content 必须严格符合此格式）：
-    {
-      "nodes": [
-        { "id": "唯一ID", "label": "节点显示文字", "group": "分组名（可选，同组颜色相同）" }
-      ],
-      "edges": [
-        { "source": "来源节点ID", "target": "目标节点ID", "label": "连线标注（可选）", "style": "solid|dashed" }
-      ],
-      "direction": "LR",
-      "title": "图表标题（可选）"
-    }
-    规则：
-    · direction 选 LR（左→右，适合流程/管道/架构）或 TB（上→下，适合层级/调用链）
-    · id 必须唯一，只用英文字母数字下划线
-    · label 写人类可读的中文或英文短语，不要写技术标识符
-    · group 用于颜色分组，如"接口层""业务层""基础设施层"
-    · 不要在 JSON 外面加任何 Markdown 说明文字，content 必须是纯合法 JSON
-    · edge label ≤ 10 个字符（中文）/ ≤ 20 个字符（英文）；超长描述拆成多条边，或放在 explanation 字段里。反例："鉴权请求并返回Token和鉴权结果" → 正例：拆成两条边 "发起鉴权" + "返回Token"
+【图表输出规范】
 
-  - 【echart JSON 格式规范】（当 artifactType="echart" 时，content 必须严格符合此格式）：
-    {
-      "title": "图表标题（用于工具栏显示，可选）",
-      "option": {
-        // 标准 ECharts option 对象，包含 series、xAxis、yAxis、legend、tooltip 等
-        // 不需要设置 color / backgroundColor / textStyle / tooltip.backgroundColor
-        // —— OCT 主题系统会自动注入这些样式，你设置了也会被覆盖
-      }
-    }
-    可用图表类型（series.type）：
-    · bar        柱状图 / 条形图（横向用 "bar" + 交换 xAxis/yAxis）
-    · line       折线图 / 面积图（area: areaStyle:{}）
-    · pie        饼图 / 环形图（radius:["40%","70%"] = 环形）
-    · scatter    散点图
-    · radar      雷达图（需配 radar:{ indicator:[...] }）
-    · heatmap    热力图（需配 visualMap）
-    · treemap    矩形树图
-    · funnel     漏斗图
-    · gauge      仪表盘
-    规则：
-    · content 必须是纯合法 JSON，外面不要包 Markdown 代码块
-    · 数据尽量真实、贴近用户问题；如果用户没给数据，用示例数据并在 explanation 里说明
-    · 不要在 option 里硬编码颜色（color 数组由主题注入）；若需强调某个系列可用 itemStyle.color 单独设置
-    · 多系列图表需要在 legend 里列出所有 series.name
-    · tooltip 不需要设置颜色相关字段，只设置 trigger / formatter 等逻辑字段
-    · 【严禁字符串代替对象】legend / tooltip / grid / series 的各字段必须是合法对象，不能写成字符串
-      ✗ 错误：{"legend": "right"}    ✓ 正确：{"legend": {"right": "5%"}}
-      ✗ 错误：{"tooltip": "item"}    ✓ 正确：{"tooltip": {"trigger": "item"}}
-      ✗ 错误：{"emphasis": "33%"}    ✓ 正确：{"emphasis": {"scale": true}}
-    · pie / radar 图不需要 xAxis / yAxis，不要添加这两个字段
-    · 确保所有 series 都有 name 字段（用于 legend 和 tooltip 显示）
+一、路由决策（顺序判断，命中即止）
+  ① 结构/架构/组成/层次/模块/依赖/组件关系 → 完整结构图（系统内部走 Canvas 结构图协议）
+  ② 流程/步骤/链路/事件推进/时序/状态机 → 线性且≤5节点走 chat 小图，否则走 Canvas 完整图
+  ③ 柱状图/折线图/饼图/雷达/数据可视化 → Canvas 图表
+  ④ 占比(≤6项) → chat 小图；仅单根树、≤6节点、无跨层关系的轻量父子层级 → chat 小图；其余层级关系仍走完整结构图
+  ⑤ 对比/参数清单/维度>3 → Markdown 表格
+  ⑥ 用户只说“画图/做图/整理成图”但类型不明 → 先追问要流程、结构、数据图还是文档，不猜
+  ⑦ 均未命中 → 不画图，正文回答
+  补充规则：
+  · 用户提的是结果需求，不是底层工具；除非用户明确要求导出源码/指定格式，否则不要在正文主动提 Mermaid/react-flow/echart
+  · 用户明确要求表格/纯文字/文档时，优先尊重结果形式，不强行出图
+  · 用户明确要求“给我 Mermaid 源码”或“输出 JSON 图数据”时，才暴露对应格式
+  chat 区条件（全部满足）：flowchart/pie/hierarchy + 节点≤6 + 边≤5 + 方向TD + 信息密度低。超出 → Canvas
+  禁止 chat 和 Canvas 重复输出同一张图
+
+二、结构图 → 执行【结构图输出协议】（见注入的 DIAGRAM_PROTOCOL）
+  这是 react-flow 专用协议，包含硬约束（≤12节点、≤节点×1.3边、≤5组）和合并公式。
+
+三、Mermaid 规则
+  · chat 区 flowchart 方向必须 TD，节点标签 ≤ 8 字符，无 emoji 无 \\n
+  · 严禁 style/classDef 颜色覆盖（OCT 主题系统管颜色）；classDef 仅可改形状
+  · 严禁实验性图类型：sankey/xychart/bar(独立)/venn/kanban/architecture/radar/treemap/ishikawa/treeview/zenuml/block/packet
+  · 柱状/折线/散点 → 必须用 echart，不用 Mermaid
+  · 单次回复最多 1 个聊天区小图；用户明确要求对比时最多 2 个
+  · 不画的图说”要继续看吗”，不写”已省略”
+  · 线路图/roadmap → canvas LR flowchart，3-4 阶段，宽高比 ~1.5:1
+  · Mermaid 语法必须合法：禁止空标签节点如 A(())；标签内禁止 \\n
+  · chat 区 diagram content 优先用 JSON 格式（diagramType+nodes+edges），系统自动转 Mermaid
+    flowchart: {“diagramType”:”flowchart”,”title”:”标题”,”direction”:”TD”,”nodes”:[{“id”:”a”,”label”:”步骤”}],”edges”:[{“from”:”a”,”to”:”b”}]}
+    pie: {“diagramType”:”pie”,”title”:”标题”,”data”:[{“label”:”A”,”value”:45}]}
+    hierarchy: {“diagramType”:”hierarchy”,”title”:”标题”,”items”:[{“id”:”root”,”label”:”主节点”},{“id”:”c”,”label”:”子节点”,”parentId”:”root”}]}
+
+四、ECharts 规则
+  · content = {“title”:”图表标题”,”option”:{...}}，纯 JSON，不包 Markdown 代码块
+  · 不设 color/backgroundColor/textStyle（主题注入）
+  · legend/tooltip/grid 必须是对象，不能是字符串
+    ✗ {“legend”:”right”} ✓ {“legend”:{“right”:”5%”}}
+  · pie/radar 无 xAxis/yAxis；所有 series 要有 name
+  · 可用 series.type：bar/line/pie/scatter/radar/heatmap/treemap/funnel/gauge
+
+五、通用禁令
+  · 回复正文和 explanation 严禁 emoji
+  · 图表之外只补必要短说明，不散文重复图中内容
+  · 说明文字放 explanation 或 chat，不放进 diagram content
+  · code block 只用于代码，不用于关系/结构示意
 
 ---
 
@@ -661,6 +528,7 @@ AI · Cursor · Claude 三角协作：
     '\n\n---\n\n',
     clarification ? clarification + '\n\n---\n\n' : '',
     adaptiveSystem ? adaptiveSystem + '\n\n---\n\n' : '',
+    diagramProtocol ? diagramProtocol + '\n\n---\n\n' : '',
     nocturneInstructions,
   ].join('');
 

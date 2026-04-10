@@ -207,10 +207,26 @@ class ContextBuilder {
 
   _buildCanvasSuggestion(orchestratorResult) {
     if (!orchestratorResult?.canvasIntent?.shouldUseCanvas) return '';
-    const suggestedType = orchestratorResult.canvasIntent.artifactType || 'document';
-    const reason = orchestratorResult.canvasIntent.reason || '这条请求适合结构化表达';
-    return `\n\n[系统] 这条请求适合使用 Canvas 表达。优先考虑调用 canvas 工具创建一个 ${suggestedType} artifact。原因：${reason}。`
-      + ' 先在聊天中用一句话说明你要产出什么，再创建 Canvas 内容。';
+    const { artifactType, reason } = orchestratorResult.canvasIntent;
+    const msg = orchestratorResult.userMessage || '';
+
+    if (artifactType === 'react-flow') {
+      const isComplex = msg.length > 40 || /完整|详细|全部|所有|包括/.test(msg);
+      return isComplex
+        ? '\n\n[系统] 执行【结构图输出协议】。复杂场景：目标 10-12 节点、3-5 group、TB 方向。同组同类 >3 必须合并。先一句话说明，再 canvas() JSON。'
+        : '\n\n[系统] 执行【结构图输出协议】。简单场景：目标 6-8 节点、2-3 group、TB 方向。先一句话说明，再 canvas() JSON。';
+    }
+
+    if (artifactType === 'echart') {
+      return '\n\n[系统] 使用 canvas echart。content={"title":"...","option":{...}}，纯 JSON，不硬编码颜色。';
+    }
+
+    if (artifactType === 'diagram') {
+      return '\n\n[系统] 使用 canvas diagram (Mermaid)。chat 区小图(≤5节点TD)用 JSON，复杂图走 Canvas。';
+    }
+
+    const suggestedType = artifactType || 'document';
+    return `\n\n[系统] 这条请求适合使用 Canvas 表达。调用 canvas 创建 ${suggestedType} artifact。${reason || '这条请求适合结构化表达'}`;
   }
 
   _buildCanvasRoundtrip(canvasContext) {
