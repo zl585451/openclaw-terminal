@@ -3,9 +3,14 @@ const fs = require('fs');
 const os = require('os');
 const { PROVIDERS } = require('./providers');
 
+const envLocalPath = path.join(__dirname, '..', '.env.local');
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
+}
+
 const envPath = path.join(__dirname, '..', '.env');
 if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
+  require('dotenv').config({ path: envPath, override: false });
 }
 
 function ensureLocalBypassForOct() {
@@ -179,7 +184,6 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: true,
     supportsThinking: true,
-    supportsVision: true,
     thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
@@ -189,7 +193,6 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: true,
     supportsThinking: true,
-    supportsVision: true,
     thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
@@ -199,7 +202,6 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: true,
     supportsThinking: true,
-    supportsVision: true,
     thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },
@@ -209,7 +211,6 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: true,
     supportsThinking: true,
-    supportsVision: true,
     thinkingFormat: 'think_tags',
     maxTokens: 8192,
   },

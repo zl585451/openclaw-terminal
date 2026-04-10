@@ -1,5 +1,5 @@
 {
-  "OCT_MODEL": "MiniMax-M2.5",
+  "OCT_MODEL": "MiniMax-M2.7",
   "memory": {
     "auto_save_history": true,
     "auto_save_feedback": true,

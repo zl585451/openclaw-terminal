@@ -2806,6 +2806,12 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
     if (!baseUrl || !apiKey) {
       return { success: false, error: '请先填写 API Key 并选择服务商' };
     }
+    if (providerId === 'minimax' && !String(apiKey).trim().startsWith('sk-cp-')) {
+      return {
+        success: false,
+        error: 'MiniMax 现在需要 Token Plan 专属 API Key（通常以 sk-cp- 开头），普通按量计费 Key 不能直接用于 M2.7。',
+      };
+    }
     const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
@@ -2819,6 +2825,12 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
     });
     if (!res.ok) {
       const errText = await res.text();
+      if (providerId === 'minimax' && (res.status === 401 || res.status === 403)) {
+        return {
+          success: false,
+          error: `MiniMax 鉴权失败（${res.status}）。请确认你填写的是 Token Plan API Key（sk-cp-...），并且套餐当前包含 ${model} 的权限。`,
+        };
+      }
       return { success: false, error: `API 返回 ${res.status}: ${errText.slice(0, 200)}` };
     }
     return { success: true, message: '连接成功' };
@@ -2921,6 +2933,67 @@ ipcMain.handle('show-notification', (_, { title, body }: { title: string; body: 
   }
 });
 
+type PersistedMusicClip = {
+  id: string;
+  title: string;
+  prompt: string;
+  lyrics: string;
+  instrumental: boolean;
+  model: string;
+  traceId?: string;
+  durationMs?: number;
+  sampleRate?: number;
+  bitrate?: number;
+  sizeBytes?: number;
+  mimeType: string;
+  filename: string;
+  createdAt: number;
+};
+
+const MUSIC_STUDIO_DIR = path.join(app.getPath('userData'), 'music-studio');
+const MUSIC_HISTORY_FILE = path.join(MUSIC_STUDIO_DIR, 'history.json');
+
+function ensureMusicStudioDir(): void {
+  if (!fs.existsSync(MUSIC_STUDIO_DIR)) {
+    fs.mkdirSync(MUSIC_STUDIO_DIR, { recursive: true });
+  }
+}
+
+function readMusicHistory(): PersistedMusicClip[] {
+  ensureMusicStudioDir();
+  if (!fs.existsSync(MUSIC_HISTORY_FILE)) return [];
+  try {
+    const raw = JSON.parse(fs.readFileSync(MUSIC_HISTORY_FILE, 'utf-8'));
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeMusicHistory(items: PersistedMusicClip[]): void {
+  ensureMusicStudioDir();
+  fs.writeFileSync(MUSIC_HISTORY_FILE, JSON.stringify(items, null, 2), 'utf-8');
+}
+
+function persistMusicClip(entry: PersistedMusicClip, audioBuffer: Buffer): void {
+  ensureMusicStudioDir();
+  const filePath = path.join(MUSIC_STUDIO_DIR, entry.filename);
+  fs.writeFileSync(filePath, audioBuffer);
+
+  const nextHistory = [entry, ...readMusicHistory().filter((item) => item.id !== entry.id)].slice(0, 8);
+  writeMusicHistory(nextHistory);
+
+  const keepFiles = new Set(nextHistory.map((item) => item.filename));
+  for (const existing of fs.readdirSync(MUSIC_STUDIO_DIR)) {
+    if (existing === path.basename(MUSIC_HISTORY_FILE)) continue;
+    if (!keepFiles.has(existing)) {
+      try {
+        fs.unlinkSync(path.join(MUSIC_STUDIO_DIR, existing));
+      } catch {}
+    }
+  }
+}
+
 ipcMain.handle('tts-speak', async (_, payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) => {
   const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
   const providerPreference = payload?.providerPreference || 'auto';
@@ -3016,6 +3089,223 @@ ipcMain.handle('tts-speak', async (_, payload: { text: string; providerPreferenc
   }
 
   return { success: false, error: errors.join(' | ') || (providerPreference === 'browser' ? 'Browser TTS handled in renderer' : 'No matching cloud TTS capability for current provider') };
+});
+
+ipcMain.handle('music-history-load', async () => {
+  try {
+    const history = readMusicHistory();
+    const clips = history.flatMap((item) => {
+      const filePath = path.join(MUSIC_STUDIO_DIR, item.filename);
+      if (!fs.existsSync(filePath)) return [];
+      try {
+        const audioBase64 = fs.readFileSync(filePath).toString('base64');
+        return [{
+          ...item,
+          audioBase64,
+        }];
+      } catch {
+        return [];
+      }
+    });
+    return { success: true, clips };
+  } catch (e: any) {
+    return { success: false, error: e?.message || '音乐历史读取失败', clips: [] };
+  }
+});
+
+ipcMain.handle('music-generate', async (_, payload: {
+  title?: string;
+  model?: string;
+  prompt?: string;
+  lyrics?: string;
+  instrumental?: boolean;
+  lyricsOptimizer?: boolean;
+  sampleRate?: number;
+  bitrate?: number;
+  format?: 'mp3' | 'wav';
+}) => {
+  const cfg = readAppConfig();
+  const apiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
+  const baseUrl = String(cfg.MINIMAX_BASE_URL || process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1').trim().replace(/\/$/, '');
+  const model = String(payload?.model || 'music-2.6').trim() || 'music-2.6';
+  const title = String(payload?.title || '').trim();
+  const prompt = String(payload?.prompt || '').trim();
+  const lyrics = String(payload?.lyrics || '').trim();
+  const instrumental = !!payload?.instrumental;
+  const lyricsOptimizer = !!payload?.lyricsOptimizer;
+  const sampleRate = Number(payload?.sampleRate) || 44100;
+  const bitrate = Number(payload?.bitrate) || 256000;
+  const format = payload?.format === 'wav' ? 'wav' : 'mp3';
+
+  if (!apiKey) {
+    return { success: false, error: 'MiniMax API Key 未配置，请先在设置中填写 Token Plan API Key。' };
+  }
+  if (!prompt) {
+    return { success: false, error: '请先填写音乐描述。' };
+  }
+  if (!instrumental && !lyrics && !lyricsOptimizer) {
+    return { success: false, error: '当前是人声歌曲模式，请填写歌词，或开启“自动生成歌词”。' };
+  }
+
+  pushUiLog(`[MiniMax Music] start model=${model} instrumental=${instrumental} lyricsOptimizer=${lyricsOptimizer} promptChars=${prompt.length} lyricsChars=${lyrics.length}`);
+
+  try {
+    const res = await fetch(`${baseUrl}/music_generation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        lyrics,
+        lyrics_optimizer: lyricsOptimizer,
+        is_instrumental: instrumental,
+        output_format: 'hex',
+        audio_setting: {
+          sample_rate: sampleRate,
+          bitrate,
+          format,
+        },
+      }),
+      signal: AbortSignal.timeout(240000),
+    });
+
+    const text = await res.text();
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok) {
+      const errMsg = data?.base_resp?.status_msg || text || `HTTP ${res.status}`;
+      pushUiLog(`[MiniMax Music][ERR] ${res.status} ${String(errMsg).slice(0, 200)}`);
+      return { success: false, error: `MiniMax Music API 返回 ${res.status}: ${String(errMsg).slice(0, 300)}` };
+    }
+
+    const audioHex = String(data?.data?.audio || '').trim();
+    if (!audioHex) {
+      const statusMsg = data?.base_resp?.status_msg || '未返回音频数据';
+      pushUiLog(`[MiniMax Music][ERR] empty audio payload msg=${String(statusMsg).slice(0, 160)}`);
+      return { success: false, error: `MiniMax Music 未返回音频数据：${statusMsg}` };
+    }
+
+    const audioBuffer = Buffer.from(audioHex, 'hex');
+    const musicDuration = Number(data?.extra_info?.music_duration) || 0;
+    const musicSampleRate = Number(data?.extra_info?.music_sample_rate) || sampleRate;
+    const musicBitrate = Number(data?.extra_info?.bitrate) || bitrate;
+    const musicSize = Number(data?.extra_info?.music_size) || audioBuffer.length;
+    const traceId = String(data?.trace_id || '').trim();
+    const clipId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const mimeType = format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+    const filename = `${clipId}.${format === 'wav' ? 'wav' : 'mp3'}`;
+
+    persistMusicClip({
+      id: clipId,
+      title: title || `track_${clipId}`,
+      prompt,
+      lyrics,
+      instrumental,
+      model,
+      traceId,
+      durationMs: musicDuration,
+      sampleRate: musicSampleRate,
+      bitrate: musicBitrate,
+      sizeBytes: musicSize,
+      mimeType,
+      filename,
+      createdAt: Date.now(),
+    }, audioBuffer);
+
+    pushUiLog(`[MiniMax Music] success model=${model} durationMs=${musicDuration} bytes=${audioBuffer.length} trace=${traceId || 'n/a'}`);
+
+    return {
+      success: true,
+      clipId,
+      audioBase64: audioBuffer.toString('base64'),
+      mimeType,
+      model,
+      traceId,
+      durationMs: musicDuration,
+      sampleRate: musicSampleRate,
+      bitrate: musicBitrate,
+      sizeBytes: musicSize,
+    };
+  } catch (e: any) {
+    pushUiLog(`[MiniMax Music][ERR] ${e?.message || String(e)}`);
+    return { success: false, error: e?.message || 'MiniMax Music 请求失败' };
+  }
+});
+
+ipcMain.handle('lyrics-generate', async (_, payload: {
+  prompt?: string;
+  title?: string;
+}) => {
+  const cfg = readAppConfig();
+  const apiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
+  const baseUrl = String(cfg.MINIMAX_BASE_URL || process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1').trim().replace(/\/$/, '');
+  const prompt = String(payload?.prompt || '').trim();
+  const title = String(payload?.title || '').trim();
+
+  if (!apiKey) {
+    return { success: false, error: 'MiniMax API Key 未配置，请先在设置中填写 Token Plan API Key。' };
+  }
+
+  pushUiLog(`[MiniMax Lyrics] start promptChars=${prompt.length} titleChars=${title.length}`);
+
+  try {
+    const res = await fetch(`${baseUrl}/lyrics_generation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        mode: 'write_full_song',
+        prompt,
+        ...(title ? { title } : {}),
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+
+    const text = await res.text();
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok) {
+      const errMsg = data?.base_resp?.status_msg || text || `HTTP ${res.status}`;
+      pushUiLog(`[MiniMax Lyrics][ERR] ${res.status} ${String(errMsg).slice(0, 200)}`);
+      return { success: false, error: `MiniMax Lyrics API 返回 ${res.status}: ${String(errMsg).slice(0, 300)}` };
+    }
+
+    const generatedLyrics = String(data?.lyrics || '').trim();
+    const songTitle = String(data?.song_title || title || '').trim();
+    const styleTags = String(data?.style_tags || '').trim();
+
+    if (!generatedLyrics) {
+      const statusMsg = data?.base_resp?.status_msg || '未返回歌词';
+      pushUiLog(`[MiniMax Lyrics][ERR] empty lyrics msg=${String(statusMsg).slice(0, 160)}`);
+      return { success: false, error: `MiniMax Lyrics 未返回歌词：${statusMsg}` };
+    }
+
+    pushUiLog(`[MiniMax Lyrics] success title=${songTitle || 'n/a'} styleTagsChars=${styleTags.length} lyricsChars=${generatedLyrics.length}`);
+    return {
+      success: true,
+      title: songTitle,
+      styleTags,
+      lyrics: generatedLyrics,
+    };
+  } catch (e: any) {
+    pushUiLog(`[MiniMax Lyrics][ERR] ${e?.message || String(e)}`);
+    return { success: false, error: e?.message || 'MiniMax Lyrics 请求失败' };
+  }
 });
 
 ipcMain.handle('asr-transcribe', async (_, payload: { audioDataUrl: string; language?: string }) => {

@@ -264,6 +264,11 @@ export function ConnectionTabView({
               {currentProvider?.keyLink && (
                 <a href={currentProvider.keyLink} target="_blank" rel="noopener noreferrer" className="settings-link">获取 API Key →</a>
               )}
+              {currentProviderId === 'minimax' && (
+                <p className="settings-desc" style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)' }}>
+                  MiniMax M2.7 现在建议使用 Token Plan 专属 API Key，通常以 <code>sk-cp-</code> 开头；大陆区 Base URL 保持 <code>https://api.minimaxi.com/v1</code> 即可。
+                </p>
+              )}
             </div>
             <div className="settings-field">
               <label>当前模型</label>

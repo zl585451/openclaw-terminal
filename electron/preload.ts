@@ -59,6 +59,22 @@ const electronAPI = {
   }) => ipcRenderer.invoke('save-persona-settings', payload),
   ttsSpeak: (payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) =>
     ipcRenderer.invoke('tts-speak', payload),
+  musicGenerate: (payload: {
+    title?: string;
+    model?: string;
+    prompt: string;
+    lyrics?: string;
+    instrumental?: boolean;
+    lyricsOptimizer?: boolean;
+    sampleRate?: number;
+    bitrate?: number;
+    format?: 'mp3' | 'wav';
+  }) => ipcRenderer.invoke('music-generate', payload),
+  musicHistoryLoad: () => ipcRenderer.invoke('music-history-load'),
+  lyricsGenerate: (payload: {
+    prompt?: string;
+    title?: string;
+  }) => ipcRenderer.invoke('lyrics-generate', payload),
   asrTranscribe: (payload: { audioDataUrl: string; language?: string }) =>
     ipcRenderer.invoke('asr-transcribe', payload),
   getProviderList: () => ipcRenderer.invoke('get-provider-list'),

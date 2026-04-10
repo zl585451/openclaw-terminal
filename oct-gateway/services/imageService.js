@@ -7,11 +7,8 @@ class ImageService {
   async processImageAttachments(userMessage, imageAttachments, currentModel, providerConfig) {
     const textPart = userMessage || '请分析这张图片';
     const currentModelDef = providerConfig.models.find((model) => model.id === currentModel);
-    const isMiniMaxVisionModel =
-      providerConfig.id === 'minimax' && /^MiniMax-M2(?:\.|$|-)/i.test(String(currentModel || ''));
     const supportsInlineVision =
       currentModelDef?.vision === true
-      || isMiniMaxVisionModel
       || /(?:^|[-_/])vl(?:[-_/]|$)/i.test(currentModel)
       || /vision/i.test(currentModel);
 

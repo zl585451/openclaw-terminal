@@ -12,11 +12,11 @@ interface TabBarProps {
   onVaultStatusChange?: (status: { unlocked: boolean }) => void;
 }
 
-const SHOW_BETA_TABS = false; // 改为 true 可显示 SOUND、REAPER 标签
+const SHOW_BETA_TABS = true; // MiniMax Music Studio 使用 SOUND 标签位
 
 const tabs: { id: TabType; label: string }[] = [
   { id: 'chat', label: 'CHAT' },
-  { id: 'sound', label: 'SOUND' },
+  { id: 'sound', label: 'MUSIC' },
   { id: 'reaper', label: 'REAPER' },
 ];
 
