@@ -46,7 +46,42 @@ function normalizeMermaidSource(source: string): string {
     '"' + inner.replace(/\\n/g, ' ').replace(/\n/g, ' ').trim() + '"'
   );
 
-  return next.trim();
+  return rewriteReservedNodeIds(next).trim();
+}
+
+function rewriteReservedNodeIds(source: string): string {
+  const reservedIds = new Set(['end']);
+  const replacements = new Map<string, string>();
+  const lines = String(source || '').split(/\r?\n/);
+
+  const declareReplacement = (id: string) => {
+    if (!reservedIds.has(id)) return;
+    if (!replacements.has(id)) {
+      replacements.set(id, `${id}_node`);
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const nodeDeclMatch = trimmed.match(/^([A-Za-z][A-Za-z0-9_]*)\s*(?:\[\s*"|[\[\(\{])/);
+    if (nodeDeclMatch?.[1]) {
+      declareReplacement(nodeDeclMatch[1]);
+    }
+  }
+
+  if (!replacements.size) {
+    return source;
+  }
+
+  return lines
+    .map((line) => {
+      let next = line;
+      for (const [from, to] of replacements.entries()) {
+        next = next.replace(new RegExp(`\\b${from}\\b`, 'g'), to);
+      }
+      return next;
+    })
+    .join('\n');
 }
 
 function aggressivelySanitizeMermaidSource(source: string): string {

@@ -13,56 +13,10 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsType } from 'echarts';
+import { parseEChartsPayload } from '../../utils/echartsPayload';
 import './EChartsRenderer.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface EChartPayload {
-  title?: string;
-  option: Record<string, unknown>;
-}
-
-// ─── Parse ────────────────────────────────────────────────────────────────────
-
-function parseContent(raw: string): EChartPayload | null {
-  // Guard: if content arrived as an object (model passed structured JSON instead of string), stringify it
-  const rawStr = (raw !== null && raw !== undefined && typeof raw === 'object')
-    ? JSON.stringify(raw)
-    : String(raw || '');
-  const s = rawStr.trim().replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
-  try {
-    const parsed = JSON.parse(s);
-    if (!parsed || typeof parsed !== 'object') return null;
-
-    // Canvas tool call format: { action, artifactType, content: { title?, option: {...} } }
-    // Model may output full canvas JSON instead of proper tool call
-    if (parsed.artifactType === 'echart' && parsed.content && typeof parsed.content === 'object') {
-      const inner = parsed.content as Record<string, unknown>;
-      if (inner.option && typeof inner.option === 'object') {
-        return { title: String(inner.title || parsed.title || ''), option: inner.option as Record<string, unknown> };
-      }
-    }
-
-    // Wrapped format: { title?, option: {...} }
-    if (parsed.option && typeof parsed.option === 'object' && !Array.isArray(parsed.option)) {
-      return { title: String(parsed.title || ''), option: parsed.option as Record<string, unknown> };
-    }
-
-    // Bare ECharts option
-    const knownKeys = ['series', 'xAxis', 'yAxis', 'legend', 'tooltip', 'radar', 'geo', 'dataset'];
-    if (knownKeys.some((k) => k in parsed)) {
-      const rawTitle = parsed.title;
-      const titleText = typeof rawTitle === 'string'
-        ? rawTitle
-        : (rawTitle as any)?.text ?? '';
-      return { title: titleText, option: parsed as Record<string, unknown> };
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 // ─── Sanitize option — fix AI mistakes that cause ECharts internal TypeError ──
 //
@@ -244,7 +198,7 @@ export default function EChartsRenderer({ content }: EChartsRendererProps) {
   const [exporting, setExporting] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
 
-  const payload = useMemo(() => parseContent(content), [content]);
+  const payload = useMemo(() => parseEChartsPayload(content), [content]);
 
   const themedOption = useMemo(() => {
     if (!payload) return null;

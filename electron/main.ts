@@ -1352,7 +1352,7 @@ function sendChatMessage(
   imageDataUrl?: string | null,
   files?: UploadedFile[],
   pacingMs?: number,
-  canvasContext?: any
+  workbenchContext?: any
 ): { success: boolean; error?: string } {
   if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
     return { success: false, error: 'WebSocket not connected' };
@@ -1369,13 +1369,24 @@ function sendChatMessage(
 
   // OpenClaw chat.send: message 必须是字符串，图片放入 attachments；sessionKey 一致则 Gateway 在同一会话内回复
   const finalMessage = message.trim() || (imageDataUrl || (files && files.length > 0) ? '[文件/图片]' : '');
-  const params: { sessionKey: string; idempotencyKey: string; message: string; attachments?: any[]; pacingMs?: number; canvasContext?: any } = {
+  const params: {
+    sessionKey: string;
+    idempotencyKey: string;
+    message: string;
+    attachments?: any[];
+    pacingMs?: number;
+    workbenchContext?: any;
+    canvasContext?: any;
+  } = {
     sessionKey: currentSessionKey,
     idempotencyKey,
     message: finalMessage,
     pacingMs,
   };
-  if (canvasContext) params.canvasContext = canvasContext;
+  if (workbenchContext) {
+    params.workbenchContext = workbenchContext;
+    params.canvasContext = workbenchContext;
+  }
 
   // OpenClaw chat.send attachments: Gateway normalizeRpcAttachmentsToChatAttachments 期望 { type, mimeType, content }
   const attachments: Array<{ type: string; mimeType: string; fileName?: string; content: string }> = [];
@@ -3190,35 +3201,35 @@ ipcMain.handle('openclaw-connect', () => {
   return { success: true };
 });
 
-ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDataUrl?: string | null; files?: UploadedFile[]; pacingMs?: number; canvasContext?: any }) => {
+ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDataUrl?: string | null; files?: UploadedFile[]; pacingMs?: number; workbenchContext?: any; canvasContext?: any }) => {
   let content: string;
   let imageDataUrl: string | null | undefined;
   let files: UploadedFile[] | undefined;
   let pacingMs: number | undefined;
-  let canvasContext: any;
+  let workbenchContext: any;
 
   if (typeof payload === 'string') {
     content = payload;
     imageDataUrl = null;
     files = undefined;
     pacingMs = undefined;
-    canvasContext = undefined;
+    workbenchContext = undefined;
   } else if (payload && typeof payload === 'object') {
     const c = payload.content;
     content = typeof c === 'string' ? c : (c ? String(c) : '');
     imageDataUrl = payload.imageDataUrl;
     files = payload.files;
     pacingMs = payload.pacingMs;
-    canvasContext = payload.canvasContext;
+    workbenchContext = payload.workbenchContext ?? payload.canvasContext;
   } else {
     content = '';
     imageDataUrl = null;
     files = undefined;
     pacingMs = undefined;
-    canvasContext = undefined;
+    workbenchContext = undefined;
   }
 
-  return sendChatMessage(content, imageDataUrl, files, pacingMs, canvasContext);
+  return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext);
 });
 
 ipcMain.handle('image-generate', async (_event, payload: {

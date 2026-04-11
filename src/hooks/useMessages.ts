@@ -4,8 +4,9 @@ import { TurnFSM, deriveLegacyFlags, TurnPhase } from '../core/turnFSM';
 import { StreamRouter, StreamState } from '../core/streamRouter';
 import { BlockIngest } from '../core/blockIngest';
 import { useWebSocket } from './useWebSocket';
-import type { CanvasRoundtripContext } from '../contexts/CanvasContext';
-import { useCanvasBridge } from './useCanvasBridge';
+import type { WorkbenchRoundtripContext } from '../workbench/types';
+import { workbenchBus } from '../workbench/WorkbenchBus';
+import { toWorkbenchCommand } from '../workbench/types';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
@@ -123,7 +124,7 @@ export interface UseMessagesReturn {
   streak: number;
   fullTextRef: MutableRefObject<string>;
   streamingDomRef: MutableRefObject<HTMLPreElement | null>;
-  sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[], canvasContext?: CanvasRoundtripContext) => Promise<void>;
+  sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[], workbenchContext?: WorkbenchRoundtripContext) => Promise<void>;
   quickSend: (content: string) => void;
 }
 
@@ -140,7 +141,6 @@ export function useMessages({
   typingSoundVolume,
   onStatusChange,
 }: UseMessagesOptions): UseMessagesReturn {
-  const canvasBridge = useCanvasBridge();
   const transportPacingMs = 4;
   const scrollRef = useRef(scroll);
   scrollRef.current = scroll;
@@ -591,8 +591,8 @@ export function useMessages({
       }
     },
 
-    onCanvasEvent: (event) => {
-      canvasBridge.handleCanvasEvent(event);
+    onWorkbenchEvent: (event) => {
+      workbenchBus.dispatch(toWorkbenchCommand(event));
     },
 
     onUsage: (usage, isSnapshot) => {
@@ -701,7 +701,7 @@ export function useMessages({
     text: string,
     imageDataUrl: string | null,
     files?: UploadedFile[],
-    canvasContext?: CanvasRoundtripContext
+    workbenchContext?: WorkbenchRoundtripContext
   ) => {
     if (!text.trim() && !imageDataUrl && !files?.length) return;
 
@@ -809,7 +809,8 @@ export function useMessages({
       }
     }
 
-    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, transportPacingMs, canvasContext);
+    const roundtripContext = workbenchContext ?? workbenchBus.getContext('continue');
+    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, transportPacingMs, roundtripContext);
     if (!result?.success && !cmdIsSystem) {
       setAwaitingResponse(false);
       console.warn('[useMessages] Send failed:', result);
@@ -820,7 +821,7 @@ export function useMessages({
         console.warn('[useMessages] send failed cleanup', e);
       }
     }
-  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── quickSend ─────────────────────────────────────────────────────────────
   const quickSend = useCallback((content: string) => {
@@ -901,7 +902,7 @@ export function useMessages({
         console.warn('[useMessages] oct runtime (quickSend)', e);
       }
     }
-    ws.send(content.trim(), undefined, undefined, transportPacingMs).then((result) => {
+    ws.send(content.trim(), undefined, undefined, transportPacingMs, workbenchBus.getContext('continue')).then((result) => {
       if (!result?.success && !isSystem) {
         setAwaitingResponse(false);
         try {
@@ -912,7 +913,7 @@ export function useMessages({
         }
       }
     });
-  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     wsConnected: ws.wsConnected,

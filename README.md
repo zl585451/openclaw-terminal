@@ -35,12 +35,12 @@ OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你�
 
 ---
 
-## 🆕 v0.2.2 核心能力
+## 🆕 v0.2.3 核心能力
 
 | 功能 | 说明 |
 |------|------|
 | 💬 智能对话 | 和 AMY 聊天，支持结构化回答、表格优先、上下文记忆 |
-| 🧩 Canvas 工作区 | 图表、结构图、文档草稿、代码草稿统一落到 Canvas |
+| 🧩 Workbench 工作台 | 图表、结构图、文档草稿、代码草稿统一落到 Workbench，Canvas 作为兼容入口保留 |
 | 🎵 Music Studio | MiniMax `music-2.6` 工作台，支持 `Simple / Advanced`、自动写词、试听与下载 |
 | 🖼️ 图片能力 | 图片理解、图片生成、截图上传、文件图片附件 |
 | 🔧 开发助手 | 代码生成、终端命令、Git 辅助、文件读写 |
@@ -75,26 +75,25 @@ OCT 不只是把答案打出来，还能把结果落到 Canvas / 图表工作区
 
 ## 📦 下载安装
 
-**最新稳定版本**：`v0.2.2`
+**最新稳定版本**：`v0.2.3`
 
 | 平台 | 安装包 | 大小 |
 |------|--------|------|
-| 🪟 Windows | [OCT-Setup-v0.2.2.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-Setup-v0.2.2.exe) | 约 356 MB |
-| 🍎 Mac Intel | [OCT-0.2.2-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-0.2.2-Mac-x64.dmg) | 约 248 MB |
-| 🍎 Mac Apple Silicon | [OCT-0.2.2-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-0.2.2-Mac-arm64.dmg) | 约 243 MB |
-| 🐧 Linux AppImage | [OCT-0.2.2-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-0.2.2-Linux-x86_64.AppImage) | 约 254 MB |
-| 🐧 Linux Debian | [OCT-0.2.2-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-0.2.2-Linux-amd64.deb) | 约 216 MB |
+| 🪟 Windows | [OCT-Setup-v0.2.3.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-Setup-v0.2.3.exe) | 待发布后更新 |
+| 🍎 Mac Intel | [OCT-0.2.3-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Mac-x64.dmg) | 待发布后更新 |
+| 🍎 Mac Apple Silicon | [OCT-0.2.3-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Mac-arm64.dmg) | 待发布后更新 |
+| 🐧 Linux AppImage | [OCT-0.2.3-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Linux-x86_64.AppImage) | 待发布后更新 |
+| 🐧 Linux Debian | [OCT-0.2.3-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Linux-amd64.deb) | 待发布后更新 |
 
 > macOS 当前为未签名 DMG。首次打开时如被系统拦截，请右键应用选择“打开”，或在系统设置中手动放行。
 
-### v0.2.2 更新重点
+### v0.2.3 更新重点
 
-- 新增 `Image Studio` 独立生图工作台，图片生成与聊天主链路正式解耦
-- 支持侧栏直接生成、预览、下载、打开原图，并将生成结果插回聊天记录
-- AMY 提示词优化回填更稳定，兼容部分模型输出的 CoT / 说明文字
-- 生图控制面板统一为跨供应商主语义：画幅、风格倾向、质量、Seed、提示词优化、水印、高级尺寸
-- 经过验证后主动下线图生图，当前聚焦稳定文生图体验
-- Image Studio 新增显式“返回聊天”按钮，并支持 `Esc` 快捷退出
+- `Canvas` 正式升级为 `Workbench` 基础子系统，聊天链路、工作台链路、插件注册层完成拆层
+- 新增 `workbenchEvent / workbenchContext` 主语义，旧 `canvas*` 字段继续保留兼容
+- React Flow 排版增强：补齐层级、连线、节点尺寸估算和大图自适应间距
+- Mermaid / ECharts 容错增强，模型输出不规范时更容易兜底渲染成功
+- 现在可以更稳地在一个工作台里切换 Markdown、ECharts、React Flow 等多种 artifact
 
 ---
 

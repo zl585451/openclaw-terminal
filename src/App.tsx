@@ -5,10 +5,10 @@ import ChatTab, { ChatMessage } from './ui/chat/ChatTab.v2';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
 import SettingsPanel from './components/SettingsPanel';
-import CanvasHost from './components/canvas/CanvasHost';
+import WorkbenchHost from './components/workbench/WorkbenchHost';
 import FirstLaunchSetup from './components/FirstLaunchSetup';
 import { ThemeProvider } from './themes/ThemeProvider';
-import { CanvasProvider } from './contexts/CanvasContext';
+import { WorkbenchProvider } from './workbench/WorkbenchContext';
 import './styles/App.css';
 
 
@@ -102,7 +102,7 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <CanvasProvider>
+      <WorkbenchProvider>
         <div className="app-container">
         {/* 扫描线效果 */}
         <div className="scanlines" />
@@ -142,7 +142,7 @@ const App: React.FC = () => {
           {activeTab === 'sound' && <SoundTab />}
           {activeTab === 'reaper' && <ReaperTab />}
         </div>
-        <CanvasHost enabled={activeTab === 'chat'} />
+        <WorkbenchHost />
         {showSettings && (
           <SettingsPanel
             onClose={() => {
@@ -161,7 +161,7 @@ const App: React.FC = () => {
           />
         )}
         </div>
-      </CanvasProvider>
+      </WorkbenchProvider>
     </ThemeProvider>
   );
 };

@@ -4,6 +4,7 @@ import CodeBlock from '../../components/CodeBlock';
 import MermaidRenderer from '../../components/canvas/MermaidRenderer';
 import { highlightCode } from '../../utils/codeHighlight';
 import { diagramSpecToMermaid, parseDiagramSpec } from '../../utils/diagramSchema';
+import { getEChartsPayloadTitle, looksLikeEChartsPayload } from '../../utils/echartsPayload';
 
 // ── Chat inline preview: ONLY these types are shown directly in the chat window.
 // Everything else is redirected to Canvas (with an Open button).
@@ -106,12 +107,7 @@ function getDiagramJsonSummaryLabel(code: string) {
 }
 
 function getEchartSummaryLabel(code: string) {
-  try {
-    const parsed = JSON.parse(code);
-    const title = parsed?.title || parsed?.option?.title?.text;
-    if (typeof title === 'string' && title.trim()) return title.trim();
-  } catch {}
-  return '数据图表';
+  return getEChartsPayloadTitle(code, '数据图表');
 }
 
 export function createMarkdownComponents(
@@ -437,8 +433,16 @@ export function createMarkdownComponents(
                         openCanvas(code, 'markdown', title, 'json', 'diagram');
                         return;
                       }
+                      if (looksLikeEChartsPayload(code)) {
+                        openCanvas(code, 'markdown', getEchartSummaryLabel(code), 'echart', 'echart');
+                        return;
+                      }
                     }
                     if (language.toLowerCase() === 'echart') {
+                      openCanvas(code, 'markdown', getEchartSummaryLabel(code), 'echart', 'echart');
+                      return;
+                    }
+                    if (looksLikeEChartsPayload(code)) {
                       openCanvas(code, 'markdown', getEchartSummaryLabel(code), 'echart', 'echart');
                       return;
                     }
