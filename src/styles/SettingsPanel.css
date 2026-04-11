@@ -256,6 +256,87 @@
   cursor: not-allowed;
 }
 
+.settings-vision-card {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+
+.settings-vision-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.settings-vision-title {
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.settings-vision-subtitle {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.settings-vision-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.settings-vision-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  font-size: var(--text-sm);
+}
+
+.settings-vision-pill-ready {
+  color: var(--status-success);
+  border-color: var(--status-success);
+}
+
+.settings-vision-pill-downloading {
+  color: var(--status-warning);
+  border-color: var(--status-warning);
+}
+
+.settings-vision-pill-error {
+  color: var(--status-error);
+  border-color: var(--status-error);
+}
+
+.settings-vision-pill-not_downloaded {
+  color: var(--text-tertiary);
+  border-color: var(--border-light);
+}
+
+.settings-vision-meta,
+.settings-vision-hint {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
 /* 折叠说明 */
 .settings-details {
   margin: 12px 0;

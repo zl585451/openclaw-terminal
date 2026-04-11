@@ -1,30 +1,3 @@
-// 强制 DashScope API 请求绕过系统代理（直连国内服务器）
-// 解决 V2RayN 全局代理导致国内 API 被路由到境外节点的问题
-const { HttpsProxyAgent } = (() => {
-  try { return require('https-proxy-agent'); }
-  catch { return { HttpsProxyAgent: null }; }
-})();
-
-function getDirectFetchOptions(baseUrl) {
-  // 只对 DashScope 域名强制直连，其他 API 正常走代理
-  if (!baseUrl || !baseUrl.includes('dashscope')) {
-    return {};
-  }
-
-  // 检测系统代理环境变量
-  const proxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy ||
-                   process.env.HTTP_PROXY || process.env.http_proxy || '';
-
-  // 如果没有代理，直接返回空配置
-  if (!proxyEnv) return {};
-
-  console.log('[AI] 检测到系统代理，DashScope 请求将强制直连');
-
-  // 返回 no-proxy 标记，fetch 时不传 agent 即为直连
-  // Node.js 18+ 的 fetch 默认不走系统代理，这里额外清理环境变量
-  return { _bypassProxy: true };
-}
-
 const config = require('./config');
 const toolLoader = require('./tool_loader');
 const skillAdapter = require('./skill_adapter');
@@ -269,7 +242,6 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
 
       const resp = await fetch(url, {
         ...options,
-        ...getDirectFetchOptions(url),
         signal: controller.signal,
       });
 

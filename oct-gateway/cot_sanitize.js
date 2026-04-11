@@ -1,6 +1,7 @@
 /**
  * 清洗 AI 思维链，避免 [cot] / <think> 被写入记忆或再次注入上下文。
  */
+const { parseDiagramSpec } = require('./diagram_schema');
 
 function stripCotText(input) {
   const text = String(input || '');
@@ -102,8 +103,21 @@ function stripTextToolAnnotations(input) {
   return out;
 }
 
+function normalizeBareDiagramJsonReply(input) {
+  const text = String(input || '');
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.startsWith('```')) return trimmed;
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return trimmed;
+
+  const spec = parseDiagramSpec(trimmed);
+  if (!spec) return trimmed;
+
+  return `\`\`\`json\n${trimmed}\n\`\`\``;
+}
+
 function sanitizeAssistantReply(reply) {
-  return stripCotText(stripTextToolAnnotations(reply));
+  return normalizeBareDiagramJsonReply(stripCotText(stripTextToolAnnotations(reply)));
 }
 
 function sanitizeMemoryNodeContent(raw) {

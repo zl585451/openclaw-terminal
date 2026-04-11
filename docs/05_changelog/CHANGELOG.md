@@ -2,6 +2,12 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-11 | MCP 已连接时补充 `mcp_*` 动态工具执行兜底：若定义列表瞬时未命中，`tool_loader` 仍会直接尝试路由给 MCP provider，避免图片理解误报“工具不存在” | `oct-gateway/tool_loader.js` | 修复日志中 `minimax` MCP 已连上、但执行 `mcp_minimax_understand_image` 仍返回不存在的问题 |
+| 2026-04-11 | MCP 启动前增加代理环境预检：若 `HTTP_PROXY / HTTPS_PROXY / ALL_PROXY` 指向本机回环地址但端口未监听，则自动忽略这些失效代理变量，再启动 `uvx` | `oct-gateway/mcp/client.js` | 避免用户关闭代理软件后仍因残留环境变量出现 `tunnel error` / `10061`，同时不影响真实可用代理 |
+| 2026-04-11 | MiniMax MCP 预设默认附带国内 PyPI 镜像，`uvx` 拉包失败时自动回退官方源；本地 BLIP 下载新增镜像地址设置，优先尝试自定义 Hugging Face 兼容镜像，失败后回退默认官方源 | `oct-gateway/mcp/client.js`, `oct-gateway/image_analyzer_local.js`, `oct-gateway/config.js`, `electron/main.ts`, `electron/preload.ts`, `src/components/SettingsPanel.tsx`, `src/ui/settings/tabs/ConnectionTabView.tsx`, `src/ui/settings/tabs/McpTabView.tsx`, `src/vite-env.d.ts` | 兼顾国内无代理用户与海外默认直连用户，降低首次配置 MCP / 本地视觉模型时的下载失败率 |
+| 2026-04-11 | 图片理解链路调整为“原生视觉优先、MCP understand_image 次之、本地 BLIP 最后兜底”；设置面板新增本地视觉模型卡片，用户可显式启用/关闭并手动下载，失败/成功状态可见 | `oct-gateway/image_analyzer.js`, `electron/main.ts`, `electron/preload.ts`, `src/components/SettingsPanel.tsx`, `src/ui/settings/tabs/ConnectionTabView.tsx`, `src/styles/SettingsPanel.css`, `src/vite-env.d.ts` | 解决非 Qwen 套餐或无代理场景下发图经常“看不到”的问题，弱化本地 BLIP 的隐式强依赖 |
+| 2026-04-11 | MCP 图片理解失败日志增强；聊天区若整段回复为 diagram JSON，则自动包成 `json` 代码块交给现有图表渲染链处理 | `oct-gateway/image_analyzer.js`, `oct-gateway/cot_sanitize.js` | 便于区分“未连接 MCP”与“远端 fetch failed/鉴权失败”；避免模型把流程图 JSON 当普通文本直接吐在聊天区 |
+| 2026-04-11 | `main` 正式合并 `feature/minimax-music-studio`，主线追平拆分后的 Gateway、Canvas artifact、MiniMax Music Studio 与 0.2.x 打包链路；同步将版本号提升到 `0.2.1`，用于优先产出 Windows 测试安装包 | `package.json`, `package-lock.json`, `oct-gateway/**`, `src/**`, `electron/**`, `docs/**` | 本次先验证 Windows 客户端安装与运行，再决定是否继续打包其他平台 |
 | 2026-04-10 | GitHub 首页 README 更新为发布版口径：突出 `v0.2.0` 能力、跨平台下载链接、首次启动 API Key 引导和本地开发入口 | `README.md` | 仓库首页更适合作为产品主页和下载入口 |
 | 2026-04-10 | Canvas 画图调用兜底：对命中画图意图的请求强制优先 `canvas` 工具；当底层模型把 `{tool => "canvas"...}` 伪调用吐成普通文本时，Gateway 会自动解析并转成真实 tool call，同时在最终回复中清洗残留 `TOOL_CALL` 文本 | `oct-gateway/index.js`, `oct-gateway/runtime/chatEngine.js`, `oct-gateway/ai.js`, `oct-gateway/cot_sanitize.js` | 修复客户端“AI 会说要画图，但实际没有落成 Canvas”的问题 |
 | 2026-04-10 | 发布版补齐 `oct-gateway` 打包与启动链路：将 Gateway 及其 `node_modules` 作为安装包资源带入，发布版改用 Electron 自带运行时拉起 Gateway；设置页在 provider 清单缺失时回退到内置服务商列表，避免安装包中出现“无法启动 Gateway / 服务商选项丢失” | `package.json`, `electron/main.ts`, `src/hooks/settings/useApiKeys.ts` | 修复 0.2.0 本地安装后启动失败与连接配置残缺 |
@@ -29,3 +35,7 @@
 | 2026-03-24 | http_request、image_gen 工具 | tools/http_request.js, tools/image_gen.js | 外部 API、通义万象图像 |
 | 2026-03-24 | VaultPanel 抽屉：TabBar 内嵌、右侧滑入、深绿黑主题 | VaultPanel.tsx, TabBar.tsx, App.tsx | 替换右下角悬浮球 |
 | 2026-03-20 | 停用自评系统，清理SOUL.md自动规则，强化用户反馈 | index.js, SOUL.md | 减少API消耗+稳定风格 |
+| 2026-04-11 | 修复 `tool_loader` 在动态 provider 已声明工具时仍吞掉执行异常并再次走 `mcp_*` 兜底的问题，避免同一 MCP 调用超时后被重复执行一轮、把 30 秒放大成约 60 秒 | `oct-gateway/tool_loader.js` | 解决图片理解链路里 `mcp_minimax_understand_image` 实际只失败一次却表现成“卡很久再超时”的问题，便于区分真实远端超时和本地调度缺陷 |
+| 2026-04-11 | 修复 `MiniMax understand_image` 结果误判：不再因为正常图片描述里提到 `fetch failed`、`image_source` 等截图文字就被当成工具错误，改为按错误前缀和短文本特征识别 | `oct-gateway/image_analyzer.js` | 解决“截图本身包含报错文案时，MCP 已成功识图却被客户端误判为失败”的问题 |
+| 2026-04-11 | 清理项目内默认代理/镜像注入逻辑：MCP 启动不再自动剥离或猜测代理环境，BLIP 下载不再主动套代理，工具层 `proxyFetch` 回归直连，MiniMax MCP 预设不再默认写入 `UV_DEFAULT_INDEX` | `oct-gateway/mcp/client.js`, `oct-gateway/image_analyzer_local.js`, `oct-gateway/tools/shared.js`, `oct-gateway/ai.js`, `src/ui/settings/tabs/McpTabView.tsx`, `src/components/SettingsPanel.tsx` | 恢复普通用户默认网络路径，减少开发环境代理残留对产品行为的干扰 |
+| 2026-04-11 | MCP 子进程环境默认不再继承宿主进程里的 `HTTP_PROXY / HTTPS_PROXY / ALL_PROXY`，仅保留 `NO_PROXY` 本地绕过名单 | `oct-gateway/mcp/client.js` | 解决开发机残留代理环境变量被 `uvx` / `minimax-coding-plan-mcp` 继承，导致“明明没开代理，MCP 还在找代理”的问题 |

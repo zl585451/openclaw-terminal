@@ -72,6 +72,17 @@ export interface ConnectionTabViewProps {
   setTestConnectionError: Dispatch<SetStateAction<string>>;
   apiKeysRefreshing: boolean;
   refetchApiKeys: () => void;
+  localVisionStatus: 'ready' | 'not_downloaded' | 'downloading' | 'error';
+  localVisionEnabled: boolean;
+  localVisionDownloaded: boolean;
+  localVisionMessage: string;
+  localVisionError: string;
+  localVisionBusy: boolean;
+  localVisionMirrorHost: string;
+  onChangeLocalVisionMirrorHost: (value: string) => void;
+  onSaveLocalVisionMirrorHost: (value: string) => void;
+  onToggleLocalVision: (enabled: boolean) => void;
+  onDownloadLocalVision: () => void;
 }
 
 export function ConnectionTabView({
@@ -92,6 +103,17 @@ export function ConnectionTabView({
   setTestConnectionError,
   apiKeysRefreshing,
   refetchApiKeys,
+  localVisionStatus,
+  localVisionEnabled,
+  localVisionDownloaded,
+  localVisionMessage,
+  localVisionError,
+  localVisionBusy,
+  localVisionMirrorHost,
+  onChangeLocalVisionMirrorHost,
+  onSaveLocalVisionMirrorHost,
+  onToggleLocalVision,
+  onDownloadLocalVision,
 }: ConnectionTabViewProps) {
   const customPresetId = currentProviderId === 'custom'
     ? (apiKeys.CUSTOM_BASE_URL || '').toLowerCase().includes('siliconflow') ? 'siliconflow' : ''
@@ -467,6 +489,76 @@ export function ConnectionTabView({
               {testConnectionStatus === 'error' && testConnectionError && (
                 <span style={{ fontSize: 12, color: 'var(--status-error)' }}>{testConnectionError}</span>
               )}
+            </div>
+
+            <div className="settings-vision-card">
+              <div className="settings-vision-card-head">
+                <div>
+                  <div className="settings-vision-title">本地视觉模型（BLIP）</div>
+                  <div className="settings-vision-subtitle">
+                    可选离线兜底。默认图片理解优先走原生视觉或 MCP `understand_image`，本地模型只在前两者不可用时才使用。
+                  </div>
+                </div>
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={localVisionEnabled}
+                    onChange={(e) => onToggleLocalVision(e.target.checked)}
+                    disabled={localVisionBusy}
+                  />
+                  <span>{localVisionEnabled ? '已启用' : '已关闭'}</span>
+                </label>
+              </div>
+
+              <div className="settings-vision-status">
+                <span className={`settings-vision-pill settings-vision-pill-${localVisionStatus}`}>
+                  {localVisionStatus === 'ready'
+                    ? '已就绪'
+                    : localVisionStatus === 'downloading'
+                      ? '下载中'
+                      : localVisionStatus === 'error'
+                        ? '下载失败'
+                        : '未下载'}
+                </span>
+                <span className="settings-vision-meta">
+                  {localVisionDownloaded ? '模型已缓存到本地' : '尚未缓存模型文件'}
+                </span>
+              </div>
+
+              <p className="settings-desc" style={{ marginBottom: 10 }}>
+                {localVisionError || localVisionMessage}
+              </p>
+
+              <div className="settings-field" style={{ marginBottom: 10 }}>
+                <label>模型镜像地址（可选）</label>
+                <input
+                  type="text"
+                  value={localVisionMirrorHost}
+                  onChange={(e) => onChangeLocalVisionMirrorHost(e.target.value)}
+                  onBlur={(e) => onSaveLocalVisionMirrorHost(e.target.value)}
+                  placeholder="例如：https://hf-mirror.com/"
+                  className="settings-input settings-input-focusable"
+                  autoComplete="off"
+                  disabled={localVisionBusy}
+                />
+                <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                  适合国内网络。下载时会优先尝试这里填写的 Hugging Face 兼容镜像，失败后自动回退官方源；留空则直接使用官方源。
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="settings-btn"
+                  onClick={onDownloadLocalVision}
+                  disabled={localVisionBusy}
+                >
+                  {localVisionStatus === 'downloading' ? '下载中...' : localVisionDownloaded ? '重新下载模型' : '下载本地视觉模型'}
+                </button>
+                <span className="settings-vision-hint">
+                  没有代理或网络不稳定时，这个下载可能失败；失败不影响 MCP 图片理解。
+                </span>
+              </div>
             </div>
           </>
         )}

@@ -7,44 +7,22 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { ProxyAgent } = (() => {
-  try { return require('undici'); }
-  catch { return { ProxyAgent: null }; }
-})();
 
 const config = require('./config');
 const { createLogger } = require('./logger');
 const logger = createLogger('image_analyzer_local');
 
 const BLIP_MODEL_ID = 'Xenova/blip-image-captioning-base';
+const DEFAULT_REMOTE_HOST = 'https://huggingface.co/';
 let pipe = null;
 let loadPromise = null;
 let firstLoadLogged = false;
 let lastLocalError = null;
-let fetchPatched = false;
 
-function patchFetchForModelDownload() {
-  if (fetchPatched) return;
-  const proxyUrl =
-    process.env.HTTPS_PROXY ||
-    process.env.HTTP_PROXY ||
-    process.env.https_proxy ||
-    process.env.http_proxy ||
-    '';
-  if (!proxyUrl || !ProxyAgent || typeof globalThis.fetch !== 'function') return;
-
-  const dispatcher = new ProxyAgent(proxyUrl);
-  const originalFetch = globalThis.fetch.bind(globalThis);
-  globalThis.fetch = (input, init = {}) => {
-    const url = typeof input === 'string' ? input : input?.url || '';
-    const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url);
-    if (isLocal || init.dispatcher) {
-      return originalFetch(input, init);
-    }
-    return originalFetch(input, { ...init, dispatcher });
-  };
-  fetchPatched = true;
-  logger.info('[ImageAnalyzerLocal] 已为模型下载启用代理支持', { proxyUrl });
+function normalizeRemoteHost(host) {
+  const trimmed = String(host || '').trim();
+  if (!trimmed) return '';
+  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
 }
 
 /**
@@ -64,22 +42,50 @@ async function loadModel() {
       logger.info('[ImageAnalyzerLocal] 首次使用本地图片分析，正在下载模型（~100MB）…');
     }
 
-    patchFetchForModelDownload();
-
     const { pipeline, env } = await import('@xenova/transformers');
     env.cacheDir = cacheDir;
     env.allowLocalModels = true;
     env.useBrowserCache = false;
+    const configuredMirrorHost = normalizeRemoteHost(localCfg.mirror_host);
+    const remoteHostCandidates = configuredMirrorHost
+      ? Array.from(new Set([configuredMirrorHost, DEFAULT_REMOTE_HOST]))
+      : [DEFAULT_REMOTE_HOST];
+    let lastErrorForHosts = null;
 
-    pipe = await pipeline('image-to-text', BLIP_MODEL_ID, { progress_callback: () => {} });
-    lastLocalError = null;
-    return pipe;
+    for (const remoteHost of remoteHostCandidates) {
+      try {
+        env.remoteHost = remoteHost;
+        logger.info('[ImageAnalyzerLocal] 尝试加载本地视觉模型', {
+          modelId: BLIP_MODEL_ID,
+          cacheDir,
+          remoteHost,
+          usingMirror: remoteHost !== DEFAULT_REMOTE_HOST,
+        });
+        pipe = await pipeline('image-to-text', BLIP_MODEL_ID, { progress_callback: () => {} });
+        lastLocalError = null;
+        if (configuredMirrorHost && remoteHost === DEFAULT_REMOTE_HOST) {
+          logger.warn('[ImageAnalyzerLocal] 自定义镜像失败，已回退官方源并成功加载', {
+            mirrorHost: configuredMirrorHost,
+          });
+        }
+        return pipe;
+      } catch (error) {
+        pipe = null;
+        lastErrorForHosts = error;
+        logger.warn('[ImageAnalyzerLocal] 视觉模型加载失败', {
+          remoteHost,
+          usingMirror: remoteHost !== DEFAULT_REMOTE_HOST,
+          error: error?.message || String(error),
+        });
+      }
+    }
+
+    throw lastErrorForHosts || new Error('BLIP 模型加载失败');
   })().catch((error) => {
     pipe = null;
     loadPromise = null;
     lastLocalError = error?.message || String(error);
-    const suffix = fetchPatched ? '（已尝试代理下载）' : '（未检测到可用代理）';
-    throw new Error(`${lastLocalError}${suffix}`);
+    throw new Error(lastLocalError);
   });
 
   return loadPromise;

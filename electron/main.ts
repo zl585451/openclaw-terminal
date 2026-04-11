@@ -46,6 +46,18 @@ const DEFAULT_CONFIG = {
   NOCTURNE_BUSY_TIMEOUT: 10000,
 };
 
+type LocalVisionDownloadState = {
+  status: 'ready' | 'not_downloaded' | 'downloading' | 'error';
+  lastError: string;
+  lastMessage: string;
+};
+
+let localVisionDownloadState: LocalVisionDownloadState = {
+  status: 'not_downloaded',
+  lastError: '',
+  lastMessage: '',
+};
+
 function buildOctChildEnv(extraEnv: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
   const noProxyValue = [env.NO_PROXY, env.no_proxy, 'localhost', '127.0.0.1', '::1']
@@ -253,6 +265,73 @@ function readAppConfig(): Record<string, any> {
   } catch {
     return {};
   }
+}
+
+function getGatewayDirForHelpers(): string {
+  const octEntry = getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js');
+  return path.dirname(octEntry);
+}
+
+function getLocalVisionConfig() {
+  const cfg = readAppConfig();
+  const imageAnalysis = (cfg.image_analysis && typeof cfg.image_analysis === 'object') ? cfg.image_analysis : {};
+  const local = (imageAnalysis.local && typeof imageAnalysis.local === 'object') ? imageAnalysis.local : {};
+  return {
+    enabled: local.enabled !== false,
+    modelCachePath: String(local.model_cache_path || './models/blip'),
+    mirrorHost: String(local.mirror_host || ''),
+    modelId: 'Xenova/blip-image-captioning-base',
+  };
+}
+
+function getLocalVisionCacheDir(): string {
+  const gatewayDir = getGatewayDirForHelpers();
+  const localCfg = getLocalVisionConfig();
+  return path.resolve(path.join(gatewayDir, localCfg.modelCachePath));
+}
+
+function countFilesRecursive(dirPath: string): number {
+  if (!fs.existsSync(dirPath)) return 0;
+  let count = 0;
+  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+    const entryPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      count += countFilesRecursive(entryPath);
+    } else {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function getLocalVisionStatusPayload() {
+  const localCfg = getLocalVisionConfig();
+  const cacheDir = getLocalVisionCacheDir();
+  const fileCount = countFilesRecursive(cacheDir);
+  const downloaded = fileCount > 0;
+  let status: LocalVisionDownloadState['status'] = downloaded ? 'ready' : 'not_downloaded';
+  if (localVisionDownloadState.status === 'downloading') status = 'downloading';
+  if (localVisionDownloadState.status === 'error') status = 'error';
+  const lastError = localVisionDownloadState.lastError || '';
+  const lastMessage = localVisionDownloadState.lastMessage || '';
+  return {
+    status,
+    enabled: localCfg.enabled,
+    downloaded,
+    modelId: localCfg.modelId,
+    mirrorHost: localCfg.mirrorHost,
+    cacheDir,
+    fileCount,
+    lastError,
+    message: lastMessage
+      || (status === 'ready'
+        ? `本地视觉模型已就绪，可作为离线兜底。${localCfg.mirrorHost ? ' 当前优先使用自定义镜像，失败时会回退官方源。' : ''}`
+        : status === 'downloading'
+          ? `正在下载本地视觉模型，请保持网络畅通。${localCfg.mirrorHost ? ' 当前优先使用自定义镜像，失败时会自动回退官方源。' : ''}`
+          : status === 'error'
+            ? `下载失败：${lastError || '未知错误'}`
+            : `未下载本地视觉模型。推荐优先使用 MCP 图片理解；若需要离线兜底，可手动下载。${localCfg.mirrorHost ? ' 当前已配置自定义镜像，失败时会自动回退官方源。' : ''}`),
+  };
 }
 
 function getMiniMaxEndpoints(config: Record<string, any>) {
@@ -2840,6 +2919,101 @@ ipcMain.handle('save-persona-settings', async (_, payload: {
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('get-local-vision-status', async () => {
+  try {
+    return { success: true, ...getLocalVisionStatusPayload() };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('save-local-vision-settings', async (_, payload: { enabled?: boolean; mirrorHost?: string }) => {
+  try {
+    ensureConfigFile();
+    const cfg = readAppConfig();
+    const imageAnalysis = (cfg.image_analysis && typeof cfg.image_analysis === 'object') ? cfg.image_analysis : {};
+    const local = (imageAnalysis.local && typeof imageAnalysis.local === 'object') ? imageAnalysis.local : {};
+    if (payload.enabled !== undefined) {
+      local.enabled = !!payload.enabled;
+    }
+    if (payload.mirrorHost !== undefined) {
+      local.mirror_host = String(payload.mirrorHost || '').trim();
+    }
+    cfg.image_analysis = {
+      ...imageAnalysis,
+      local: {
+        model_cache_path: local.model_cache_path || './models/blip',
+        timeout_seconds: local.timeout_seconds || 30,
+        ...local,
+      },
+    };
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('download-local-vision-model', async () => {
+  if (localVisionDownloadState.status === 'downloading') {
+    return { success: true, ...getLocalVisionStatusPayload() };
+  }
+
+  localVisionDownloadState = {
+    status: 'downloading',
+    lastError: '',
+    lastMessage: '正在下载本地视觉模型，请保持网络畅通。',
+  };
+
+  try {
+    const gatewayDir = getGatewayDirForHelpers();
+    const child = spawn(
+      process.execPath,
+      [
+        '-e',
+        "const local=require('./image_analyzer_local'); Promise.resolve(local.loadModel()).then(()=>{console.log('LOCAL_VISION_READY'); process.exit(0);}).catch((e)=>{console.error(e?.stack||e?.message||String(e)); process.exit(1);});",
+      ],
+      {
+        cwd: gatewayDir,
+        windowsHide: true,
+        env: buildOctChildEnv({
+          OCT_CONFIG_FILE: CONFIG_FILE,
+        }),
+      }
+    );
+
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(stderr.trim() || `下载进程退出码 ${code}`));
+        }
+      });
+    });
+
+    localVisionDownloadState = {
+      status: 'ready',
+      lastError: '',
+      lastMessage: '本地视觉模型下载完成，可作为离线兜底。',
+    };
+    return { success: true, ...getLocalVisionStatusPayload() };
+  } catch (e: any) {
+    localVisionDownloadState = {
+      status: 'error',
+      lastError: e?.message || String(e),
+      lastMessage: '',
+    };
+    return { success: false, ...getLocalVisionStatusPayload(), error: e?.message || String(e) };
   }
 });
 

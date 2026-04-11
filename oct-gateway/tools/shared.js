@@ -190,23 +190,7 @@ function enqueueWrite(uri, content, priority, disclosure) {
   });
 }
 
-// 代理 fetch
-let proxyDispatcher = null;
-const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
-if (proxyUrl) {
-  try {
-    const { ProxyAgent } = require('undici');
-    proxyDispatcher = new ProxyAgent(proxyUrl);
-    log.info('proxy enabled', { proxyUrl });
-  } catch (e) {
-    log.warn('ProxyAgent not available, proxy disabled', { error: e?.message || String(e) });
-  }
-}
-
 function proxyFetch(url, options = {}) {
-  if (proxyDispatcher && !options.dispatcher) {
-    return fetch(url, { ...options, dispatcher: proxyDispatcher });
-  }
   return fetch(url, options);
 }
 

@@ -109,6 +109,13 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [applyError, setApplyError] = useState<string>('');
   const [ttsPreviewStatus, setTtsPreviewStatus] = useState<'idle' | 'playing' | 'error' | 'success'>('idle');
   const [ttsPreviewError, setTtsPreviewError] = useState('');
+  const [localVisionStatus, setLocalVisionStatus] = useState<'ready' | 'not_downloaded' | 'downloading' | 'error'>('not_downloaded');
+  const [localVisionEnabled, setLocalVisionEnabled] = useState(true);
+  const [localVisionDownloaded, setLocalVisionDownloaded] = useState(false);
+  const [localVisionMessage, setLocalVisionMessage] = useState('未下载本地视觉模型。推荐优先使用 MCP 图片理解；若需要离线兜底，可手动下载。');
+  const [localVisionError, setLocalVisionError] = useState('');
+  const [localVisionBusy, setLocalVisionBusy] = useState(false);
+  const [localVisionMirrorHost, setLocalVisionMirrorHost] = useState('');
   const { themeId, setTheme } = useTheme();
   const minimaxTtsAvailable = Boolean(apiKeys.MINIMAX_API_KEY?.trim());
 
@@ -133,6 +140,21 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   };
 
   useEffect(() => { loadMcpStatus(); }, []);
+
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    api?.getLocalVisionStatus?.()
+      .then((result: any) => {
+        if (!result?.success) return;
+        setLocalVisionStatus(result.status || 'not_downloaded');
+        setLocalVisionEnabled(result.enabled !== false);
+        setLocalVisionDownloaded(!!result.downloaded);
+        setLocalVisionMessage(result.message || '');
+        setLocalVisionError(result.lastError || '');
+        setLocalVisionMirrorHost(result.mirrorHost || '');
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: 0, behavior: 'auto' });
@@ -347,6 +369,62 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               setTestConnectionError={setTestConnectionError}
               apiKeysRefreshing={apiKeysRefreshing}
               refetchApiKeys={refetchApiKeys}
+              localVisionStatus={localVisionStatus}
+              localVisionEnabled={localVisionEnabled}
+              localVisionDownloaded={localVisionDownloaded}
+              localVisionMessage={localVisionMessage}
+              localVisionError={localVisionError}
+              localVisionBusy={localVisionBusy}
+              localVisionMirrorHost={localVisionMirrorHost}
+              onChangeLocalVisionMirrorHost={setLocalVisionMirrorHost}
+              onSaveLocalVisionMirrorHost={async (mirrorHost) => {
+                setLocalVisionBusy(true);
+                setLocalVisionError('');
+                const normalized = mirrorHost.trim();
+                const result = await (window as any).electronAPI?.saveLocalVisionSettings?.({ mirrorHost: normalized });
+                if (result?.success) {
+                  setLocalVisionMirrorHost(normalized);
+                  setLocalVisionMessage(
+                    normalized
+                      ? '已保存本地视觉镜像地址；下载时会优先使用镜像，失败再回退官方源。'
+                      : '已恢复本地视觉默认下载源（官方源）。'
+                  );
+                } else {
+                  setLocalVisionError(result?.error || '保存本地视觉镜像设置失败');
+                }
+                setLocalVisionBusy(false);
+              }}
+              onToggleLocalVision={async (enabled) => {
+                setLocalVisionBusy(true);
+                setLocalVisionError('');
+                const result = await (window as any).electronAPI?.saveLocalVisionSettings?.({ enabled });
+                if (result?.success) {
+                  setLocalVisionEnabled(enabled);
+                  setLocalVisionMessage(enabled ? '本地视觉兜底已启用。' : '本地视觉兜底已关闭，图片将优先依赖原生视觉或 MCP。');
+                } else {
+                  setLocalVisionError(result?.error || '保存本地视觉设置失败');
+                }
+                setLocalVisionBusy(false);
+              }}
+              onDownloadLocalVision={async () => {
+                setLocalVisionBusy(true);
+                setLocalVisionStatus('downloading');
+                setLocalVisionError('');
+                setLocalVisionMessage('正在下载本地视觉模型，请保持网络畅通。');
+                const result = await (window as any).electronAPI?.downloadLocalVisionModel?.();
+                if (result?.success) {
+                  setLocalVisionStatus(result.status || 'ready');
+                  setLocalVisionDownloaded(!!result.downloaded);
+                  setLocalVisionMessage(result.message || '本地视觉模型下载完成。');
+                  setLocalVisionError('');
+                } else {
+                  setLocalVisionStatus(result?.status || 'error');
+                  setLocalVisionDownloaded(!!result?.downloaded);
+                  setLocalVisionMessage(result?.message || '');
+                  setLocalVisionError(result?.error || result?.lastError || '下载本地视觉模型失败');
+                }
+                setLocalVisionBusy(false);
+              }}
             />
           )}
 

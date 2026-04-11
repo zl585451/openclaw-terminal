@@ -439,7 +439,7 @@ export function McpTabView({
                 color: 'var(--text-secondary)'
               }}>
                 <strong>安装提示：</strong>
-                {selectedPreset === 'minimax' && ' 需安装 uv（含 uvx）：https://github.com/astral-sh/uv ；MINIMAX_MCP_BASE_PATH 请改为本机已存在、可写的目录'}
+                {selectedPreset === 'minimax' && ' 需安装 uv（含 uvx）：https://github.com/astral-sh/uv 。MINIMAX_MCP_BASE_PATH 请改为本机已存在、可写的目录'}
                 {selectedPreset.startsWith('web') && ' 需要 Brave Search API 密钥'}
                 {selectedPreset === 'github' && ' 需要 GitHub Personal Access Token'}
                 {selectedPreset.includes('sql') && ' 确保数据库路径正确且可访问'}

@@ -526,6 +526,7 @@ const config = {
     const defaultLocal = {
       enabled: true,
       model_cache_path: './models/blip',
+      mirror_host: '',
       timeout_seconds: 30,
     };
     const def = {

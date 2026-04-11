@@ -7,6 +7,14 @@ const { createLogger } = require('../logger');
 
 function buildChildEnv(extraEnv) {
   const env = { ...process.env, ...(extraEnv || {}) };
+  // MCP 子进程默认走用户当前网络，不继承宿主进程里残留的代理环境变量，
+  // 避免开发机/历史代理配置污染普通用户链路。
+  delete env.HTTP_PROXY;
+  delete env.HTTPS_PROXY;
+  delete env.ALL_PROXY;
+  delete env.http_proxy;
+  delete env.https_proxy;
+  delete env.all_proxy;
   const noProxyValue = [env.NO_PROXY, env.no_proxy, 'localhost', '127.0.0.1', '::1']
     .filter(Boolean)
     .flatMap((value) => String(value).split(','))
@@ -37,50 +45,44 @@ class McpClient {
 
   async connect() {
     this.status = 'connecting';
-    this._log.info('启动 MCP Server', { command: this.config.command, args: this.config.args });
+    try {
+      await this._connectOnce(this.config.env, 'primary');
+    } catch (e) {
+      if (!this._shouldRetryWithDefaultIndex(this.config.env)) {
+        this.status = 'error';
+        this.errorMessage = e.message;
+        this._log.error('握手失败', { error: e.message });
+        throw e;
+      }
 
-    this._proc = spawn(this.config.command, this.config.args || [], {
-      env: buildChildEnv(this.config.env),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    this._proc.stdout.on('data', (chunk) => this._onData(chunk));
-    this._proc.stderr.on('data', (d) => this._log.debug('stderr', { msg: d.toString().trim() }));
-    this._proc.on('exit', (code) => {
-      this.status = 'disconnected';
-      this._log.warn('MCP Server 退出', { code });
-      // 拒绝所有 pending 请求
-      for (const { reject, timer } of this._pending.values()) {
-        clearTimeout(timer);
-        reject(new Error(`MCP Server "${this.serverName}" 意外退出`));
+      const fallbackEnv = { ...(this.config.env || {}) };
+      const mirrorIndex = fallbackEnv.UV_DEFAULT_INDEX || fallbackEnv.UV_INDEX_URL;
+      delete fallbackEnv.UV_DEFAULT_INDEX;
+      delete fallbackEnv.UV_INDEX_URL;
+      if (this._proc) {
+        this._proc.kill();
+        this._proc = null;
       }
       this._pending.clear();
-    });
-    this._proc.on('error', (e) => {
-      this.status = 'error';
-      this.errorMessage = e.message;
-      this._log.error('MCP Server 启动失败', { error: e.message });
-    });
-
-    try {
-      // initialize 握手
-      await this._request('initialize', {
-        protocolVersion: '2024-11-05',
-        capabilities: {},
-        clientInfo: { name: 'oct-gateway', version: '1.0.0' },
+      this._buf = '';
+      this.tools = [];
+      this._log.warn('MCP 镜像拉包失败，回退官方 PyPI 源重试', {
+        mirrorIndex,
+        error: e.message,
       });
-      // 通知 initialized
-      this._notify('notifications/initialized');
-      // 获取工具列表
-      const res = await this._request('tools/list', {});
-      this.tools = res.tools || [];
-      this.status = 'connected';
-      this._log.info('连接成功', { toolCount: this.tools.length });
-    } catch (e) {
-      this.status = 'error';
-      this.errorMessage = e.message;
-      this._log.error('握手失败', { error: e.message });
-      throw e;
+
+      try {
+        await this._connectOnce(fallbackEnv, 'fallback_default_index');
+      } catch (fallbackError) {
+        this.status = 'error';
+        this.errorMessage = fallbackError.message;
+        this._log.error('握手失败', {
+          error: fallbackError.message,
+          fallbackFromMirror: true,
+          mirrorIndex,
+        });
+        throw fallbackError;
+      }
     }
   }
 
@@ -102,6 +104,58 @@ class McpClient {
   }
 
   // ---------- 内部 ----------
+
+  _shouldRetryWithDefaultIndex(env) {
+    const command = String(this.config.command || '').trim().toLowerCase();
+    return command === 'uvx' && Boolean(env && (env.UV_DEFAULT_INDEX || env.UV_INDEX_URL));
+  }
+
+  async _connectOnce(envOverride, attemptLabel) {
+    const spawnEnv = buildChildEnv(envOverride);
+    this._log.info('启动 MCP Server', {
+      command: this.config.command,
+      args: this.config.args,
+      attempt: attemptLabel,
+      uvDefaultIndex: envOverride?.UV_DEFAULT_INDEX || envOverride?.UV_INDEX_URL || '',
+    });
+
+    this._proc = spawn(this.config.command, this.config.args || [], {
+      env: spawnEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    const proc = this._proc;
+    proc.stdout.on('data', (chunk) => this._onData(chunk));
+    proc.stderr.on('data', (d) => this._log.debug('stderr', { msg: d.toString().trim(), attempt: attemptLabel }));
+    proc.on('exit', (code) => {
+      if (proc !== this._proc) return;
+      this.status = 'disconnected';
+      this._log.warn('MCP Server 退出', { code, attempt: attemptLabel });
+      for (const { reject, timer } of this._pending.values()) {
+        clearTimeout(timer);
+        reject(new Error(`MCP Server "${this.serverName}" 意外退出`));
+      }
+      this._pending.clear();
+    });
+    proc.on('error', (e) => {
+      if (proc !== this._proc) return;
+      this.status = 'error';
+      this.errorMessage = e.message;
+      this._log.error('MCP Server 启动失败', { error: e.message, attempt: attemptLabel });
+    });
+
+    await this._request('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'oct-gateway', version: '1.0.0' },
+    });
+    this._notify('notifications/initialized');
+    const res = await this._request('tools/list', {});
+    this.tools = res.tools || [];
+    this.status = 'connected';
+    this.errorMessage = '';
+    this._log.info('连接成功', { toolCount: this.tools.length, attempt: attemptLabel });
+  }
 
   _onData(chunk) {
     this._buf += chunk.toString();

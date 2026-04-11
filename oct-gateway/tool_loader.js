@@ -98,7 +98,33 @@ async function executeTool(name, args) {
       if (defs.some(d => d.function?.name === name)) {
         return await p.executeTool(name, args);
       }
-    } catch {}
+    } catch (e) {
+      const msg = e?.message || String(e);
+      // 如果 provider 已明确声明拥有这个工具，则执行阶段的错误必须原样抛出，
+      // 避免被后续兜底再次重试，导致同一 MCP 工具被白白卡两轮超时。
+      if (!msg.includes('getDefinitions')) {
+        throw e;
+      }
+    }
+  }
+  // 对动态命名空间工具做一次直接路由兜底，避免 provider 定义缓存/状态瞬时不一致时误报“不存在”
+  if (typeof name === 'string' && name.startsWith('mcp_')) {
+    for (const p of _providers) {
+      try {
+        return await p.executeTool(name, args);
+      } catch (e) {
+        const msg = e?.message || String(e);
+        if (
+          msg.includes('未知 MCP 工具') ||
+          msg.includes('未知 MCP') ||
+          msg.includes('未连接') ||
+          msg.includes('Unknown')
+        ) {
+          continue;
+        }
+        throw e;
+      }
+    }
   }
   throw new Error(`工具 "${name}" 不存在`);
 }

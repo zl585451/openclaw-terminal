@@ -71,6 +71,27 @@ interface ElectronAPI {
     error?: string;
   }>;
   asrTranscribe?: (payload: { audioDataUrl: string; language?: string }) => Promise<{ success: boolean; text?: string; error?: string }>;
+  getLocalVisionStatus?: () => Promise<{
+    success: boolean;
+    status?: 'ready' | 'not_downloaded' | 'downloading' | 'error';
+    enabled?: boolean;
+    downloaded?: boolean;
+    modelId?: string;
+    mirrorHost?: string;
+    cacheDir?: string;
+    fileCount?: number;
+    lastError?: string;
+    message?: string;
+    error?: string;
+  }>;
+  downloadLocalVisionModel?: () => Promise<{
+    success: boolean;
+    status?: 'ready' | 'not_downloaded' | 'downloading' | 'error';
+    downloaded?: boolean;
+    message?: string;
+    error?: string;
+  }>;
+  saveLocalVisionSettings?: (payload: { enabled?: boolean; mirrorHost?: string }) => Promise<{ success: boolean; error?: string }>;
   [key: string]: unknown;
 }
 

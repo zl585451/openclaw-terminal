@@ -17,6 +17,69 @@ const PROMPT = '请用一句话描述这张图片的内容。如果是截图，�
 
 const FALLBACK_MSG = '[图片分析] 图片分析失败，请用户描述图片内容。';
 
+function normalizeToolResultText(text) {
+  return String(text || '').trim();
+}
+
+function looksLikeMcpToolErrorText(text) {
+  const normalized = normalizeToolResultText(text).toLowerCase();
+  if (!normalized) return false;
+
+  const compact = normalized.replace(/\s+/g, ' ').trim();
+  const startsWithAny = [
+    'error executing tool',
+    'validation error',
+    'field required',
+    'missing required',
+    'mcp 请求超时',
+    'tool execution failed',
+    '工具执行失败',
+    '参数名不匹配',
+    'unauthorized access',
+    'unauthorized',
+    'fetch failed',
+  ].some((prefix) => compact.startsWith(prefix));
+
+  if (startsWithAny) return true;
+
+  // 对特别短的错误文本做宽松识别；正常图片描述通常更长、更像自然语言段落。
+  if (compact.length <= 220) {
+    const includesAny = [
+      'error executing tool',
+      'validation error',
+      'field required',
+      'missing required',
+      'image_source',
+      '参数名不匹配',
+      'unauthorized access',
+      'mcp 请求超时',
+    ].some((token) => compact.includes(token));
+    if (includesAny) return true;
+  }
+
+  return false;
+}
+
+function inferMcpFailureKind(text) {
+  const normalized = normalizeToolResultText(text).toLowerCase();
+  if (normalized.startsWith('fetch failed')) return 'network_or_remote_fetch_failed';
+  if (normalized.startsWith('unauthorized access') || normalized.startsWith('unauthorized')) return 'unauthorized';
+  if (
+    normalized.startsWith('field required') ||
+    normalized.startsWith('missing required') ||
+    (normalized.length <= 220 && normalized.includes('image_source'))
+  ) return 'invalid_arguments';
+  if (normalized.startsWith('validation error')) return 'validation_error';
+  if (normalized.startsWith('参数名不匹配')) return 'argument_name_mismatch';
+  if (
+    normalized.startsWith('error executing tool') ||
+    normalized.startsWith('tool execution failed') ||
+    normalized.startsWith('工具执行失败')
+  ) return 'tool_execution_error';
+  if (normalized.startsWith('mcp 请求超时')) return 'mcp_timeout';
+  return 'unknown';
+}
+
 function dataUrlToTempFile(dataUrl, mimeType) {
   const match = String(dataUrl || '').match(/^data:image\/(\w+);base64,(.+)$/);
   const ext = (match && match[1]) ? (match[1] === 'jpeg' ? 'jpg' : match[1]) : ((mimeType || 'image/png').split('/')[1] || 'png');
@@ -34,17 +97,28 @@ function dataUrlToTempFile(dataUrl, mimeType) {
 
 async function analyzeImageViaMcp(dataUrl, mimeType) {
   const defs = toolLoader.getDefinitions?.() || [];
+  const availableTools = defs.map((def) => def?.function?.name).filter(Boolean);
   const visionToolName =
     defs.find((def) => def?.function?.name === 'mcp_minimax_understand_image')?.function?.name
     || defs.find((def) => /mcp_.*understand_image$/i.test(def?.function?.name || ''))?.function?.name
     || defs.find((def) => /mcp_.*image/i.test(def?.function?.name || ''))?.function?.name
     || '';
   if (!visionToolName) {
+    logger.warn('[ImageAnalyzer] 未找到可用的 MCP 图片理解工具', {
+      availableTools: availableTools.slice(0, 20),
+      availableToolCount: availableTools.length,
+    });
     return null;
   }
 
   const { filePath, cleanup } = dataUrlToTempFile(dataUrl, mimeType);
   try {
+    logger.info('[ImageAnalyzer] 准备调用 MCP 图片理解工具', {
+      tool: visionToolName,
+      mimeType: mimeType || 'image/png',
+      tempFileExt: path.extname(filePath),
+      availableToolCount: availableTools.length,
+    });
     const result = await toolLoader.executeTool(visionToolName, {
       image_source: filePath,
       image_url: filePath,
@@ -53,20 +127,22 @@ async function analyzeImageViaMcp(dataUrl, mimeType) {
     const text = typeof result === 'string' ? result.trim() : JSON.stringify(result);
     if (!text) return null;
 
-    const normalized = text.toLowerCase();
-    const looksLikeToolError =
-      normalized.includes('error executing tool')
-      || normalized.includes('validation error')
-      || normalized.includes('field required')
-      || normalized.includes('image_source')
-      || normalized.includes('参数名不匹配')
-      || normalized.includes('unauthorized access')
-      || normalized.includes('fetch failed');
+    const looksLikeToolError = looksLikeMcpToolErrorText(text);
+    const failureKind = inferMcpFailureKind(text);
 
     if (looksLikeToolError) {
       logger.warn('[ImageAnalyzer] MCP 图片理解返回错误文本', {
+        failureKind,
         preview: text.slice(0, 220),
         tool: visionToolName,
+        hint:
+          failureKind === 'network_or_remote_fetch_failed'
+            ? 'MCP server 可能已连接，但其访问 MiniMax 远端接口失败；优先检查网络/代理/Token Plan key。'
+            : failureKind === 'unauthorized'
+              ? '请检查 MINIMAX_API_KEY 是否有效，且是否为 Token Plan 密钥。'
+              : failureKind === 'invalid_arguments' || failureKind === 'argument_name_mismatch'
+                ? '请检查 understand_image 工具参数名与当前 MCP server 版本是否一致。'
+                : '请检查 MCP server 日志和工具返回内容。',
       });
       return null;
     }
@@ -77,6 +153,8 @@ async function analyzeImageViaMcp(dataUrl, mimeType) {
     logger.warn('[ImageAnalyzer] MCP 图片理解失败', {
       error: error?.message || String(error),
       tool: visionToolName,
+      availableTools: availableTools.slice(0, 20),
+      hint: '如果 mcp/status 里 minimax 已连接但这里仍失败，更可能是工具执行阶段的网络、鉴权或远端接口问题，而不是 MCP 进程未启动。',
     });
     return null;
   } finally {
@@ -152,7 +230,7 @@ async function analyzeImageCloud(url, timeoutMs, options = {}) {
 }
 
 /**
- * 分析单张图片：云端优先，失败则本地 BLIP 降级，都失败返回友好降级文案
+ * 分析单张图片：云端优先，失败则先尝试 MCP 图片理解，本地 BLIP 仅作最后兜底
  * @param {string} dataUrl - data:image/png;base64,xxx 或 data:image/jpeg;base64,xxx
  * @param {string} [mimeType] - image/png | image/jpeg | image/webp
  * @returns {Promise<string>}
@@ -211,7 +289,13 @@ async function analyzeImage(dataUrl, mimeType, options = {}) {
     });
   }
 
-  // 2) 备选本地（无感切换，不告知用户）
+  // 2) 先尝试 MCP 图片理解（适合作为非视觉模型的首选兜底）
+  const mcpResult = await analyzeImageViaMcp(url, mimeType);
+  if (mcpResult) {
+    return mcpResult;
+  }
+
+  // 3) 最后再尝试本地 BLIP（可选离线兜底）
   if (useLocal) {
     const localResult = await imageAnalyzerLocal.analyzeImageLocal(url, timeoutMs);
     if (localResult) {
@@ -219,12 +303,6 @@ async function analyzeImage(dataUrl, mimeType, options = {}) {
       return localResult;
     }
     logger.warn('[ImageAnalyzer] 本地分析未返回结果');
-  }
-
-  // 3) 再尝试 MiniMax MCP 图片理解（若已连接）
-  const mcpResult = await analyzeImageViaMcp(url, mimeType);
-  if (mcpResult) {
-    return mcpResult;
   }
 
   // 4) 都失败

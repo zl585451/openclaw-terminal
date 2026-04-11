@@ -79,6 +79,9 @@ const electronAPI = {
     ipcRenderer.invoke('asr-transcribe', payload),
   getProviderList: () => ipcRenderer.invoke('get-provider-list'),
   testAIConnection: (formConfig?: Record<string, string>) => ipcRenderer.invoke('test-ai-connection', formConfig),
+  getLocalVisionStatus: () => ipcRenderer.invoke('get-local-vision-status'),
+  downloadLocalVisionModel: () => ipcRenderer.invoke('download-local-vision-model'),
+  saveLocalVisionSettings: (payload: { enabled?: boolean; mirrorHost?: string }) => ipcRenderer.invoke('save-local-vision-settings', payload),
   // Nocturne 记忆系统
   getNocturneStatus: () => ipcRenderer.invoke('get-nocturne-status'),
   setupNocturneMemory: () => ipcRenderer.invoke('setup-nocturne-memory'),
