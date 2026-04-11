@@ -10,6 +10,7 @@ interface ImageStudioProps {
   onSendToChat: (text: string) => void;
   registerPromptInjector: (fn: (prompt: string) => void) => void;
   onInsertImageToChat: (imageUrl: string, prompt: string) => void;
+  onClose: () => void;
 }
 
 const ASPECT_OPTIONS = [
@@ -34,11 +35,10 @@ export default function ImageStudio({
   onSendToChat,
   registerPromptInjector,
   onInsertImageToChat,
+  onClose,
 }: ImageStudioProps) {
-  const [mode, setMode] = useState<'text2img' | 'img2img'>('text2img');
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
-  const [referenceImageUrl, setReferenceImageUrl] = useState('');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [stylePreset, setStylePreset] = useState('auto');
   const [quality, setQuality] = useState<'standard' | 'high'>('standard');
@@ -139,7 +139,6 @@ export default function ImageStudio({
       requestId,
       prompt: trimmedPrompt,
       negativePrompt: negativePrompt.trim(),
-      referenceImageUrl: mode === 'img2img' ? referenceImageUrl.trim() : '',
       aspectRatio,
       width: normalizedDimensions?.width,
       height: normalizedDimensions?.height,
@@ -155,7 +154,7 @@ export default function ImageStudio({
       currentRequestId.current = null;
       setStatusMsg(result?.error || '发送失败');
     }
-  }, [aigcWatermark, aspectRatio, isGenerating, mode, negativePrompt, normalizedDimensions, prompt, promptOptimizer, quality, referenceImageUrl, seed, stylePreset]);
+  }, [aigcWatermark, aspectRatio, isGenerating, negativePrompt, normalizedDimensions, prompt, promptOptimizer, quality, seed, stylePreset]);
 
   const handleOptimize = useCallback(() => {
     const trimmedPrompt = prompt.trim();
@@ -247,39 +246,25 @@ export default function ImageStudio({
         <div>
           <div style={{ fontSize: 'var(--text-base)', fontWeight: 700 }}>Image Studio</div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 2 }}>
-            独立生图通道，不进入聊天上下文
+            独立文生图通道，不进入聊天上下文
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => setMode('text2img')}
-            style={{
-              padding: '5px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--border-subtle)',
-              background: mode === 'text2img' ? 'var(--accent-primary)' : 'var(--bg-surface)',
-              color: mode === 'text2img' ? 'var(--bg-base)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-            }}
-          >
-            文生图
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('img2img')}
-            style={{
-              padding: '5px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--border-subtle)',
-              background: mode === 'img2img' ? 'var(--accent-primary)' : 'var(--bg-surface)',
-              color: mode === 'img2img' ? 'var(--bg-base)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-            }}
-          >
-            图生图
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          title="返回聊天 (Esc)"
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid var(--border-subtle)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          返回聊天
+        </button>
       </div>
 
       <div style={{ padding: 16, borderBottom: '1px solid var(--border-subtle)' }}>
@@ -338,29 +323,6 @@ export default function ImageStudio({
             boxSizing: 'border-box',
           }}
         />
-
-        {mode === 'img2img' && (
-          <>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '12px 0 6px' }}>
-              参考图 URL
-            </label>
-            <input
-              type="text"
-              value={referenceImageUrl}
-              onChange={(e) => setReferenceImageUrl(e.target.value)}
-              placeholder="https://..."
-              style={{
-                width: '100%',
-                background: 'var(--bg-surface)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 8,
-                padding: '10px 12px',
-                boxSizing: 'border-box',
-              }}
-            />
-          </>
-        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
           <div>
@@ -510,7 +472,7 @@ export default function ImageStudio({
           ) : null}
         </div>
         <div style={{ marginTop: 8, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-          当前主面板只保留跨供应商稳定语义；厂商差异由网关适配。
+          当前只保留稳定的文生图主链路；图生图已暂时下线，避免不确定的风格偏移。
         </div>
 
         {statusMsg ? (

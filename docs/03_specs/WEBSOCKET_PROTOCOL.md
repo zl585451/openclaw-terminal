@@ -73,7 +73,6 @@
     "requestId": "img_123",
     "prompt": "cinematic mountain lake at sunrise",
     "negativePrompt": "blurry, watermark",
-    "referenceImageUrl": "https://...",
     "aspectRatio": "16:9",
     "seed": 123456,
     "promptOptimizer": true,
@@ -85,7 +84,6 @@
 ```
 
 - 这是独立旁路能力，不进入 `chat.send` 的会话上下文
-- `referenceImageUrl` 仅在图生图模式下使用
 - `aspectRatio` 是跨供应商主面板里的通用画幅语义
 - `width/height` 作为高级尺寸能力按需传入，不保证所有供应商都支持
 - Gateway 以 `type: "res"` 回传状态和最终图片 URL

@@ -16,7 +16,6 @@ interface ElectronAPI {
     requestId: string;
     prompt: string;
     negativePrompt?: string;
-    referenceImageUrl?: string;
     aspectRatio?: string;
     width?: number;
     height?: number;

@@ -208,6 +208,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [imageStudioOpen, setImageStudioOpen] = useState(false);
 
+  useEffect(() => {
+    if (!imageStudioOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setImageStudioOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [imageStudioOpen]);
+
   const getToolDisplayName = useCallback((tool: string): string => {
     const map: Record<string, string> = {
       'read_file': '📖 读取文件',
@@ -728,6 +739,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             imagePromptInjectorRef.current = fn;
           }}
           onInsertImageToChat={insertImageToChat}
+          onClose={() => setImageStudioOpen(false)}
         />
       </div>
     {/* chat-tab 结束 */}

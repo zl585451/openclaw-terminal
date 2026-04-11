@@ -3225,7 +3225,6 @@ ipcMain.handle('image-generate', async (_event, payload: {
   requestId: string;
   prompt: string;
   negativePrompt?: string;
-  referenceImageUrl?: string;
   aspectRatio?: string;
   width?: number;
   height?: number;
@@ -3248,7 +3247,6 @@ ipcMain.handle('image-generate', async (_event, payload: {
       requestId,
       prompt: String(payload?.prompt || ''),
       negativePrompt: String(payload?.negativePrompt || ''),
-      referenceImageUrl: String(payload?.referenceImageUrl || ''),
       aspectRatio: String(payload?.aspectRatio || ''),
       width: payload?.width,
       height: payload?.height,

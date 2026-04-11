@@ -60,7 +60,6 @@ const electronAPI = {
     requestId: string;
     prompt: string;
     negativePrompt?: string;
-    referenceImageUrl?: string;
     aspectRatio?: string;
     width?: number;
     height?: number;

@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-11 | Image Studio 收口为稳定文生图工作台：补齐独立生图旁路、AMY 提示词回填清洗、下载/打开原图、通用面板参数；在验证图生图不稳定后，主动下线图生图，仅保留文生图，并新增“返回聊天”按钮与 `Esc` 退出 | `src/ui/image/ImageStudio.tsx`, `src/ui/chat/ChatTab.v2.tsx`, `electron/main.ts`, `electron/preload.ts`, `oct-gateway/image_gen.js`, `docs/03_specs/**`, `docs/05_changelog/**` | 用于发布 `0.2.2`，把 Image Studio 收口到稳定、可交付、易理解的主链路 |
 | 2026-04-11 | 仓库首页 README 更新到 `v0.2.1`：同步三平台下载链接、版本号和本次更新重点，保证 GitHub 首页与当前 release 内容一致 | `README.md` | 用于正式发布 `0.2.1` 后的主页展示与下载指引 |
 | 2026-04-11 | MCP 已连接时补充 `mcp_*` 动态工具执行兜底：若定义列表瞬时未命中，`tool_loader` 仍会直接尝试路由给 MCP provider，避免图片理解误报“工具不存在” | `oct-gateway/tool_loader.js` | 修复日志中 `minimax` MCP 已连上、但执行 `mcp_minimax_understand_image` 仍返回不存在的问题 |
 | 2026-04-11 | MCP 启动前增加代理环境预检：若 `HTTP_PROXY / HTTPS_PROXY / ALL_PROXY` 指向本机回环地址但端口未监听，则自动忽略这些失效代理变量，再启动 `uvx` | `oct-gateway/mcp/client.js` | 避免用户关闭代理软件后仍因残留环境变量出现 `tunnel error` / `10061`，同时不影响真实可用代理 |

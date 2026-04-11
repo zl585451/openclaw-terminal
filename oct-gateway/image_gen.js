@@ -166,13 +166,6 @@ async function minimaxAdapter(payload, config) {
     body.aspect_ratio = resolveRequestedAspectRatio(payload, config);
   }
 
-  if (payload.referenceImageUrl) {
-    body.subject_reference = [{
-      type: 'character',
-      image_url: payload.referenceImageUrl,
-    }];
-  }
-
   const result = await httpPost(url, { Authorization: `Bearer ${config.resolvedApiKey}` }, body);
   const providerError = resolveProviderError(result);
   if (providerError) {

@@ -48,7 +48,7 @@
 | `openclaw-connect` | 建立 WebSocket 连接 | - | - |
 | `openclaw-send` | 发送消息到 Gateway | `payload: string \| { content, imageDataUrl?, files? }` | - |
 | `openclaw-status` | 获取连接状态 | - | `{ connected, reconnecting?, error? }` |
-| `image-generate` | 发送独立生图请求到 Gateway | `{ requestId, prompt, negativePrompt?, referenceImageUrl?, aspectRatio?, width?, height?, seed?, promptOptimizer?, aigcWatermark?, stylePreset?, quality? }` | `{ success, error? }` |
+| `image-generate` | 发送独立文生图请求到 Gateway | `{ requestId, prompt, negativePrompt?, aspectRatio?, width?, height?, seed?, promptOptimizer?, aigcWatermark?, stylePreset?, quality? }` | `{ success, error? }` |
 | `open-external-url` | 用系统浏览器打开 URL | `url: string` | `{ success, error? }` |
 | `download-image` | 下载远程图片到本地 | `{ url, suggestedName? }` | `{ success, error?, path? }` |
 
