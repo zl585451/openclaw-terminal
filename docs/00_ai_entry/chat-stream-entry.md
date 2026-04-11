@@ -61,7 +61,7 @@ flowchart TD
 ### `src/hooks/useWebSocket.ts`
 - 负责 Electron IPC → renderer 的消息适配
 - 解析 `openclaw-message`
-- 区分 delta / done / usage / agent-phase / tool / canvas
+- 区分 delta / done / usage / agent-phase / tool / workbench / canvas(兼容)
 
 ### `src/ui/chat/MessageList.tsx`
 - 负责最终展示

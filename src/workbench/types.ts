@@ -1,0 +1,85 @@
+export type WorkbenchMode = 'markdown' | 'code' | 'html';
+export type WorkbenchArtifactType =
+  | 'document'
+  | 'diagram'
+  | 'code'
+  | 'ui-draft'
+  | 'react-flow'
+  | 'echart';
+export type WorkbenchDocumentStatus = 'draft' | 'refining' | 'final';
+
+export interface WorkbenchDocument {
+  id: string;
+  title: string;
+  artifactType: WorkbenchArtifactType;
+  mode: WorkbenchMode;
+  content: string;
+  language: string;
+  origin: 'ai' | 'user';
+  sourceMessageId?: string;
+  explanation?: string;
+  status: WorkbenchDocumentStatus;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface WorkbenchCreateEventPayload {
+  document: Partial<WorkbenchDocument> & {
+    id?: string;
+    content: string;
+    mode?: WorkbenchMode;
+    title?: string;
+  };
+}
+
+export interface WorkbenchUpdateEventPayload {
+  documentId: string;
+  patch: Partial<WorkbenchDocument>;
+}
+
+export interface WorkbenchFocusEventPayload {
+  documentId: string;
+}
+
+export type WorkbenchEvent =
+  | { type: 'workbench'; action: 'create'; payload: WorkbenchCreateEventPayload }
+  | { type: 'workbench'; action: 'update'; payload: WorkbenchUpdateEventPayload }
+  | { type: 'workbench'; action: 'focus'; payload: WorkbenchFocusEventPayload }
+  | { type: 'workbench'; action: 'delete'; payload: { documentId: string } }
+  | { type: 'workbench'; action: 'explain'; payload: { documentId: string; explanation: string } };
+
+export type WorkbenchCommand =
+  | { type: 'create'; payload: WorkbenchCreateEventPayload }
+  | { type: 'update'; payload: WorkbenchUpdateEventPayload }
+  | { type: 'focus'; payload: WorkbenchFocusEventPayload }
+  | { type: 'delete'; payload: { documentId: string } }
+  | { type: 'explain'; payload: { documentId: string; explanation: string } }
+  | { type: 'open-panel' }
+  | { type: 'close-panel' };
+
+export interface WorkbenchRoundtripContext {
+  intent: 'continue' | 'explain' | 'rewrite';
+  activeDocumentId: string | null;
+  activeDocument: WorkbenchDocument | null;
+  documents: Array<Pick<WorkbenchDocument, 'id' | 'title' | 'artifactType' | 'mode' | 'version' | 'status' | 'updatedAt'>>;
+}
+
+export type CanvasMode = WorkbenchMode;
+export type CanvasArtifactType = WorkbenchArtifactType;
+export type CanvasDocumentStatus = WorkbenchDocumentStatus;
+export type CanvasDocument = WorkbenchDocument;
+export type CanvasCreateEventPayload = WorkbenchCreateEventPayload;
+export type CanvasUpdateEventPayload = WorkbenchUpdateEventPayload;
+export type CanvasFocusEventPayload = WorkbenchFocusEventPayload;
+export type CanvasEvent =
+  | { type: 'canvas'; action: 'create'; payload: CanvasCreateEventPayload }
+  | { type: 'canvas'; action: 'update'; payload: CanvasUpdateEventPayload }
+  | { type: 'canvas'; action: 'focus'; payload: CanvasFocusEventPayload }
+  | { type: 'canvas'; action: 'delete'; payload: { documentId: string } }
+  | { type: 'canvas'; action: 'explain'; payload: { documentId: string; explanation: string } };
+export type CanvasRoundtripContext = WorkbenchRoundtripContext;
+
+export function toWorkbenchCommand(event: CanvasEvent | WorkbenchEvent): WorkbenchCommand {
+  return { type: event.action, payload: event.payload } as WorkbenchCommand;
+}

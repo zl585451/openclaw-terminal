@@ -31,7 +31,7 @@ class ContextBuilder {
     sessionKey,
     userMessage,
     attachments,
-    canvasContext,
+    workbenchContext,
     orchestratorResult,
     systemPrompt,
   }) {
@@ -57,7 +57,7 @@ class ContextBuilder {
       ? '\n\n[系统] 用户这条消息已派发后台任务执行（如查邮件），请简短回复「好的，我已经派出去查了，我们继续聊」之类，不要在主对话中调用 email_reader 等工具。'
       : '';
     const canvasSuggestionNotice = this._buildCanvasSuggestion(orchestratorResult);
-    const canvasRoundtripNotice = this._buildCanvasRoundtrip(canvasContext);
+    const canvasRoundtripNotice = this._buildCanvasRoundtrip(workbenchContext);
 
     const lastUserMsg = typeof messageContent === 'string'
       ? messageContent + contextMemory + backgroundTaskNotice + canvasSuggestionNotice + canvasRoundtripNotice

@@ -168,12 +168,12 @@ async function handleChatRequest(request, connection) {
   const sessionKey = params?.sessionKey || 'main';
   const userMessage = params?.message || '';
   const attachments = params?.attachments || [];
-  const canvasContext = params?.canvasContext || null;
+  const workbenchContext = params?.workbenchContext || params?.canvasContext || null;
 
   const sendToolEvent = (evt) => {
     if (!connection.isOpen()) return;
-    if (evt?.type === 'canvas' && evt.action) {
-      sendCanvasTransportEvent(connection, evt.action, evt.payload || {});
+    if ((evt?.type === 'workbench' || evt?.type === 'canvas') && evt.action) {
+      sendCanvasTransportEvent(connection, evt.action, evt.payload || {}, evt.type === 'workbench' ? 'workbench' : 'canvas');
       return;
     }
     connection.send({ type: 'event', event: 'tool', payload: evt });
@@ -192,7 +192,7 @@ async function handleChatRequest(request, connection) {
     sessionKey,
     userMessage,
     attachments,
-    canvasContext,
+    workbenchContext,
     orchestratorResult: orchResult,
     systemPrompt,
   });

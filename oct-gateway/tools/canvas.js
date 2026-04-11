@@ -138,6 +138,10 @@ module.exports = {
           action: 'create',
           payload,
         },
+        workbenchEvent: {
+          action: 'create',
+          payload,
+        },
         document: payload.document,
       };
     }
@@ -173,6 +177,13 @@ module.exports = {
             patch,
           },
         },
+        workbenchEvent: {
+          action: 'update',
+          payload: {
+            documentId: args.documentId,
+            patch,
+          },
+        },
         documentId: args.documentId,
         patch,
       };
@@ -187,6 +198,12 @@ module.exports = {
         success: true,
         message: `Canvas artifact focused: ${args.documentId}`,
         canvasEvent: {
+          action: 'focus',
+          payload: {
+            documentId: args.documentId,
+          },
+        },
+        workbenchEvent: {
           action: 'focus',
           payload: {
             documentId: args.documentId,
@@ -209,6 +226,12 @@ module.exports = {
             documentId: args.documentId,
           },
         },
+        workbenchEvent: {
+          action: 'delete',
+          payload: {
+            documentId: args.documentId,
+          },
+        },
       };
     }
 
@@ -221,6 +244,13 @@ module.exports = {
         success: true,
         message: `Canvas explanation updated: ${args.documentId}`,
         canvasEvent: {
+          action: 'explain',
+          payload: {
+            documentId: args.documentId,
+            explanation: args.explanation,
+          },
+        },
+        workbenchEvent: {
           action: 'explain',
           payload: {
             documentId: args.documentId,

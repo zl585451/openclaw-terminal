@@ -22,20 +22,20 @@ function readJsonBody(req) {
   });
 }
 
-function sendCanvasTransportEvent(connection, action, payload) {
+function sendCanvasTransportEvent(connection, action, payload, eventName = 'canvas') {
   connection.send({
     type: 'event',
-    event: 'canvas',
+    event: eventName,
     action,
     payload,
   });
 }
 
-function sendCanvasEvent(ws, action, payload) {
+function sendCanvasEvent(ws, action, payload, eventName = 'canvas') {
   if (!ws || ws.readyState !== ws.OPEN) return;
   ws.send(JSON.stringify({
     type: 'event',
-    event: 'canvas',
+    event: eventName,
     action,
     payload,
   }));

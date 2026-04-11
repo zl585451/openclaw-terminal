@@ -81,7 +81,15 @@ class ToolLoop {
         return `工具执行失败: ${error.message}，请稍后重试或换个方式表达需求。`;
       });
 
-      if (result && typeof result === 'object' && result.canvasEvent && onToolEvent) {
+      if (result && typeof result === 'object' && result.workbenchEvent && onToolEvent) {
+        try {
+          onToolEvent({
+            type: 'workbench',
+            action: result.workbenchEvent.action,
+            payload: result.workbenchEvent.payload,
+          });
+        } catch {}
+      } else if (result && typeof result === 'object' && result.canvasEvent && onToolEvent) {
         try {
           onToolEvent({
             type: 'canvas',

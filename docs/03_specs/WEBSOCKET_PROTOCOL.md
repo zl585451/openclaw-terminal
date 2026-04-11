@@ -1,6 +1,6 @@
 # Gateway WebSocket 消息协议
 
-> **最后更新时间**：2026-04-11  
+> **最后更新时间**：2026-04-12  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：理解前端与 Gateway 的通信格式，调试连接、消息收发问题
 
@@ -132,7 +132,7 @@
 ```json
 {
   "type": "event",
-  "event": "stream.delta | stream.done | thinking | canvas | ...",
+  "event": "stream.delta | stream.done | thinking | workbench | canvas | ...",
   "payload": { ... }
 }
 ```
@@ -144,17 +144,18 @@
 | `stream.done` | 流结束 |
 | `thinking` | 思考心跳（长任务时每 8 秒） |
 | `tool_call` | 工具调用（若需展示） |
-| `canvas` | Canvas 工作区事件（创建/更新/聚焦 artifact） |
+| `workbench` | Workbench 工作台事件（创建/更新/聚焦 artifact），当前主路径 |
+| `canvas` | Canvas 兼容事件（旧字段名，仍保留兼容） |
 | `error` | 错误 |
 
-### Canvas 事件
+### Workbench / Canvas 事件
 
-当 Gateway 或工具链需要更新前端 Canvas 工作区时，发送：
+当 Gateway 或工具链需要更新前端 Workbench 时，优先发送：
 
 ```json
 {
   "type": "event",
-  "event": "canvas",
+  "event": "workbench",
   "action": "create | update | focus | delete | explain",
   "payload": {
     "...": "see action-specific payload"
@@ -167,7 +168,7 @@
 ```json
 {
   "type": "event",
-  "event": "canvas",
+  "event": "workbench",
   "action": "create",
   "payload": {
     "document": {
@@ -183,6 +184,12 @@
   }
 }
 ```
+
+兼容说明：
+
+- 旧链路仍可能发送 `event: "canvas"`
+- 前端应同时兼容 `workbench` 与 `canvas`
+- 新代码应优先写 `workbenchContext` / `workbenchEvent`
 
 - `create`：新建 artifact，并聚焦到该文档
 - `update`：按 `documentId + patch` 更新已有 artifact
