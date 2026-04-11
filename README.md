@@ -21,7 +21,7 @@ OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你�
 **不是只会回答问题，而是能把结果直接做出来。**  
 聊天、工具调用、Canvas、Image Studio、Music Studio，在一个桌面窗口里完成。
 
-![OCT Image Studio 主界面](docs/assets/homepage/hero-image-studio.png)
+![OCT 主界面全貌](docs/assets/homepage/hero-overview.png)
 
 ---
 
@@ -62,6 +62,8 @@ OCT 不只是把答案打出来，还能把结果落到 Canvas / 图表工作区
 ### 2. 在侧栏直接出图，不污染聊天上下文
 
 `Image Studio` 是独立文生图工作台。你可以让 AMY 优化提示词，然后直接生成、预览、下载、打开原图，最后再把图片插回聊天记录。
+
+![OCT Image Studio 主界面](docs/assets/homepage/hero-image-studio.png)
 
 ### 3. 继续创作音乐，不用切工具
 
