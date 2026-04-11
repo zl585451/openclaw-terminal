@@ -1,6 +1,6 @@
 # OCT 桌面终端
 
-> 会思考、会执行、会出图的 AI 桌面终端
+> 会聊天、会执行、会出图的 AI 桌面终端
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Release](https://img.shields.io/github/v/release/zl585451/openclaw-terminal)](https://github.com/zl585451/openclaw-terminal/releases)
@@ -13,6 +13,25 @@
 OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你可以像聊天一样交代任务，让它整理信息、调用工具、生成图表、在 Canvas 中输出结构化成果，还能直接进入音乐工作台做音乐生成。
 
 **核心理念**：一个真正能执行任务的终端窗口，你说它做。
+
+---
+
+## 🚀 一句话认识 OCT
+
+**不是只会回答问题，而是能把结果直接做出来。**  
+聊天、工具调用、Canvas、Image Studio、Music Studio，在一个桌面窗口里完成。
+
+![OCT Image Studio 主界面](docs/assets/homepage/hero-image-studio.png)
+
+---
+
+## ✨ 为什么值得下载
+
+| 亮点 | 说明 |
+|------|------|
+| 结果导向 | 不只聊天，还会把图、表、结构化结果和图片直接做出来 |
+| 独立工作台 | `Image Studio` / `Music Studio` 与聊天区并存，适合真正做事 |
+| 桌面端一体化 | 配置、生成、预览、下载、回填结果都在一个窗口内完成 |
 
 ---
 
@@ -29,6 +48,26 @@ OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你�
 | 🔐 保险箱 | 安全保存 API Key 和常用凭证 |
 | 🤖 自动执行 | 后台任务、任务队列、工具调用事件流 |
 | 🚀 首启引导 | 安装后首次启动自动引导填写 API Key，降低新手门槛 |
+
+---
+
+## 🖼️ 使用场景
+
+### 1. 问一句，直接给出表格和图表
+
+OCT 不只是把答案打出来，还能把结果落到 Canvas / 图表工作区，让信息更容易理解和复用。
+
+![OCT Canvas / 图表工作区](docs/assets/homepage/feature-canvas-chart.png)
+
+### 2. 在侧栏直接出图，不污染聊天上下文
+
+`Image Studio` 是独立文生图工作台。你可以让 AMY 优化提示词，然后直接生成、预览、下载、打开原图，最后再把图片插回聊天记录。
+
+### 3. 继续创作音乐，不用切工具
+
+除了聊天和出图，OCT 还内置 `Music Studio`，可以继续做歌词、风格和成品试听的创作流程。
+
+![OCT Music Studio](docs/assets/homepage/feature-music-studio.png)
 
 ---
 

@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-11 | 仓库首页 README 升级为产品展示版：新增 Hero 主图、核心卖点区、使用场景截图区，并将宣传图素材归档到 `docs/assets/homepage/` | `README.md`, `docs/assets/homepage/**` | 面向 GitHub 首页宣传与分发，降低首次访问者理解成本 |
 | 2026-04-11 | 仓库首页 README 更新到 `v0.2.2`：同步三平台下载链接、版本号与本次 Image Studio 文生图工作台的更新重点，确保 GitHub 首页与当前 release 资产一致 | `README.md` | 面向 `v0.2.2` 正式发布后的主页展示与下载入口 |
 | 2026-04-11 | Image Studio 收口为稳定文生图工作台：补齐独立生图旁路、AMY 提示词回填清洗、下载/打开原图、通用面板参数；在验证图生图不稳定后，主动下线图生图，仅保留文生图，并新增“返回聊天”按钮与 `Esc` 退出 | `src/ui/image/ImageStudio.tsx`, `src/ui/chat/ChatTab.v2.tsx`, `electron/main.ts`, `electron/preload.ts`, `oct-gateway/image_gen.js`, `docs/03_specs/**`, `docs/05_changelog/**` | 用于发布 `0.2.2`，把 Image Studio 收口到稳定、可交付、易理解的主链路 |
 | 2026-04-11 | 仓库首页 README 更新到 `v0.2.1`：同步三平台下载链接、版本号和本次更新重点，保证 GitHub 首页与当前 release 内容一致 | `README.md` | 用于正式发布 `0.2.1` 后的主页展示与下载指引 |
