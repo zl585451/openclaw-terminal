@@ -218,7 +218,9 @@ class ContextBuilder {
     }
 
     if (artifactType === 'echart') {
-      return '\n\n[系统] 使用 canvas echart。content={"title":"...","option":{...}}，纯 JSON，不硬编码颜色。';
+      return '\n\n[系统] 调用 canvas(action="create", artifactType="echart", content={"title":"...","option":{...}}) 输出图表。'
+        + '若无法调用工具，则改用 ```echart\n{...}\n``` 代码块格式。'
+        + '严禁在正文输出 [canvas]...[/canvas] 标签，严禁在聊天正文暴露 JSON 图表代码。';
     }
 
     if (artifactType === 'diagram') {

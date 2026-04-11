@@ -105,13 +105,22 @@ function getDiagramJsonSummaryLabel(code: string) {
   return '流程图';
 }
 
+function getEchartSummaryLabel(code: string) {
+  try {
+    const parsed = JSON.parse(code);
+    const title = parsed?.title || parsed?.option?.title?.text;
+    if (typeof title === 'string' && title.trim()) return title.trim();
+  } catch {}
+  return '数据图表';
+}
+
 export function createMarkdownComponents(
   openCanvas?: (
     content: string,
     mode: 'markdown' | 'code' | 'html',
     title?: string,
     language?: string,
-    artifactType?: 'document' | 'diagram' | 'code' | 'ui-draft'
+    artifactType?: 'document' | 'diagram' | 'code' | 'ui-draft' | 'echart'
   ) => void
 ): React.ComponentProps<typeof ReactMarkdown>['components'] {
   return {
@@ -163,6 +172,62 @@ export function createMarkdownComponents(
     const code = String(children);
     const normalizedLanguage = (className?.replace('language-', '') || 'text').toLowerCase();
     const diagramSpec = normalizedLanguage === 'json' ? parseDiagramSpec(code) : null;
+    if (isBlock && normalizedLanguage === 'echart') {
+      const EchartBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
+        const [copied, setCopied] = React.useState(false);
+        const summaryLabel = React.useMemo(() => getEchartSummaryLabel(code), [code]);
+
+        const handleCopy = () => {
+          navigator.clipboard.writeText(code);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        };
+
+        return (
+          <div
+            className="chat-mermaid-card"
+            data-oct-block-code={__octBlockCode ? '1' : undefined}
+          >
+            <div className="chat-mermaid-card__header">
+              <span className="chat-mermaid-card__label">
+                echart
+              </span>
+              <div className="chat-mermaid-card__actions">
+                {openCanvas && (
+                  <button
+                    onClick={() => openCanvas(code, 'markdown', summaryLabel, 'echart', 'echart')}
+                    className="chat-mermaid-card__action"
+                  >
+                    Open
+                  </button>
+                )}
+                <button
+                  onClick={handleCopy}
+                  className={`chat-mermaid-card__action${copied ? ' is-copied' : ''}`}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div className="chat-mermaid-card__body">
+              <div className="chat-mermaid-summary">
+                <div className="chat-mermaid-summary__title">
+                  {summaryLabel} 已转为 Canvas 图表展示
+                </div>
+                <div className="chat-mermaid-summary__meta">
+                  ECharts JSON · 点击 Open 查看完整图表
+                </div>
+                <div className="chat-mermaid-summary__copy">
+                  模型输出了图表 payload，聊天区不再把它当普通代码展示，会直接交给 Canvas 图表渲染器。
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      return <EchartBlock __octBlockCode />;
+    }
     if (isBlock && (className?.replace('language-', '') || 'text').toLowerCase() === 'mermaid') {
       const MermaidBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
         const [copied, setCopied] = React.useState(false);
@@ -368,6 +433,10 @@ export function createMarkdownComponents(
                         openCanvas(code, 'markdown', title, 'json', 'diagram');
                         return;
                       }
+                    }
+                    if (language.toLowerCase() === 'echart') {
+                      openCanvas(code, 'markdown', getEchartSummaryLabel(code), 'echart', 'echart');
+                      return;
                     }
                     openCanvas(code, 'code', language || 'code', language || 'text', 'code');
                   }}

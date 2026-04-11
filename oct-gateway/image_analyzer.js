@@ -98,15 +98,12 @@ function dataUrlToTempFile(dataUrl, mimeType) {
 async function analyzeImageViaMcp(dataUrl, mimeType) {
   const defs = toolLoader.getDefinitions?.() || [];
   const availableTools = defs.map((def) => def?.function?.name).filter(Boolean);
-  const visionToolName =
-    defs.find((def) => def?.function?.name === 'mcp_minimax_understand_image')?.function?.name
-    || defs.find((def) => /mcp_.*understand_image$/i.test(def?.function?.name || ''))?.function?.name
-    || defs.find((def) => /mcp_.*image/i.test(def?.function?.name || ''))?.function?.name
-    || '';
+  const visionToolName = resolveVisionToolName(defs);
   if (!visionToolName) {
     logger.warn('[ImageAnalyzer] 未找到可用的 MCP 图片理解工具', {
       availableTools: availableTools.slice(0, 20),
       availableToolCount: availableTools.length,
+      hint: '支持 mcp_minimax_understand_image、MiniMax_understand_image 以及其他 understand_image / image vision 命名。',
     });
     return null;
   }
@@ -160,6 +157,36 @@ async function analyzeImageViaMcp(dataUrl, mimeType) {
   } finally {
     cleanup();
   }
+}
+
+function resolveVisionToolName(defs) {
+  const names = (defs || []).map((def) => String(def?.function?.name || '')).filter(Boolean);
+  if (names.length === 0) return '';
+
+  const exactCandidates = [
+    'mcp_minimax_understand_image',
+    'MiniMax_understand_image',
+    'minimax_understand_image',
+    'understand_image',
+  ];
+  for (const candidate of exactCandidates) {
+    const hit = names.find((name) => name.toLowerCase() === candidate.toLowerCase());
+    if (hit) return hit;
+  }
+
+  const regexCandidates = [
+    /(?:^|_)understand_image$/i,
+    /understand.*image/i,
+    /image.*understand/i,
+    /vision.*image/i,
+    /mcp_.*image/i,
+  ];
+  for (const pattern of regexCandidates) {
+    const hit = names.find((name) => pattern.test(name));
+    if (hit) return hit;
+  }
+
+  return '';
 }
 
 /**

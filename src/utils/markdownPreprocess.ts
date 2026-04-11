@@ -215,8 +215,8 @@ export function ensureBlankLineBeforeTables(text: string): string {
 }
 
 export function preprocessMarkdown(text: string): string {
-  if (!shouldPreprocessMarkdownTables(text)) return text;
-  let processed = text;
+  let processed = normalizeCustomEchartBlocks(text);
+  if (!shouldPreprocessMarkdownTables(processed)) return processed;
   // 确保表格前有空行，便于 GFM 解析
   processed = ensureBlankLineBeforeTables(processed);
   // 修复模型偶发输出的"表格分隔符行重复插入"问题：同一表格块内只保留表头后的第一条分隔符行
@@ -256,4 +256,37 @@ export function getCachedPreprocessedMarkdown(messageId: number, segmentKey: str
   const processed = preprocessMarkdown(text);
   processedMarkdownCache.set(key, processed);
   return processed;
+}
+
+function normalizeCustomEchartBlocks(text: string): string {
+  if (!text) return text;
+
+  let result = text;
+
+  // [echart]...[/echart] → ```echart``` 代码块
+  if (/\[echart\]/i.test(result)) {
+    result = result.replace(/\[echart\]\s*([\s\S]*?)\s*\[\/echart\]/gi, (_match, payload: string) => {
+      const normalizedPayload = String(payload || '').trim();
+      if (!normalizedPayload) return '';
+      return `\n\`\`\`echart\n${normalizedPayload}\n\`\`\`\n`;
+    });
+  }
+
+  // [canvas]...[/canvas] → 当 payload 看起来是 echart JSON（含 option 字段）时转成 ```echart```
+  // 兜底：部分模型不走工具调用，直接把 [canvas]...[/canvas] 输出到正文
+  if (/\[canvas\]/i.test(result)) {
+    result = result.replace(/\[canvas\]\s*([\s\S]*?)\s*\[\/canvas\]/gi, (_match, payload: string) => {
+      const normalizedPayload = String(payload || '').trim();
+      if (!normalizedPayload) return '';
+      // 判断是否是 echart payload（含 "option" 或 "series" 字段）
+      const looksLikeEchart = /"option"\s*:/.test(normalizedPayload) || /"series"\s*:/.test(normalizedPayload);
+      if (looksLikeEchart) {
+        return `\n\`\`\`echart\n${normalizedPayload}\n\`\`\`\n`;
+      }
+      // 否则原样保留（避免误处理其他标签）
+      return _match;
+    });
+  }
+
+  return result;
 }
