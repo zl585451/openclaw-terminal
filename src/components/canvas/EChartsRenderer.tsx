@@ -47,7 +47,10 @@ function parseContent(raw: string): EChartPayload | null {
     // Bare ECharts option
     const knownKeys = ['series', 'xAxis', 'yAxis', 'legend', 'tooltip', 'radar', 'geo', 'dataset'];
     if (knownKeys.some((k) => k in parsed)) {
-      const titleText = (parsed.title as any)?.text ?? '';
+      const rawTitle = parsed.title;
+      const titleText = typeof rawTitle === 'string'
+        ? rawTitle
+        : (rawTitle as any)?.text ?? '';
       return { title: titleText, option: parsed as Record<string, unknown> };
     }
 

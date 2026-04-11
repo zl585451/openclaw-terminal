@@ -218,9 +218,10 @@ class ContextBuilder {
     }
 
     if (artifactType === 'echart') {
-      return '\n\n[系统] 调用 canvas(action="create", artifactType="echart", content={"title":"...","option":{...}}) 输出图表。'
-        + '若无法调用工具，则改用 ```echart\n{...}\n``` 代码块格式。'
-        + '严禁在正文输出 [canvas]...[/canvas] 标签，严禁在聊天正文暴露 JSON 图表代码。';
+      return '\n\n[系统] 图表数据必须用 [echart]...[/echart] 标签包裹输出，格式如下：\n'
+        + '[echart]{"title":"图表标题","option":{...标准ECharts option...}}[/echart]\n'
+        + '禁止在正文输出原始 JSON、禁止使用 [canvas] 标签、禁止输出代码块。\n'
+        + '图表 JSON 只放在 [echart] 标签内，其余内容正常用中文回复。';
     }
 
     if (artifactType === 'diagram') {
