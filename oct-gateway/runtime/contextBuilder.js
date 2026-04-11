@@ -212,9 +212,16 @@ class ContextBuilder {
 
     if (artifactType === 'react-flow') {
       const isComplex = msg.length > 40 || /完整|详细|全部|所有|包括/.test(msg);
+      const baseRules = '【结构图输出规则】\n'
+        + '① 方向一律用 "TB"（从上到下），禁止用 LR。\n'
+        + '② 每个节点必须有 group 字段，同类节点放同一 group。\n'
+        + '③ 有判断/条件时，节点加 "shape":"diamond"，并为每条出边加 label（如"是"/"否"）。\n'
+        + '④ edges 必须用 "source"/"target"（不是 from/to），ID 与 nodes 里的 id 完全一致。\n'
+        + '⑤ 调用 canvas(action="create", artifactType="react-flow", content=<JSON字符串>)。\n'
+        + 'JSON 格式：{"title":"...","direction":"TB","nodes":[{"id":"a","label":"...","group":"分组","shape":"rect"}],"edges":[{"source":"a","target":"b","label":"可选"}]}';
       return isComplex
-        ? '\n\n[系统] 执行【结构图输出协议】。复杂场景：目标 10-12 节点、3-5 group、TB 方向。同组同类 >3 必须合并。先一句话说明，再 canvas() JSON。'
-        : '\n\n[系统] 执行【结构图输出协议】。简单场景：目标 6-8 节点、2-3 group、TB 方向。先一句话说明，再 canvas() JSON。';
+        ? `\n\n[系统] 执行【结构图输出协议】。复杂场景：10-12 节点、3-5 group。同组同类 >3 必须合并。先一句话说明，再输出结构图。\n${baseRules}`
+        : `\n\n[系统] 执行【结构图输出协议】。简单场景：6-8 节点、2-3 group。先一句话说明，再输出结构图。\n${baseRules}`;
     }
 
     if (artifactType === 'echart') {

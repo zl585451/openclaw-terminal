@@ -22,6 +22,7 @@ import {
   MiniMap,
   Handle,
   Position,
+  MarkerType,
   type Node,
   type Edge,
   type NodeProps,
@@ -560,6 +561,7 @@ export default function ReactFlowRenderer({ content }: ReactFlowRendererProps) {
       };
     });
 
+    const EDGE_COLOR = '#5a7fa8';
     const rfEdges: Edge[] = (data.edges ?? []).map((e, i) => ({
       id: `e${i}`,
       source: e.source,
@@ -567,10 +569,15 @@ export default function ReactFlowRenderer({ content }: ReactFlowRendererProps) {
       label: e.label,
       type: 'smoothstep',
       animated: false,
-      style: { stroke: 'var(--mermaid-line, #8ea2ff)', strokeWidth: 1.5 },
-      labelStyle: { fill: 'var(--text-secondary)', fontSize: 12 },
-      labelBgStyle: { fill: 'var(--bg-panel)', fillOpacity: 0.85 },
-      ...(e.style === 'dashed' ? { strokeDasharray: '5,4' } : {}),
+      style: {
+        stroke: EDGE_COLOR,
+        strokeWidth: 2,
+        ...(e.style === 'dashed' ? { strokeDasharray: '6,4' } : {}),
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 16, height: 16 },
+      labelStyle: { fill: 'var(--text-secondary, #8b949e)', fontSize: 11, fontWeight: 500 },
+      labelBgStyle: { fill: 'var(--bg-panel, #0d1117)', fillOpacity: 0.9 },
+      labelBgPadding: [4, 4] as [number, number],
     }));
 
     return { rfNodes, rfEdges };
