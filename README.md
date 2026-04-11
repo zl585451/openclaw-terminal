@@ -79,11 +79,11 @@ OCT 不只是把答案打出来，还能把结果落到 Canvas / 图表工作区
 
 | 平台 | 安装包 | 大小 |
 |------|--------|------|
-| 🪟 Windows | [OCT-Setup-v0.2.3.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-Setup-v0.2.3.exe) | 待发布后更新 |
-| 🍎 Mac Intel | [OCT-0.2.3-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Mac-x64.dmg) | 待发布后更新 |
-| 🍎 Mac Apple Silicon | [OCT-0.2.3-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Mac-arm64.dmg) | 待发布后更新 |
-| 🐧 Linux AppImage | [OCT-0.2.3-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Linux-x86_64.AppImage) | 待发布后更新 |
-| 🐧 Linux Debian | [OCT-0.2.3-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Linux-amd64.deb) | 待发布后更新 |
+| 🪟 Windows | [OCT-Setup-v0.2.3.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-Setup-v0.2.3.exe) | 约 356 MB |
+| 🍎 Mac Intel | [OCT-0.2.3-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Mac-x64.dmg) | 约 248 MB |
+| 🍎 Mac Apple Silicon | [OCT-0.2.3-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Mac-arm64.dmg) | 约 243 MB |
+| 🐧 Linux AppImage | 即将补传到 `v0.2.3` Release | GitHub Actions 构建中 |
+| 🐧 Linux Debian | [OCT-0.2.3-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Linux-amd64.deb) | 约 216 MB |
 
 > macOS 当前为未签名 DMG。首次打开时如被系统拦截，请右键应用选择“打开”，或在系统设置中手动放行。
 
