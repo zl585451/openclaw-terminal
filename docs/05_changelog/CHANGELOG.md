@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-11 | 仓库首页 README 更新到 `v0.2.1`：同步三平台下载链接、版本号和本次更新重点，保证 GitHub 首页与当前 release 内容一致 | `README.md` | 用于正式发布 `0.2.1` 后的主页展示与下载指引 |
 | 2026-04-11 | MCP 已连接时补充 `mcp_*` 动态工具执行兜底：若定义列表瞬时未命中，`tool_loader` 仍会直接尝试路由给 MCP provider，避免图片理解误报“工具不存在” | `oct-gateway/tool_loader.js` | 修复日志中 `minimax` MCP 已连上、但执行 `mcp_minimax_understand_image` 仍返回不存在的问题 |
 | 2026-04-11 | MCP 启动前增加代理环境预检：若 `HTTP_PROXY / HTTPS_PROXY / ALL_PROXY` 指向本机回环地址但端口未监听，则自动忽略这些失效代理变量，再启动 `uvx` | `oct-gateway/mcp/client.js` | 避免用户关闭代理软件后仍因残留环境变量出现 `tunnel error` / `10061`，同时不影响真实可用代理 |
 | 2026-04-11 | MiniMax MCP 预设默认附带国内 PyPI 镜像，`uvx` 拉包失败时自动回退官方源；本地 BLIP 下载新增镜像地址设置，优先尝试自定义 Hugging Face 兼容镜像，失败后回退默认官方源 | `oct-gateway/mcp/client.js`, `oct-gateway/image_analyzer_local.js`, `oct-gateway/config.js`, `electron/main.ts`, `electron/preload.ts`, `src/components/SettingsPanel.tsx`, `src/ui/settings/tabs/ConnectionTabView.tsx`, `src/ui/settings/tabs/McpTabView.tsx`, `src/vite-env.d.ts` | 兼顾国内无代理用户与海外默认直连用户，降低首次配置 MCP / 本地视觉模型时的下载失败率 |

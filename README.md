@@ -16,7 +16,7 @@ OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你�
 
 ---
 
-## 🆕 v0.2.0 核心能力
+## 🆕 v0.2.1 核心能力
 
 | 功能 | 说明 |
 |------|------|
@@ -34,17 +34,24 @@ OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你�
 
 ## 📦 下载安装
 
-**最新稳定版本**：`v0.2.0`
+**最新稳定版本**：`v0.2.1`
 
 | 平台 | 安装包 | 大小 |
 |------|--------|------|
-| 🪟 Windows | [OCT-Setup-v0.2.0.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.0/OCT-Setup-v0.2.0.exe) | 约 356 MB |
-| 🍎 Mac Intel | [OCT-0.2.0-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.0/OCT-0.2.0-Mac-x64.dmg) | 约 248 MB |
-| 🍎 Mac Apple Silicon | [OCT-0.2.0-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.0/OCT-0.2.0-Mac-arm64.dmg) | 约 243 MB |
-| 🐧 Linux AppImage | [OCT-0.2.0-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.0/OCT-0.2.0-Linux-x86_64.AppImage) | 约 254 MB |
-| 🐧 Linux Debian | [OCT-0.2.0-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.0/OCT-0.2.0-Linux-amd64.deb) | 约 216 MB |
+| 🪟 Windows | [OCT-Setup-v0.2.1.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-Setup-v0.2.1.exe) | 约 356 MB |
+| 🍎 Mac Intel | [OCT-0.2.1-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-0.2.1-Mac-x64.dmg) | 约 248 MB |
+| 🍎 Mac Apple Silicon | [OCT-0.2.1-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-0.2.1-Mac-arm64.dmg) | 约 243 MB |
+| 🐧 Linux AppImage | [OCT-0.2.1-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-0.2.1-Linux-x86_64.AppImage) | 约 254 MB |
+| 🐧 Linux Debian | [OCT-0.2.1-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-0.2.1-Linux-amd64.deb) | 约 216 MB |
 
 > macOS 当前为未签名 DMG。首次打开时如被系统拦截，请右键应用选择“打开”，或在系统设置中手动放行。
+
+### v0.2.1 更新重点
+
+- 修复 Canvas / 图表输出链路，补齐主线同步后的渲染能力
+- 优化非视觉模型的图片理解路径，优先使用可用的视觉能力
+- 增强 MiniMax MCP 图片理解日志，便于定位安装、连接和调用问题
+- 本地视觉模型改为可选兜底能力，并补充状态提示与下载入口
 
 ---
 
