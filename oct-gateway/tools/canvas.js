@@ -108,10 +108,15 @@ module.exports = {
 
       const mode = normalizeMode(args.mode, args.artifactType);
       const artifactType = normalizeArtifactType(args.artifactType, mode);
+      // Normalize content to string — some models (MiniMax) pass `content` as a
+      // parsed JS object rather than a JSON string when the value is structured JSON.
+      const rawContent = (args.content !== null && args.content !== undefined && typeof args.content === 'object')
+        ? JSON.stringify(args.content)
+        : String(args.content || '');
       // react-flow content is JSON — never run it through the Mermaid extractor
       const normalizedContent = artifactType === 'diagram'
-        ? normalizeDiagramPayload(args.content)
-        : args.content;
+        ? normalizeDiagramPayload(rawContent)
+        : rawContent;
       const payload = {
         document: {
           id: args.documentId,
@@ -144,9 +149,12 @@ module.exports = {
 
       const patch = {};
       if (typeof args.title === 'string') patch.title = args.title;
-      if (typeof args.content === 'string') {
+      if (args.content !== undefined && args.content !== null) {
+        const rawUpdateContent = typeof args.content === 'object'
+          ? JSON.stringify(args.content)
+          : String(args.content);
         const artifactType = typeof args.artifactType === 'string' ? args.artifactType : undefined;
-        patch.content = artifactType === 'diagram' ? normalizeDiagramPayload(args.content) : args.content;
+        patch.content = artifactType === 'diagram' ? normalizeDiagramPayload(rawUpdateContent) : rawUpdateContent;
       }
       if (typeof args.language === 'string') patch.language = args.language;
       if (typeof args.explanation === 'string') patch.explanation = args.explanation;

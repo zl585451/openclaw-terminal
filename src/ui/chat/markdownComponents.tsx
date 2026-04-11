@@ -171,7 +171,11 @@ export function createMarkdownComponents(
     }
     const code = String(children);
     const normalizedLanguage = (className?.replace('language-', '') || 'text').toLowerCase();
-    const diagramSpec = normalizedLanguage === 'json' ? parseDiagramSpec(code) : null;
+    // Try to parse as diagram spec for json blocks, OR any code block that contains "diagramType":
+    // (models often output diagram JSON with language 'code' or 'text' instead of 'json')
+    const diagramSpec = (normalizedLanguage === 'json' || /^\s*\{[\s\S]*"diagramType"\s*:/.test(code))
+      ? parseDiagramSpec(code)
+      : null;
     if (isBlock && normalizedLanguage === 'echart') {
       const EchartBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
         const [copied, setCopied] = React.useState(false);

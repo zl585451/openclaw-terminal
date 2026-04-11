@@ -25,7 +25,11 @@ interface EChartPayload {
 // ─── Parse ────────────────────────────────────────────────────────────────────
 
 function parseContent(raw: string): EChartPayload | null {
-  const s = raw.trim().replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+  // Guard: if content arrived as an object (model passed structured JSON instead of string), stringify it
+  const rawStr = (raw !== null && raw !== undefined && typeof raw === 'object')
+    ? JSON.stringify(raw)
+    : String(raw || '');
+  const s = rawStr.trim().replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
   try {
     const parsed = JSON.parse(s);
     if (!parsed || typeof parsed !== 'object') return null;

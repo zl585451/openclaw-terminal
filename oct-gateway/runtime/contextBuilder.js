@@ -225,7 +225,10 @@ class ContextBuilder {
     }
 
     if (artifactType === 'diagram') {
-      return '\n\n[系统] 使用 canvas diagram (Mermaid)。chat 区小图(≤5节点TD)用 JSON，复杂图走 Canvas。';
+      return '\n\n[系统] 流程图/示意图输出规则：'
+        + '简单图（≤6节点，TD方向）直接用 ```json 代码块输出图谱 JSON，格式：{"diagramType":"flowchart","title":"...","direction":"TD","nodes":[{"id":"a","label":"..."},...],"edges":[{"from":"a","to":"b"},...]}。'
+        + '复杂图（>6节点或有分组）调用 canvas(action="create", artifactType="diagram", content=<mermaid DSL>)。'
+        + '禁止直接输出 Mermaid DSL 到正文，禁止使用 ```mermaid 代码块，禁止在正文暴露 JSON。';
     }
 
     const suggestedType = artifactType || 'document';

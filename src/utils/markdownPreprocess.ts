@@ -258,7 +258,7 @@ export function getCachedPreprocessedMarkdown(messageId: number, segmentKey: str
   return processed;
 }
 
-function normalizeCustomEchartBlocks(text: string): string {
+export function normalizeCustomEchartBlocks(text: string): string {
   if (!text) return text;
 
   let result = text;
