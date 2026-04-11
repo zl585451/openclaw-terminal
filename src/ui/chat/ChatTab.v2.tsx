@@ -28,6 +28,7 @@ import { createMarkdownComponents } from './markdownComponents';
 import ChatInputArea from './ChatInput';
 import { ChatMessageList } from './MessageList';
 import ChatTabRightPanel from './ChatTabRightPanel';
+import ImageStudio from '../image/ImageStudio';
 
 /** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
 // const OCT_V2_DISABLE_TYPEWRITER = false; // 已不再需要
@@ -110,6 +111,38 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
+function extractOptimizedImagePrompt(raw: string): string {
+  const withoutThinkMarker = stripThinkModeMarker(String(raw || ''));
+  const extracted = extractAssistantCotAndMain(withoutThinkMarker);
+  let text = (extracted.mainContent || withoutThinkMarker || '')
+    .replace(/\[\/?cot\]/gi, '')
+    .trim();
+
+  const fenced = text.match(/```(?:\w+)?\s*([\s\S]*?)```/);
+  if (fenced?.[1]?.trim()) {
+    text = fenced[1].trim();
+  }
+
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^\[cot\]?$/i.test(line))
+    .filter((line) => !/^(用户|要求|说明|规则)\s*[:：]/.test(line))
+    .filter((line) => !/^生图提示词\s*[:：]/.test(line))
+    .filter((line) => !/^(请帮我|请你|下面是|以下是)/.test(line))
+    .filter((line) => !/^(只输出|不要解释|不要加引号|不要使用\s*markdown)/i.test(line))
+    .filter((line) => !/^\d+[.)、]\s*/.test(line));
+
+  const joined = lines.join(' ').trim();
+  const unquoted = joined
+    .replace(/^["'`]+/, '')
+    .replace(/["'`]+$/, '')
+    .trim();
+
+  return unquoted;
+}
+
 interface ChatTabProps {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -173,6 +206,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [, setLogPath] = useState('');
   const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
+  const [imageStudioOpen, setImageStudioOpen] = useState(false);
 
   const getToolDisplayName = useCallback((tool: string): string => {
     const map: Record<string, string> = {
@@ -203,6 +237,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const imagePromptInjectorRef = useRef<((prompt: string) => void) | null>(null);
+  const pendingImagePromptRef = useRef(false);
+  const lastImagePromptAssistantIdRef = useRef<number | null>(null);
 
   // ── scrollBridgeRef：打破 useMessages↔useScrollManager 的循环依赖 ───────
   // useMessages 通过此 ref 桥接调用 scroll.reconcile / scrollAfterUserSend，
@@ -412,6 +449,30 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     (window as any).electronAPI?.chatHistorySave?.([]);
   }, []);
 
+  const insertImageToChat = useCallback((imageUrl: string, prompt: string) => {
+    setMessages((prev) => ([
+      ...prev,
+      {
+        id: getNextMessageId(),
+        role: 'assistant',
+        content: `✅ 生图完成\n\n![生成图片](${imageUrl})\n\n> ${prompt.slice(0, 120)}${prompt.length > 120 ? '...' : ''}\n\n[查看原图](${imageUrl})`,
+        timestamp: Date.now(),
+      },
+    ]));
+  }, [getNextMessageId, setMessages]);
+
+  useEffect(() => {
+    if (!pendingImagePromptRef.current) return;
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.isStreaming) return;
+    if (lastImagePromptAssistantIdRef.current === lastMsg.id) return;
+
+    lastImagePromptAssistantIdRef.current = lastMsg.id;
+    pendingImagePromptRef.current = false;
+    const cleanedPrompt = extractOptimizedImagePrompt(lastMsg.content);
+    imagePromptInjectorRef.current?.(cleanedPrompt || lastMsg.content.trim());
+  }, [messages]);
+
 
   // scrollManager: handleChatScroll / useLayoutEffects 已迁移到 useScrollManager hook
 
@@ -597,6 +658,20 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           injectInputText={injectInputText}
           onInjectConsumed={() => setInjectInputText(null)}
           onClearHistory={handleClearHistory}
+          extraControls={(
+            <button
+              type="button"
+              className="attach-btn"
+              title="打开生图工作台"
+              onClick={() => setImageStudioOpen((v) => !v)}
+              style={{
+                background: imageStudioOpen ? 'var(--accent-primary)' : undefined,
+                color: imageStudioOpen ? 'var(--bg-base)' : undefined,
+              }}
+            >
+              🎨
+            </button>
+          )}
         />
       </div>
 
@@ -613,6 +688,48 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         localTime={timers.localTime}
         localDate={timers.localDate}
       />
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 'min(46vw, 640px)',
+          minWidth: 420,
+          maxWidth: 640,
+          zIndex: 51,
+          transform: imageStudioOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.18s ease',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--bg-base)',
+          borderLeft: '1px solid var(--border-subtle)',
+          boxShadow: '-24px 0 48px rgba(0, 0, 0, 0.32)',
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: -32,
+            top: 0,
+            bottom: 0,
+            width: 32,
+            background: 'linear-gradient(to left, rgba(0, 0, 0, 0.42), transparent)',
+            pointerEvents: 'none',
+          }}
+        />
+        <ImageStudio
+          onSendToChat={(text) => {
+            pendingImagePromptRef.current = true;
+            msgs.quickSend(text);
+          }}
+          registerPromptInjector={(fn) => {
+            imagePromptInjectorRef.current = fn;
+          }}
+          onInsertImageToChat={insertImageToChat}
+        />
+      </div>
     {/* chat-tab 结束 */}
     </div>
 

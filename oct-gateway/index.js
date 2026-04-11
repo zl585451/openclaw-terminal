@@ -45,6 +45,7 @@ const aiLibrary = require('./tools/ai_library');
 const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
+const { handleImageGenerate } = require('./image_gen');
 const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const log = createLogger('gateway');
@@ -258,6 +259,23 @@ async function handleChatRequest(request, connection) {
 }
 
 async function handleTransportMessage(msg, connection) {
+  if (msg?.type === 'req' && msg?.method === 'image.generate') {
+    const imageConfig = {
+      IMAGE_PROVIDER: config.getEnvOrConfig('IMAGE_PROVIDER') || 'minimax',
+      IMAGE_API_KEY: config.getEnvOrConfig('IMAGE_API_KEY') || '',
+      IMAGE_BASE_URL: config.getEnvOrConfig('IMAGE_BASE_URL') || 'https://api.minimax.chat',
+      IMAGE_MODEL: config.getEnvOrConfig('IMAGE_MODEL') || 'image-01',
+      IMAGE_SIZE: config.getEnvOrConfig('IMAGE_SIZE') || '1024x1024',
+      DASHSCOPE_API_KEY: config.getEnvOrConfig('DASHSCOPE_API_KEY') || '',
+      MINIMAX_API_KEY: config.getEnvOrConfig('MINIMAX_API_KEY') || '',
+      CUSTOM_API_KEY: config.getEnvOrConfig('CUSTOM_API_KEY') || '',
+    };
+    await handleImageGenerate(msg.params || {}, imageConfig, (responseMsg) => {
+      if (!connection?.isOpen?.()) return;
+      connection.send(responseMsg);
+    });
+    return true;
+  }
   await messageRouter.handleRequest(msg, connection);
 }
 

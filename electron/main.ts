@@ -58,6 +58,15 @@ let localVisionDownloadState: LocalVisionDownloadState = {
   lastMessage: '',
 };
 
+function guessImageExtension(url: string): string {
+  const cleanUrl = String(url || '').split('?')[0].toLowerCase();
+  if (cleanUrl.endsWith('.png')) return 'png';
+  if (cleanUrl.endsWith('.webp')) return 'webp';
+  if (cleanUrl.endsWith('.gif')) return 'gif';
+  if (cleanUrl.endsWith('.bmp')) return 'bmp';
+  return 'jpg';
+}
+
 function buildOctChildEnv(extraEnv: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
   const noProxyValue = [env.NO_PROXY, env.no_proxy, 'localhost', '127.0.0.1', '::1']
@@ -1033,6 +1042,11 @@ function sendMessage(msg: any) {
   mainWindow.webContents.send('openclaw-message', msg);
 }
 
+function sendImageResult(payload: any) {
+  if (appQuitting || !mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send('image-result', payload);
+}
+
 function floatFlash() {
   if (floatWindow && !floatWindow.isDestroyed()) {
     floatWindow.webContents.send('float-flash');
@@ -1266,7 +1280,9 @@ function handleMessage(msg: any) {
       
     case 'res':
       console.log('[OCT] Response: ok=', msg.ok, 'payload=', msg.payload ? JSON.stringify(msg.payload).slice(0, 200) : null);
-      if (msg.ok && (msg.payload?.type === 'hello-ok' || msg.method === 'connect')) {
+      if (msg.method === 'image.generate') {
+        sendImageResult(msg.payload || {});
+      } else if (msg.ok && (msg.payload?.type === 'hello-ok' || msg.method === 'connect')) {
         const model = msg.payload?.model || msg.payload?.agent?.model || undefined;
         console.log('[OCT] Connection successful!');
         sendConnLog(`认证成功，已连接 (model: ${model || '—'})`);
@@ -2716,6 +2732,11 @@ ipcMain.handle('get-api-keys', async () => {
     keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);
     keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
     keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
+    keys.IMAGE_PROVIDER = pick('IMAGE_PROVIDER', cfg.IMAGE_PROVIDER, 'minimax');
+    keys.IMAGE_API_KEY = pick('IMAGE_API_KEY', cfg.IMAGE_API_KEY);
+    keys.IMAGE_BASE_URL = pick('IMAGE_BASE_URL', cfg.IMAGE_BASE_URL);
+    keys.IMAGE_MODEL = pick('IMAGE_MODEL', cfg.IMAGE_MODEL);
+    keys.IMAGE_SIZE = pick('IMAGE_SIZE', cfg.IMAGE_SIZE, '1024x1024');
     keys.TTS_MINIMAX_VOICE_ID = pick('TTS_MINIMAX_VOICE_ID', cfg.TTS_MINIMAX_VOICE_ID, DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID);
     keys.CUSTOM_API_KEY = pick('CUSTOM_API_KEY', cfg.CUSTOM_API_KEY);
     keys.DASHSCOPE_BASE_URL = pick('DASHSCOPE_BASE_URL', cfg.DASHSCOPE_BASE_URL);
@@ -2730,6 +2751,11 @@ ipcMain.handle('get-api-keys', async () => {
         DASHSCOPE_API_KEY: keys.DASHSCOPE_API_KEY || '', 
         DEEPSEEK_API_KEY: keys.DEEPSEEK_API_KEY || '',
         MINIMAX_API_KEY: keys.MINIMAX_API_KEY || '',
+        IMAGE_PROVIDER: keys.IMAGE_PROVIDER || 'minimax',
+        IMAGE_API_KEY: keys.IMAGE_API_KEY || '',
+        IMAGE_BASE_URL: keys.IMAGE_BASE_URL || '',
+        IMAGE_MODEL: keys.IMAGE_MODEL || '',
+        IMAGE_SIZE: keys.IMAGE_SIZE || '1024x1024',
         TTS_MINIMAX_VOICE_ID: keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
         CUSTOM_API_KEY: keys.CUSTOM_API_KEY || '',
         OPENCLAW_WS_URL: keys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
@@ -2754,6 +2780,11 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     DASHSCOPE_API_KEY?: string;
     DEEPSEEK_API_KEY?: string;
     MINIMAX_API_KEY?: string;
+    IMAGE_PROVIDER?: string;
+    IMAGE_API_KEY?: string;
+    IMAGE_BASE_URL?: string;
+    IMAGE_MODEL?: string;
+    IMAGE_SIZE?: string;
     TTS_MINIMAX_VOICE_ID?: string;
     CUSTOM_API_KEY?: string;
     OPENCLAW_WS_URL?: string;
@@ -2782,6 +2813,11 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.DASHSCOPE_API_KEY !== undefined) cfg.DASHSCOPE_API_KEY = keys.DASHSCOPE_API_KEY || '';
     if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
     if (keys.MINIMAX_API_KEY !== undefined) cfg.MINIMAX_API_KEY = keys.MINIMAX_API_KEY || '';
+    if (keys.IMAGE_PROVIDER !== undefined) cfg.IMAGE_PROVIDER = keys.IMAGE_PROVIDER || 'minimax';
+    if (keys.IMAGE_API_KEY !== undefined) cfg.IMAGE_API_KEY = keys.IMAGE_API_KEY || '';
+    if (keys.IMAGE_BASE_URL !== undefined) cfg.IMAGE_BASE_URL = keys.IMAGE_BASE_URL || '';
+    if (keys.IMAGE_MODEL !== undefined) cfg.IMAGE_MODEL = keys.IMAGE_MODEL || '';
+    if (keys.IMAGE_SIZE !== undefined) cfg.IMAGE_SIZE = keys.IMAGE_SIZE || '1024x1024';
     if (keys.TTS_MINIMAX_VOICE_ID !== undefined) cfg.TTS_MINIMAX_VOICE_ID = keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID;
     if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
     if (keys.OCT_PROVIDER !== undefined) cfg.OCT_PROVIDER = keys.OCT_PROVIDER || '';
@@ -2827,6 +2863,9 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       || keys.CUSTOM_MODEL !== undefined
       || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
       || keys.MINIMAX_BASE_URL !== undefined
+      || keys.IMAGE_PROVIDER !== undefined || keys.IMAGE_API_KEY !== undefined
+      || keys.IMAGE_BASE_URL !== undefined || keys.IMAGE_MODEL !== undefined
+      || keys.IMAGE_SIZE !== undefined
       || keys.CUSTOM_BASE_URL !== undefined
       || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
       || keys.MINIMAX_API_KEY !== undefined
@@ -3180,6 +3219,94 @@ ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDa
   }
 
   return sendChatMessage(content, imageDataUrl, files, pacingMs, canvasContext);
+});
+
+ipcMain.handle('image-generate', async (_event, payload: {
+  requestId: string;
+  prompt: string;
+  negativePrompt?: string;
+  referenceImageUrl?: string;
+  aspectRatio?: string;
+  width?: number;
+  height?: number;
+  seed?: number | string;
+  promptOptimizer?: boolean;
+  aigcWatermark?: boolean;
+  stylePreset?: string;
+  quality?: string;
+}) => {
+  if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
+    return { success: false, error: 'Gateway 未连接，请先启动 Gateway' };
+  }
+
+  const requestId = payload?.requestId || `img_${Date.now()}`;
+  const msg = {
+    type: 'req',
+    id: requestId,
+    method: 'image.generate',
+    params: {
+      requestId,
+      prompt: String(payload?.prompt || ''),
+      negativePrompt: String(payload?.negativePrompt || ''),
+      referenceImageUrl: String(payload?.referenceImageUrl || ''),
+      aspectRatio: String(payload?.aspectRatio || ''),
+      width: payload?.width,
+      height: payload?.height,
+      seed: payload?.seed,
+      promptOptimizer: payload?.promptOptimizer === true,
+      aigcWatermark: payload?.aigcWatermark === true,
+      stylePreset: String(payload?.stylePreset || ''),
+      quality: String(payload?.quality || ''),
+    },
+  };
+
+  try {
+    openclawWs.send(JSON.stringify(msg));
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || '发送失败' };
+  }
+});
+
+ipcMain.handle('open-external-url', async (_event, url: string) => {
+  const target = String(url || '').trim();
+  if (!target) return { success: false, error: 'URL 不能为空' };
+  await shell.openExternal(target);
+  return { success: true };
+});
+
+ipcMain.handle('download-image', async (_event, payload: { url: string; suggestedName?: string }) => {
+  const target = String(payload?.url || '').trim();
+  if (!target) return { success: false, error: '图片 URL 不能为空' };
+
+  try {
+    const ext = guessImageExtension(target);
+    const suggestedName = String(payload?.suggestedName || '').trim() || `oct-image-${Date.now()}.${ext}`;
+    const saveOptions = {
+      defaultPath: suggestedName,
+      filters: [
+        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    };
+    const saveResult = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, saveOptions)
+      : await dialog.showSaveDialog(saveOptions);
+
+    if (saveResult.canceled || !saveResult.filePath) {
+      return { success: false, error: '已取消下载' };
+    }
+
+    const res = await fetch(target, { signal: AbortSignal.timeout(60000) });
+    if (!res.ok) {
+      return { success: false, error: `下载失败：HTTP ${res.status}` };
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    fs.writeFileSync(saveResult.filePath, Buffer.from(arrayBuffer));
+    return { success: true, path: saveResult.filePath };
+  } catch (err: any) {
+    return { success: false, error: err?.message || '下载图片失败' };
+  }
 });
 
 ipcMain.handle('openclaw-status', () => {

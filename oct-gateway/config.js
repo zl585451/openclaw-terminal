@@ -585,6 +585,7 @@ try {
 
 config.MODEL_REGISTRY = MODEL_REGISTRY;
 config.getModelCaps = getModelCaps;
+config.getEnvOrConfig = getEnvOrConfig;
 
 // 向外暴露原始配置对象和路径（供 mcp/manager.js 使用）
 config.__fileConfig = _fileConfig;

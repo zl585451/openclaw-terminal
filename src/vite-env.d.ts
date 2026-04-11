@@ -12,6 +12,23 @@ interface ElectronAPI {
   getEnv: (key: string) => Promise<string>;
   chatHistoryLoad: () => Promise<Array<{ role: string; content: string; timestamp: string }>>;
   chatHistorySave: (items: Array<{ role: string; content: string; timestamp: string; isSystemReply?: boolean }>) => Promise<void>;
+  imageGenerate?: (payload: {
+    requestId: string;
+    prompt: string;
+    negativePrompt?: string;
+    referenceImageUrl?: string;
+    aspectRatio?: string;
+    width?: number;
+    height?: number;
+    seed?: number | string;
+    promptOptimizer?: boolean;
+    aigcWatermark?: boolean;
+    stylePreset?: string;
+    quality?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  openExternalUrl?: (url: string) => Promise<{ success: boolean; error?: string }>;
+  downloadImage?: (payload: { url: string; suggestedName?: string }) => Promise<{ success: boolean; error?: string; path?: string }>;
+  onImageResult?: (callback: (payload: any) => void) => (() => void);
   enterFloatingMode?: () => void;
   invokeGatewayTool?: (toolName: string, args: any) => Promise<any>;
   getPersonaSettings?: () => Promise<{ success: boolean; data?: { OCT_AI_NAME: string; OCT_USER_NAME: string; OCT_PERSONA_STYLE: string }; error?: string }>;

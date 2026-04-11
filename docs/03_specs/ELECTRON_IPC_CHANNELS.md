@@ -1,6 +1,6 @@
 # Electron IPC 通道清单
 
-> **最后更新时间**：2026-03-24  
+> **最后更新时间**：2026-04-11  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：修改/调试时快速查找前端与主进程的通信通道
 
@@ -48,6 +48,9 @@
 | `openclaw-connect` | 建立 WebSocket 连接 | - | - |
 | `openclaw-send` | 发送消息到 Gateway | `payload: string \| { content, imageDataUrl?, files? }` | - |
 | `openclaw-status` | 获取连接状态 | - | `{ connected, reconnecting?, error? }` |
+| `image-generate` | 发送独立生图请求到 Gateway | `{ requestId, prompt, negativePrompt?, referenceImageUrl?, aspectRatio?, width?, height?, seed?, promptOptimizer?, aigcWatermark?, stylePreset?, quality? }` | `{ success, error? }` |
+| `open-external-url` | 用系统浏览器打开 URL | `url: string` | `{ success, error? }` |
+| `download-image` | 下载远程图片到本地 | `{ url, suggestedName? }` | `{ success, error?, path? }` |
 
 ---
 
@@ -151,6 +154,7 @@
 | 事件名 | 用途 |
 |--------|------|
 | `openclaw-message` | Gateway 流式回复、事件 |
+| `image-result` | 独立生图结果回推 |
 | `openclaw-log-lines` | 连接日志 |
 | `nocturne-status` | Nocturne 状态更新 |
 

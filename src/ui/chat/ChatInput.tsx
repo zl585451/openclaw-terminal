@@ -26,6 +26,7 @@ export interface ChatInputAreaProps {
   onInjectConsumed?: () => void;
   onClearHistory?: () => void;
   hasPendingPills?: boolean;
+  extraControls?: React.ReactNode;
 }
 
 const ChatInputArea = memo(function ChatInputArea({
@@ -41,6 +42,7 @@ const ChatInputArea = memo(function ChatInputArea({
   onInjectConsumed,
   onClearHistory,
   hasPendingPills,
+  extraControls,
 }: ChatInputAreaProps) {
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
@@ -440,6 +442,7 @@ const ChatInputArea = memo(function ChatInputArea({
           </div>
         ) : null}
         <button type="button" className="attach-btn" title="添加附件（或拖拽文件到此处）" onClick={handlePickFiles}>📎</button>
+        {extraControls}
         <button
           className="send-btn"
           onClick={handleSend}

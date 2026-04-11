@@ -5,6 +5,11 @@ export interface ApiKeysState {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  IMAGE_PROVIDER: string;
+  IMAGE_API_KEY: string;
+  IMAGE_BASE_URL: string;
+  IMAGE_MODEL: string;
+  IMAGE_SIZE: string;
   TTS_MINIMAX_VOICE_ID: string;
   CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
@@ -102,6 +107,11 @@ type GatewayConfigPayload = {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  IMAGE_PROVIDER: string;
+  IMAGE_API_KEY: string;
+  IMAGE_BASE_URL: string;
+  IMAGE_MODEL: string;
+  IMAGE_SIZE: string;
   TTS_MINIMAX_VOICE_ID: string;
   CUSTOM_API_KEY: string;
   OCT_PROVIDER: string;
@@ -163,6 +173,11 @@ function buildGatewayPayload(
     DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY || '',
     DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
     MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY || '',
+    IMAGE_PROVIDER: apiKeys.IMAGE_PROVIDER || 'minimax',
+    IMAGE_API_KEY: apiKeys.IMAGE_API_KEY || '',
+    IMAGE_BASE_URL: apiKeys.IMAGE_BASE_URL || '',
+    IMAGE_MODEL: apiKeys.IMAGE_MODEL || '',
+    IMAGE_SIZE: apiKeys.IMAGE_SIZE || '1024x1024',
     TTS_MINIMAX_VOICE_ID: apiKeys.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse',
     CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
     OCT_PROVIDER: currentProviderId || 'bailian-coding',
@@ -185,6 +200,11 @@ export function useApiKeys() {
     DASHSCOPE_API_KEY: '',
     DEEPSEEK_API_KEY: '',
     MINIMAX_API_KEY: '',
+    IMAGE_PROVIDER: 'minimax',
+    IMAGE_API_KEY: '',
+    IMAGE_BASE_URL: '',
+    IMAGE_MODEL: '',
+    IMAGE_SIZE: '1024x1024',
     TTS_MINIMAX_VOICE_ID: 'male-qn-qingse',
     CUSTOM_API_KEY: '',
     OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',

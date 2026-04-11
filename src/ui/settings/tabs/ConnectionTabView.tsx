@@ -28,6 +28,11 @@ export type SettingsApiKeysState = {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  IMAGE_PROVIDER: string;
+  IMAGE_API_KEY: string;
+  IMAGE_BASE_URL: string;
+  IMAGE_MODEL: string;
+  IMAGE_SIZE: string;
   TTS_MINIMAX_VOICE_ID: string;
   CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
@@ -416,6 +421,84 @@ export function ConnectionTabView({
                 </div>
               </>
             )}
+            <section className="settings-section" style={{ marginTop: 18 }}>
+              <h3>3. 生图配置</h3>
+              <p className="settings-desc">
+                独立于聊天模型的生图 API 配置。留空 API Key 时会优先复用当前聊天服务商的 Key。
+              </p>
+
+              <div className="settings-field">
+                <label>生图服务商</label>
+                <select
+                  value={apiKeys.IMAGE_PROVIDER || 'minimax'}
+                  onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_PROVIDER: e.target.value }))}
+                  className="settings-input settings-input-focusable"
+                >
+                  <option value="minimax">MiniMax image-01（推荐）</option>
+                  <option value="openai">OpenAI / OpenAI 兼容接口</option>
+                </select>
+              </div>
+
+              <div className="settings-field">
+                <label>生图 API Key</label>
+                <div className="settings-input-row">
+                  <input
+                    type={showApiKey.IMAGE_API_KEY ? 'text' : 'password'}
+                    value={apiKeys.IMAGE_API_KEY || ''}
+                    onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_API_KEY: e.target.value }))}
+                    placeholder="留空则复用当前聊天服务商的 Key"
+                    className="settings-input settings-input-focusable"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="settings-eye-btn"
+                    onClick={() => setShowApiKey((s) => ({ ...s, IMAGE_API_KEY: !s.IMAGE_API_KEY }))}
+                  >
+                    {showApiKey.IMAGE_API_KEY ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-field">
+                <label>生图 Base URL</label>
+                <input
+                  type="text"
+                  value={apiKeys.IMAGE_BASE_URL || ''}
+                  onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_BASE_URL: e.target.value }))}
+                  placeholder={apiKeys.IMAGE_PROVIDER === 'openai' ? 'https://api.openai.com' : 'https://api.minimax.chat'}
+                  className="settings-input settings-input-focusable"
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label>生图模型</label>
+                <input
+                  type="text"
+                  value={apiKeys.IMAGE_MODEL || ''}
+                  onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_MODEL: e.target.value }))}
+                  placeholder={apiKeys.IMAGE_PROVIDER === 'openai' ? 'dall-e-3' : 'image-01'}
+                  className="settings-input settings-input-focusable"
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label>图片尺寸</label>
+                <select
+                  value={apiKeys.IMAGE_SIZE || '1024x1024'}
+                  onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_SIZE: e.target.value }))}
+                  className="settings-input settings-input-focusable"
+                >
+                  <option value="1024x1024">1024×1024（方形 1:1）</option>
+                  <option value="1280x720">1280×720（横向 16:9）</option>
+                  <option value="720x1280">720×1280（竖向 9:16）</option>
+                  <option value="1024x768">1024×768（横向 4:3）</option>
+                  <option value="768x1024">768×1024（竖向 3:4）</option>
+                </select>
+              </div>
+            </section>
             <details className="settings-details" style={{ marginTop: 8 }}>
               <summary>高级：Base URL</summary>
               <div className="settings-details-content" style={{ marginTop: 8 }}>

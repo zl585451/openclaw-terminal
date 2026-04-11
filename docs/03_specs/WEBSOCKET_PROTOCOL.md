@@ -1,6 +1,6 @@
 # Gateway WebSocket 消息协议
 
-> **最后更新时间**：2026-03-24  
+> **最后更新时间**：2026-04-11  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：理解前端与 Gateway 的通信格式，调试连接、消息收发问题
 
@@ -21,7 +21,7 @@
 {
   "type": "req",
   "id": "唯一请求 ID",
-  "method": "connect | chat.send",
+  "method": "connect | chat.send | image.generate",
   "params": { ... }
 }
 ```
@@ -62,6 +62,34 @@
 - `message`：必填（可为空字符串，图片时可用 `[文件/图片]`）
 - `attachments`：图片等，Gateway 会转成多模态 content 格式给模型
 
+### image.generate
+
+```json
+{
+  "type": "req",
+  "id": "img_123",
+  "method": "image.generate",
+  "params": {
+    "requestId": "img_123",
+    "prompt": "cinematic mountain lake at sunrise",
+    "negativePrompt": "blurry, watermark",
+    "referenceImageUrl": "https://...",
+    "aspectRatio": "16:9",
+    "seed": 123456,
+    "promptOptimizer": true,
+    "aigcWatermark": false,
+    "stylePreset": "cinematic",
+    "quality": "high"
+  }
+}
+```
+
+- 这是独立旁路能力，不进入 `chat.send` 的会话上下文
+- `referenceImageUrl` 仅在图生图模式下使用
+- `aspectRatio` 是跨供应商主面板里的通用画幅语义
+- `width/height` 作为高级尺寸能力按需传入，不保证所有供应商都支持
+- Gateway 以 `type: "res"` 回传状态和最终图片 URL
+
 ---
 
 ## 三、响应格式（Gateway → 客户端）
@@ -80,6 +108,26 @@
   }
 }
 ```
+
+### 生图响应
+
+```json
+{
+  "type": "res",
+  "method": "image.generate",
+  "ok": true,
+  "payload": {
+    "requestId": "img_123",
+    "status": "done",
+    "imageUrl": "https://...",
+    "imageUrls": ["https://...", "https://..."],
+    "numImages": 2
+  }
+}
+```
+
+- 进行中会回传 `status: "generating"`
+- 失败时 `ok: false`，错误信息放在 `payload.error`
 
 ### 事件推送（流式回复）
 
@@ -148,20 +196,23 @@
 
 ## 四、消息路由（Gateway 侧）
 
-`oct-gateway/index.js` 收到 `chat.send` 后：
+`oct-gateway/index.js` 收到请求后：
 
-1. **以 `/` 开头** → `handleSlashCommand`（/status、/new、/memory 等）
-2. **否则** → `orchestrator.dispatch`（意图分析）→ `ai.js streamChat`
+1. `image.generate` → 独立图片生成处理器，直接访问外部图像模型接口
+2. `chat.send` 且 **以 `/` 开头** → `handleSlashCommand`（/status、/new、/memory 等）
+3. 其他 `chat.send` → `orchestrator.dispatch`（意图分析）→ `ai.js streamChat`
 
-Slash 命令直接回复，不走 AI；普通消息走 AI 流式回复。
+图片生成不走对话上下文；Slash 命令直接回复，不走 AI；普通消息走 AI 流式回复。
 
 ---
 
 ## 五、Electron 转发
 
 - **前端** 不直连 WebSocket，通过 IPC `openclaw-send` 发消息
-- **main.ts** 将消息组装成 `chat.send` 请求，通过 WebSocket 发给 Gateway
-- **main.ts** 收到 Gateway 消息后，通过 `mainWindow.webContents.send('openclaw-message', msg)` 推给前端
+- **main.ts** 将对话消息组装成 `chat.send` 请求，通过 WebSocket 发给 Gateway
+- **main.ts** 将图片请求组装成 `image.generate` 请求，通过 WebSocket 发给 Gateway
+- **main.ts** 收到聊天消息后，通过 `mainWindow.webContents.send('openclaw-message', msg)` 推给前端
+- **main.ts** 收到图片结果后，通过 `mainWindow.webContents.send('image-result', payload)` 推给前端
 
 ---
 

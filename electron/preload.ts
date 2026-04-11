@@ -37,6 +37,11 @@ const electronAPI = {
         DASHSCOPE_API_KEY?: string;
         DEEPSEEK_API_KEY?: string;
         MINIMAX_API_KEY?: string;
+        IMAGE_PROVIDER?: string;
+        IMAGE_API_KEY?: string;
+        IMAGE_BASE_URL?: string;
+        IMAGE_MODEL?: string;
+        IMAGE_SIZE?: string;
         TTS_MINIMAX_VOICE_ID?: string;
         CUSTOM_API_KEY?: string;
         OPENCLAW_WS_URL?: string;
@@ -51,6 +56,27 @@ const electronAPI = {
         BRAVE_SEARCH_API_KEY?: string;
         TAVILY_API_KEY?: string;
       }) => ipcRenderer.invoke('save-api-keys', keys),
+  imageGenerate: (payload: {
+    requestId: string;
+    prompt: string;
+    negativePrompt?: string;
+    referenceImageUrl?: string;
+    aspectRatio?: string;
+    width?: number;
+    height?: number;
+    seed?: number | string;
+    promptOptimizer?: boolean;
+    aigcWatermark?: boolean;
+    stylePreset?: string;
+    quality?: string;
+  }) => ipcRenderer.invoke('image-generate', payload),
+  openExternalUrl: (url: string) => ipcRenderer.invoke('open-external-url', url),
+  downloadImage: (payload: { url: string; suggestedName?: string }) => ipcRenderer.invoke('download-image', payload),
+  onImageResult: (callback: (payload: any) => void) => {
+    const handler = (_event: any, payload: any) => callback(payload);
+    ipcRenderer.on('image-result', handler);
+    return () => ipcRenderer.removeListener('image-result', handler);
+  },
   getPersonaSettings: () => ipcRenderer.invoke('get-persona-settings'),
   savePersonaSettings: (payload: {
     OCT_AI_NAME?: string;
