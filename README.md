@@ -16,7 +16,7 @@ OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你�
 
 ---
 
-## 🆕 v0.2.1 核心能力
+## 🆕 v0.2.2 核心能力
 
 | 功能 | 说明 |
 |------|------|
@@ -34,24 +34,26 @@ OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你�
 
 ## 📦 下载安装
 
-**最新稳定版本**：`v0.2.1`
+**最新稳定版本**：`v0.2.2`
 
 | 平台 | 安装包 | 大小 |
 |------|--------|------|
-| 🪟 Windows | [OCT-Setup-v0.2.1.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-Setup-v0.2.1.exe) | 约 356 MB |
-| 🍎 Mac Intel | [OCT-0.2.1-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-0.2.1-Mac-x64.dmg) | 约 248 MB |
-| 🍎 Mac Apple Silicon | [OCT-0.2.1-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-0.2.1-Mac-arm64.dmg) | 约 243 MB |
-| 🐧 Linux AppImage | [OCT-0.2.1-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-0.2.1-Linux-x86_64.AppImage) | 约 254 MB |
-| 🐧 Linux Debian | [OCT-0.2.1-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.1/OCT-0.2.1-Linux-amd64.deb) | 约 216 MB |
+| 🪟 Windows | [OCT-Setup-v0.2.2.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-Setup-v0.2.2.exe) | 约 356 MB |
+| 🍎 Mac Intel | [OCT-0.2.2-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-0.2.2-Mac-x64.dmg) | 约 248 MB |
+| 🍎 Mac Apple Silicon | [OCT-0.2.2-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-0.2.2-Mac-arm64.dmg) | 约 243 MB |
+| 🐧 Linux AppImage | [OCT-0.2.2-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-0.2.2-Linux-x86_64.AppImage) | 约 254 MB |
+| 🐧 Linux Debian | [OCT-0.2.2-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.2/OCT-0.2.2-Linux-amd64.deb) | 约 216 MB |
 
 > macOS 当前为未签名 DMG。首次打开时如被系统拦截，请右键应用选择“打开”，或在系统设置中手动放行。
 
-### v0.2.1 更新重点
+### v0.2.2 更新重点
 
-- 修复 Canvas / 图表输出链路，补齐主线同步后的渲染能力
-- 优化非视觉模型的图片理解路径，优先使用可用的视觉能力
-- 增强 MiniMax MCP 图片理解日志，便于定位安装、连接和调用问题
-- 本地视觉模型改为可选兜底能力，并补充状态提示与下载入口
+- 新增 `Image Studio` 独立生图工作台，图片生成与聊天主链路正式解耦
+- 支持侧栏直接生成、预览、下载、打开原图，并将生成结果插回聊天记录
+- AMY 提示词优化回填更稳定，兼容部分模型输出的 CoT / 说明文字
+- 生图控制面板统一为跨供应商主语义：画幅、风格倾向、质量、Seed、提示词优化、水印、高级尺寸
+- 经过验证后主动下线图生图，当前聚焦稳定文生图体验
+- Image Studio 新增显式“返回聊天”按钮，并支持 `Esc` 快捷退出
 
 ---
 
