@@ -272,18 +272,34 @@ function normalizeCustomEchartBlocks(text: string): string {
     });
   }
 
-  // [canvas]...[/canvas] → 当 payload 看起来是 echart JSON（含 option 字段）时转成 ```echart```
+  // [canvas]...[/canvas] → 当 payload 看起来是 echart JSON 时转成 ```echart```
   // 兜底：部分模型不走工具调用，直接把 [canvas]...[/canvas] 输出到正文
   if (/\[canvas\]/i.test(result)) {
     result = result.replace(/\[canvas\]\s*([\s\S]*?)\s*\[\/canvas\]/gi, (_match, payload: string) => {
       const normalizedPayload = String(payload || '').trim();
       if (!normalizedPayload) return '';
-      // 判断是否是 echart payload（含 "option" 或 "series" 字段）
-      const looksLikeEchart = /"option"\s*:/.test(normalizedPayload) || /"series"\s*:/.test(normalizedPayload);
+
+      // 尝试解析 JSON，处理完整 canvas 调用结构：
+      // {"action":"create","artifactType":"echart","content":{"title":"...","option":{...}}}
+      // → 提取 content 字段作为实际 echart payload
+      let echartPayload = normalizedPayload;
+      try {
+        const parsed = JSON.parse(normalizedPayload);
+        if (parsed && typeof parsed === 'object') {
+          // 完整 canvas 调用 JSON：提取 content 字段
+          if (parsed.artifactType === 'echart' && parsed.content && typeof parsed.content === 'object') {
+            echartPayload = JSON.stringify(parsed.content);
+          } else if (parsed.content && typeof parsed.content === 'object'
+            && (parsed.content.option || parsed.content.series)) {
+            echartPayload = JSON.stringify(parsed.content);
+          }
+        }
+      } catch { /* 解析失败则原样使用 */ }
+
+      const looksLikeEchart = /"option"\s*:/.test(echartPayload) || /"series"\s*:/.test(echartPayload);
       if (looksLikeEchart) {
-        return `\n\`\`\`echart\n${normalizedPayload}\n\`\`\`\n`;
+        return `\n\`\`\`echart\n${echartPayload}\n\`\`\`\n`;
       }
-      // 否则原样保留（避免误处理其他标签）
       return _match;
     });
   }

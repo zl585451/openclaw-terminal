@@ -30,6 +30,15 @@ function parseContent(raw: string): EChartPayload | null {
     const parsed = JSON.parse(s);
     if (!parsed || typeof parsed !== 'object') return null;
 
+    // Canvas tool call format: { action, artifactType, content: { title?, option: {...} } }
+    // Model may output full canvas JSON instead of proper tool call
+    if (parsed.artifactType === 'echart' && parsed.content && typeof parsed.content === 'object') {
+      const inner = parsed.content as Record<string, unknown>;
+      if (inner.option && typeof inner.option === 'object') {
+        return { title: String(inner.title || parsed.title || ''), option: inner.option as Record<string, unknown> };
+      }
+    }
+
     // Wrapped format: { title?, option: {...} }
     if (parsed.option && typeof parsed.option === 'object' && !Array.isArray(parsed.option)) {
       return { title: String(parsed.title || ''), option: parsed.option as Record<string, unknown> };
@@ -147,16 +156,29 @@ function applyOctTheme(rawOption: Record<string, unknown>): Record<string, unkno
     '#5ea03e', '#a84e40', '#4a7fa8', '#c08030',
   ];
 
+  // Detect non-cartesian chart types that require trigger:'item' (radar, pie, funnel, gauge, etc.)
+  const seriesTypes: string[] = Array.isArray(option.series)
+    ? (option.series as Record<string, unknown>[]).map((s) => String((s as any)?.type || ''))
+    : [String((option.series as any)?.type || '')];
+  const hasNonCartesian = seriesTypes.some((t) =>
+    ['pie', 'radar', 'funnel', 'gauge', 'sankey', 'treemap', 'sunburst'].includes(t)
+  ) || 'radar' in option;
+  const defaultTrigger = hasNonCartesian ? 'item' : 'axis';
+
   // Merge tooltip
   const tooltipBase: Record<string, unknown> = {
-    trigger: 'axis',
+    trigger: defaultTrigger,
     backgroundColor: TOOLTIP_BG,
     borderColor: TOOLTIP_BORDER,
     borderWidth: 1,
     textStyle: { color: TITLE_COLOR, fontSize: 12 },
   };
   const userTooltip = option.tooltip as Record<string, unknown> | undefined;
-  const mergedTooltip = { ...tooltipBase, ...userTooltip };
+  // For non-cartesian charts, strip axisPointer (not applicable and causes silent errors)
+  const userTooltipClean = hasNonCartesian && userTooltip
+    ? { ...userTooltip, trigger: defaultTrigger, axisPointer: undefined }
+    : userTooltip;
+  const mergedTooltip = { ...tooltipBase, ...userTooltipClean };
 
   // Merge legend
   const legendBase: Record<string, unknown> = {
