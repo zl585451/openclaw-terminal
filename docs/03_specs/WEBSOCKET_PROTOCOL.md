@@ -52,11 +52,6 @@
   "params": {
     "sessionKey": "main",
     "message": "用户输入的文本",
-    "canvasContext": {
-      "intent": "continue",
-      "activeDocumentId": "canvas_xxx",
-      "documents": []
-    },
     "attachments": [
       { "type": "image", "mimeType": "image/png", "content": "base64..." }
     ]
@@ -66,7 +61,6 @@
 
 - `message`：必填（可为空字符串，图片时可用 `[文件/图片]`）
 - `attachments`：图片等，Gateway 会转成多模态 content 格式给模型
-- `canvasContext`：可选。当前 Canvas 工作区上下文，供 `canvas` 工具继续更新已有图表/文档
 
 ---
 
@@ -92,7 +86,7 @@
 ```json
 {
   "type": "event",
-  "event": "stream.delta | stream.done | thinking | ...",
+  "event": "stream.delta | stream.done | thinking | canvas | ...",
   "payload": { ... }
 }
 ```
@@ -103,9 +97,52 @@
 | `stream.delta` | 流式文本片段 |
 | `stream.done` | 流结束 |
 | `thinking` | 思考心跳（长任务时每 8 秒） |
-| `tool` | 工具调用与结果卡片 |
-| `canvas` | Canvas 产物事件：`create / update / focus / delete / explain` |
+| `tool_call` | 工具调用（若需展示） |
+| `canvas` | Canvas 工作区事件（创建/更新/聚焦 artifact） |
 | `error` | 错误 |
+
+### Canvas 事件
+
+当 Gateway 或工具链需要更新前端 Canvas 工作区时，发送：
+
+```json
+{
+  "type": "event",
+  "event": "canvas",
+  "action": "create | update | focus | delete | explain",
+  "payload": {
+    "...": "see action-specific payload"
+  }
+}
+```
+
+建议约定：
+
+```json
+{
+  "type": "event",
+  "event": "canvas",
+  "action": "create",
+  "payload": {
+    "document": {
+      "id": "canvas_123",
+      "title": "登录流程",
+      "artifactType": "diagram",
+      "mode": "markdown",
+      "content": "```mermaid\\nflowchart TD\\nA-->B\\n```",
+      "language": "text",
+      "origin": "ai",
+      "version": 1
+    }
+  }
+}
+```
+
+- `create`：新建 artifact，并聚焦到该文档
+- `update`：按 `documentId + patch` 更新已有 artifact
+- `focus`：只切换当前 active artifact
+- `delete`：删除 artifact
+- `explain`：补充 AI 对 artifact 的解释说明
 
 ---
 

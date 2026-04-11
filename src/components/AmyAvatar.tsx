@@ -46,7 +46,8 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
     const CY = H / 2;
     const R = W / 2 - 2;
 
-    let frameId: number;
+    let frameId: number | null = null;
+    let lastFrameTs = 0;
 
     const accentHex = getVar('--accent-primary', '');
     const idleHex = getVar('--text-tertiary', '');
@@ -55,7 +56,12 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
     const idle = hexToRgb(idleHex) ?? { r: 140, g: 140, b: 140 };
     const bg = hexToRgb(bgHex) ?? { r: 43, g: 42, b: 39 };
 
-    const draw = () => {
+    const draw = (ts = 0) => {
+      if (isStreaming && lastFrameTs && ts - lastFrameTs < 33) {
+        frameId = requestAnimationFrame(draw);
+        return;
+      }
+      if (isStreaming) lastFrameTs = ts;
       ctx.clearRect(0, 0, W, H);
 
       const s = stateRef.current;
@@ -127,11 +133,15 @@ const AmyAvatar: React.FC<AmyAvatarProps> = ({ isStreaming = false, size = 36 })
       ctx.fill();
 
       ctx.restore();
-      frameId = requestAnimationFrame(draw);
+      if (isStreaming) {
+        frameId = requestAnimationFrame(draw);
+      }
     };
 
-    frameId = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frameId);
+    draw();
+    return () => {
+      if (frameId != null) cancelAnimationFrame(frameId);
+    };
   }, [isStreaming, size]);
 
   return (

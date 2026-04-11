@@ -4,11 +4,12 @@
   border-left: 3px solid var(--status-info);
   border-radius: 5px;
   overflow: hidden;
-  animation: qc-in 0.2s ease;
+  contain: layout paint;
+  animation: qc-in 0.18s ease-out;
 }
 
 @keyframes qc-in {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -57,7 +58,7 @@
   gap: 10px;
   padding: 10px 12px;
   cursor: pointer;
-  transition: background 0.15s, border-left-color 0.15s;
+  transition: background-color 0.06s linear;
   border-bottom: 1px solid var(--border-subtle);
   position: relative;
   user-select: none;
@@ -70,11 +71,6 @@
 
 .question-card:hover {
   background: var(--bg-hover);
-}
-
-.question-card:hover .question-card-action {
-  opacity: 1;
-  color: var(--status-info);
 }
 
 .question-card.quoted {
@@ -116,10 +112,10 @@
   flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   letter-spacing: 1px;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
+  opacity: 0.72;
+  transition: none;
   align-self: center;
   white-space: nowrap;
 }

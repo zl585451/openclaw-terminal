@@ -2,6 +2,9 @@ const shared = require('./shared');
 
 module.exports = {
   name: 'memory_search',
+  category: 'memory',
+  riskLevel: 'safe',
+  displayName: '搜索记忆',
   definition: {
     type: 'function',
     function: {
@@ -20,14 +23,43 @@ module.exports = {
   },
   execute: async (args) => {
     const { memorySearch, log } = shared;
-    log.debug('memory_search', { query: args.query, domain: args.domain || 'core', limit: args.limit || 10 });
-    const r = await memorySearch.searchMemory(args.query, {
-      domain: args.domain || 'core',
-      limit: args.limit || 10,
+    const query = String(args.query || '').trim();
+    const domain = args.domain || 'core';
+    const limit = Math.min(20, Math.max(1, Number(args.limit) || 10));
+    if (!query) {
+      return {
+        success: false,
+        data: null,
+        error: 'query 不能为空',
+        hint: '请传入记忆关键词，例如 OCT、Claude、记忆系统',
+      };
+    }
+    log.debug('memory_search', { query, domain, limit });
+    const r = await memorySearch.searchMemory(query, {
+      domain,
+      limit,
       include_content: true,
     });
-    if (!r.ok) return { success: false, error: r.error };
-    log.info('memory_search done', { query: args.query, results: (r.data || []).length });
-    return { success: true, results: r.data || [] };
+    if (!r.ok) {
+      return {
+        success: false,
+        data: null,
+        error: r.error,
+        hint: '检查 Nocturne 是否在线，或换一个更具体的关键词',
+        query,
+        domain,
+      };
+    }
+    const results = r.data || [];
+    log.info('memory_search done', { query, results: results.length });
+    return {
+      success: true,
+      data: { query, domain, results },
+      error: null,
+      hint: results.length === 0 ? '未命中记忆，可换关键词，或尝试更具体的人名/项目名/主题词' : null,
+      query,
+      domain,
+      results,
+    };
   },
 };

@@ -15,15 +15,20 @@ module.exports = {
         },
         required: ['title'],
       },
-    },
+  },
   },
   execute: async (args) => {
-    const { loadTasksData, saveTasksData, getOnTaskBoardUpdate, log } = shared;
+    const { loadTasksData, saveTasksData, getOnTaskBoardUpdate, findOpenDuplicateTask, log } = shared;
     const title = (args.title || '').trim();
     if (!title) return { success: false, error: '任务标题不能为空' };
     let pr = (args.priority || '').toUpperCase();
     if (pr !== 'P0' && pr !== 'P1' && pr !== 'P2') pr = 'P2';
     const data = loadTasksData();
+    const duplicate = findOpenDuplicateTask(data.tasks, title);
+    if (duplicate) {
+      log.info('task_add deduped', { existingTaskId: duplicate.id, title });
+      return { success: true, taskId: duplicate.id, message: `任务已存在: ${duplicate.content}`, deduped: true };
+    }
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       content: title,

@@ -134,23 +134,29 @@
 
 /* ── 内容区（展开/折叠动画） ── */
 .cot-body-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
   overflow: hidden;
-  /* cubic-bezier 让收起动作更平滑，视觉上"轻轻落下"而不是"被抽走" */
-  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.3s ease;
+  transition: grid-template-rows 0.24s ease, opacity 0.2s ease, transform 0.2s ease;
+  transform-origin: top;
+  contain: layout paint;
+  will-change: grid-template-rows, opacity, transform;
 }
 
 .cot-body-open {
-  max-height: 300px;   /* 用户手动展开时最大高度 */
+  grid-template-rows: 1fr;
   opacity: 1;
+  transform: translateY(0);
 }
 
 .cot-body-closed {
-  max-height: 0;
+  grid-template-rows: 0fr;
   opacity: 0;
+  transform: translateY(-2px);
 }
 
 .cot-body {
+  min-height: 0;
   padding: 2px 0 8px 0;
   font-size: 12px;            /* 比正文小一号，草稿感 */
   color: var(--text-secondary);
@@ -159,6 +165,8 @@
   overflow-y: auto;
   opacity: 0.82;              /* 思考内容比正文稍暗 */
   font-style: italic;         /* 倾斜：这是内部推理，不是最终结论 */
+  content-visibility: auto;
+  contain-intrinsic-size: 120px;
 }
 
 /* 流式进行中：内容亮一点，更有"活跃感" */
@@ -270,6 +278,70 @@
   .cot-spinner span {
     animation: none;
     opacity: 0.85;
+  }
+}
+
+@media (max-width: 720px) {
+  .cot-block {
+    margin: 4px 0 8px 0;
+  }
+
+  .cot-stream-wrapper {
+    padding-left: 0;
+  }
+
+  .cot-stream-wrapper--header-inline {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cot-content-area {
+    padding-left: 8px;
+  }
+
+  .cot-header {
+    gap: 6px;
+    padding: 4px 0;
+  }
+
+  .cot-icon {
+    font-size: 12px;
+  }
+
+  .cot-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cot-chevron {
+    margin-left: 0;
+  }
+
+  .cot-body {
+    padding: 0 0 6px 0;
+    font-size: 11px;
+    line-height: 1.55;
+    max-height: 132px;
+    opacity: 0.76;
+  }
+
+  .cot-body p {
+    margin: 2px 0;
+  }
+
+  .cot-body ol,
+  .cot-body ul {
+    margin: 3px 0;
+    padding-left: 16px;
+  }
+
+  .cot-body li {
+    margin: 1px 0;
   }
 }
 

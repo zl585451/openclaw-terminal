@@ -4,6 +4,9 @@ import TabBar from './components/TabBar';
 import ChatTab, { ChatMessage } from './ui/chat/ChatTab.v2';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
+import SettingsPanel from './components/SettingsPanel';
+import CanvasHost from './components/canvas/CanvasHost';
+import FirstLaunchSetup from './components/FirstLaunchSetup';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { CanvasProvider } from './contexts/CanvasContext';
 import './styles/App.css';
@@ -16,6 +19,8 @@ const App: React.FC = () => {
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vaultUnlocked, setVaultUnlocked] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [showFirstLaunchSetup, setShowFirstLaunchSetup] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const messageIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -49,6 +54,34 @@ const App: React.FC = () => {
       });
     }
   }, []);
+
+  useEffect(() => {
+    const dismissed = localStorage.getItem('oct-first-launch-setup-dismissed');
+    if (dismissed === '1') return;
+    const getApiKeys = (window as any).electronAPI?.getApiKeys as undefined | (() => Promise<any>);
+    if (!getApiKeys) return;
+    getApiKeys()
+      .then((result: any) => {
+        const data = result?.data || {};
+        const hasAnyKey = Boolean(
+          String(data.DASHSCOPE_API_KEY || '').trim()
+          || String(data.DEEPSEEK_API_KEY || '').trim()
+          || String(data.MINIMAX_API_KEY || '').trim()
+          || String(data.CUSTOM_API_KEY || '').trim()
+        );
+        if (!hasAnyKey) {
+          setShowFirstLaunchSetup(true);
+        }
+      })
+      .catch(() => {
+        setShowFirstLaunchSetup(true);
+      });
+  }, []);
+
+  const dismissFirstLaunchSetup = () => {
+    localStorage.setItem('oct-first-launch-setup-dismissed', '1');
+    setShowFirstLaunchSetup(false);
+  };
 
   useEffect(() => {
     const toSave = messages
@@ -109,6 +142,24 @@ const App: React.FC = () => {
           {activeTab === 'sound' && <SoundTab />}
           {activeTab === 'reaper' && <ReaperTab />}
         </div>
+        <CanvasHost enabled={activeTab === 'chat'} />
+        {showSettings && (
+          <SettingsPanel
+            onClose={() => {
+              setShowSettings(false);
+              dismissFirstLaunchSetup();
+            }}
+          />
+        )}
+        {showFirstLaunchSetup && (
+          <FirstLaunchSetup
+            onDismiss={dismissFirstLaunchSetup}
+            onOpenSettings={() => {
+              setShowSettings(true);
+              setShowFirstLaunchSetup(false);
+            }}
+          />
+        )}
         </div>
       </CanvasProvider>
     </ThemeProvider>

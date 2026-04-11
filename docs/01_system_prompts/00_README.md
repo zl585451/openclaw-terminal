@@ -1,28 +1,29 @@
-# OCT 系统提示词 v2.1.0
+# OCT 系统提示词 v2.3.0
 
-> 这是 OCT Terminal 的专属提示词系统，定义了 AMY 的核心人格、调度规则和前端交互协议。
+> 这是 OCT Terminal 的专属提示词系统，定义了产品默认人格模板、调度规则和前端交互协议。
 
 ---
 
 ## 📁 文件结构
 
 ```
-docs/01_系统提示词/
-├── README.md           ← 本文件（集成指南）
+docs/01_system_prompts/
+├── 00_README.md        ← 本文件（集成指南）
 ├── SOUL.md            ← 核心人格层（稳定）
 ├── AGENTS.md          ← 调度规则层（中频更新）
 ├── USER.md            ← 用户档案层（中频更新）
-└── OCT_PROTOCOL.md    ← 交互协议层（高频迭代）
+├── OCT_PROTOCOL.md    ← 交互协议层（高频迭代）
+└── DIAGRAM_PROTOCOL.md ← 图形输出协议（结构图/图形路由）
 ```
 
 ---
 
 ## 🎯 文件说明
 
-### SOUL.md - 核心人格
+### SOUL.md - 核心人格模板
 
 **内容**：
-- AMY 的身份定义
+- AI 的身份模板
 - 核心价值观和原则
 - 沟通风格和情绪感知
 - emoji 使用规范
@@ -41,16 +42,16 @@ docs/01_系统提示词/
 
 **更新频率**：中（根据实际使用优化）
 
-### USER.md - 用户档案
+### USER.md - 用户档案模板
 
 **内容**：
-- 少爷的基本信息和偏好
+- 用户的基本信息和偏好
 - OCT 界面输出规范摘要
 - 工作习惯和技术栈
 - 重要凭证位置索引
 - 明确表达过的偏好和不喜欢的事
 
-**更新频率**：中（AMY 自动维护）
+**更新频率**：中（AI 自动维护）
 
 ### OCT_PROTOCOL.md - 交互协议
 
@@ -63,6 +64,16 @@ docs/01_系统提示词/
 - 前端组件映射表
 
 **更新频率**：高（产品迭代时同步更新）
+
+### DIAGRAM_PROTOCOL.md - 图形输出协议
+
+**内容**：
+- 结构图任务的默认输出协议
+- 聊天区小图 / Canvas 图 / 文档成果物的分工
+- 用户只提结果需求，系统内部自行选择图形引擎
+- 结构图 JSON 的硬约束与分层规则
+
+**更新频率**：高（图形路由、结构图规则变更时同步更新）
 
 ---
 
@@ -77,7 +88,7 @@ docs/01_系统提示词/
 const promptPath = 'C:\\Users\\zilong_wu\\.openclaw\\workspace\\AGENTS.md';
 
 // 新路径（OCT 内置）
-const promptPath = path.join(__dirname, '../docs/01_系统提示词');
+const promptPath = path.join(__dirname, '../docs/01_system_prompts');
 ```
 
 ### 步骤 2：合并提示词文件
@@ -89,7 +100,7 @@ const fs = require('fs');
 const path = require('path');
 
 function loadSystemPrompt() {
-  const promptDir = path.join(__dirname, '../docs/01_系统提示词');
+  const promptDir = path.join(__dirname, '../docs/01_system_prompts');
   
   const files = [
     'SOUL.md',
@@ -198,9 +209,15 @@ OCT 接下来应该优先做什么？
 
 ### 当前版本
 
-**v2.0.0** (2026-03-13) - 完整重构
+**v2.3.0** (2026-04-08) - 工程师 AI 文档入口规则
 
 **变更**：
+- 代码修改 / bug 排查任务新增 docs 入口层规则
+- 工程师 AI 执行代码前必须先看 `docs/00_ai_entry/README.md`
+- 修改完成后必须同步更新入口文档与 changelog
+- system prompt 改为“产品默认人格 + 用户可配置层”
+- 模板保留 `{{AI_NAME}}`、`{{USER_NAME}}`，运行时替换
+- 发布版默认不再绑定 `AMY / 少爷`
 - 新增 OCT_PROTOCOL.md（独立管理前端交互协议）
 - 移除飞书卡片相关规则
 - 优化中文表达（技术术语 → 自然语言）
@@ -247,6 +264,14 @@ OCT 接下来应该优先做什么？
 - 让复杂信息一目了然
 - 但不炫技，不为炫酷用表格
 - 以用户理解为目的
+
+### 5. 人格配置分层
+
+- **产品默认层**：公共规则、诚实边界、交互协议
+- **用户配置层**：AI 名称、用户称呼、风格预设
+- **记忆层**：用户自己的 Nocturne 身份记忆与长期偏好
+
+从 2026-04-06 起，发布版不应再把私人化昵称直接写死在公共模板中。
 
 ---
 

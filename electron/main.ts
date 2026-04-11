@@ -25,6 +25,7 @@ let reconnectRetryCount = 0;
 /** 应用/主窗口正在关闭，避免 WebSocket 断开回调里向已销毁的窗口 send 导致报错 */
 let appQuitting = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let suppressAutoReconnect = false;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
 let currentSessionKey: string = 'main';
 const SESSION_STATE_FILE = path.join(app.getPath('userData'), 'session-state.json');
@@ -33,6 +34,10 @@ const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
 const DEFAULT_CONFIG = {
   OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
   OPENCLAW_TOKEN: '',
+  OCT_AI_NAME: 'OpenClaw',
+  OCT_USER_NAME: '用户',
+  OCT_PERSONA_STYLE: 'warm',
+  TTS_MINIMAX_VOICE_ID: 'male-qn-qingse',
   /** 随 OCT 启动 AI.library（知识库 HTTP 服务，默认端口 8001，与 Nocturne :8000 错开） */
   OCT_AI_LIBRARY_AUTO_START: false,
   OCT_AI_LIBRARY_PATH: '',
@@ -40,6 +45,21 @@ const DEFAULT_CONFIG = {
   /** SQLite busy_timeout(ms)，缓解 database is locked，默认 10000，可设为 5000~60000 */
   NOCTURNE_BUSY_TIMEOUT: 10000,
 };
+
+function buildOctChildEnv(extraEnv: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
+  const noProxyValue = [env.NO_PROXY, env.no_proxy, 'localhost', '127.0.0.1', '::1']
+    .filter(Boolean)
+    .flatMap((value) => String(value).split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const mergedNoProxy = Array.from(new Set(noProxyValue)).join(',');
+  if (mergedNoProxy) {
+    env.NO_PROXY = mergedNoProxy;
+    env.no_proxy = mergedNoProxy;
+  }
+  return env;
+}
 
 // （已移除授权码机制，公开发布版无需激活）
 
@@ -225,6 +245,263 @@ function loadOpenClawConfig(): void {
   syncAiLibraryPluginConfigFromDisk();
 }
 
+function readAppConfig(): Record<string, any> {
+  ensureConfigFile();
+  if (!fs.existsSync(CONFIG_FILE)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function getMiniMaxEndpoints(config: Record<string, any>) {
+  const configuredBase = String(config.MINIMAX_BASE_URL || process.env.MINIMAX_BASE_URL || '').trim();
+  const httpBase = configuredBase || 'https://api.minimaxi.com/v1';
+  const normalized = httpBase.replace(/\/$/, '');
+  let wsBase = '';
+  try {
+    const url = new URL(normalized);
+    wsBase = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}/ws/v1/t2a_v2`;
+  } catch {
+    wsBase = 'wss://api.minimaxi.com/ws/v1/t2a_v2';
+  }
+  return { httpBase: normalized, wsBase };
+}
+
+function getPromptsDir(): string {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'prompts'),
+    path.join(__dirname, '..', 'docs', '01_system_prompts'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return path.join(__dirname, '..', 'docs', '01_system_prompts');
+}
+
+function getFallbackProviders() {
+  return {
+    'bailian-coding': {
+      id: 'bailian-coding',
+      name: '阿里云百炼 Coding Plan',
+      baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
+      keyPlaceholder: 'sk-sp-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://bailian.console.aliyun.com/',
+      defaultModel: 'qwen3.5-plus',
+      models: [
+        { id: 'qwen3.5-plus', label: 'Qwen 3.5 Plus（推荐）', tools: true, thinking: true },
+        { id: 'qwen3-max-2026-01-23', label: 'Qwen 3 Max（最强推理）', tools: true, thinking: false },
+        { id: 'qwen3-coder-next', label: 'Qwen 3 Coder Next（代码）', tools: true, thinking: false },
+        { id: 'kimi-k2.5', label: 'Kimi K2.5（月之暗面）', tools: true, thinking: false },
+        { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', tools: true, thinking: false },
+      ],
+    },
+    deepseek: {
+      id: 'deepseek',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://platform.deepseek.com/',
+      defaultModel: 'deepseek-chat',
+      models: [
+        { id: 'deepseek-chat', label: 'DeepSeek Chat（通用）', tools: true, thinking: false },
+        { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（推理）', tools: false, thinking: true },
+      ],
+    },
+    minimax: {
+      id: 'minimax',
+      name: 'MiniMax',
+      baseUrl: 'https://api.minimaxi.com/v1',
+      keyPlaceholder: 'sk-cp-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://platform.minimaxi.com/docs/token-plan/intro',
+      defaultModel: 'MiniMax-M2.7',
+      models: [
+        { id: 'MiniMax-M2.7', label: 'MiniMax M2.7（最新，自我迭代）', tools: true, thinking: false },
+        { id: 'MiniMax-M2.5', label: 'MiniMax M2.5（顶尖性能）', tools: true, thinking: false },
+        { id: 'MiniMax-M2.5-highspeed', label: 'MiniMax M2.5 极速版（100tps）', tools: true, thinking: false },
+      ],
+    },
+    siliconflow: {
+      id: 'siliconflow',
+      name: '硅基流动 SiliconFlow',
+      baseUrl: 'https://api.siliconflow.cn/v1',
+      keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://cloud.siliconflow.cn/',
+      defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
+      models: [
+        { id: 'Qwen/Qwen2.5-72B-Instruct', label: 'Qwen 2.5 72B（免费）', tools: true, thinking: false },
+        { id: 'deepseek-ai/DeepSeek-V3', label: 'DeepSeek V3', tools: false, thinking: false },
+        { id: 'deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1（推理）', tools: false, thinking: true },
+      ],
+    },
+    custom: {
+      id: 'custom',
+      name: '自定义 OpenAI 兼容服务',
+      baseUrl: '',
+      keyPlaceholder: 'your-api-key',
+      keyLink: '',
+      defaultModel: '__custom__',
+      models: [
+        { id: '__custom__', label: '✏️ 自定义模型（手动输入）', tools: true, thinking: false, custom: true },
+      ],
+      allowCustomModel: true,
+    },
+  };
+}
+
+function pushUiLog(line: string) {
+  try {
+    mainWindow?.webContents.send('openclaw-log-lines', [line]);
+  } catch {}
+}
+
+function synthesizeMiniMaxViaWebSocket({
+  wsUrl,
+  apiKey,
+  text,
+  voiceId = 'male-qn-qingse',
+}: {
+  wsUrl: string;
+  apiKey: string;
+  text: string;
+  voiceId?: string;
+}): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const traceId = crypto.randomUUID();
+    const ws = new WebSocket(wsUrl, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    const audioChunks: Buffer[] = [];
+    let started = false;
+    let finished = false;
+    let finishSent = false;
+    let settleCalled = false;
+
+    const settle = (fn: () => void) => {
+      if (settleCalled) return;
+      settleCalled = true;
+      try { ws.close(); } catch {}
+      clearTimeout(timeout);
+      fn();
+    };
+
+    const timeout = setTimeout(() => {
+      settle(() => reject(new Error('MiniMax WebSocket TTS timed out')));
+    }, 45000);
+
+    ws.on('open', () => {
+      // 等 connected_success 后再 task_start
+    });
+
+    ws.on('message', (raw) => {
+      try {
+        const data = JSON.parse(String(raw));
+        const type = data?.event || data?.type || '';
+        const logPayload = JSON.stringify({
+          type,
+          status_code: data?.status_code || data?.base_resp?.status_code,
+          status_msg: data?.status_msg || data?.base_resp?.status_msg,
+          hasAudio: Boolean(data?.data?.audio || data?.payload?.audio || data?.audio),
+          isFinal: data?.is_final ?? data?.payload?.is_final ?? null,
+          extraKeys: Object.keys(data || {}),
+        });
+        console.log('[MiniMax TTS][WS]', logPayload);
+
+        if (type === 'task_failed' || type === 'error') {
+          const message =
+            data?.base_resp?.status_msg ||
+            data?.message ||
+            data?.error ||
+            'MiniMax WebSocket TTS error';
+          pushUiLog(`[MiniMax TTS][WS][FAIL] code=${data?.base_resp?.status_code ?? data?.status_code ?? 'unknown'} msg=${String(message)}`);
+          settle(() => reject(new Error(String(message))));
+          return;
+        }
+
+        if (type === 'connected_success') {
+          ws.send(JSON.stringify({
+            event: 'task_start',
+            model: 'speech-2.8-hd',
+            voice_setting: {
+              voice_id: voiceId,
+              speed: 1,
+              vol: 1,
+              pitch: 0,
+              english_normalization: false,
+            },
+            audio_setting: {
+              sample_rate: 32000,
+              bitrate: 128000,
+              format: 'mp3',
+              channel: 1,
+            },
+          }));
+          return;
+        }
+
+        if (type === 'task_started') {
+          started = true;
+          ws.send(JSON.stringify({
+            event: 'task_continue',
+            text,
+          }));
+          return;
+        }
+
+        if (type === 'task_continued' || type === 'audio') {
+          const hex = data?.data?.audio || data?.payload?.audio || data?.audio || '';
+          if (typeof hex === 'string' && hex) {
+            audioChunks.push(Buffer.from(hex, 'hex'));
+          }
+          const isFinal = data?.is_final === true || data?.payload?.is_final === true;
+          if (isFinal) {
+            if (!finishSent) {
+              finishSent = true;
+              ws.send(JSON.stringify({ event: 'task_finish' }));
+            }
+            finished = true;
+          }
+          return;
+        }
+
+        if (type === 'task_finished') {
+          settle(() => {
+            const merged = Buffer.concat(audioChunks);
+            if (merged.length === 0) {
+              reject(new Error('MiniMax WebSocket TTS returned no audio payload'));
+            } else {
+              resolve(merged);
+            }
+          });
+        }
+      } catch (err: any) {
+        settle(() => reject(new Error(err?.message || 'MiniMax WebSocket TTS parse failed')));
+      }
+    });
+
+    ws.on('error', (err) => {
+      pushUiLog(`[MiniMax TTS][WS][ERR] ${err?.message || String(err)}`);
+      settle(() => reject(err));
+    });
+
+    ws.on('close', () => {
+      if (settleCalled) return;
+      settle(() => {
+        const merged = Buffer.concat(audioChunks);
+        if (started && merged.length > 0) {
+          resolve(merged);
+        } else {
+          reject(new Error('MiniMax WebSocket TTS connection closed before audio was returned'));
+        }
+      });
+    });
+  });
+}
+
 // ── AI.library 插件（与 Nocturne :8000 错开，默认 :8001）────────────────
 let aiLibraryProcess: ReturnType<typeof spawn> | null = null;
 let octAiLibraryAutoStart = false;
@@ -312,12 +589,11 @@ async function startAiLibraryBackend(): Promise<boolean> {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     detached: false,
-    env: {
-      ...process.env,
+    env: buildOctChildEnv({
       API_HOST: '0.0.0.0',
       API_PORT: String(octAiLibraryPort),
       PYTHONIOENCODING: 'utf-8',
-    },
+    }),
   });
 
   aiLibraryProcess.stderr?.on('data', (data: Buffer) => {
@@ -533,8 +809,24 @@ function sendConnLog(line: string) {
   mainWindow.webContents.send('openclaw-log-lines', [`[连接] ${line.trim()}`]);
 }
 
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect(delay: number) {
+  clearReconnectTimer();
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectOpenClaw();
+  }, delay);
+}
+
 function connectOpenClaw() {
-  if (openclawWs?.readyState === WebSocket.OPEN) return;
+  clearReconnectTimer();
+  if (openclawWs?.readyState === WebSocket.OPEN || openclawWs?.readyState === WebSocket.CONNECTING) return;
 
   openclawWs = null;
   console.log('[OCT] Connecting to', OPENCLAW_WS_URL, 'retry:', reconnectRetryCount);
@@ -592,11 +884,15 @@ function connectOpenClaw() {
   });
 
   let closeHandled = false;
-  const scheduleReconnect = () => {
+  const scheduleReconnectForSocket = () => {
     if (closeHandled || appQuitting) return;
     closeHandled = true;
     clearHeartbeat();
     openclawWs = null;
+    if (suppressAutoReconnect) {
+      sendConnLog('当前为主动重连流程，跳过自动退避重连');
+      return;
+    }
     if (!mainWindow) return;
     if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
     reconnectRetryCount++;
@@ -604,7 +900,7 @@ function connectOpenClaw() {
       const delay = Math.min(5000 * Math.pow(2, reconnectRetryCount - 1), 60000);
       sendStatus({ connected: false, reconnecting: true });
       sendConnLog(`${delay / 1000} 秒后重连`);
-      setTimeout(connectOpenClaw, delay);
+      scheduleReconnect(delay);
     } else {
       sendStatus({ connected: false, error: '连接失败，请检查Gateway' });
       sendConnLog('已停止自动重连，请检查 Gateway 是否启动或点击「重启」');
@@ -616,7 +912,7 @@ function connectOpenClaw() {
     const reasonStr = (reason?.length ? reason.toString('utf8') : '') || '(无)';
     console.log('[OCT] WebSocket disconnected', code, reasonStr);
     sendConnLog(`WebSocket 已断开 code=${code} reason=${reasonStr}，${reconnectRetryCount <= MAX_RECONNECT_RETRIES ? '将按退避延迟重连' : '已达重试上限'}`);
-    scheduleReconnect();
+    scheduleReconnectForSocket();
   });
 
   ws.on('error', (error) => {
@@ -628,8 +924,17 @@ function connectOpenClaw() {
       sendConnLog('提示: 若持续出现 ECONNRESET，可能是 18789 被其他程序占用，请点「停止」再「启动」或「重启」确保仅运行 OCT Gateway');
     }
     sendStatus({ connected: false, reconnecting: true, error: '连接失败: ' + msg });
-    scheduleReconnect();
+    scheduleReconnectForSocket();
   });
+}
+
+async function waitForPortRelease(port: number, timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const inUse = await isPortInUse(port);
+    if (!inUse) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 function sendStatus(status: { connected: boolean; error?: string; model?: string; reconnecting?: boolean }) {
@@ -695,20 +1000,107 @@ function extractTextFromPayload(payload: any): string {
   return '';
 }
 
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  'qwen3.5-plus': 131072,
+  'qwen3-max': 131072,
+  'qwen3-max-2026-01-23': 131072,
+  'qwen-plus': 131072,
+  'qwen-max': 131072,
+  'qwen-turbo': 1000000,
+  'qwen3-coder-next': 262144,
+  'qwen3-coder-plus': 262144,
+  'kimi-k2.5': 131072,
+  'MiniMax-M2.5': 1048576,
+  'MiniMax-M2.7': 1000000,
+  'MiniMax-M2.7-highspeed': 1000000,
+  'MiniMax-M2.5-standalone': 1000000,
+  'MiniMax-M2.5-highspeed': 1000000,
+  'MiniMax-M2.1': 1000000,
+  'MiniMax-M2.1-highspeed': 1000000,
+  'MiniMax-M2': 1000000,
+  'glm-5': 131072,
+  'glm-4.7': 131072,
+  'deepseek-v3': 65536,
+  'deepseek-r1': 65536,
+  'deepseek-chat': 65536,
+  'deepseek-reasoner': 65536,
+};
+
+function inferContextWindow(model: any): number | null {
+  const modelId = String(model || '').trim();
+  if (!modelId) return null;
+  if (MODEL_CONTEXT_WINDOWS[modelId] != null) return MODEL_CONTEXT_WINDOWS[modelId];
+  const exactKey = Object.keys(MODEL_CONTEXT_WINDOWS).find((key) => modelId.startsWith(key));
+  return exactKey ? MODEL_CONTEXT_WINDOWS[exactKey] : null;
+}
+
 function extractUsage(payload: any): { inputTokens?: number; outputTokens?: number; cost?: number; ctxUsed?: number; ctxMax?: number; session?: string; model?: string } | null {
   if (!payload) return null;
-  const usage = payload.usage ?? payload.token_usage;
-  const u = usage?.input_tokens ?? usage?.inputTokens ?? usage?.prompt_tokens;
-  const o = usage?.output_tokens ?? usage?.outputTokens ?? usage?.completion_tokens;
-  const cost = payload.cost ?? payload.total_cost ?? usage?.cost;
-  const ctxUsed = payload.ctx_used ?? usage?.context_tokens ?? payload.context_length;
-  const ctxMax = ctxUsed !== undefined
-    ? (payload.ctx_max ?? payload.max_context_length ?? null)
-    : null;
+  const usage = payload.usage ?? payload.token_usage ?? payload.metrics ?? payload.metadata?.usage ?? null;
+  const model =
+    payload.model
+    ?? payload.model_name
+    ?? payload.responseModel
+    ?? payload.response_model
+    ?? usage?.model
+    ?? usage?.model_name
+    ?? usage?.response_model;
+  const u =
+    usage?.input_tokens
+    ?? usage?.inputTokens
+    ?? usage?.prompt_tokens
+    ?? usage?.promptTokens
+    ?? usage?.prefill_tokens
+    ?? usage?.prompt_token_count;
+  const o =
+    usage?.output_tokens
+    ?? usage?.outputTokens
+    ?? usage?.completion_tokens
+    ?? usage?.completionTokens
+    ?? usage?.generated_tokens
+    ?? usage?.completion_token_count
+    ?? usage?.candidates_token_count;
+  const total =
+    usage?.total_tokens
+    ?? usage?.totalTokens
+    ?? usage?.token_count
+    ?? payload.total_tokens;
+  const cost = payload.cost ?? payload.total_cost ?? usage?.cost ?? usage?.total_cost;
+  const ctxUsedRaw =
+    payload.ctx_used
+    ?? usage?.context_tokens
+    ?? usage?.contextTokens
+    ?? payload.context_length
+    ?? usage?.context_length
+    ?? usage?.current_context_tokens
+    ?? usage?.input_tokens
+    ?? usage?.inputTokens
+    ?? usage?.prompt_tokens
+    ?? usage?.promptTokens
+    ?? total;
+  const ctxUsed = ctxUsedRaw != null ? Number(ctxUsedRaw) : undefined;
+  const inferredCtxMax = inferContextWindow(model);
+  const ctxMaxRaw =
+    payload.ctx_max
+    ?? payload.max_context_length
+    ?? usage?.max_context_length
+    ?? usage?.maxContextLength
+    ?? usage?.context_window
+    ?? usage?.contextWindow
+    ?? payload.context_window
+    ?? inferredCtxMax;
+  const ctxMax = ctxMaxRaw != null ? Number(ctxMaxRaw) : null;
   const session = payload.session ?? payload.session_id ?? payload.sessionId;
-  const model = payload.model ?? payload.model_name ?? usage?.model ?? usage?.model_name;
   if (u !== undefined || o !== undefined || cost !== undefined || session !== undefined || model !== undefined || ctxUsed !== undefined) {
-    return { inputTokens: u, outputTokens: o, cost, ctxUsed, ctxMax, session, model };
+    return {
+      inputTokens: u != null ? Number(u) : undefined,
+      outputTokens: o != null ? Number(o) : undefined,
+      cost,
+      ctxUsed,
+      ctxMax: ctxMax ?? undefined,
+      session,
+      model,
+    };
   }
   return null;
 }
@@ -721,8 +1113,8 @@ function forwardChatToFrontend(payload: any, eventName?: string, isStreaming = f
     currentSessionKey = usage.session;
     saveSessionState({ ...(lastSessionState || {}), sessionKey: usage.session });
   }
-  // 斜杠命令的系统回复：payload 直接有 text，无 message.content
-  const isSystemReply = !!(payload?.text && typeof payload.text === 'string' && !payload?.message?.content);
+  // 只信任 Gateway 显式传来的 system 标记，避免把普通 AI 文本误判进系统气泡。
+  const isSystemReply = payload?.isSystemReply === true || payload?.type === 'system';
   
   // DEBUG: 当提取文本为空时，打印 payload 摘要帮助定位“正文丢失”
   try {
@@ -860,19 +1252,12 @@ interface UploadedFile {
   base64?: string;
 }
 
-interface CanvasRoundtripContext {
-  intent: 'continue' | 'explain' | 'rewrite';
-  activeDocumentId: string | null;
-  activeDocument: unknown;
-  documents: unknown[];
-}
-
 function sendChatMessage(
   content: string,
   imageDataUrl?: string | null,
   files?: UploadedFile[],
   pacingMs?: number,
-  canvasContext?: CanvasRoundtripContext
+  canvasContext?: any
 ): { success: boolean; error?: string } {
   if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
     return { success: false, error: 'WebSocket not connected' };
@@ -889,7 +1274,7 @@ function sendChatMessage(
 
   // OpenClaw chat.send: message 必须是字符串，图片放入 attachments；sessionKey 一致则 Gateway 在同一会话内回复
   const finalMessage = message.trim() || (imageDataUrl || (files && files.length > 0) ? '[文件/图片]' : '');
-  const params: { sessionKey: string; idempotencyKey: string; message: string; attachments?: any[]; pacingMs?: number; canvasContext?: CanvasRoundtripContext } = {
+  const params: { sessionKey: string; idempotencyKey: string; message: string; attachments?: any[]; pacingMs?: number; canvasContext?: any } = {
     sessionKey: currentSessionKey,
     idempotencyKey,
     message: finalMessage,
@@ -1498,6 +1883,7 @@ function sendGatewayLogLine(line: string) {
 function getOctGatewayEntry(): string | null {
   const candidates = [
     path.join(process.resourcesPath || '', 'oct-gateway', 'index.js'),
+    path.join(process.resourcesPath || '', 'app.asar', 'oct-gateway', 'index.js'),
     path.join(__dirname, '..', 'oct-gateway', 'index.js'),
   ];
   for (const p of candidates) {
@@ -1521,18 +1907,20 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
     return { success: false, error: 'OCT Gateway 未找到' };
   }
 
-  const promptsDir = path.join(__dirname, '..', 'docs', '01_system_prompts');
+  const promptsDir = getPromptsDir();
   const tasksPath = path.join(app.getPath('userData'), 'tasks.json');
   const vaultPath = path.join(app.getPath('userData'), 'vault.enc');
+  const runtimeCommand = app.isPackaged ? process.execPath : 'node';
+  const runtimeArgs = [entry];
 
   try {
-    octGatewayProcess = spawn('node', [entry], {
+    octGatewayProcess = spawn(runtimeCommand, runtimeArgs, {
       cwd: path.dirname(entry),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
-      env: {
-        ...process.env,
+      env: buildOctChildEnv({
+        ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
         OCT_GATEWAY_PORT: String(GATEWAY_PORT),
         OCT_PROMPTS_DIR: promptsDir,
         OCT_CONFIG_FILE: CONFIG_FILE,
@@ -1541,7 +1929,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         ...(resolvedAiLibraryUrlForGateway && !(process.env.AI_LIBRARY_URL || '').trim()
           ? { AI_LIBRARY_URL: resolvedAiLibraryUrlForGateway }
           : {}),
-      },
+      }),
     });
 
     octGatewayProcess.stdout?.on('data', (chunk: Buffer) => {
@@ -1766,11 +2154,20 @@ ipcMain.handle('seed-nocturne-memories', async (): Promise<{ success: boolean; e
   const pythonCmd = getPythonForNocturne().join(' ');
   try {
     const cwd = path.join(base, 'backend');
+    const cfg: Record<string, string> = fs.existsSync(CONFIG_FILE)
+      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
+      : {};
     const out = execSync(`${pythonCmd} -m scripts.seed_oct_memories`, {
       cwd,
       encoding: 'utf8',
       timeout: 30000,
-      env: { ...process.env, PYTHONPATH: cwd, PYTHONIOENCODING: 'utf-8' },
+      env: {
+        ...process.env,
+        PYTHONPATH: cwd,
+        PYTHONIOENCODING: 'utf-8',
+        OCT_AI_NAME: (cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME).toString(),
+        OCT_USER_NAME: (cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME).toString(),
+      },
     });
     return { success: true, output: out };
   } catch (e: any) {
@@ -1852,14 +2249,13 @@ async function startNocturneBackend(): Promise<boolean> {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
-      env: {
-        ...process.env,
+      env: buildOctChildEnv({
         DATABASE_URL: dbUrl,
         CORE_MEMORY_URIS: 'core://agent/identity,core://agent/principles,core://my_user,core://my_user/profile,core://agent/my_user',
         VALID_DOMAINS: 'core,writer,notes,system',
         NOCTURNE_BUSY_TIMEOUT: nocturneBusyTimeout,
         PYTHONIOENCODING: 'utf-8',
-      },
+      }),
     });
   } else {
     // 回退：使用 Python 运行（开发环境）
@@ -1876,13 +2272,12 @@ async function startNocturneBackend(): Promise<boolean> {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
-      env: {
-        ...process.env,
+      env: buildOctChildEnv({
         DATABASE_URL: dbUrl,
         NOCTURNE_BUSY_TIMEOUT: nocturneBusyTimeout,
         PYTHONPATH: backendPath,
         PYTHONIOENCODING: 'utf-8',
-      },
+      }),
     });
   }
 
@@ -2241,8 +2636,13 @@ ipcMain.handle('get-api-keys', async () => {
     keys.OCT_MODEL = pick('OCT_MODEL', cfg.OCT_MODEL);
     keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);
     keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
+    keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
+    keys.TTS_MINIMAX_VOICE_ID = pick('TTS_MINIMAX_VOICE_ID', cfg.TTS_MINIMAX_VOICE_ID, DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID);
+    keys.CUSTOM_API_KEY = pick('CUSTOM_API_KEY', cfg.CUSTOM_API_KEY);
     keys.DASHSCOPE_BASE_URL = pick('DASHSCOPE_BASE_URL', cfg.DASHSCOPE_BASE_URL);
     keys.DEEPSEEK_BASE_URL = pick('DEEPSEEK_BASE_URL', cfg.DEEPSEEK_BASE_URL);
+    keys.MINIMAX_BASE_URL = pick('MINIMAX_BASE_URL', cfg.MINIMAX_BASE_URL);
+    keys.CUSTOM_BASE_URL = pick('CUSTOM_BASE_URL', cfg.CUSTOM_BASE_URL);
     keys.BRAVE_SEARCH_API_KEY = pick('BRAVE_SEARCH_API_KEY', cfg.BRAVE_SEARCH_API_KEY);
     keys.TAVILY_API_KEY = pick('TAVILY_API_KEY', cfg.TAVILY_API_KEY);
     return { 
@@ -2250,12 +2650,17 @@ ipcMain.handle('get-api-keys', async () => {
       data: { 
         DASHSCOPE_API_KEY: keys.DASHSCOPE_API_KEY || '', 
         DEEPSEEK_API_KEY: keys.DEEPSEEK_API_KEY || '',
+        MINIMAX_API_KEY: keys.MINIMAX_API_KEY || '',
+        TTS_MINIMAX_VOICE_ID: keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
+        CUSTOM_API_KEY: keys.CUSTOM_API_KEY || '',
         OPENCLAW_WS_URL: keys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
         OPENCLAW_TOKEN: keys.OPENCLAW_TOKEN || '',
         OCT_PROVIDER: keys.OCT_PROVIDER || '',
         OCT_MODEL: keys.OCT_MODEL || '',
         DASHSCOPE_BASE_URL: keys.DASHSCOPE_BASE_URL || '',
         DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
+        MINIMAX_BASE_URL: keys.MINIMAX_BASE_URL || '',
+        CUSTOM_BASE_URL: keys.CUSTOM_BASE_URL || '',
         BRAVE_SEARCH_API_KEY: keys.BRAVE_SEARCH_API_KEY || '',
         TAVILY_API_KEY: keys.TAVILY_API_KEY || '',
       } 
@@ -2270,6 +2675,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     DASHSCOPE_API_KEY?: string;
     DEEPSEEK_API_KEY?: string;
     MINIMAX_API_KEY?: string;
+    TTS_MINIMAX_VOICE_ID?: string;
     CUSTOM_API_KEY?: string;
     OPENCLAW_WS_URL?: string;
     OPENCLAW_TOKEN?: string;
@@ -2297,6 +2703,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.DASHSCOPE_API_KEY !== undefined) cfg.DASHSCOPE_API_KEY = keys.DASHSCOPE_API_KEY || '';
     if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
     if (keys.MINIMAX_API_KEY !== undefined) cfg.MINIMAX_API_KEY = keys.MINIMAX_API_KEY || '';
+    if (keys.TTS_MINIMAX_VOICE_ID !== undefined) cfg.TTS_MINIMAX_VOICE_ID = keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID;
     if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
     if (keys.OCT_PROVIDER !== undefined) cfg.OCT_PROVIDER = keys.OCT_PROVIDER || '';
     if (keys.OCT_MODEL !== undefined) cfg.OCT_MODEL = keys.OCT_MODEL || '';
@@ -2328,24 +2735,30 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     }
 
     loadOpenClawConfig();
+    suppressAutoReconnect = true;
+    clearReconnectTimer();
     if (openclawWs) {
       openclawWs.close();
       openclawWs = null;
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
     // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
     const aiConfigChanged = keys.OCT_PROVIDER !== undefined || keys.OCT_MODEL !== undefined
       || keys.CUSTOM_MODEL !== undefined
       || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
+      || keys.MINIMAX_BASE_URL !== undefined
       || keys.CUSTOM_BASE_URL !== undefined
       || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
+      || keys.MINIMAX_API_KEY !== undefined
       || keys.CUSTOM_API_KEY !== undefined
       || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
       octGatewayProcess.kill();
       octGatewayProcess = null;
       mainWindow?.webContents.send('openclaw-log-lines', ['[系统] AI 配置已更新，正在重启 Gateway...']);
-      await new Promise(r => setTimeout(r, 1500));
+      await waitForPortRelease(GATEWAY_PORT, 5000);
+      await new Promise(r => setTimeout(r, 500));
     }
     const inUse = await isPortInUse(GATEWAY_PORT);
     if (!inUse) {
@@ -2366,13 +2779,67 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     } else {
       mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 端口 18789 已占用，直接连接']);
     }
+    suppressAutoReconnect = false;
     reconnectRetryCount = 0;
     connectOpenClaw();
     
     return { success: true };
   } catch (e: any) {
+    suppressAutoReconnect = false;
     console.error('[API Keys] Failed to save:', e.message);
     return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('get-persona-settings', async () => {
+  try {
+    ensureConfigFile();
+    const cfg: Record<string, string> = fs.existsSync(CONFIG_FILE)
+      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
+      : {};
+    return {
+      success: true,
+      data: {
+        OCT_AI_NAME: (cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME).toString(),
+        OCT_USER_NAME: (cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME).toString(),
+        OCT_PERSONA_STYLE: (cfg.OCT_PERSONA_STYLE || DEFAULT_CONFIG.OCT_PERSONA_STYLE).toString(),
+      },
+    };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('save-persona-settings', async (_, payload: {
+  OCT_AI_NAME?: string;
+  OCT_USER_NAME?: string;
+  OCT_PERSONA_STYLE?: string;
+}) => {
+  try {
+    ensureConfigFile();
+    let cfg: Record<string, string> = {};
+    if (fs.existsSync(CONFIG_FILE)) {
+      try {
+        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      } catch {}
+    }
+
+    const normalizeName = (value: string | undefined, fallback: string, maxLen: number) => {
+      const trimmed = String(value || '').trim().replace(/\s+/g, ' ');
+      return (trimmed || fallback).slice(0, maxLen);
+    };
+    const normalizeStyle = (value: string | undefined) => {
+      const trimmed = String(value || '').trim();
+      return ['neutral', 'warm', 'companion'].includes(trimmed) ? trimmed : DEFAULT_CONFIG.OCT_PERSONA_STYLE;
+    };
+
+    cfg.OCT_AI_NAME = normalizeName(payload.OCT_AI_NAME, DEFAULT_CONFIG.OCT_AI_NAME, 24);
+    cfg.OCT_USER_NAME = normalizeName(payload.OCT_USER_NAME, DEFAULT_CONFIG.OCT_USER_NAME, 24);
+    cfg.OCT_PERSONA_STYLE = normalizeStyle(payload.OCT_PERSONA_STYLE);
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
   }
 });
 
@@ -2382,36 +2849,53 @@ ipcMain.handle('get-provider-list', async () => {
     const gatewayDir = path.dirname(getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js'));
     const providersPath = path.join(gatewayDir, 'providers.js');
     if (!fs.existsSync(providersPath)) {
-      return { success: false, error: 'providers.js 未找到', data: null };
+      return { success: true, error: '', data: getFallbackProviders() };
     }
     const { PROVIDERS } = require(providersPath);
     return { success: true, data: PROVIDERS };
   } catch (e: any) {
     console.error('[get-provider-list]', e.message);
-    return { success: false, error: e.message, data: null };
+    return { success: true, error: e.message, data: getFallbackProviders() };
   }
 });
 
 // 测试 AI 连接（用当前配置发一个简单请求，可传入 formConfig 覆盖已保存配置）
 ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, string>) => {
   try {
-    let cfg: Record<string, string> = {};
-    if (fs.existsSync(CONFIG_FILE)) {
-      cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-    }
+    let cfg: Record<string, string> = readAppConfig();
     if (formConfig && typeof formConfig === 'object') {
       cfg = { ...cfg, ...formConfig };
     }
     const gatewayDir = path.dirname(getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js'));
     const providersPath = path.join(gatewayDir, 'providers.js');
-    const { PROVIDERS } = fs.existsSync(providersPath) ? require(providersPath) : { PROVIDERS: {} };
-    const providerId = cfg.OCT_PROVIDER || ((cfg.DASHSCOPE_BASE_URL || '').includes('coding.dashscope') ? 'bailian-coding' : 'bailian');
+    const { PROVIDERS } = fs.existsSync(providersPath) ? require(providersPath) : { PROVIDERS: getFallbackProviders() };
+    const providerId =
+      (cfg.OCT_PROVIDER && String(cfg.OCT_PROVIDER).trim())
+      || (
+        (cfg.CUSTOM_BASE_URL || cfg.CUSTOM_API_KEY || cfg.CUSTOM_MODEL)
+          ? 'custom'
+          : ((cfg.DASHSCOPE_BASE_URL || '').includes('coding.dashscope') ? 'bailian-coding' : 'bailian')
+      );
     const provider = (PROVIDERS as Record<string, any>)[providerId] || (PROVIDERS as Record<string, any>)['bailian-coding'];
-    const baseUrl = providerId === 'deepseek' ? (cfg.DEEPSEEK_BASE_URL || provider?.baseUrl || '') : (cfg.DASHSCOPE_BASE_URL || provider?.baseUrl || '');
-    const apiKey = providerId === 'deepseek' ? (cfg.DEEPSEEK_API_KEY || '') : (cfg.DASHSCOPE_API_KEY || '');
+    const baseUrl =
+      providerId === 'deepseek' ? (cfg.DEEPSEEK_BASE_URL || provider?.baseUrl || '')
+      : providerId === 'minimax' ? (cfg.MINIMAX_BASE_URL || provider?.baseUrl || '')
+      : providerId === 'custom' ? (cfg.CUSTOM_BASE_URL || provider?.baseUrl || '')
+      : (cfg.DASHSCOPE_BASE_URL || provider?.baseUrl || '');
+    const apiKey =
+      providerId === 'deepseek' ? (cfg.DEEPSEEK_API_KEY || '')
+      : providerId === 'minimax' ? (cfg.MINIMAX_API_KEY || '')
+      : providerId === 'custom' ? (cfg.CUSTOM_API_KEY || '')
+      : (cfg.DASHSCOPE_API_KEY || '');
     const model = cfg.OCT_MODEL || provider?.defaultModel || 'qwen3.5-plus';
     if (!baseUrl || !apiKey) {
       return { success: false, error: '请先填写 API Key 并选择服务商' };
+    }
+    if (providerId === 'minimax' && !String(apiKey).trim().startsWith('sk-cp-')) {
+      return {
+        success: false,
+        error: 'MiniMax 现在需要 Token Plan 专属 API Key（通常以 sk-cp- 开头），普通按量计费 Key 不能直接用于 M2.7。',
+      };
     }
     const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
@@ -2426,6 +2910,12 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
     });
     if (!res.ok) {
       const errText = await res.text();
+      if (providerId === 'minimax' && (res.status === 401 || res.status === 403)) {
+        return {
+          success: false,
+          error: `MiniMax 鉴权失败（${res.status}）。请确认你填写的是 Token Plan API Key（sk-cp-...），并且套餐当前包含 ${model} 的权限。`,
+        };
+      }
       return { success: false, error: `API 返回 ${res.status}: ${errText.slice(0, 200)}` };
     }
     return { success: true, message: '连接成功' };
@@ -2487,18 +2977,19 @@ ipcMain.handle('openclaw-connect', () => {
   return { success: true };
 });
 
-ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDataUrl?: string | null; files?: UploadedFile[]; pacingMs?: number; canvasContext?: CanvasRoundtripContext }) => {
+ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDataUrl?: string | null; files?: UploadedFile[]; pacingMs?: number; canvasContext?: any }) => {
   let content: string;
   let imageDataUrl: string | null | undefined;
   let files: UploadedFile[] | undefined;
   let pacingMs: number | undefined;
-  let canvasContext: CanvasRoundtripContext | undefined;
+  let canvasContext: any;
 
   if (typeof payload === 'string') {
     content = payload;
     imageDataUrl = null;
     files = undefined;
     pacingMs = undefined;
+    canvasContext = undefined;
   } else if (payload && typeof payload === 'object') {
     const c = payload.content;
     content = typeof c === 'string' ? c : (c ? String(c) : '');
@@ -2527,34 +3018,443 @@ ipcMain.handle('show-notification', (_, { title, body }: { title: string; body: 
   }
 });
 
-ipcMain.handle('tts-speak', async (_, { text }: { text: string }) => {
-  const apiKey = (process.env.DASHSCOPE_API_KEY || '').trim();
-  if (!apiKey) {
-    return { success: false, error: 'DASHSCOPE_API_KEY not configured' };
+type PersistedMusicClip = {
+  id: string;
+  title: string;
+  prompt: string;
+  lyrics: string;
+  instrumental: boolean;
+  model: string;
+  traceId?: string;
+  durationMs?: number;
+  sampleRate?: number;
+  bitrate?: number;
+  sizeBytes?: number;
+  mimeType: string;
+  filename: string;
+  createdAt: number;
+};
+
+const MUSIC_STUDIO_DIR = path.join(app.getPath('userData'), 'music-studio');
+const MUSIC_HISTORY_FILE = path.join(MUSIC_STUDIO_DIR, 'history.json');
+
+function ensureMusicStudioDir(): void {
+  if (!fs.existsSync(MUSIC_STUDIO_DIR)) {
+    fs.mkdirSync(MUSIC_STUDIO_DIR, { recursive: true });
   }
+}
+
+function readMusicHistory(): PersistedMusicClip[] {
+  ensureMusicStudioDir();
+  if (!fs.existsSync(MUSIC_HISTORY_FILE)) return [];
   try {
-    const res = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/audio/speech', {
+    const raw = JSON.parse(fs.readFileSync(MUSIC_HISTORY_FILE, 'utf-8'));
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeMusicHistory(items: PersistedMusicClip[]): void {
+  ensureMusicStudioDir();
+  fs.writeFileSync(MUSIC_HISTORY_FILE, JSON.stringify(items, null, 2), 'utf-8');
+}
+
+function persistMusicClip(entry: PersistedMusicClip, audioBuffer: Buffer): void {
+  ensureMusicStudioDir();
+  const filePath = path.join(MUSIC_STUDIO_DIR, entry.filename);
+  fs.writeFileSync(filePath, audioBuffer);
+
+  const nextHistory = [entry, ...readMusicHistory().filter((item) => item.id !== entry.id)].slice(0, 8);
+  writeMusicHistory(nextHistory);
+
+  const keepFiles = new Set(nextHistory.map((item) => item.filename));
+  for (const existing of fs.readdirSync(MUSIC_STUDIO_DIR)) {
+    if (existing === path.basename(MUSIC_HISTORY_FILE)) continue;
+    if (!keepFiles.has(existing)) {
+      try {
+        fs.unlinkSync(path.join(MUSIC_STUDIO_DIR, existing));
+      } catch {}
+    }
+  }
+}
+
+ipcMain.handle('tts-speak', async (_, payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) => {
+  const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+  const providerPreference = payload?.providerPreference || 'auto';
+  if (!text) {
+    return { success: false, error: 'TTS text is empty' };
+  }
+
+  const cfg = readAppConfig();
+  const dashscopeApiKey = String(cfg.DASHSCOPE_API_KEY || process.env.DASHSCOPE_API_KEY || '').trim();
+  const minimaxApiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
+  const minimaxVoiceId = String(cfg.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse').trim() || 'male-qn-qingse';
+  const dashscopeBaseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  const { wsBase: minimaxWsUrl } = getMiniMaxEndpoints(cfg);
+  const currentProviderId = String(cfg.OCT_PROVIDER || '').trim();
+
+  const providers: Array<'minimax' | 'dashscope'> =
+    providerPreference === 'browser' ? []
+    : providerPreference === 'minimax' ? ['minimax']
+    : providerPreference === 'dashscope' ? ['dashscope']
+    : currentProviderId === 'minimax' ? ['minimax']
+    : currentProviderId === 'bailian' || currentProviderId === 'bailian-coding' ? ['dashscope']
+    : [];
+
+  const errors: string[] = [];
+
+  for (const provider of providers) {
+    try {
+      if (provider === 'minimax') {
+        if (!minimaxApiKey) {
+          errors.push('MiniMax API Key not configured');
+          continue;
+        }
+        pushUiLog(`[MiniMax TTS] start provider=MiniMax model=speech-2.8-hd voice=${minimaxVoiceId} chars=${text.length}`);
+        try {
+          const audioBuffer = await synthesizeMiniMaxViaWebSocket({
+            wsUrl: minimaxWsUrl,
+            apiKey: minimaxApiKey,
+            text,
+            voiceId: minimaxVoiceId,
+          });
+          pushUiLog(`[MiniMax TTS] success provider=MiniMax model=speech-2.8-hd voice=${minimaxVoiceId} chars=${text.length} bytes=${audioBuffer.length}`);
+          return {
+            success: true,
+            provider: 'minimax',
+            audioBase64: audioBuffer.toString('base64'),
+            mimeType: 'audio/mpeg',
+          };
+        } catch (err: any) {
+          pushUiLog(`[MiniMax TTS][ERR] ${err?.message || 'unknown error'}`);
+          errors.push(`MiniMax WebSocket TTS failed: ${err?.message || 'unknown error'}`);
+          if (providerPreference === 'minimax') {
+            break;
+          }
+          continue;
+        }
+      }
+
+      if (!dashscopeApiKey) {
+        errors.push('DashScope API Key not configured');
+        continue;
+      }
+      pushUiLog(`[DashScope TTS] start provider=DashScope voice=longxiaochun chars=${text.length}`);
+      const res = await fetch(`${dashscopeBaseUrl.replace(/\/$/, '')}/audio/speech`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${dashscopeApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'cosyvoice-v1',
+          voice: 'longxiaochun',
+          input: text,
+          response_format: 'mp3',
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        pushUiLog(`[DashScope TTS][ERR] ${res.status} ${errText.slice(0, 160)}`);
+        errors.push(`DashScope TTS API error ${res.status}: ${errText}`);
+        continue;
+      }
+      const buf = await res.arrayBuffer();
+      pushUiLog(`[DashScope TTS] success provider=DashScope voice=longxiaochun chars=${text.length} bytes=${buf.byteLength}`);
+      return {
+        success: true,
+        provider: 'dashscope',
+        audioBase64: Buffer.from(buf).toString('base64'),
+        mimeType: 'audio/mpeg',
+      };
+    } catch (e: any) {
+      errors.push(`${provider} TTS request failed: ${e?.message || 'unknown error'}`);
+    }
+  }
+
+  return { success: false, error: errors.join(' | ') || (providerPreference === 'browser' ? 'Browser TTS handled in renderer' : 'No matching cloud TTS capability for current provider') };
+});
+
+ipcMain.handle('music-history-load', async () => {
+  try {
+    const history = readMusicHistory();
+    const clips = history.flatMap((item) => {
+      const filePath = path.join(MUSIC_STUDIO_DIR, item.filename);
+      if (!fs.existsSync(filePath)) return [];
+      try {
+        const audioBase64 = fs.readFileSync(filePath).toString('base64');
+        return [{
+          ...item,
+          audioBase64,
+        }];
+      } catch {
+        return [];
+      }
+    });
+    return { success: true, clips };
+  } catch (e: any) {
+    return { success: false, error: e?.message || '音乐历史读取失败', clips: [] };
+  }
+});
+
+ipcMain.handle('music-generate', async (_, payload: {
+  title?: string;
+  model?: string;
+  prompt?: string;
+  lyrics?: string;
+  instrumental?: boolean;
+  lyricsOptimizer?: boolean;
+  sampleRate?: number;
+  bitrate?: number;
+  format?: 'mp3' | 'wav';
+}) => {
+  const cfg = readAppConfig();
+  const apiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
+  const baseUrl = String(cfg.MINIMAX_BASE_URL || process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1').trim().replace(/\/$/, '');
+  const model = String(payload?.model || 'music-2.6').trim() || 'music-2.6';
+  const title = String(payload?.title || '').trim();
+  const prompt = String(payload?.prompt || '').trim();
+  const lyrics = String(payload?.lyrics || '').trim();
+  const instrumental = !!payload?.instrumental;
+  const lyricsOptimizer = !!payload?.lyricsOptimizer;
+  const sampleRate = Number(payload?.sampleRate) || 44100;
+  const bitrate = Number(payload?.bitrate) || 256000;
+  const format = payload?.format === 'wav' ? 'wav' : 'mp3';
+
+  if (!apiKey) {
+    return { success: false, error: 'MiniMax API Key 未配置，请先在设置中填写 Token Plan API Key。' };
+  }
+  if (!prompt) {
+    return { success: false, error: '请先填写音乐描述。' };
+  }
+  if (!instrumental && !lyrics && !lyricsOptimizer) {
+    return { success: false, error: '当前是人声歌曲模式，请填写歌词，或开启“自动生成歌词”。' };
+  }
+
+  pushUiLog(`[MiniMax Music] start model=${model} instrumental=${instrumental} lyricsOptimizer=${lyricsOptimizer} promptChars=${prompt.length} lyricsChars=${lyrics.length}`);
+
+  try {
+    const res = await fetch(`${baseUrl}/music_generation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'cosyvoice-v1',
-        voice: 'longxiaochun',
-        input: text,
-        response_format: 'mp3',
+        model,
+        prompt,
+        lyrics,
+        lyrics_optimizer: lyricsOptimizer,
+        is_instrumental: instrumental,
+        output_format: 'hex',
+        audio_setting: {
+          sample_rate: sampleRate,
+          bitrate,
+          format,
+        },
+      }),
+      signal: AbortSignal.timeout(240000),
+    });
+
+    const text = await res.text();
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok) {
+      const errMsg = data?.base_resp?.status_msg || text || `HTTP ${res.status}`;
+      pushUiLog(`[MiniMax Music][ERR] ${res.status} ${String(errMsg).slice(0, 200)}`);
+      return { success: false, error: `MiniMax Music API 返回 ${res.status}: ${String(errMsg).slice(0, 300)}` };
+    }
+
+    const audioHex = String(data?.data?.audio || '').trim();
+    if (!audioHex) {
+      const statusMsg = data?.base_resp?.status_msg || '未返回音频数据';
+      pushUiLog(`[MiniMax Music][ERR] empty audio payload msg=${String(statusMsg).slice(0, 160)}`);
+      return { success: false, error: `MiniMax Music 未返回音频数据：${statusMsg}` };
+    }
+
+    const audioBuffer = Buffer.from(audioHex, 'hex');
+    const musicDuration = Number(data?.extra_info?.music_duration) || 0;
+    const musicSampleRate = Number(data?.extra_info?.music_sample_rate) || sampleRate;
+    const musicBitrate = Number(data?.extra_info?.bitrate) || bitrate;
+    const musicSize = Number(data?.extra_info?.music_size) || audioBuffer.length;
+    const traceId = String(data?.trace_id || '').trim();
+    const clipId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const mimeType = format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+    const filename = `${clipId}.${format === 'wav' ? 'wav' : 'mp3'}`;
+
+    persistMusicClip({
+      id: clipId,
+      title: title || `track_${clipId}`,
+      prompt,
+      lyrics,
+      instrumental,
+      model,
+      traceId,
+      durationMs: musicDuration,
+      sampleRate: musicSampleRate,
+      bitrate: musicBitrate,
+      sizeBytes: musicSize,
+      mimeType,
+      filename,
+      createdAt: Date.now(),
+    }, audioBuffer);
+
+    pushUiLog(`[MiniMax Music] success model=${model} durationMs=${musicDuration} bytes=${audioBuffer.length} trace=${traceId || 'n/a'}`);
+
+    return {
+      success: true,
+      clipId,
+      audioBase64: audioBuffer.toString('base64'),
+      mimeType,
+      model,
+      traceId,
+      durationMs: musicDuration,
+      sampleRate: musicSampleRate,
+      bitrate: musicBitrate,
+      sizeBytes: musicSize,
+    };
+  } catch (e: any) {
+    pushUiLog(`[MiniMax Music][ERR] ${e?.message || String(e)}`);
+    return { success: false, error: e?.message || 'MiniMax Music 请求失败' };
+  }
+});
+
+ipcMain.handle('lyrics-generate', async (_, payload: {
+  prompt?: string;
+  title?: string;
+}) => {
+  const cfg = readAppConfig();
+  const apiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
+  const baseUrl = String(cfg.MINIMAX_BASE_URL || process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1').trim().replace(/\/$/, '');
+  const prompt = String(payload?.prompt || '').trim();
+  const title = String(payload?.title || '').trim();
+
+  if (!apiKey) {
+    return { success: false, error: 'MiniMax API Key 未配置，请先在设置中填写 Token Plan API Key。' };
+  }
+
+  pushUiLog(`[MiniMax Lyrics] start promptChars=${prompt.length} titleChars=${title.length}`);
+
+  try {
+    const res = await fetch(`${baseUrl}/lyrics_generation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        mode: 'write_full_song',
+        prompt,
+        ...(title ? { title } : {}),
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+
+    const text = await res.text();
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok) {
+      const errMsg = data?.base_resp?.status_msg || text || `HTTP ${res.status}`;
+      pushUiLog(`[MiniMax Lyrics][ERR] ${res.status} ${String(errMsg).slice(0, 200)}`);
+      return { success: false, error: `MiniMax Lyrics API 返回 ${res.status}: ${String(errMsg).slice(0, 300)}` };
+    }
+
+    const generatedLyrics = String(data?.lyrics || '').trim();
+    const songTitle = String(data?.song_title || title || '').trim();
+    const styleTags = String(data?.style_tags || '').trim();
+
+    if (!generatedLyrics) {
+      const statusMsg = data?.base_resp?.status_msg || '未返回歌词';
+      pushUiLog(`[MiniMax Lyrics][ERR] empty lyrics msg=${String(statusMsg).slice(0, 160)}`);
+      return { success: false, error: `MiniMax Lyrics 未返回歌词：${statusMsg}` };
+    }
+
+    pushUiLog(`[MiniMax Lyrics] success title=${songTitle || 'n/a'} styleTagsChars=${styleTags.length} lyricsChars=${generatedLyrics.length}`);
+    return {
+      success: true,
+      title: songTitle,
+      styleTags,
+      lyrics: generatedLyrics,
+    };
+  } catch (e: any) {
+    pushUiLog(`[MiniMax Lyrics][ERR] ${e?.message || String(e)}`);
+    return { success: false, error: e?.message || 'MiniMax Lyrics 请求失败' };
+  }
+});
+
+ipcMain.handle('asr-transcribe', async (_, payload: { audioDataUrl: string; language?: string }) => {
+  const audioDataUrl = typeof payload?.audioDataUrl === 'string' ? payload.audioDataUrl.trim() : '';
+  const language = typeof payload?.language === 'string' ? payload.language.trim() : 'zh';
+  if (!audioDataUrl.startsWith('data:audio/')) {
+    return { success: false, error: 'Invalid audio payload' };
+  }
+
+  const cfg = readAppConfig();
+  const apiKey = String(cfg.DASHSCOPE_API_KEY || process.env.DASHSCOPE_API_KEY || '').trim();
+  if (!apiKey) {
+    return { success: false, error: 'DASHSCOPE_API_KEY not configured for ASR' };
+  }
+
+  const configuredBase = String(cfg.DASHSCOPE_BASE_URL || '').trim();
+  const baseUrl = configuredBase.includes('dashscope-intl')
+    ? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+    : 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+
+  try {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'qwen3-asr-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_audio',
+                input_audio: {
+                  data: audioDataUrl,
+                },
+              },
+            ],
+          },
+        ],
+        stream: false,
+        asr_options: {
+          language,
+          enable_itn: false,
+        },
       }),
     });
+
     if (!res.ok) {
       const errText = await res.text();
-      return { success: false, error: `TTS API error ${res.status}: ${errText}` };
+      return { success: false, error: `ASR API error ${res.status}: ${errText}` };
     }
-    const buf = await res.arrayBuffer();
-    const base64 = Buffer.from(buf).toString('base64');
-    return { success: true, audioBase64: base64 };
+
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+    if (!text || typeof text !== 'string') {
+      return { success: false, error: 'ASR returned no transcript text' };
+    }
+
+    return { success: true, text: text.trim() };
   } catch (e: any) {
-    return { success: false, error: e?.message || 'TTS request failed' };
+    return { success: false, error: e?.message || 'ASR request failed' };
   }
 });
 
@@ -3345,6 +4245,35 @@ function saveTasksData(data: TasksData): boolean {
 }
 
 /** 读取所有任务（返回原始 JSON） */
+function normalizeTaskContent(content: string): string {
+  return String(content || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function isLikelyDuplicateTaskContent(a: string, b: string): boolean {
+  const left = normalizeTaskContent(a);
+  const right = normalizeTaskContent(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  const shorter = left.length <= right.length ? left : right;
+  const longer = left.length <= right.length ? right : left;
+  if (shorter.length < 4) return false;
+
+  return longer.includes(shorter) && longer.length - shorter.length <= 16;
+}
+
+function dedupeTaskItems(tasks: TaskItem[]): TaskItem[] {
+  const deduped: TaskItem[] = [];
+  for (const task of tasks || []) {
+    const duplicate = deduped.find(existing => {
+      if (!!existing.done !== !!task.done) return false;
+      return isLikelyDuplicateTaskContent(existing.content, task.content);
+    });
+    if (!duplicate) deduped.push(task);
+  }
+  return deduped;
+}
+
 ipcMain.handle('tasks-read', async () => {
   const filePath = path.join(app.getPath('userData'), 'tasks.json');
   try {
@@ -3354,15 +4283,17 @@ ipcMain.handle('tasks-read', async () => {
     return { tasks: [], parking: [], intention: '', updatedAt: '' };
   }
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  const dedupedTasks = dedupeTaskItems(raw.tasks || []);
   try {
     console.log('[TasksLocal] tasks-read counts:', {
       tasks: Array.isArray(raw?.tasks) ? raw.tasks.length : 0,
+      dedupedTasks: dedupedTasks.length,
       parking: Array.isArray(raw?.parking) ? raw.parking.length : 0,
       updatedAt: raw?.updatedAt || '',
     });
   } catch {}
   return {
-    tasks: raw.tasks || [],
+    tasks: dedupedTasks,
     parking: raw.parking || [],
     intention: raw.intention || '',
     updatedAt: raw.updatedAt || '',
@@ -3373,7 +4304,7 @@ ipcMain.handle('tasks-read', async () => {
 ipcMain.handle('tasks-write', async (_: Electron.IpcMainInvokeEvent, data: { tasks: TaskItem[]; parking: any[]; intention?: string }) => {
   const filePath = path.join(app.getPath('userData'), 'tasks.json');
   const payload = {
-    tasks: data.tasks || [],
+    tasks: dedupeTaskItems(data.tasks || []),
     parking: data.parking || [],
     intention: data.intention || '',
     updatedAt: new Date().toISOString(),
@@ -3393,6 +4324,10 @@ ipcMain.handle('tasks-add', async (_, { content, priority, source }: {
   source: 'amy' | 'user';
 }) => {
   const data = loadTasksData();
+  const duplicate = (data.tasks || []).find(t => !t.done && isLikelyDuplicateTaskContent(t.content, content));
+  if (duplicate) {
+    return { ok: true, taskId: duplicate.id, deduped: true };
+  }
   const newTask: TaskItem = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     content: content.trim(),

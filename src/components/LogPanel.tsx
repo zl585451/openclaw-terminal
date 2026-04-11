@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useSettings } from '../contexts/SettingsContext';
 import '../styles/LogPanel.css';
 
 export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'OK';
 
 // 6种语义分类（面向用户）
-type LogCategory = 'AI' | 'Tool' | 'Memory' | 'System' | 'Warn' | 'Error';
+type LogCategory = 'AI' | 'Tool' | 'Memory' | 'System' | 'TTS' | 'Warn' | 'Error';
 
 const CATEGORY_STYLE: Record<LogCategory, { dot: string; bg: string; text: string; label: string }> = {
   AI:     { dot: '#7c6fcd', bg: '#26215C', text: '#c4b5fd', label: 'AI思考' },
   Tool:   { dot: '#34a87e', bg: '#04342C', text: '#6ee7b7', label: '工具' },
   Memory: { dot: '#4a90d9', bg: '#0c2a4a', text: '#7ec8f5', label: '记忆' },
   System: { dot: '#6b6b66', bg: '#2a2a28', text: '#9a9a94', label: '系统' },
+  TTS:    { dot: '#c9792b', bg: '#3a2210', text: '#f6c38b', label: 'TTS' },
   Warn:   { dot: '#d4900a', bg: '#3a2800', text: '#f5c842', label: '警告' },
   Error:  { dot: '#e05252', bg: '#3a1212', text: '#fca5a5', label: '错误' },
 };
@@ -32,6 +35,7 @@ const ALL_LEVELS: LogLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'OK'];
 function parseLevel(raw: string): LogLevel {
   const upper = raw.toUpperCase();
   if (upper.includes('[ERROR]')) return 'ERROR';
+  if (upper.includes('[ERR]')) return 'ERROR';
   if (upper.includes('[WARN]') || upper.includes('[WARNING]')) return 'WARN';
   if (upper.includes('[DEBUG]')) return 'DEBUG';
   if (upper.includes('[OK]')) return 'OK';
@@ -47,6 +51,7 @@ function categorize(entry: { level: LogLevel; tag: string; raw: string }): LogCa
   if (entry.level === 'ERROR') return 'Error';
   if (entry.level === 'WARN') return 'Warn';
   const tag = entry.tag.toLowerCase();
+  if (/\[(?:minimax|dashscope) tts\]|tts:/i.test(entry.raw)) return 'TTS';
   if (['ai'].includes(tag)) return 'AI';
   if (['tool', 'tools'].includes(tag)) return 'Tool';
   if (['memory', 'memhistory', 'feedback', 'extractmem', 'mem',
@@ -163,6 +168,41 @@ function humanize(entry: LogEntry): { brief: string; detail: string } {
     if (/Mobile HTTP/i.test(raw)) return { brief: '', detail: '' }; // 静默
   }
 
+  // TTS 分类
+  if (entry.category === 'TTS') {
+    if (/\[(MiniMax|DashScope) TTS\] success/i.test(raw)) {
+      const provider = raw.match(/\[(MiniMax|DashScope) TTS\]/i)?.[1] ?? 'TTS';
+      const chars = raw.match(/chars=(\d+)/i)?.[1];
+      const bytes = raw.match(/bytes=(\d+)/i)?.[1];
+      const voice = raw.match(/voice=([^\s]+)/i)?.[1];
+      const detail = [
+        chars ? `本次用量 ${chars} 字符` : '',
+        bytes ? `音频 ${Math.max(1, Math.round(Number(bytes) / 1024))} KB` : '',
+        voice ? `音色 ${voice}` : '',
+      ].filter(Boolean).join(' · ');
+      return { brief: `${provider} 朗读完成`, detail };
+    }
+    if (/\[(MiniMax|DashScope) TTS\]\[WS\]\[FAIL\]/i.test(raw)) {
+      const provider = raw.match(/\[(MiniMax|DashScope) TTS\]/i)?.[1] ?? 'TTS';
+      const code = raw.match(/code=([^\s]+)/i)?.[1];
+      const msgMatch = raw.match(/msg=(.*)$/i);
+      return {
+        brief: `${provider} 朗读失败${code ? ` · code ${code}` : ''}`,
+        detail: (msgMatch?.[1] ?? msg).slice(0, 180),
+      };
+    }
+    if (/\[(MiniMax|DashScope) TTS\]\[(ERR|WS\]\[ERR)\]/i.test(raw) || /^TTS:/i.test(msg)) {
+      const provider = raw.match(/\[(MiniMax|DashScope) TTS\]/i)?.[1] ?? 'TTS';
+      return { brief: `${provider} 朗读异常`, detail: msg.slice(0, 180) };
+    }
+    if (/\[(MiniMax|DashScope) TTS\] start/i.test(raw)) {
+      const provider = raw.match(/\[(MiniMax|DashScope) TTS\]/i)?.[1] ?? 'TTS';
+      const chars = raw.match(/chars=(\d+)/i)?.[1];
+      return { brief: `${provider} 开始朗读`, detail: chars ? `本次文本 ${chars} 字符` : '' };
+    }
+    return { brief: msg.slice(0, 80), detail: '' };
+  }
+
   // Warn 分类
   if (entry.category === 'Warn') {
     if (/allowlist contains unknown/i.test(raw)) return { brief: '工具配置含未知项（不影响使用）', detail: msg };
@@ -263,7 +303,11 @@ function formatMessage(msg: string): string {
   return msg;
 }
 
-type LogFilterType = 'all' | 'error' | 'memory' | 'eval' | 'gateway' | 'tools';
+type LogFilterType = 'all' | 'error' | 'memory' | 'eval' | 'gateway' | 'tools' | 'tts';
+
+function isLowSignalTts(entry: LogEntry): boolean {
+  return entry.category === 'TTS' && /\bstart\b/i.test(entry.raw);
+}
 
 function filterByType(entries: LogEntry[], filter: LogFilterType): LogEntry[] {
   if (filter === 'all') return entries;
@@ -273,11 +317,12 @@ function filterByType(entries: LogEntry[], filter: LogFilterType): LogEntry[] {
     if (filter === 'eval') return ['SelfEval', 'Hypothesis'].includes(e.tag);
     if (filter === 'gateway') return e.category === 'System' || e.category === 'AI';
     if (filter === 'tools') return e.category === 'Tool';
+    if (filter === 'tts') return e.category === 'TTS' && !isLowSignalTts(e);
     return true;
   });
 }
 
-export default function LogPanel(props: {
+function LogPanelComponent(props: {
   title?: string;
   lines: string[];
   bodyRef?: React.RefObject<HTMLDivElement | null>;
@@ -287,6 +332,10 @@ export default function LogPanel(props: {
   nocturneOnline?: boolean;
   modelName?: string;
 }) {
+  const { settings } = useSettings();
+  const assistantName = settings.aiName || 'OpenClaw';
+  const COMPACT_VISIBLE_LINES = 20;
+  const COMPACT_PARSE_LINES = 80;
   const {
     title = 'Gateway 日志',
     lines,
@@ -360,9 +409,21 @@ export default function LogPanel(props: {
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [filterOpen]);
 
+  const sourceLines = useMemo(
+    () => (logExpanded ? lines : lines.slice(-COMPACT_PARSE_LINES)),
+    [lines, logExpanded]
+  );
+
   const parsed = useMemo(
-    () => lines.map((raw, i) => formatLogLine(raw, i)),
-    [lines]
+    () => sourceLines.map((raw, i) => {
+      const entry = formatLogLine(raw, i);
+      return {
+        ...entry,
+        brief: entry.brief.replace(/AMY/g, assistantName),
+        detail: entry.detail.replace(/AMY/g, assistantName),
+      };
+    }),
+    [sourceLines, assistantName]
   );
 
   const filteredByLevel = useMemo(
@@ -375,6 +436,11 @@ export default function LogPanel(props: {
     [filteredByLevel, logFilter]
   );
 
+  const compactVisible = useMemo(
+    () => filtered.slice(-COMPACT_VISIBLE_LINES),
+    [filtered]
+  );
+
   // 收起模式：哪些行应该静默（不显示）
   function shouldHideInCompact(e: LogEntry): boolean {
     if (e.category === 'Memory' && e.brief === '读取记忆') return true;
@@ -384,6 +450,7 @@ export default function LogPanel(props: {
     if (/sourceMimeType.*image/i.test(e.raw)) return true; // 图片压缩日志
     if (/saveHistorySummary called/i.test(e.raw)) return true;
     if (/write history summary.*type/i.test(e.raw)) return true;
+    if (isLowSignalTts(e)) return true;
     return false;
   }
 
@@ -426,8 +493,166 @@ export default function LogPanel(props: {
     { key: 'memory', label: '记忆' },
     { key: 'eval', label: '评估' },
     { key: 'gateway', label: 'Gateway' },
+    { key: 'tts', label: 'TTS' },
     { key: 'tools', label: 'Tools' },
   ];
+
+  const overlayContent = logExpanded ? (
+    <div
+      className="log-panel-overlay"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.85)',
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 12,
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>
+          Gateway 日志（展开模式）
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {/* 过滤 pills */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            {filters.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setLogFilter(f.key)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  border:
+                    logFilter === f.key
+                      ? '1px solid #60a5fa'
+                      : '1px solid rgba(255,255,255,0.3)',
+                  borderRadius: 6,
+                  background: logFilter === f.key ? 'rgba(96,165,250,0.2)' : 'transparent',
+                  color: logFilter === f.key ? '#93c5fd' : '#9ca3af',
+                  cursor: 'pointer',
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {/* 缩放按钮 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              type="button"
+              onClick={() => setLogFontSize((s) => Math.max(9, s - 2))}
+              style={{
+                padding: '4px 8px',
+                fontSize: 12,
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 6,
+                background: 'transparent',
+                color: '#9ca3af',
+                cursor: 'pointer',
+              }}
+            >
+              A-
+            </button>
+            <span style={{ color: '#9ca3af', fontSize: 12, minWidth: 36, textAlign: 'center' }}>
+              {logFontSize}px
+            </span>
+            <button
+              type="button"
+              onClick={() => setLogFontSize((s) => Math.min(24, s + 2))}
+              style={{
+                padding: '4px 8px',
+                fontSize: 12,
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 6,
+                background: 'transparent',
+                color: '#9ca3af',
+                cursor: 'pointer',
+              }}
+            >
+              A+
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLogExpanded(false)}
+            style={{
+              padding: '6px 14px',
+              fontSize: 13,
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: 6,
+              background: 'rgba(255,255,255,0.1)',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            收回 ↙
+          </button>
+        </div>
+      </div>
+
+      {/* 展开模式的日志区域（logFontSize 通过父级 font-size 生效，子元素用 em 继承） */}
+      <div
+        ref={internalBodyRef}
+        className="log-expanded-scroll"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          fontFamily: 'var(--font-mono), monospace',
+          fontSize: logFontSize,
+          lineHeight: 1.6,
+          color: '#e0e0e0',
+          padding: 12,
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 8,
+          background: 'rgba(0,0,0,0.3)',
+        }}
+      >
+        {filtered.length === 0 ? (
+          <div style={{ color: '#888' }}>{emptyText}</div>
+        ) : (
+          filtered.map(renderLogLine)
+        )}
+      </div>
+
+      <div
+        style={{
+          color: '#888',
+          fontSize: 12,
+          marginTop: 8,
+          display: 'flex',
+          gap: 16,
+          alignItems: 'center',
+        }}
+      >
+        <span>{lines.length} 行</span>
+        {nocturneOnline !== undefined && (
+          <span style={{ color: nocturneOnline ? '#86efac' : '#fca5a5' }}>
+            Nocturne: {nocturneOnline ? '✅' : '❌'}
+          </span>
+        )}
+        {modelName && (
+          <span style={{ color: '#93c5fd' }}>{modelName}</span>
+        )}
+        <span style={{ marginLeft: 'auto' }}>按 ESC 收回</span>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -512,7 +737,7 @@ export default function LogPanel(props: {
           {filtered.length === 0 ? (
             <div className="log-empty">{emptyText}</div>
           ) : (
-            filtered.map(renderCompactLine).filter(Boolean)
+            compactVisible.map(renderCompactLine).filter(Boolean)
           )}
         </div>
         <div className="log-panel-statusbar">
@@ -528,163 +753,14 @@ export default function LogPanel(props: {
         </div>
       </div>
 
-      {/* 展开模式 overlay */}
-      {logExpanded && (
-        <div
-          className="log-panel-overlay"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.85)',
-            zIndex: 9999,
-            display: 'flex',
-            flexDirection: 'column',
-            padding: 24,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 12,
-              flexWrap: 'wrap',
-              gap: 12,
-            }}
-          >
-            <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>
-              Gateway 日志（展开模式）
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              {/* 过滤 pills */}
-              <div style={{ display: 'flex', gap: 6 }}>
-                {filters.map((f) => (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setLogFilter(f.key)}
-                    style={{
-                      padding: '4px 10px',
-                      fontSize: 12,
-                      border:
-                        logFilter === f.key
-                          ? '1px solid #60a5fa'
-                          : '1px solid rgba(255,255,255,0.3)',
-                      borderRadius: 6,
-                      background: logFilter === f.key ? 'rgba(96,165,250,0.2)' : 'transparent',
-                      color: logFilter === f.key ? '#93c5fd' : '#9ca3af',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-              {/* 缩放按钮 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <button
-                  type="button"
-                  onClick={() => setLogFontSize((s) => Math.max(9, s - 2))}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: 12,
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: 6,
-                    background: 'transparent',
-                    color: '#9ca3af',
-                    cursor: 'pointer',
-                  }}
-                >
-                  A-
-                </button>
-                <span style={{ color: '#9ca3af', fontSize: 12, minWidth: 36, textAlign: 'center' }}>
-                  {logFontSize}px
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setLogFontSize((s) => Math.min(24, s + 2))}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: 12,
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: 6,
-                    background: 'transparent',
-                    color: '#9ca3af',
-                    cursor: 'pointer',
-                  }}
-                >
-                  A+
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => setLogExpanded(false)}
-                style={{
-                  padding: '6px 14px',
-                  fontSize: 13,
-                  border: '1px solid rgba(255,255,255,0.4)',
-                  borderRadius: 6,
-                  background: 'rgba(255,255,255,0.1)',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                收回 ↙
-              </button>
-            </div>
-          </div>
-
-          {/* 展开模式的日志区域（logFontSize 通过父级 font-size 生效，子元素用 em 继承） */}
-          <div
-            ref={internalBodyRef}
-            className="log-expanded-scroll"
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'auto',
-              fontFamily: 'var(--font-mono), monospace',
-              fontSize: logFontSize,
-              lineHeight: 1.6,
-              color: '#e0e0e0',
-              padding: 12,
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: 8,
-              background: 'rgba(0,0,0,0.3)',
-            }}
-          >
-            {filtered.length === 0 ? (
-              <div style={{ color: '#888' }}>{emptyText}</div>
-            ) : (
-              filtered.map(renderLogLine)
-            )}
-          </div>
-
-          <div
-            style={{
-              color: '#888',
-              fontSize: 12,
-              marginTop: 8,
-              display: 'flex',
-              gap: 16,
-              alignItems: 'center',
-            }}
-          >
-            <span>{lines.length} 行</span>
-            {nocturneOnline !== undefined && (
-              <span style={{ color: nocturneOnline ? '#86efac' : '#fca5a5' }}>
-                Nocturne: {nocturneOnline ? '✅' : '❌'}
-              </span>
-            )}
-            {modelName && (
-              <span style={{ color: '#93c5fd' }}>{modelName}</span>
-            )}
-            <span style={{ marginLeft: 'auto' }}>按 ESC 收回</span>
-          </div>
-        </div>
-      )}
+      {typeof document !== 'undefined' && overlayContent
+        ? createPortal(overlayContent, document.body)
+        : null}
     </>
   );
 }
+
+const LogPanel = React.memo(LogPanelComponent);
+LogPanel.displayName = 'LogPanel';
+
+export default LogPanel;

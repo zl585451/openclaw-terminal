@@ -2,8 +2,8 @@
 
 OCT 独立 AI Gateway，替换 OpenClaw Gateway。
 
-> **最新状态**: Phase 4 已完成 ✅ (2026-03-28)  
-> **版本**: v0.4.0
+> **最新状态**: 分层重构 Phase 1～4 已完成开发侧收口，Phase 5 处于“联调修复 + 低风险清理”阶段 ✅ (2026-04-08)  
+> **版本**: v0.5.0-dev
 
 ## 启动
 
@@ -16,7 +16,7 @@ npm run start
 
 ## 环境变量
 
-在项目根目录的 `.env` 中配置：
+在项目根目录的 `.env.local`（推荐，本地开发）或 `.env` 中配置：
 
 ```
 DASHSCOPE_API_KEY=你的百炼 API Key
@@ -26,7 +26,29 @@ OCT_GATEWAY_PORT=18789
 OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 ```
 
+### 配置分层建议
+
+- **产品默认值**：`oct-gateway/config.json`
+  - 可提交到仓库
+  - 不得包含真实 API Key
+- **本地开发覆盖**：根目录 `.env.local` / `.env`
+  - 推荐把你自己的 API Key 放这里
+  - 不提交到仓库
+- **最终用户设置**：Electron `userData/config.json`
+  - 由设置页写入
+  - 属于安装后的本机配置
+
+可参考安全示例：
+
+- `oct-gateway/config.example.json`
+
 ## 架构概览
+
+- **Transport**：`transport/ws.js`、`transport/http.js`、`transport/protocol.js`
+- **Gateway**：`gateway/router.js`、`gateway/slash.js`
+- **Runtime**：`runtime/chatEngine.js`、`runtime/contextBuilder.js`、`runtime/streamController.js`、`runtime/providerRouter.js`、`runtime/toolLoop.js`
+- **Services**：`services/postProcessor.js`、`services/imageService.js`
+- **入口**：`index.js` 仍保留 legacy fallback 与启动胶水，待 Phase 5 清理
 
 - **连接层**：WebSocket 18789，OCT 自有 token 认证（无 ECDSA 签名）
 - **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由扩展
@@ -34,7 +56,28 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 - **OpenClaw Skills**：`skill_adapter.js` 解析 `skills/` 下的 SKILL.md，注入到系统提示词
 - **后台任务**：`task_queue.js` + `worker.js`，任务持久化到 `tasks_runtime.json`，60 秒超时
 
-## Phase 4 新功能 (v0.4.0)
+## 重构开关
+
+- `OCT_USE_NEW_ROUTER=1`：Slash、`sessions.list`、普通 `chat.send` 优先走 `MessageRouter`
+- `OCT_USE_NEW_CHAT_ENGINE=1`：普通聊天主链切到 `ChatEngine`
+- `OCT_USE_NEW_TRANSPORT=1`：WS/HTTP 生命周期切到 `transport/*`
+
+## 当前实现说明
+
+- 新旧路径目前并存，这是有意保留的联调保护带
+- 连接协议仍保持原样：`req` / `res` / `event` JSON 结构未改
+- `ai.js` 已明显瘦身，但最终的 flag 清理和 legacy 删除仍留在 Phase 5
+
+## 2026-04-08 联调修复摘要
+
+- **系统命令与正文隔离**：`/status`、`/help`、`/think off` 等系统回复不再和普通 assistant 流式正文共用缓冲，避免消息串流/跑进系统气泡。
+- **思考模式展示修复**：`think off` 时前端不再继续渲染 CoT 面板；系统提示与展示行为保持一致。
+- **图片链路增强**：图片 analyzer 云端失败时会更积极尝试本地降级；失败提示更明确，不再表现成“AI 没收到图”。
+- **任务看板修复**：右侧任务面板增加重复任务拦截；鼠标悬停可查看完整任务文本。
+- **右栏用量显示**：`TOK / CTX` 已支持更多 provider 的 usage 字段；当厂商不返回显式上下文占用时，会按模型窗口给出近似 `CTX` 显示。
+- **右栏字体优化**：状态区和任务看板切回 `font-sans`，只保留数字/日志区的等宽字体。
+
+## Phase 4 新功能 (v0.5.0-dev)
 
 ### ✅ 图片分析增强
 - **云端优先**: 阿里云百炼 qwen-vl-max（高精度，识别红框/箭头/标注）
@@ -107,7 +150,14 @@ main.ts 通过 `spawn('node', ['oct-gateway/index.js'])` 启动。
 
 ## 网络稳定性（代理环境）
 
-启用 V2RayN 等全局代理时，DashScope API 会自动直连（NO_PROXY），避免流式回复中断。fetch 支持 90 秒超时与重试，工具调用 30 秒超时隔离。
+OCT 默认会为 `localhost / 127.0.0.1 / ::1` 设置 `NO_PROXY`，保证本地 Gateway、MCP、本地能力服务不会被系统代理错误接管。
+
+对于外部模型 API：
+- 保留用户系统代理配置
+- 不再默认强制全量直连
+- 更适合普通用户和公司网络环境
+
+如果你的网络环境必须通过代理访问外部模型 API，请直接配置系统代理或对应环境变量即可。
 
 ## 下一步行动
 
@@ -120,12 +170,12 @@ npm run build
 # 4. 更新官网下载链接
 ```
 
-### 🚀 Phase 5 规划
-- Gateway 生态扩展（Agent 路由、多模型负载均衡）
-- 定时任务系统（心跳、定期备份）
-- 性能监控与告警
+### 🚀 下一阶段
+- 先做 Transport / Router / Runtime 联调验收
+- 再进入 Phase 5：删除 legacy fallback、收紧 `index.js`、清理 Feature Flag
+- 最后再考虑 Gateway 生态扩展（Agent 路由、多模型负载均衡）
 
 ---
 
 > **维护者**: OpenClaw Team  
-> **最后更新**: 2026-03-28 (Phase 4 完成)
+> **最后更新**: 2026-04-08（分层重构 Phase 1～4 开发侧收口）

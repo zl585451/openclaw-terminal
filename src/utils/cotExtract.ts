@@ -23,95 +23,205 @@ const REDACTED_THINK_CLOSE = '</redacted_thinking>';
 export type CotExtractResult = {
   cotContent: string | null;
   cotDone: boolean;
+  /** 是否已检测到 CoT 起始标记；用于首 token 即显示思维块 */
+  cotStarted: boolean;
   /** 去掉思维链内文后的正文（供 Markdown / 打字机） */
   mainContent: string;
 };
 
-function extractBracket(full: string): CotExtractResult | null {
-  const openIdx = full.indexOf(BRACKET_OPEN);
-  if (openIdx === -1) return null;
-  const before = full.slice(0, openIdx);
-  const afterOpen = full.slice(openIdx + BRACKET_OPEN.length);
-  const closeIdx = afterOpen.indexOf(BRACKET_CLOSE);
-  if (closeIdx !== -1) {
-    return {
-      cotContent: afterOpen.slice(0, closeIdx).trim(),
-      cotDone: true,
-      mainContent: `${before}\n${afterOpen.slice(closeIdx + BRACKET_CLOSE.length)}`.trim(),
-    };
+type TagSpec = {
+  open: string;
+  close: string;
+};
+
+const TAG_SPECS: TagSpec[] = [
+  { open: BRACKET_OPEN, close: BRACKET_CLOSE },
+  { open: THINK_OPEN, close: THINK_CLOSE },
+  { open: REDACTED_THINK_OPEN, close: REDACTED_THINK_CLOSE },
+];
+
+/**
+ * 剥离文本中的工具调用注释，例如：
+ * [To="canvas"] { ...json... }
+ * [To='memory.write'] { ... }
+ */
+export function stripTextToolAnnotations(input: string): string {
+  const text = String(input || '');
+  if (!text) return '';
+
+  const headerRe = /\[To=(?:"[^"]+"|'[^']+')\]\s*\{/g;
+  let out = '';
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = headerRe.exec(text)) !== null) {
+    const start = match.index;
+    const openBracePos = text.indexOf('{', start);
+    if (openBracePos < 0) break;
+
+    out += text.slice(cursor, start);
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let quoteChar = '"';
+    let i = openBracePos;
+    let foundEnd = false;
+
+    for (; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === quoteChar) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quoteChar = ch;
+        continue;
+      }
+      if (ch === '{') {
+        depth += 1;
+        continue;
+      }
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          foundEnd = true;
+          i += 1;
+          break;
+        }
+      }
+    }
+
+    if (!foundEnd) {
+      cursor = start;
+      break;
+    }
+
+    cursor = i;
+    headerRe.lastIndex = i;
   }
-  return {
-    cotContent: afterOpen.trim(),
-    cotDone: false,
-    mainContent: before.trim(),
-  };
+
+  out += text.slice(cursor);
+  return out.replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function extractThinkTags(full: string): CotExtractResult | null {
-  const openIdx = full.indexOf(THINK_OPEN);
-  if (openIdx === -1) return null;
-  const before = full.slice(0, openIdx);
-  const afterOpen = full.slice(openIdx + THINK_OPEN.length);
-  const closeIdx = afterOpen.indexOf(THINK_CLOSE);
-  if (closeIdx !== -1) {
-    return {
-      cotContent: afterOpen.slice(0, closeIdx).trim(),
-      cotDone: true,
-      mainContent: `${before}\n${afterOpen.slice(closeIdx + THINK_CLOSE.length)}`.trim(),
-    };
+function findNextTag(full: string, fromIndex: number): { spec: TagSpec; index: number } | null {
+  let best: { spec: TagSpec; index: number } | null = null;
+  for (const spec of TAG_SPECS) {
+    const idx = full.indexOf(spec.open, fromIndex);
+    if (idx === -1) continue;
+    if (!best || idx < best.index) {
+      best = { spec, index: idx };
+    }
   }
-  return {
-    cotContent: afterOpen.trim(),
-    cotDone: false,
-    mainContent: before.trim(),
-  };
+  return best;
 }
 
-function extractRedactedThinkTags(full: string): CotExtractResult | null {
-  const openIdx = full.indexOf(REDACTED_THINK_OPEN);
-  if (openIdx === -1) return null;
-  const before = full.slice(0, openIdx);
-  const afterOpen = full.slice(openIdx + REDACTED_THINK_OPEN.length);
-  const closeIdx = afterOpen.indexOf(REDACTED_THINK_CLOSE);
-  if (closeIdx !== -1) {
-    return {
-      cotContent: afterOpen.slice(0, closeIdx).trim(),
-      cotDone: true,
-      mainContent: `${before}\n${afterOpen.slice(closeIdx + REDACTED_THINK_CLOSE.length)}`.trim(),
-    };
-  }
-  return {
-    cotContent: afterOpen.trim(),
-    cotDone: false,
-    mainContent: before.trim(),
-  };
+function stripStrayCotTags(text: string): string {
+  return text
+    .split(BRACKET_OPEN).join('')
+    .split(BRACKET_CLOSE).join('')
+    .split(THINK_OPEN).join('')
+    .split(THINK_CLOSE).join('')
+    .split(REDACTED_THINK_OPEN).join('')
+    .split(REDACTED_THINK_CLOSE).join('');
+}
+
+function sanitizeCotContent(text: string): string {
+  if (!text) return text;
+
+  const withoutTags = stripStrayCotTags(text)
+    .replace(/\[pills\][\s\S]*?\[\/pills\]/gi, '')
+    .replace(/\n{3,}/g, '\n\n');
+
+  const filteredLines = withoutTags
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (/^[a-z_][a-z0-9_]*\([^)]*\)\s*$/i.test(trimmed)) return false;
+      if (/^(输出|output)\s*[:：]?$/i.test(trimmed)) return false;
+      if (/^[+>]*\s*\{".*$/i.test(trimmed)) return false;
+      return true;
+    })
+    .join('\n');
+
+  return filteredLines
+    .replace(/("api_key"\s*:\s*")[^"]+(")/gi, '$1[REDACTED]$2')
+    .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+    .trim();
 }
 
 export function extractAssistantCotAndMain(fullContent: string): CotExtractResult {
   if (!fullContent) {
-    return { cotContent: null, cotDone: true, mainContent: fullContent };
+    return { cotContent: null, cotDone: true, cotStarted: false, mainContent: fullContent };
   }
 
-  const bi = fullContent.indexOf(BRACKET_OPEN);
-  const ti = fullContent.indexOf(THINK_OPEN);
-  const ri = fullContent.indexOf(REDACTED_THINK_OPEN);
+  const normalizedContent = stripTextToolAnnotations(fullContent);
+  const cotParts: string[] = [];
+  const mainParts: string[] = [];
+  let cursor = 0;
+  let cotDone = true;
+  let cotStarted = false;
 
-  // 取最靠前的标记
-  if (bi !== -1 && (ti === -1 || bi < ti) && (ri === -1 || bi < ri)) {
-    return extractBracket(fullContent)!;
-  }
-  if (ti !== -1 && (ri === -1 || ti < ri)) {
-    return extractThinkTags(fullContent)!;
-  }
-  if (ri !== -1) {
-    return extractRedactedThinkTags(fullContent)!;
+  while (cursor < normalizedContent.length) {
+    const next = findNextTag(normalizedContent, cursor);
+    if (!next) {
+      mainParts.push(normalizedContent.slice(cursor));
+      break;
+    }
+
+    if (next.index > cursor) {
+      mainParts.push(normalizedContent.slice(cursor, next.index));
+    }
+
+    cotStarted = true;
+    const afterOpen = next.index + next.spec.open.length;
+    const closeIdx = normalizedContent.indexOf(next.spec.close, afterOpen);
+    if (closeIdx === -1) {
+      cotParts.push(normalizedContent.slice(afterOpen).trim());
+      cotDone = false;
+      cursor = normalizedContent.length;
+      break;
+    }
+
+    cotParts.push(normalizedContent.slice(afterOpen, closeIdx).trim());
+    cursor = closeIdx + next.spec.close.length;
   }
 
-  return { cotContent: null, cotDone: true, mainContent: fullContent };
+  const cotContent = cotParts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('\n\n---\n\n');
+
+  const mainContent = stripStrayCotTags(mainParts.join(''))
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return { cotContent: sanitizeCotContent(cotContent) || null, cotDone, cotStarted, mainContent };
 }
 
 /** 用于 UI：是否应走「行内 CoT」分支（避免双指示器） */
 export function hasAssistantCotMarkers(text: string): boolean {
   if (!text) return false;
-  return text.includes(BRACKET_OPEN) || text.includes(THINK_OPEN) || text.includes(REDACTED_THINK_OPEN);
+  return (
+    text.includes(BRACKET_OPEN) ||
+    text.includes(BRACKET_CLOSE) ||
+    text.includes(THINK_OPEN) ||
+    text.includes(THINK_CLOSE) ||
+    text.includes(REDACTED_THINK_OPEN) ||
+    text.includes(REDACTED_THINK_CLOSE)
+  );
 }

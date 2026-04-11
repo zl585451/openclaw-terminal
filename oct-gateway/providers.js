@@ -143,7 +143,7 @@ const PROVIDERS = {
     name: 'MiniMax',
     baseUrl: 'https://api.minimaxi.com/v1',
     keyPlaceholder: 'sk-cp-xxxxxxxxxxxxxxxx',
-    keyLink: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
+    keyLink: 'https://platform.minimaxi.com/docs/token-plan/intro',
     keyEnvVars: ['MINIMAX_API_KEY', 'DASHSCOPE_API_KEY'],
     defaultModel: 'MiniMax-M2.7',
     models: [

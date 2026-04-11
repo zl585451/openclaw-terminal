@@ -1,9 +1,119 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from '../../components/CodeBlock';
+import MermaidRenderer from '../../components/canvas/MermaidRenderer';
 import { highlightCode } from '../../utils/codeHighlight';
+import { diagramSpecToMermaid, parseDiagramSpec } from '../../utils/diagramSchema';
 
-export function createMarkdownComponents(openCanvas?: (content: string, mode: 'markdown' | 'code' | 'html', title?: string, language?: string) => void): React.ComponentProps<typeof ReactMarkdown>['components'] {
+// ── Chat inline preview: ONLY these types are shown directly in the chat window.
+// Everything else is redirected to Canvas (with an Open button).
+// mindmap excluded: fragile indentation syntax + too small to read inline.
+const CHAT_MERMAID_INLINE_TYPES = new Set(['flowchart', 'graph', 'pie']);
+
+// Size limits that apply only to inline-allowed types.
+const CHAT_MERMAID_MAX_LINES    = 16;
+const CHAT_MERMAID_MAX_CHARS    = 550;
+const CHAT_MERMAID_MAX_SUBGRAPHS = 2;
+// LR/RL flowcharts are always redirected to Canvas regardless of size.
+// Even a 3-node LR chain with tall nodes overflows the chat bubble.
+
+// Canvas-supported types rendered with the existing Mermaid Canvas renderer.
+// All other types (experimental, unknown) fall through to the same Canvas path.
+const CANVAS_MERMAID_LABEL: Record<string, string> = {
+  sequencediagram: '时序图',
+  classdiagram: '类图',
+  erdiagram: '实体关系图',
+  statediagram: '状态图',
+  'statediagram-v2': '状态图',
+  gantt: '甘特图',
+  journey: '旅程图',
+  timeline: '时间线',
+  requirementdiagram: '需求图',
+  gitgraph: 'Git 分支图',
+  quadrantchart: '象限图',
+  flowchart: '流程图',
+  graph: '流程图',
+  pie: '饼图',
+  mindmap: '思维导图',
+};
+
+function analyzeMermaid(code: string) {
+  const source = String(code || '').trim();
+  const lines = source.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const firstDirective =
+    lines.find((line) => !line.trim().startsWith('%%'))?.trim().toLowerCase() || '';
+  // Detect all known types; unknown/experimental types fall back to 'unknown'.
+  const typeMatch = firstDirective.match(
+    /^(flowchart|graph|sequencediagram|classdiagram|erdiagram|statediagram(?:-v2)?|gantt|pie|mindmap|journey|timeline|quadrantchart|requirementdiagram|gitgraph|sankey|xychart|block|packet|kanban|architecture|radar|treemap|venn|ishikawa|treeview|zenuml|c4context)\b/
+  );
+  const diagramType = typeMatch?.[1] ?? 'unknown';
+  const subgraphCount = (source.match(/\bsubgraph\b/gi) || []).length;
+
+  // Detect horizontal layout direction (LR / RL) — these produce wide diagrams
+  // that overflow the chat bubble when there are more than a few nodes.
+  const directionMatch = firstDirective.match(/\b(lr|rl|td|bt|tb)\b/);
+  const direction = directionMatch?.[1] ?? 'td'; // default TD (top-down)
+  const isHorizontal = direction === 'lr' || direction === 'rl';
+
+  // Count edges (arrows) as a proxy for diagram complexity / rendered width.
+  const edgeCount = (source.match(/--[->]|==|\.\.>/g) || []).length;
+
+  return {
+    source,
+    lineCount: lines.length,
+    charCount: source.length,
+    subgraphCount,
+    diagramType,
+    isHorizontal,
+    edgeCount,
+  };
+}
+
+function shouldRenderChatMermaidPreview(code: string) {
+  const meta = analyzeMermaid(code);
+
+  // Allowlist check: only approved types can show inline.
+  if (!CHAT_MERMAID_INLINE_TYPES.has(meta.diagramType)) {
+    return { allowPreview: false, reason: 'not-inline-type', meta };
+  }
+  if (meta.lineCount > CHAT_MERMAID_MAX_LINES) {
+    return { allowPreview: false, reason: 'too-long', meta };
+  }
+  if (meta.charCount > CHAT_MERMAID_MAX_CHARS) {
+    return { allowPreview: false, reason: 'too-dense', meta };
+  }
+  if (meta.subgraphCount > CHAT_MERMAID_MAX_SUBGRAPHS) {
+    return { allowPreview: false, reason: 'too-many-groups', meta };
+  }
+  // LR/RL always goes to Canvas — even a 3-node chain overflows if nodes
+  // have multi-line labels or emojis. TD is the only safe chat direction.
+  if (meta.isHorizontal) {
+    return { allowPreview: false, reason: 'lr-not-allowed', meta };
+  }
+  return { allowPreview: true, reason: 'inline-ok', meta };
+}
+
+function getMermaidSummaryLabel(diagramType: string) {
+  return CANVAS_MERMAID_LABEL[diagramType] ?? 'Mermaid 图';
+}
+
+function getDiagramJsonSummaryLabel(code: string) {
+  const spec = parseDiagramSpec(code);
+  if (!spec) return null;
+  if (spec.diagramType === 'pie') return '饼图';
+  if (spec.diagramType === 'hierarchy') return '层级图';
+  return '流程图';
+}
+
+export function createMarkdownComponents(
+  openCanvas?: (
+    content: string,
+    mode: 'markdown' | 'code' | 'html',
+    title?: string,
+    language?: string,
+    artifactType?: 'document' | 'diagram' | 'code' | 'ui-draft'
+  ) => void
+): React.ComponentProps<typeof ReactMarkdown>['components'] {
   return {
   a: ({ href, children }) => (
     <a
@@ -51,6 +161,137 @@ export function createMarkdownComponents(openCanvas?: (content: string, mode: 'm
       );
     }
     const code = String(children);
+    const normalizedLanguage = (className?.replace('language-', '') || 'text').toLowerCase();
+    const diagramSpec = normalizedLanguage === 'json' ? parseDiagramSpec(code) : null;
+    if (isBlock && (className?.replace('language-', '') || 'text').toLowerCase() === 'mermaid') {
+      const MermaidBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
+        const [copied, setCopied] = React.useState(false);
+        const previewDecision = React.useMemo(() => shouldRenderChatMermaidPreview(code), []);
+        const summaryLabel = getMermaidSummaryLabel(previewDecision.meta.diagramType);
+
+        const handleCopy = () => {
+          navigator.clipboard.writeText(code);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        };
+
+        return (
+          <div
+            className="chat-mermaid-card"
+            data-oct-block-code={__octBlockCode ? '1' : undefined}
+          >
+            <div className="chat-mermaid-card__header">
+              <span className="chat-mermaid-card__label">
+                mermaid
+              </span>
+              <div className="chat-mermaid-card__actions">
+                {openCanvas && (
+                  <button
+                    onClick={() => openCanvas(code, 'markdown', 'Mermaid Diagram', 'mermaid', 'diagram')}
+                    className="chat-mermaid-card__action"
+                  >
+                    Open
+                  </button>
+                )}
+                <button
+                  onClick={handleCopy}
+                  className={`chat-mermaid-card__action${copied ? ' is-copied' : ''}`}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div className="chat-mermaid-card__body">
+              {previewDecision.allowPreview ? (
+                <MermaidRenderer content={code} compact />
+              ) : (
+                <div className="chat-mermaid-summary">
+                  <div className="chat-mermaid-summary__title">
+                    {summaryLabel} 已转为 Canvas 完整展示
+                  </div>
+                  <div className="chat-mermaid-summary__meta">
+                    {previewDecision.meta.lineCount} 行 · {previewDecision.meta.charCount} 字符
+                    {previewDecision.meta.subgraphCount > 0 ? ` · ${previewDecision.meta.subgraphCount} 个分组` : ''}
+                  </div>
+                  <div className="chat-mermaid-summary__copy">
+                    {previewDecision.reason === 'not-inline-type' && '这类图需要足够的展示空间，点击 Open 在 Canvas 查看完整版。'}
+                    {previewDecision.reason === 'too-long' && '图的内容较多，聊天区不适合展示，点击 Open 在 Canvas 查看完整版。'}
+                    {previewDecision.reason === 'too-dense' && '图的信息密度较高，点击 Open 在 Canvas 查看完整版。'}
+                    {previewDecision.reason === 'too-many-groups' && '图的分组较多，聊天区容易拥挤，点击 Open 在 Canvas 查看完整版。'}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      return <MermaidBlock __octBlockCode />;
+    }
+
+    if (isBlock && diagramSpec) {
+      const MermaidFromJsonBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
+        const [copied, setCopied] = React.useState(false);
+        const mermaidCode = React.useMemo(() => diagramSpecToMermaid(diagramSpec), []);
+        const previewDecision = React.useMemo(() => shouldRenderChatMermaidPreview(mermaidCode), [mermaidCode]);
+        const summaryLabel = getDiagramJsonSummaryLabel(code) || getMermaidSummaryLabel(previewDecision.meta.diagramType);
+
+        const handleCopy = () => {
+          navigator.clipboard.writeText(code);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        };
+
+        return (
+          <div
+            className="chat-mermaid-card"
+            data-oct-block-code={__octBlockCode ? '1' : undefined}
+          >
+            <div className="chat-mermaid-card__header">
+              <span className="chat-mermaid-card__label">
+                diagram json
+              </span>
+              <div className="chat-mermaid-card__actions">
+                {openCanvas && (
+                  <button
+                    onClick={() => openCanvas(code, 'markdown', `${summaryLabel} Diagram`, 'json', 'diagram')}
+                    className="chat-mermaid-card__action"
+                  >
+                    Open
+                  </button>
+                )}
+                <button
+                  onClick={handleCopy}
+                  className={`chat-mermaid-card__action${copied ? ' is-copied' : ''}`}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div className="chat-mermaid-card__body">
+              {previewDecision.allowPreview ? (
+                <MermaidRenderer content={mermaidCode} compact />
+              ) : (
+                <div className="chat-mermaid-summary">
+                  <div className="chat-mermaid-summary__title">
+                    {summaryLabel} 已转为 Canvas 完整展示
+                  </div>
+                  <div className="chat-mermaid-summary__meta">
+                    {previewDecision.meta.lineCount} 行 · {previewDecision.meta.charCount} 字符
+                  </div>
+                  <div className="chat-mermaid-summary__copy">
+                    这张图更适合在 Canvas 里查看，点击 Open 查看完整版。
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      return <MermaidFromJsonBlock __octBlockCode />;
+    }
+
     const CodeBlockWithCopy = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
       const [copied, setCopied] = React.useState(false);
       const lines = code.split('\n').length;
@@ -114,7 +355,22 @@ export function createMarkdownComponents(openCanvas?: (content: string, mode: 'm
               )}
               {openCanvas && (
                 <button
-                  onClick={() => openCanvas(code, 'code', className?.replace('language-', '') || 'code', className?.replace('language-', '') || 'text')}
+                  onClick={() => {
+                    const language = className?.replace('language-', '') || 'text';
+                    if (language.toLowerCase() === 'mermaid') {
+                      openCanvas(code, 'markdown', 'Mermaid Diagram', 'mermaid', 'diagram');
+                      return;
+                    }
+                    if (language.toLowerCase() === 'json') {
+                      const spec = parseDiagramSpec(code);
+                      if (spec) {
+                        const title = `${getDiagramJsonSummaryLabel(code) || 'Diagram'} Diagram`;
+                        openCanvas(code, 'markdown', title, 'json', 'diagram');
+                        return;
+                      }
+                    }
+                    openCanvas(code, 'code', language || 'code', language || 'text', 'code');
+                  }}
                   style={{
                     background: 'none',
                     border: 'none',

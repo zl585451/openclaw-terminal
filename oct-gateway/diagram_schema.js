@@ -126,10 +126,18 @@ function parseDiagramSpec(raw) {
   try {
     const parsed = JSON.parse(raw);
     const diagramType = String(parsed?.diagramType ?? '').toLowerCase();
-    if (diagramType === 'flowchart' || diagramType === 'graph') return parseFlowchartSpec(parsed);
-    if (diagramType === 'pie') return parsePieSpec(parsed);
-    if (diagramType === 'hierarchy') return parseHierarchySpec(parsed);
-    if (Array.isArray(parsed?.nodes) && Array.isArray(parsed?.edges)) return parseFlowchartSpec(parsed);
+    if (diagramType === 'flowchart' || diagramType === 'graph') {
+      return parseFlowchartSpec(parsed);
+    }
+    if (diagramType === 'pie') {
+      return parsePieSpec(parsed);
+    }
+    if (diagramType === 'hierarchy') {
+      return parseHierarchySpec(parsed);
+    }
+    if (Array.isArray(parsed?.nodes) && Array.isArray(parsed?.edges)) {
+      return parseFlowchartSpec(parsed);
+    }
     if (Array.isArray(parsed?.items) && parsed.items.every((item) => item && typeof item === 'object' && 'value' in item)) {
       return parsePieSpec(parsed);
     }
@@ -155,12 +163,17 @@ function diagramSpecToMermaid(spec) {
       '%%{init: { "flowchart": { "useMaxWidth": false, "nodeSpacing": 50, "rankSpacing": 70, "curve": "basis" } }}%%',
       `flowchart ${sanitizeDirection(spec.direction)}`,
     ];
+
     for (const item of spec.items) {
       lines.push(`${item.id}["${sanitizeText(item.label, item.id)}"]`);
     }
+
     for (const item of spec.items) {
-      if (item.parentId) lines.push(`${item.parentId} --> ${item.id}`);
+      if (item.parentId) {
+        lines.push(`${item.parentId} --> ${item.id}`);
+      }
     }
+
     return lines.join('\n');
   }
 
@@ -168,12 +181,15 @@ function diagramSpecToMermaid(spec) {
     '%%{init: { "flowchart": { "useMaxWidth": false, "nodeSpacing": 50, "rankSpacing": 68, "curve": "basis" } }}%%',
     `flowchart ${sanitizeDirection(spec.direction)}`,
   ];
+
   for (const node of spec.nodes) {
     lines.push(`${node.id}${getNodeShape(node.label, node.shape)}`);
   }
+
   for (const edge of spec.edges) {
     lines.push(edge.label ? `${edge.from} -->|${sanitizeText(edge.label)}| ${edge.to}` : `${edge.from} --> ${edge.to}`);
   }
+
   return lines.join('\n');
 }
 

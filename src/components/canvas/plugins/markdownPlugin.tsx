@@ -1,11 +1,15 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import MermaidRenderer from '../MermaidRenderer';
 import { markdownComponents } from '../../../ui/chat/markdownComponents';
 import { diagramSpecToMermaid, parseDiagramSpec } from '../../../utils/diagramSchema';
 import type { CanvasRendererPlugin } from './types';
 
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
+const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
 const baseMarkdownComponents = markdownComponents ?? {};
 
 const canvasMarkdownComponents = {
@@ -20,7 +24,9 @@ const canvasMarkdownComponents = {
     }
     if (isBlock && language === 'json') {
       const spec = parseDiagramSpec(code);
-      if (spec) return <MermaidRenderer content={diagramSpecToMermaid(spec)} />;
+      if (spec) {
+        return <MermaidRenderer content={diagramSpecToMermaid(spec)} />;
+      }
     }
 
     const DefaultCode = baseMarkdownComponents.code;
@@ -35,10 +41,14 @@ const canvasMarkdownComponents = {
       const { className, children: codeChildren } = child.props as { className?: string; children?: React.ReactNode };
       const language = className?.replace('language-', '').toLowerCase() || '';
       const code = String(codeChildren ?? '').replace(/\n$/, '');
-      if (language === 'mermaid') return <MermaidRenderer content={code} />;
+      if (language === 'mermaid') {
+        return <MermaidRenderer content={code} />;
+      }
       if (language === 'json') {
         const spec = parseDiagramSpec(code);
-        if (spec) return <MermaidRenderer content={diagramSpecToMermaid(spec)} />;
+        if (spec) {
+          return <MermaidRenderer content={diagramSpecToMermaid(spec)} />;
+        }
       }
     }
 
@@ -56,7 +66,11 @@ export const markdownPlugin: CanvasRendererPlugin = {
   render: (document) => (
     <div className="canvas-preview">
       <div className="msg-content markdown-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={canvasMarkdownComponents}>
+        <ReactMarkdown
+          remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+          rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+          components={canvasMarkdownComponents}
+        >
           {document.content}
         </ReactMarkdown>
       </div>

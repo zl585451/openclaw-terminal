@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Canvas 基础 Demo</title>
+  <style>
+    body { font-family: system-ui; padding: 20px; background: #1a1a2e; color: #eee; }
+    canvas { background: #16213e; border-radius: 8px; display: block; margin: 20px 0; }
+    h3 { margin: 10px 0 5px; color: #e94560; }
+    code { color: #0f3460; background: #e94560; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h2>Canvas 基础 Demo</h2>
+
+  <h3>1. 画矩形</h3>
+  <canvas id="demo1" width="300" height="80"></canvas>
+
+  <h3>2. 画线条</h3>
+  <canvas id="demo2" width="300" height="80"></canvas>
+
+  <h3>3. 画曲线（贝塞尔）</h3>
+  <canvas id="demo3" width="300" height="100"></canvas>
+
+  <h3>4. 写文字</h3>
+  <canvas id="demo4" width="300" height="80"></canvas>
+
+  <h3>5. 综合：节点 + 连线</h3>
+  <canvas id="demo5" width="500" height="200"></canvas>
+
+  <script>
+    // 1. 矩形
+    const c1 = document.getElementById('demo1').getContext('2d');
+    c1.fillStyle = '#e94560';
+    c1.fillRect(20, 20, 100, 40);           // fillRect(x, y, 宽, 高)
+    c1.strokeStyle = '#0f3460';
+    c1.strokeRect(140, 20, 100, 40);        // 空心矩形
+
+    // 2. 线条
+    const c2 = document.getElementById('demo2').getContext('2d');
+    c2.beginPath();
+    c2.moveTo(20, 60);      // 起点
+    c2.lineTo(100, 20);     // 终点
+    c2.lineTo(180, 60);
+    c2.strokeStyle = '#e94560';
+    c2.lineWidth = 3;
+    c2.stroke();
+
+    // 3. 贝塞尔曲线
+    const c3 = document.getElementById('demo3').getContext('2d');
+    c3.beginPath();
+    c3.moveTo(20, 20);
+    // bezierCurveTo(控制点1x, 控制点1y, 控制点2x, 控制点2y, 终点x, 终点y)
+    c3.bezierCurveTo(80, 0, 120, 80, 200, 50);
+    c3.bezierCurveTo(250, 30, 280, 80, 280, 80);
+    c3.strokeStyle = '#e94560';
+    c3.lineWidth = 2;
+    c3.stroke();
+
+    // 4. 文字
+    const c4 = document.getElementById('demo4').getContext('2d');
+    c4.font = 'bold 20px system-ui';
+    c4.fillStyle = '#e94560';
+    c4.fillText('你好 Canvas', 20, 50);
+
+    // 5. 综合：模拟思维导图的节点和连线
+    const c5 = document.getElementById('demo5').getContext('2d');
+    
+    // 根节点
+    c5.fillStyle = '#e94560';
+    c5.fillRect(200, 20, 100, 40);
+    c5.font = 'bold 16px system-ui';
+    c5.fillStyle = '#fff';
+    c5.fillText('主题', 225, 47);
+
+    // 子节点1 - 左
+    c5.fillStyle = '#0f3460';
+    c5.fillRect(50, 100, 100, 35);
+    c5.fillStyle = '#fff';
+    c5.fillText('方案A', 70, 123);
+
+    // 子节点2 - 中
+    c5.fillStyle = '#0f3460';
+    c5.fillRect(200, 100, 100, 35);
+    c5.fillStyle = '#fff';
+    c5.fillText('方案B', 220, 123);
+
+    // 子节点3 - 右
+    c5.fillStyle = '#0f3460';
+    c5.fillRect(350, 100, 100, 35);
+    c5.fillStyle = '#fff';
+    c5.fillText('方案C', 370, 123);
+
+    // 连线：根 → 子1
+    c5.beginPath();
+    c5.moveTo(200, 60);
+    c5.lineTo(200, 100);
+    c5.strokeStyle = '#e94560';
+    c5.lineWidth = 2;
+    c5.stroke();
+
+    // 连线：根 → 子2
+    c5.beginPath();
+    c5.moveTo(250, 60);
+    c5.lineTo(250, 100);
+    c5.stroke();
+
+    // 连线：根 → 子3
+    c5.beginPath();
+    c5.moveTo(300, 60);
+    c5.lineTo(300, 100);
+    c5.stroke();
+
+    // 贝塞尔曲线连子节点（更平滑）
+    // 子1 的两个子节点
+    c5.beginPath();
+    c5.moveTo(100, 135);
+    c5.lineTo(60, 170);
+    c5.strokeStyle = '#e94560';
+    c5.stroke();
+
+    c5.beginPath();
+    c5.moveTo(100, 135);
+    c5.lineTo(140, 170);
+    c5.stroke();
+
+    // 画小椭圆作为叶子节点
+    c5.fillStyle = '#533483';
+    c5.beginPath();
+    c5.ellipse(60, 175, 30, 15, 0, 0, Math.PI * 2);
+    c5.fill();
+    c5.fillStyle = '#fff';
+    c5.font = '12px system-ui';
+    c5.fillText('优点', 52, 179);
+
+    c5.beginPath();
+    c5.ellipse(140, 175, 30, 15, 0, 0, Math.PI * 2);
+    c5.fill();
+    c5.fillStyle = '#fff';
+    c5.fillText('缺点', 132, 179);
+  </script>
+</body>
+</html>

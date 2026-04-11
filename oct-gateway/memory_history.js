@@ -5,6 +5,8 @@
 
 const config = require('./config');
 const memory = require('./memory');
+const { sanitizeAssistantReply } = require('./cot_sanitize');
+const memoryGovernor = require('./memory_governor');
 const { createLogger } = require('./logger');
 const log = createLogger('memory_history');
 
@@ -103,6 +105,7 @@ async function saveHistorySummary(userMsg, amyReply, type) {
 
   const maxUser = (config.memory.compress_length && config.memory.compress_length.user) || 100;
   const maxAmy = (config.memory.compress_length && config.memory.compress_length.amy) || 200;
+  const cleanAmyReply = sanitizeAssistantReply(amyReply || '');
 
   const { datePath, timePath, timestamp } = nowFragments();
   const pathSeg = `${HISTORY_BASE}/${datePath}/${timePath}`;
@@ -112,25 +115,51 @@ async function saveHistorySummary(userMsg, amyReply, type) {
   const payload = {
     timestamp,
     user: (userMsg || '').slice(0, maxUser),
-    amy: (amyReply || '').slice(0, maxAmy),
+    amy: cleanAmyReply.slice(0, maxAmy),
     type: t,
     feedback: null,
   };
-  const content = JSON.stringify(payload, null, 0);
+  const routed = memoryGovernor.routeRecord({
+    source: 'history_summary',
+    uri,
+    content: JSON.stringify(payload, null, 0),
+    priority: 2,
+    disclosure: '',
+    userMsg,
+    assistantReply: cleanAmyReply,
+  });
+
+  if (routed.decision === 'reject') {
+    log.debug('history summary rejected by governor', { uri, reason: routed.reason });
+    return;
+  }
+  log.info('history summary governor decision', {
+    originalUri: uri,
+    targetUri: routed.uri,
+    decision: routed.decision,
+    layer: routed.layer,
+    reason: routed.reason,
+  });
+
+  const targetUri = routed.uri;
+  const content = routed.content;
+  const targetParts = targetUri.match(/^([^:]+):\/\/(.+)$/);
+  const targetDomain = targetParts ? targetParts[1] : DOMAIN;
+  const targetPathSeg = targetParts ? targetParts[2] : pathSeg;
 
   try {
-    log.debug('write history summary', { uri, type: t });
-    await ensurePathExists(DOMAIN, pathSeg);
-    const r = await memory.createMemory(uri, content, 2, '');
+    log.debug('write history summary', { uri: targetUri, originalUri: uri, type: t, layer: routed.layer });
+    await ensurePathExists(targetDomain, targetPathSeg);
+    const r = await memory.createMemory(targetUri, content, routed.priority ?? 2, routed.disclosure ?? '');
     if (r.ok) {
-      log.info('history summary written', { uri });
+      log.info('history summary written', { uri: targetUri, originalUri: uri, decision: routed.decision });
     } else if (!r.error?.includes('already exists')) {
-      const wr = await memory.writeMemory(uri, content, 2, '');
-      if (wr.ok) log.info('history summary written', { uri });
-      else log.error('history summary write failed', { uri, error: wr.error });
+      const wr = await memory.writeMemory(targetUri, content, routed.priority ?? 2, routed.disclosure ?? '');
+      if (wr.ok) log.info('history summary written', { uri: targetUri, originalUri: uri, decision: routed.decision });
+      else log.error('history summary write failed', { uri: targetUri, originalUri: uri, error: wr.error });
     }
   } catch (e) {
-    log.error('history summary exception', { uri, error: e?.message || String(e) });
+    log.error('history summary exception', { uri: targetUri, originalUri: uri, error: e?.message || String(e) });
   }
 }
 

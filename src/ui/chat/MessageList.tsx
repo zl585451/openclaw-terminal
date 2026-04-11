@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
 import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../../utils/cotExtract';
+import { summarizeCotForDisplay } from '../../utils/cotSummary';
 import { blockRouter } from '../../core/blockRouter';
 import { blocksToSegments } from '../../core/blockAdapter';
 import OptionBox from '../../components/OptionBox';
@@ -10,6 +13,7 @@ import TaskList from '../../components/TaskList';
 import QuestionCards from '../../components/QuestionCards';
 import CoTBlock from '../../components/CoTBlock';
 import AmyAvatar from '../../components/AmyAvatar';
+import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown } from '../../utils/markdownPreprocess';
 import type { ChatMessage } from './ChatTab.v2';
 
@@ -56,6 +60,43 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
   return <span className="cursor-blink">▋</span>;
 });
 
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
+const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
+const CHAT_MERMAID_RENDER_LIMIT = 1;
+
+function limitChatMermaidBlocks(text: string, maxBlocks = CHAT_MERMAID_RENDER_LIMIT): string {
+  if (!text || typeof text !== 'string') return text;
+
+  const matches = [...text.matchAll(/```mermaid\s*[\r\n]+[\s\S]*?```/gi)];
+  if (matches.length <= maxBlocks) return text;
+
+  let result = '';
+  let lastIndex = 0;
+  let kept = 0;
+  let omitted = 0;
+
+  for (const match of matches) {
+    const index = match.index ?? 0;
+    const block = match[0];
+    result += text.slice(lastIndex, index);
+
+    if (kept < maxBlocks) {
+      result += block;
+      kept += 1;
+    } else {
+      omitted += 1;
+      if (omitted === 1) {
+        result += '\n\n> 已省略额外 Mermaid 图，请在 Canvas 中查看完整图集。\n\n';
+      }
+    }
+
+    lastIndex = index + block.length;
+  }
+
+  result += text.slice(lastIndex);
+  return result.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /** 流式结束后的正文：预处理 + ReactMarkdown，结果按 messageId+段键缓存 */
 const FinalizedMarkdownContent = memo(
   function FinalizedMarkdownContent({
@@ -81,16 +122,22 @@ const FinalizedMarkdownContent = memo(
         if (streaming || segmentKey?.includes('stream')) {
           return content || '';
         }
-        return getCachedPreprocessedMarkdown(messageId, segmentKey, content || '');
+        return limitChatMermaidBlocks(
+          getCachedPreprocessedMarkdown(messageId, segmentKey, content || '')
+        );
       },
       [messageId, segmentKey, content, streaming]
     );
     return (
-      <span className="msg-content markdown-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      <div className="msg-content markdown-body">
+        <ReactMarkdown
+          remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+          rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+          components={markdownComponents}
+        >
           {processedText}
         </ReactMarkdown>
-      </span>
+      </div>
     );
   },
   (prev, next) =>
@@ -183,6 +230,7 @@ const SystemMessage = ({ text }: { text: string }) => {
 
 export interface ChatMessageItemProps {
   msg: ChatMessage;
+  assistantName: string;
   textToShow: string;
   raw: string;
   optionsToShow: OptionItem[];
@@ -208,11 +256,15 @@ export interface ChatMessageItemProps {
   isLastAssistant?: boolean;
   /** 打字机 DOM ref，供 AssistantMessageBody 直接写 textContent */
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
+  /** 流式阶段跳过 markdown/block 解析，直接渲染纯文本，降低重排抖动 */
+  usePlainStreamingText?: boolean;
   /** Markdown 组件配置 */
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
   /** 从 [cot]…[/cot] 提取的思维链；null/undefined 表示本条无 CoT */
   cotContent?: string | null;
-  /** 思维链是否仍在流式接收 */
+  /** 已检测到 CoT 起始标记；即使正文尚未到达，也立即显示 CoT 头部块 */
+  cotStarted?: boolean;
+  /** 兼容旧接口：当前已不再用于驱动思维链流式渲染 */
   cotStreaming?: boolean;
   /**
    * OCT-LAYOUT-ANCHOR-2026-04-01
@@ -221,6 +273,7 @@ export interface ChatMessageItemProps {
    * 退回：删此 prop 及相关分支，恢复 ChatMessageList 内独立的 thinking CoT 块（仅改回 TSX 即可）。
    */
   inlineThinkingPlaceholder?: boolean;
+  isMobileViewport?: boolean;
 }
 
 const MessageMeta = memo(function MessageMeta({ timestamp }: { timestamp: string | number | undefined }) {
@@ -250,12 +303,14 @@ const MessageHeader = memo(
     isStreamingMsg,
     agentPhase,
     suppressPhaseBadge,
+    assistantName,
   }: {
     msg: ChatMessage;
     isStreamingMsg: boolean;
     agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
     /** 与头部带内 CoT 并存且 phase 为 thinking 时隐藏，避免与 CoT 标题双「思考中」 */
     suppressPhaseBadge?: boolean;
+    assistantName: string;
   }) {
     const showBadge =
       isStreamingMsg &&
@@ -266,8 +321,8 @@ const MessageHeader = memo(
         {msg.role === 'user' ? (
           <span className="msg-label">YOU ▶</span>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <AmyAvatar isStreaming={!!msg.isStreaming} size={32} />
+          <div className="amy-header-row">
+            <AmyAvatar isStreaming={false} size={32} />
             <span
               style={{
                 color: 'var(--accent)',
@@ -276,13 +331,13 @@ const MessageHeader = memo(
                 letterSpacing: '2px',
               }}
             >
-              AMY
+              {assistantName}
             </span>
-            {showBadge && (
+            <span className={`agent-status-slot ${showBadge ? 'is-visible' : ''}`} aria-hidden={!showBadge}>
               <span className="agent-status-badge">
                 {agentPhase === 'thinking' ? '思考中' : agentPhase === 'tool_executing' ? '调用工具中' : '打字中'}
               </span>
-            )}
+            </span>
           </div>
         )}
       </div>
@@ -294,7 +349,8 @@ const MessageHeader = memo(
     !!a.msg.isStreaming === !!b.msg.isStreaming &&
     a.isStreamingMsg === b.isStreamingMsg &&
     a.agentPhase === b.agentPhase &&
-    !!a.suppressPhaseBadge === !!b.suppressPhaseBadge
+    !!a.suppressPhaseBadge === !!b.suppressPhaseBadge &&
+    a.assistantName === b.assistantName
 );
 
 const UserMessageBody = memo(
@@ -329,6 +385,7 @@ type AssistantMessageBodyProps = Pick<
   | 'isLastAssistant'
 > & {
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
+  usePlainStreamingText?: boolean;
 };
 
 const AssistantMessageBody = memo(function AssistantMessageBody({
@@ -348,7 +405,8 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   onQuoteQuestion,
   segments,
   isLastAssistant,
-  streamingDomRef: _streamingDomRef,
+  streamingDomRef,
+  usePlainStreamingText = false,
   markdownComponents,
 }: AssistantMessageBodyProps & { markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] }) {
   // Layout Lock：流式开始时记录高度并锁定 minHeight，防止结束时收缩跳动
@@ -377,6 +435,23 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
 
   if (msg.isSystemReply) {
     return <SystemMessage text={(textToShow || raw || '').replace(/ · /g, '\n')} />;
+  }
+
+  if (isStreamingMsg && usePlainStreamingText) {
+    return (
+      <div
+        ref={bubbleRef}
+        className="msg-assistant-body"
+        style={{ display: 'flex', flexDirection: 'column' }}
+      >
+        {/* 正文由 useMessages 的 RAF 写 textContent，避免每帧 React 协调整棵 ChatTab */}
+        <pre
+          ref={streamingDomRef as React.LegacyRef<HTMLPreElement> | undefined}
+          className="msg-content msg-content-streaming msg-content-streaming-root"
+        />
+        <TypewriterCursor show />
+      </div>
+    );
   }
 
   return (
@@ -601,6 +676,7 @@ function MessageRow({
 const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProps) {
   const {
     msg,
+    assistantName,
     textToShow,
     raw,
     optionsToShow,
@@ -620,14 +696,29 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     segments,
     isLastAssistant,
     streamingDomRef,
+    usePlainStreamingText = false,
     markdownComponents,
     cotContent,
+    cotStarted = false,
     cotStreaming,
     inlineThinkingPlaceholder = false,
+    isMobileViewport = false,
   } = props;
 
-  const showCotInline = msg.role === 'assistant' && cotContent != null;
-  const showHeaderBand = showCotInline || inlineThinkingPlaceholder;
+  // showCotInline: finalized CoT (not streaming) — show full summarized content
+  const showCotInline = msg.role === 'assistant' && !isStreamingMsg && (cotContent != null || cotStarted);
+  // showCotStreaming: CoT is actively being streamed right now
+  const showCotStreaming = msg.role === 'assistant' && isStreamingMsg && (!!cotStreaming || cotStarted);
+  const displayCotContent = showCotInline
+    ? summarizeCotForDisplay(cotContent, textToShow || raw || '', { compact: isMobileViewport })
+    : null;
+  const showLightweightThinkingBadge =
+    msg.role === 'assistant' &&
+    isStreamingMsg &&
+    !inlineThinkingPlaceholder &&
+    !showCotStreaming &&  // suppress badge when real CoT is streaming
+    agentPhase === 'thinking';
+  const showHeaderBand = showCotInline || showCotStreaming || inlineThinkingPlaceholder || showLightweightThinkingBadge;
 
   return (
     <MessageRow
@@ -644,17 +735,31 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             isStreamingMsg={isStreamingMsg}
             agentPhase={agentPhase}
             suppressPhaseBadge
+            assistantName={assistantName}
           />
           <div className="cot-stream-wrapper cot-stream-wrapper--header-inline">
-            <CoTBlock
-              content={showCotInline ? (cotContent ?? '') : ''}
-              isStreaming={inlineThinkingPlaceholder || !!cotStreaming}
-              isPlaceholder={inlineThinkingPlaceholder}
-            />
+              <CoTBlock
+                content={
+                  showCotInline    ? (displayCotContent ?? cotContent ?? '')
+                  : showCotStreaming ? (cotContent ?? '')
+                  : ''
+                }
+                isStreaming={inlineThinkingPlaceholder || showLightweightThinkingBadge || showCotStreaming}
+                isPlaceholder={inlineThinkingPlaceholder}
+                compactStreaming={showLightweightThinkingBadge || (showCotStreaming && !(cotContent ?? '').trim())}
+                labelOverride={showLightweightThinkingBadge || showCotStreaming ? '思考中' : undefined}
+                placeholderHint={
+                  showLightweightThinkingBadge
+                    ? '思维链将在回复完成后显示。'
+                    : showCotStreaming && !(cotContent ?? '').trim()
+                      ? 'AI 已开始思考，正在输出思维链…'
+                      : undefined
+                }
+              />
+            </div>
           </div>
-        </div>
       ) : (
-        <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} />
+        <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} assistantName={assistantName} />
       )}
       <div className="msg-body">
         {msg.role === 'assistant' ? (
@@ -676,6 +781,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             segments={segments}
             isLastAssistant={isLastAssistant}
             streamingDomRef={streamingDomRef}
+            usePlainStreamingText={usePlainStreamingText}
             markdownComponents={markdownComponents}
           />
         ) : (
@@ -727,7 +833,9 @@ export interface ChatMessageListProps {
   }>;
   getToolDisplayName?: (tool: string) => string;
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
+  usePlainStreamingText?: boolean;
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
+  allowCotDisplay?: boolean;
 }
 
 export const ChatMessageList = function ChatMessageList({
@@ -751,13 +859,32 @@ export const ChatMessageList = function ChatMessageList({
   activeTools = [],
   getToolDisplayName = (t) => t,
   streamingDomRef,
+  usePlainStreamingText = false,
   markdownComponents,
+  allowCotDisplay = true,
 }: ChatMessageListProps) {
+  const { settings } = useSettings();
+  const assistantName = settings.aiName || 'OpenClaw';
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
+  const [isMobileViewport, setIsMobileViewport] = useState(() => (
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 720px)').matches : false
+  ));
   const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
+  const finalizedParseCacheRef = useRef<
+    Map<number, { input: string; output: ReturnType<typeof parseOptionBox> }>
+  >(new Map());
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const media = window.matchMedia('(max-width: 720px)');
+    const apply = () => setIsMobileViewport(media.matches);
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
   }, []);
 
   // 检查任何来源的思维链标记：streamingContent 或 最后一条 assistant 消息的 content
@@ -817,7 +944,7 @@ export const ChatMessageList = function ChatMessageList({
           ) : (
             // 其他等待阶段（typing / tool_executing）：保持原有样式
             <div className="chat-thinking">
-              <span className="msg-label">◆ AMY</span>
+              <span className="msg-label">◆ {assistantName}</span>
               {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
               {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
               <span className="processing-blocks typing-dots">
@@ -836,24 +963,41 @@ export const ChatMessageList = function ChatMessageList({
         // 打字机依赖 DOM 节点存在才能直接写 textContent
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
         const fullContent =
-          isStreamingMsg && msg.isStreamingRaw
-            ? raw
-            : isStreamingMsg && streamingContent
-              ? streamingContent
-              : raw;
+          isStreamingMsg
+            ? (
+                (msg.isStreamingRaw && raw.trim())
+                  ? raw
+                  : (streamingContent || raw)
+              )
+            : raw;
         const displayedLength = displayedText.length;
 
         // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
-        const { cotContent: streamingCotContent, cotDone: streamingCotDone, mainContent: mainTextFull } =
-          msg.role === 'assistant' && fullContent
-            ? extractAssistantCotAndMain(fullContent)
-            : { cotContent: null, cotDone: true, mainContent: fullContent };
+        const { cotContent: streamingCotContent, cotStarted: streamingCotStarted, mainContent: mainTextFull } =
+          allowCotDisplay && msg.role === 'assistant' && fullContent
+            ? !hasAssistantCotMarkers(fullContent)
+              ? { cotContent: null, cotStarted: false, mainContent: fullContent }
+              : extractAssistantCotAndMain(fullContent)
+            : { cotContent: null, cotStarted: false, mainContent: fullContent };
         const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
+        const shouldBypassStreamingParse =
+          usePlainStreamingText && msg.role === 'assistant' && isStreamingMsg;
         const parsed =
           msg.role === 'user'
             ? USER_ROW_PARSE_PLACEHOLDER
             : msg.role === 'assistant'
               ? (() => {
+                  if (shouldBypassStreamingParse) {
+                    return {
+                      text: display,
+                      options: STABLE_EMPTY_OPTIONS,
+                      totalPages: undefined,
+                      isTaskList: false,
+                      isReflectiveQuestions: false,
+                      forcePills: undefined,
+                      segments: undefined,
+                    };
+                  }
                   const fc = typeof fullContent === 'string' ? fullContent : '';
                   // 如果已经通过 streamingCotContent 提取了 CoT 内容，
                   // 就把剥离了 [cot]...[/cot] 的纯正文传给 blockRouter，
@@ -875,9 +1019,17 @@ export const ChatMessageList = function ChatMessageList({
                   // 同样使用剥离 CoT 的内容，避免 parseOptionBox 重复解析 [cot]
                   // CoT 统一由消息循环外部的 CoTBlock 渲染（使用通用提取器）
                   const { mainContent: nonStreamingCotStripped } = extractAssistantCotAndMain(fc);
+                  const cachedFinal = finalizedParseCacheRef.current.get(msg.id);
+                  if (cachedFinal && cachedFinal.input === nonStreamingCotStripped) {
+                    return cachedFinal.output;
+                  }
                   const blocks = blockRouter(nonStreamingCotStripped);
                   const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
                   const finalParsed = parseOptionBox(bridgedText);
+                  finalizedParseCacheRef.current.set(msg.id, {
+                    input: nonStreamingCotStripped,
+                    output: finalParsed,
+                  });
                   return finalParsed;
                 })()
               : {
@@ -894,7 +1046,7 @@ export const ChatMessageList = function ChatMessageList({
             ? (display as string)
             : parsed.text?.trim()
               ? parsed.text
-              : raw
+              : mainTextFull
           : (display as string);
         const optionsToShow = parsed.options;
         const totalPages = parsed.totalPages;
@@ -913,6 +1065,7 @@ export const ChatMessageList = function ChatMessageList({
             <ChatMessageItem
               key={`item-${msg.id}`}
               msg={msg}
+              assistantName={assistantName}
               raw={raw}
               textToShow={textToShow}
               optionsToShow={optionsToShow}
@@ -930,17 +1083,18 @@ export const ChatMessageList = function ChatMessageList({
               quickSend={quickSend}
               onContextMenu={onMessageContextMenu}
               onQuoteQuestion={onQuoteQuestion}
-              isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
-              streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
+            isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
+            streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
+            usePlainStreamingText={usePlainStreamingText}
               markdownComponents={markdownComponents}
-              cotContent={msg.role === 'assistant' ? streamingCotContent : undefined}
-              cotStreaming={
-                msg.role === 'assistant' && streamingCotContent != null ? !streamingCotDone : false
-              }
+            cotContent={msg.role === 'assistant' && streamingCotContent != null ? streamingCotContent : undefined}
+              cotStarted={msg.role === 'assistant' && streamingCotStarted}
+              cotStreaming={isStreamingMsg && (streamingCotStarted || !!streamingCotContent)}
               inlineThinkingPlaceholder={inlineThinkingPlaceholder}
+              isMobileViewport={isMobileViewport}
             />
             {/* 工具调用卡片：紧跟当前 streaming assistant 消息之后 */}
-            {isStreamingMsg && activeTools.length > 0 && (
+            {isStreamingMsg && msg.id === lastAssistantId && activeTools.length > 0 && (
               <div className="tool-calls-container">
                 {activeTools.map((tool) => (
                   <div
@@ -983,7 +1137,7 @@ export const ChatMessageList = function ChatMessageList({
           </div>
         )}
         <div ref={bottomRef as React.Ref<HTMLDivElement>} style={{ height: 0, margin: 0, padding: 0 }} />
-        {/* 底部 spacer：始终保持固定高度，不随 isStreaming 变化，避免开始/结束时跳变 */}
+        {/* 底部 spacer：保持较大的支撑，确保发送后用户消息可以顶到上方目标位 */}
         <div style={{ height: '60vh', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
       </div>
     </div>

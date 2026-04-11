@@ -19,6 +19,7 @@ export interface UseTypewriterOptions {
   baseDelayMs: number;
   typingSound: TypingSoundMode;
   onFinished: (finalText: string) => void;
+  enabled?: boolean;
 }
 
 export interface UseTypewriterReturn {
@@ -31,7 +32,7 @@ export interface UseTypewriterReturn {
 
 // ── 常量 ────────────────────────────────────────────────
 
-const MAX_CHARS_PER_FRAME = 6;
+const MAX_CHARS_PER_FRAME = 2;
 const BATCH_FRAMES = 1;
 
 // ── 字符工具函数 ────────────────────────────────────────
@@ -47,9 +48,9 @@ function getNextCharIndex(text: string, idx: number): number {
 }
 
 function charDelayMs(ch: string, base: number): number {
-  if (ch === '\n') return base * 2;
-  if ('。！？…'.includes(ch) || '.!?'.includes(ch)) return base * 1.5;
-  if (',，、;；'.includes(ch)) return base * 1.5;
+  if (ch === '\n') return base * 1.2;
+  if ('。！？…'.includes(ch) || '.!?'.includes(ch)) return base * 1.12;
+  if (',，、;；'.includes(ch)) return base * 1.06;
   return base;
 }
 
@@ -92,7 +93,7 @@ function pickPreferredNextIndex(text: string, idx: number, maxChars: number): nu
 // ── Hook ────────────────────────────────────────────────
 
 export function useTypewriter(options: UseTypewriterOptions): UseTypewriterReturn {
-  const { baseDelayMs, typingSound, onFinished } = options;
+  const { baseDelayMs, typingSound, onFinished, enabled = true } = options;
 
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
@@ -151,10 +152,21 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
 
   // ── RAF tick 循环 ──
   useEffect(() => {
+    if (!enabled) {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      budgetRef.current = 0;
+      lastTsRef.current = 0;
+      startTsRef.current = 0;
+      frameCountRef.current = 0;
+      return;
+    }
+
     const tryStart = () => {
       if (rafRef.current !== null) return;
 
-      // 流已结束但可见正文为空 → 直接完成，避免 FSM 卡住
       if (streamDoneRef.current && visibleTextRef.current.length === 0) {
         setIsTyping(false);
         const raw = fullTextRef.current;
@@ -166,6 +178,7 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
         budgetRef.current = 0;
         lastTsRef.current = 0;
         startTsRef.current = 0;
+        frameCountRef.current = 0;
         setDisplayedText('');
         return;
       }
@@ -174,7 +187,7 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
       if (displayedLenRef.current >= visibleTextRef.current.length && !streamDoneRef.current) return;
 
       setIsTyping(true);
-      budgetRef.current = 30;
+      budgetRef.current = 10;
       startTsRef.current = performance.now();
       lastTsRef.current = 0;
       frameCountRef.current = 0;
@@ -189,33 +202,48 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
         const fullLen = full.length;
         let idx = displayedLenRef.current;
 
-        // 追赶加速
         const elapsed = ts - startTsRef.current;
         const backlog = fullLen - idx;
         let catchUpBoost = 0;
-        if (elapsed > 1000 && !streamDoneRef.current) {
-          if (backlog > 40) catchUpBoost = Math.min((backlog - 40) * 0.15, 12);
-          if (backlog > 200) catchUpBoost = 12 + Math.min((backlog - 200) * 0.2, 25);
+        if (!streamDoneRef.current && elapsed > 900 && backlog > 48) {
+          catchUpBoost = Math.min((backlog - 48) * 0.12, 18);
+          if (elapsed > 1800 && backlog > 120) {
+            catchUpBoost += Math.min((backlog - 120) * 0.08, 16);
+          }
         }
 
-        // stream 结束后加速收尾
         if (streamDoneRef.current && idx < fullLen) {
-          budgetRef.current += 300;
+          budgetRef.current += 900;
         }
 
         budgetRef.current += dt + catchUpBoost;
 
-        // 推进字符
         let typedThisFrame = 0;
+        const dynamicFrameCap = streamDoneRef.current
+          ? Math.min(MAX_CHARS_PER_FRAME + 4, 8)
+          : backlog > 80
+            ? Math.min(MAX_CHARS_PER_FRAME + 2, 6)
+            : MAX_CHARS_PER_FRAME;
 
-        while (typedThisFrame < MAX_CHARS_PER_FRAME && idx < fullLen) {
-          const remain = MAX_CHARS_PER_FRAME - typedThisFrame;
-          let targetIdx = pickPreferredNextIndex(full, idx, remain);
+        while (typedThisFrame < dynamicFrameCap && idx < fullLen) {
+          const remain = dynamicFrameCap - typedThisFrame;
+          // 流式阶段强制逐字符推进，避免“按词/按段蹦出来”。
+          // 只在 stream done 后再允许更激进的收尾追赶。
+          let targetIdx = !streamDoneRef.current
+            ? getNextCharIndex(full, idx)
+            : pickPreferredNextIndex(full, idx, remain);
           if (targetIdx <= idx) targetIdx = getNextCharIndex(full, idx);
-          const cost = computeRangeCostMs(full, idx, targetIdx, baseDelayMs);
+          const effectiveBaseDelay = streamDoneRef.current
+            ? Math.max(1, baseDelayMs * 0.38)
+            : backlog > 120
+              ? Math.max(1, baseDelayMs * 0.58)
+              : backlog > 64
+                ? Math.max(1, baseDelayMs * 0.78)
+                : baseDelayMs;
+          const cost = computeRangeCostMs(full, idx, targetIdx, effectiveBaseDelay);
           if (budgetRef.current < cost) {
             const singleIdx = getNextCharIndex(full, idx);
-            const singleCost = computeRangeCostMs(full, idx, singleIdx, baseDelayMs);
+            const singleCost = computeRangeCostMs(full, idx, singleIdx, effectiveBaseDelay);
             if (budgetRef.current < singleCost) break;
             budgetRef.current -= singleCost;
             idx = singleIdx;
@@ -236,15 +264,13 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
         if (idx !== displayedLenRef.current) {
           displayedLenRef.current = idx;
           frameCountRef.current += 1;
-          // 每 BATCH_FRAMES 帧 flush 一次到 React state
-          if (frameCountRef.current >= BATCH_FRAMES) {
+          if (frameCountRef.current >= BATCH_FRAMES || idx >= fullLen) {
             setDisplayedText(full.slice(0, idx));
             frameCountRef.current = 0;
           }
           if (typingSound !== 'off') playClickSound(typingSound);
         }
 
-        // 追完且流已结束 → 收尾
         if (idx >= fullLen && streamDoneRef.current) {
           rafRef.current = null;
           setIsTyping(false);
@@ -255,12 +281,19 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
           streamDoneRef.current = false;
           budgetRef.current = 0;
           lastTsRef.current = 0;
-          // 延迟两帧再清空 displayedText，避免末尾抖动
+          startTsRef.current = 0;
+          frameCountRef.current = 0;
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               setDisplayedText('');
             });
           });
+          return;
+        }
+
+        if (idx >= fullLen && !streamDoneRef.current) {
+          rafRef.current = null;
+          setIsTyping(false);
           return;
         }
 
@@ -270,7 +303,6 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
       rafRef.current = requestAnimationFrame(tick);
     };
 
-    // 16ms polling interval 启动 RAF
     const poll = setInterval(tryStart, 16);
     return () => {
       clearInterval(poll);
@@ -279,7 +311,7 @@ export function useTypewriter(options: UseTypewriterOptions): UseTypewriterRetur
         rafRef.current = null;
       }
     };
-  }, [baseDelayMs, typingSound]);
+  }, [baseDelayMs, typingSound, enabled]);
 
   return { feed, finish, reset, displayedText, isTyping };
 }

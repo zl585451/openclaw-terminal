@@ -60,8 +60,16 @@ module.exports = {
       apiKey = process.env.WANX_API_KEY || process.env.DASHSCOPE_IMAGE_KEY || '';
     }
 
+    // 发布版里 API Key 主要保存在 config.json，补这一层避免安装包中 image_gen 失效
     if (!apiKey) {
-      return '❌ 未找到通义万象 API Key。\n请在保险箱里存入，引用名用：wanx_key\n格式：sk-xxxxxxxx（纯字符串）';
+      try {
+        const config = require('../config');
+        apiKey = config.DASHSCOPE_API_KEY || '';
+      } catch {}
+    }
+
+    if (!apiKey) {
+      return '❌ 未找到通义万象 API Key。\n可用三种方式配置：\n1. 在设置里填写阿里云百炼 Key\n2. 在保险箱里存入 wanx_key\n3. 设置环境变量 WANX_API_KEY / DASHSCOPE_IMAGE_KEY';
     }
 
     try {

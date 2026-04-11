@@ -141,7 +141,6 @@ export function useScrollManager({
   // 用户发送消息后顶置滚动
   useLayoutEffect(() => {
     if (pendingSnapMsgIdRef.current === null) return;
-
     const container = messagesContainerRef.current;
     if (!container) return;
 

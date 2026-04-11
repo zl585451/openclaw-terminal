@@ -1,8 +1,8 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-03-24（网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉）  
-> **详细说明**：查看 `docs/feature-map/` 文件夹中的分模块文档
+> **最后更新**：2026-04-10（补充图形路由策略与结构图协议入口）  
+> **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
 
@@ -10,28 +10,30 @@
 
 | 层级 | 模块 | 文件 |
 |------|------|------|
-| 第一层 | 基础设施 | [`01_infrastructure.md`](./feature-map/01_infrastructure.md) |
-| 第二层 | 对话后自动处理管线 | [`02_auto_pipeline.md`](./feature-map/02_auto_pipeline.md) |
-| 第三层 | 前置思考管线 | [`03_hypothesis.md`](./feature-map/03_hypothesis.md) |
-| 第四层 | 记忆搜索与启动加载 | [`04_memory_search.md`](./feature-map/04_memory_search.md) |
-| 第五层 | 图片处理 | [`05_image.md`](./feature-map/05_image.md) |
-| 第六层 | Slash 命令 | [`06_commands.md`](./feature-map/06_commands.md) |
-| 第七层 | Electron 桌面应用 | [`07_electron.md`](./feature-map/07_electron.md) |
-| 第八层 | 提示词系统 | [`08_prompts.md`](./feature-map/08_prompts.md) |
-| 第九层 | 工具系统 | [`09_tools.md`](./feature-map/09_tools.md) |
+| **AI 协作** | 入口总览 | [`../00_ai_entry/README.md`](../00_ai_entry/README.md) |
+| **AI 协作** | 聊天流式入口 | [`../00_ai_entry/chat-stream-entry.md`](../00_ai_entry/chat-stream-entry.md) |
+| **AI 协作** | 图片链路入口 | [`../00_ai_entry/image-flow-entry.md`](../00_ai_entry/image-flow-entry.md) |
+| **AI 协作** | 音频链路入口 | [`../00_ai_entry/audio-entry.md`](../00_ai_entry/audio-entry.md) |
+| **AI 协作** | 排错顺序 | [`../00_ai_entry/bug-triage.md`](../00_ai_entry/bug-triage.md) |
+| **AI 协作** | 图形路由策略 | [`diagram-routing-strategy.md`](./diagram-routing-strategy.md) |
+| 第一层 | Gateway/基础设施 | [`01-gateway.md`](./01-gateway.md) |
+| 第二层 | 对话后自动处理管线 | [`02-auto-pipeline.md`](./02-auto-pipeline.md) |
+| 第三层 | 前置思考管线 | [`03-hypothesis.md`](./03-hypothesis.md) |
+| 第四层 | 记忆搜索与启动加载 | [`04-memory-search.md`](./04-memory-search.md) |
+| 第五层 | 图片处理 | [`05-image-file.md`](./05-image-file.md) |
+| 第六层 | Slash 命令 | [`06-slash-commands.md`](./06-slash-commands.md) |
+| 第七层 | Electron 桌面应用 | [`07-electron.md`](./07-electron.md) |
+| 第八层 | 提示词系统 | [`08-prompts.md`](./08-prompts.md) |
+| 第九层 | 工具系统 | [`09-tools.md`](./09-tools.md) |
+| 附录 | 数据流向 | [`98_data_flow.md`](./98_data_flow.md) |
+| 附录 | Provider 系统 | [`provider-system.md`](./provider-system.md) |
 | 附录 | AI.library 集成 | [`AI_LIBRARY_OCT.md`](./AI_LIBRARY_OCT.md) |
-| 附录 | Provider 系统 | [`provider-system.md`](./feature-map/provider-system.md) |
-| 附录 | 已知问题 | [`99_known_issues.md`](./feature-map/99_known_issues.md) |
-| 附录 | 数据流向 | [`98_data_flow.md`](./feature-map/98_data_flow.md) |
 | **AI 协作** | 项目总览 | [`AI_PROJECT_OVERVIEW.md`](./AI_PROJECT_OVERVIEW.md) |
-| **AI 协作** | IPC 通道 | [`ELECTRON_IPC_CHANNELS.md`](./ELECTRON_IPC_CHANNELS.md) |
-| **AI 协作** | WebSocket 协议 | [`WEBSOCKET_PROTOCOL.md`](./WEBSOCKET_PROTOCOL.md) |
-| **AI 协作** | 提示词加载 | [`PROMPT_LOADING_ORDER.md`](./PROMPT_LOADING_ORDER.md) |
-| **AI 协作** | 选项框解析 | [`OPTIONBOX_PARSER_REFERENCE.md`](./OPTIONBOX_PARSER_REFERENCE.md) |
-| **AI 协作** | Skills 目录 | [`SKILLS_DIRECTORY.md`](./SKILLS_DIRECTORY.md) |
-| **AI 协作** | 文档差距报告 | [`DOCUMENTATION_GAP_REPORT.md`](./DOCUMENTATION_GAP_REPORT.md) |
+| **AI 协作** | IPC 通道 | [`../03_specs/ELECTRON_IPC_CHANNELS.md`](../03_specs/ELECTRON_IPC_CHANNELS.md) |
+| **AI 协作** | WebSocket 协议 | [`../03_specs/WEBSOCKET_PROTOCOL.md`](../03_specs/WEBSOCKET_PROTOCOL.md) |
+| **AI 协作** | 文档差距报告（历史） | [`../03_specs/DOCUMENTATION_GAP_REPORT.md`](../03_specs/DOCUMENTATION_GAP_REPORT.md) |
 
-> AI 协作文档补全于 2026-03-24 · CURSOR
+> 注意：旧的 `feature-map/` 子目录引用已废弃，现已统一指向实际存在的文档路径。
 
 ---
 
@@ -39,11 +41,15 @@
 
 ### 基础设施（第一层）
 - **Gateway WebSocket**：前端 ↔ AI 的桥梁，OCT 自有 token 认证（无 ECDSA）
+- **Transport 分层**：`transport/ws.js` / `transport/http.js` / `transport/protocol.js` 已接管网络生命周期，仍保留 legacy fallback 便于联调
+- **Gateway 分层**：`gateway/router.js` / `gateway/slash.js` 承接请求路由与稳定 Slash 命令
+- **Runtime 分层**：`runtime/chatEngine.js` / `contextBuilder.js` / `streamController.js` / `providerRouter.js` / `toolLoop.js`
+- **Service 分层**：`services/postProcessor.js` / `imageService.js`
 - **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由
 - **后台任务队列**：task_queue + worker，持久化、60s 超时
 - **AI 对话引擎**：Provider 抽象，支持百炼/DeepSeek/硅基/Groq/OpenAI/Ollama 等
 - **Provider 系统**：服务商预设、按模型能力动态组装、Settings 服务商选择器
-- **System Prompt**：从 Nocturne + 本地 MD 文件动态加载
+- **System Prompt**：从 Nocturne + 本地 MD 文件 + 人格配置动态加载
 - **Nocturne 记忆后端**：Python FastAPI + SQLite
 
 ### 自动处理管线（第二层）
@@ -53,8 +59,11 @@
 - 🔇 模式提炼（已停用，依赖自评）
 - ✅ 用户反馈检测（`memory_feedback.js:422`，2026-03-20 修复：已在 onDone 调用）
 - ✅ 停车场待办检测（`index.js:424`）
-- ✅ 自动记忆提炼（`index.js:431`）
-- 🚧 追问偏好学习（待实现）
+- ✅ 自动记忆提炼（`index.js:431`，已接入 Governor）
+- ✅ 追问偏好学习（已接入 Governor）
+- ✅ Memory Governor（已接管历史摘要 / 反馈 / 自动提炼 / 追问偏好 / 工具层 memory_write / 注入筛选）
+- ✅ review_queue 候选层与低频维护（软过期）
+- ✅ Memory Management Agent 最小巡检骨架（低频治理报告）
 
 **文档清理**：2026-03-20 删除 4 个重复的独立文件（`feedback-detect.md` 等），合并到 `02_auto_pipeline.md`
 
@@ -84,12 +93,60 @@
 
 ## 最近修复
 
+### 2026-04-06 人格配置产品化
+- **目标**：让 OCT 作为可发布产品时不再绑定开发者私人设定
+- **实现**：
+  - 设置面板新增人格配置：`AI 名称`、`用户称呼`、`风格预设`
+  - Electron 将人格配置保存到 `userData/config.json`
+  - Gateway 读取人格配置，运行时替换 `{{AI_NAME}} / {{USER_NAME}}`
+  - Nocturne 初始化预设记忆改为按配置生成身份描述
+  - 聊天 UI、通知、状态条的主要展示名称与人格配置保持一致
+- **结果**：
+  - 发布默认人格为中性可配置
+- 私人化人格改为用户自己的本地配置，而不是写死在仓库主链里
+
+### 2026-04-08 oct-gateway 分层重构收口
+- **Service 层**：后处理链与图片路由已从 `index.js` 抽到 `services/`
+- **Gateway 层**：`MessageRouter` 现已统一承接 Slash、`sessions.list`、普通 `chat.send`
+- **Runtime 层**：`ChatEngine` / `ContextBuilder` / `ProviderRouter` / `ToolLoop` 已接线
+- **Transport 层**：`WsTransport` / `HttpTransport` / `protocol` 已接线，协议格式保持不变
+- **现状**：Feature Flag 与 legacy fallback 仍保留，等待联调后进入清理阶段
+
+### 2026-04-08 联调修复与右栏状态增强
+- **系统消息隔离**：Electron 仅信任 gateway 显式 `isSystemReply/type=system` 标记，普通 AI 回复不再误进系统气泡。
+- **并发消息修复**：Slash 系统命令会先中断当前流；系统回复和普通流式正文分缓冲处理，避免 `/status` 插入搜索流后串流。
+- **思考模式展示修复**：`/think off` 会关闭本地 CoT 面板渲染，正文与思考块不再交织。
+- **图片识别降级增强**：`image_analyzer` 云端失败时会继续尝试本地降级，并在最终回复中明确说明视觉分析状态。
+- **任务看板体验修复**：任务面板前端快速添加、Electron 本地任务写入、gateway `task_add/tasks_add` 均新增去重保护；任务与停车场项支持 hover 查看完整内容。
+- **右栏 TOK/CTX**：`electron/main.ts` 和 `main_utf8.ts` 对多 provider usage 做统一抽取；右栏在厂商未返回显式上下文占用时，会基于模型窗口显示近似 `CTX`。
+
+### 2026-04-06 语音助手与能力路由产品化
+- **目标**：把语音能力做成产品级 capability routing，而不是 MiniMax 私有定制链
+- **实现**：
+  - 接入 MiniMax `speech-2.8-hd` WebSocket TTS
+  - 保留浏览器本地朗读兜底
+  - 语音输入改为录音 → IPC → 云端 ASR → 文本回填
+  - `LogPanel` 新增 `TTS` 分类，只显示用量、成功与错误
+  - 设置面板新增云端音色选择，但只有检测到可用 MiniMax TTS 能力时才展示
+  - `auto` 朗读改为跟随当前 `OCT_PROVIDER`，不再因残留 Key 误触发别家云端语音
+- **结果**：
+  - MiniMax Token Plan 用户可直接启用云端朗读
+  - 非 MiniMax 用户不会平白承担额外系统负担
+  - 后续生图/多模态套餐能力可沿用同一套路由思路
+
 ### 2026-03-24 网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉
 - **网络稳定性**：ai.js 代理绕过（getDirectFetchOptions）、fetchWithRetry（90s 超时 + 重试）、流中断截断提示、工具调用 30s 超时隔离；config.js NO_PROXY 直连 DashScope
 - **OpenClaw Skills**：skill_adapter.js 解析 SKILL.md（YAML frontmatter），注入 `<skills>` 到系统提示词，支持 bins 依赖检查
 - **http_request**：通用 HTTP 工具，GET/POST/PUT/DELETE，对接第三方 API
 - **image_gen**：通义万象 wanx-v1 图像生成，复用 DashScope API Key
 - **VaultPanel 抽屉**：从右下角悬浮球改为 TabBar 内嵌 🔐 VAULT 按钮，右侧滑入抽屉，深绿黑主题
+
+### 2026-04-05 记忆治理与 MiniMax 流式优化
+- **Memory Governor Phase 1 / 1.5**：新增 `memory_governor.js`，统一接管历史摘要、反馈、自动提炼、追问偏好、`memory_write`、相关记忆注入筛选
+- **review_queue**：新增标准候选层结构，带 `retention_hours`、`expires_at`、`cleanup_hint`
+- **维护器**：新增 `review_queue_maintenance.js`，低频后台软过期弱候选
+- **管理 Agent 骨架**：新增 `memory_management_agent.js`，输出治理报告与待处理建议
+- **MiniMax 流式优化**：前端改为按帧合并刷新，并在流式阶段减轻重型解析，明显降低“系统被拖住”的顿感
 
 ### 2026-03-24 OCT 握手 + 工具层 + Orchestrator + 后台任务 + 保险箱与邮件
 - **OCT 握手**：移除 OpenClaw ECDSA 签名，改为 `params.auth.token` 认证
@@ -159,4 +216,4 @@
 
 ---
 
-**📖 详细文档**：进入 [`docs/feature-map/`](./feature-map/) 查看各模块完整说明
+**📖 详细文档**：AI 排错优先进入 [`../00_ai_entry/README.md`](../00_ai_entry/README.md)，架构补充再看本目录各模块文档。

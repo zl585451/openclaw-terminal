@@ -3,6 +3,7 @@ export function inferProviderFromBaseUrl(baseUrl: string): string {
   if (u.includes('coding.dashscope')) return 'bailian-coding';
   if (u.includes('dashscope')) return 'bailian';
   if (u.includes('deepseek')) return 'deepseek';
+  if (u.includes('minimaxi')) return 'minimax';
   if (u.includes('siliconflow')) return 'siliconflow';
   if (u.includes('moonshot')) return 'moonshot';
   if (u.includes('groq')) return 'groq';

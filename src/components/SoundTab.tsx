@@ -1,272 +1,721 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import '../styles/SoundTab.css';
 
-interface SoundItem {
+type MusicClip = {
   id: string;
-  name: string;
-  ext: string;
-  folders: string[];
+  title: string;
+  prompt: string;
+  lyrics: string;
+  instrumental: boolean;
+  audioSrc: string;
+  mimeType: string;
+  model: string;
+  traceId?: string;
+  durationMs?: number;
+  sampleRate?: number;
+  bitrate?: number;
+  sizeBytes?: number;
+  createdAt: number;
+};
+
+const PROMPT_PRESETS = [
+  '电影感钢琴与弦乐，缓慢推进，深夜城市灯光，克制但有希望',
+  'lofi hip hop，雨夜，温暖电钢，轻鼓点，适合专注工作',
+  '独立流行，女声，透明感，海边日落，副歌有记忆点',
+  '电子氛围，未来感，低频脉冲，冷色霓虹，适合片头',
+];
+
+const STYLE_TAGS = ['gabber', 'a major', 'male rock vocals', 'dirty south', 'gospel rock', 'chill r&b'];
+
+const VOICE_PRESETS = [
+  {
+    id: 'male',
+    label: '男声',
+    prompt: '华语流行，男声，低沉温暖，近距离演唱，钢琴与柔和弦乐，深夜雨城，慢速推进，副歌打开',
+  },
+  {
+    id: 'female',
+    label: '女声',
+    prompt: '独立流行，女声，清透带气声，温暖电钢与柔和鼓点，海边黄昏，克制主歌，副歌有记忆点',
+  },
+  {
+    id: 'duet',
+    label: '对唱',
+    prompt: '华语流行对唱，男女双人和声，钢琴与弦乐，电影感，情绪递进，副歌有呼应与合唱层次',
+  },
+  {
+    id: 'instrumental',
+    label: '纯音乐',
+    prompt: '电影感钢琴与弦乐，纯音乐，无人声，缓慢推进，深夜城市灯光，克制但有希望',
+  },
+];
+
+const LYRIC_PRESET = `[Verse]
+窗边的霓虹还没睡
+心事像潮水慢慢堆
+我把沉默折成一页
+放进凌晨两点的风里
+
+[Chorus]
+如果夜晚也会发光
+就让我们逆着人海歌唱
+把没说出口的愿望
+都写进这一段回响`;
+
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0) return '--:--';
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return '--';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function createAudioUrl(audioBase64: string, mimeType: string): string {
+  const byteChars = atob(audioBase64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i += 1) {
+    bytes[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: mimeType });
+  return URL.createObjectURL(blob);
+}
 
 const SoundTab: React.FC = () => {
-  const [inputValue, setInputValue] = useState('');
-  const [results, setResults] = useState<SoundItem[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [keywords, setKeywords] = useState<string[]>([]);
-  const [eagleConnected, setEagleConnected] = useState(false);
-  const [dashscopeKey, setDashscopeKey] = useState('');
-  
-  const outputRef = useRef<HTMLDivElement>(null);
+  const [prompt, setPrompt] = useState(PROMPT_PRESETS[0]);
+  const [lyrics, setLyrics] = useState(LYRIC_PRESET);
+  const [title, setTitle] = useState('Midnight Neon');
+  const [mode, setMode] = useState<'simple' | 'advanced'>('advanced');
+  const [advancedSection, setAdvancedSection] = useState<'audio' | 'lyrics' | 'styles'>('lyrics');
+  const [instrumental, setInstrumental] = useState(false);
+  const [selectedVoicePresets, setSelectedVoicePresets] = useState<string[]>([]);
+  const [format, setFormat] = useState<'mp3' | 'wav'>('mp3');
+  const [model, setModel] = useState<'music-2.6' | 'music-2.5+' | 'music-2.5'>('music-2.6');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false);
+  const [error, setError] = useState('');
+  const [clips, setClips] = useState<MusicClip[]>([]);
+  const [activeClipId, setActiveClipId] = useState<string | null>(null);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
+  const createdUrlsRef = useRef<string[]>([]);
 
-  // 获取环境变量
+  const activeClip = useMemo(
+    () => clips.find((clip) => clip.id === activeClipId) || clips[0] || null,
+    [clips, activeClipId],
+  );
+
+  const lyricsOptimizer = mode === 'simple';
+
   useEffect(() => {
-    window.electronAPI?.getEnv('DASHSCOPE_API_KEY').then(key => {
-      setDashscopeKey(key);
-    });
+    (window as any).electronAPI?.getApiKeys?.()
+      ?.then((result: any) => {
+        const key = String(result?.data?.MINIMAX_API_KEY || '').trim();
+        setApiKeyConfigured(!!key);
+      })
+      .catch(() => setApiKeyConfigured(null));
+
+    window.electronAPI?.musicHistoryLoad?.()
+      .then((result) => {
+        if (!result?.success || !Array.isArray(result.clips)) return;
+        const loadedClips = result.clips.map((clip) => {
+          const audioSrc = createAudioUrl(clip.audioBase64, clip.mimeType);
+          createdUrlsRef.current.push(audioSrc);
+          return {
+            id: clip.id,
+            title: clip.title,
+            prompt: clip.prompt,
+            lyrics: clip.lyrics,
+            instrumental: clip.instrumental,
+            audioSrc,
+            mimeType: clip.mimeType,
+            model: clip.model,
+            traceId: clip.traceId,
+            durationMs: clip.durationMs,
+            sampleRate: clip.sampleRate,
+            bitrate: clip.bitrate,
+            sizeBytes: clip.sizeBytes,
+            createdAt: clip.createdAt,
+          } as MusicClip;
+        });
+        setClips(loadedClips);
+        setActiveClipId(loadedClips[0]?.id || null);
+      })
+      .catch(() => {});
+
+    return () => {
+      createdUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      createdUrlsRef.current = [];
+    };
   }, []);
 
-  // 添加日志
-  const addLog = useCallback((message: string) => {
-    setLogs(prev => [...prev, message]);
-    setTimeout(() => {
-      outputRef.current?.scrollTo(0, outputRef.current.scrollHeight);
-    }, 10);
-  }, []);
-
-  // 检查 Eagle
-  const checkEagle = async (): Promise<boolean> => {
-    try {
-      const res = await fetch('http://localhost:41595/api/application/info');
-      if (res.ok) {
-        setEagleConnected(true);
-        addLog('[SYSTEM] Eagle API 连接成功');
-        return true;
-      }
-    } catch {
-      addLog('[ERROR] Eagle API 连接失败');
-    }
-    setEagleConnected(false);
-    return false;
+  const appendPromptFragment = (base: string, fragment: string) => {
+    const current = base.trim();
+    if (!current) return fragment;
+    if (current.includes(fragment)) return current;
+    return `${current}，${fragment}`;
   };
 
-  // AI 获取关键词（使用阿里百炼 API）
-  const getKeywords = async (query: string): Promise<string[]> => {
-    if (!dashscopeKey) {
-      addLog('[AI] 未配置 DASHSCOPE_API_KEY，使用原始输入');
-      return [query];
-    }
+  const removePromptFragment = (base: string, fragment: string) =>
+    base
+      .replace(`，${fragment}`, '')
+      .replace(`${fragment}，`, '')
+      .replace(fragment, '')
+      .replace(/，{2,}/g, '，')
+      .replace(/^，|，$/g, '')
+      .trim();
 
+  const applyVoicePreset = (presetId: string) => {
+    const preset = VOICE_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+    setPrompt((prev) => appendPromptFragment(prev, preset.prompt));
+    setSelectedVoicePresets((prev) => (prev.includes(presetId) ? prev : [...prev, presetId]));
+    setInstrumental(presetId === 'instrumental');
+  };
+
+  const removeVoicePreset = (presetId: string) => {
+    const preset = VOICE_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+    setPrompt((prev) => removePromptFragment(prev, preset.prompt));
+    setSelectedVoicePresets((prev) => prev.filter((id) => id !== presetId));
+    if (presetId === 'instrumental') {
+      setInstrumental(false);
+    }
+  };
+
+  const handleGenerateLyrics = async () => {
+    setIsGeneratingLyrics(true);
+    setError('');
     try {
-      addLog('[AI] 正在分析关键词...');
-      
-      // 阿里百炼 API（OpenAI 兼容模式）
-      const res = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${dashscopeKey}`
-        },
-        body: JSON.stringify({
-          model: 'qwen-plus',
-          messages: [
-            { 
-              role: 'system', 
-              content: '你是音效库搜索助手。把用户描述转换成Eagle素材库搜索关键词，返回JSON数组格式，2-5个关键词。只返回数组，不要其他内容。例如：["雨声", "室内", "安静"]' 
-            },
-            { role: 'user', content: query }
-          ],
-          max_tokens: 100,
-          temperature: 0.3
-        })
+      const result = await window.electronAPI?.lyricsGenerate?.({
+        prompt: prompt.trim(),
+        title: title.trim(),
       });
-
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
+      if (!result?.success || !result.lyrics) {
+        setError(result?.error || '自动生成歌词失败');
+        return;
       }
-
-      const data = await res.json();
-      const content = data.choices?.[0]?.message?.content || '[]';
-      
-      let kws: string[] = [];
-      try {
-        // 清理可能的 markdown 代码块
-        let cleanContent = content.trim();
-        if (cleanContent.startsWith('```')) {
-          cleanContent = cleanContent.replace(/```json?/g, '').replace(/```/g, '').trim();
-        }
-        const parsed = JSON.parse(cleanContent);
-        kws = Array.isArray(parsed) ? parsed : [query];
-      } catch {
-        kws = content.split(/[,\n]/).map((s: string) => s.trim()).filter(Boolean);
+      if (result.title) {
+        setTitle(result.title);
       }
-
-      addLog(`[AI] 解析关键词: ${kws.join(' / ')}`);
-      return kws;
-    } catch (e) {
-      addLog(`[AI] 解析失败: ${e}`);
-      return [query];
+      if (result.styleTags) {
+        setPrompt(result.styleTags);
+      }
+      setLyrics(result.lyrics);
+      setInstrumental(false);
+      setMode('advanced');
+      setAdvancedSection('lyrics');
+    } catch (err: any) {
+      setError(err?.message || '自动生成歌词请求失败');
+    } finally {
+      setIsGeneratingLyrics(false);
     }
   };
 
-  // 搜索 Eagle
-  const searchEagle = async (keyword: string): Promise<SoundItem[]> => {
-    try {
-      const res = await fetch(`http://localhost:41595/api/item/list?keyword=${encodeURIComponent(keyword)}`);
-      const data = await res.json();
-      
-      // 获取文件夹映射
-      const folderRes = await fetch('http://localhost:41595/api/folder/list');
-      let folderMap: Record<string, string> = {};
-      if (folderRes.ok) {
-        const fd = await folderRes.json();
-        folderMap = (fd.data || []).reduce((acc: Record<string, string>, f: { id: string; name: string }) => {
-          acc[f.id] = f.name;
-          return acc;
-        }, {});
-      }
-
-      return (data.data || []).map((item: { id: string; name: string; ext: string; folders?: string[] }) => ({
-        id: item.id,
-        name: item.name,
-        ext: item.ext || '',
-        folders: (item.folders || []).map((fid: string) => folderMap[fid] || fid)
-      }));
-    } catch {
-      return [];
+  const handleGenerate = async () => {
+    const nextPrompt = prompt.trim();
+    const nextLyrics = lyrics.trim();
+    if (!nextPrompt) {
+      setError('先写一点音乐描述，我们才能开始生成。');
+      return;
     }
-  };
-
-  // 执行搜索
-  const doSearch = async () => {
-    const query = inputValue.trim();
-    if (!query) return;
-
-    setResults([]);
-    setLogs([]);
-    setIsSearching(true);
-
-    addLog('[SYSTEM] 正在连接 Eagle API...');
-    const ok = await checkEagle();
-    if (!ok) {
-      setIsSearching(false);
+    if (!instrumental && !nextLyrics && !lyricsOptimizer) {
+      setError('Advanced 模式下如果不是纯音乐，需要填写歌词。');
       return;
     }
 
-    const kws = await getKeywords(query);
-    setKeywords(kws);
-
-    addLog('[SEARCH] 搜索中...');
-    
-    const all: SoundItem[] = [];
-    for (const kw of kws) {
-      const items = await searchEagle(kw);
-      all.push(...items);
-    }
-
-    // 去重
-    const seen = new Set<string>();
-    const unique: SoundItem[] = [];
-    for (const item of all) {
-      if (!seen.has(item.id)) {
-        seen.add(item.id);
-        unique.push(item);
-      }
-    }
-
-    const limited = unique.slice(0, 20);
-    setResults(limited);
-
-    addLog(limited.length > 0 
-      ? `[FOUND] 发现 ${limited.length} 个匹配文件` 
-      : '[FOUND] 未找到匹配文件');
-    addLog('[DONE] 搜索完成 ✓');
-    setIsSearching(false);
-  };
-
-  // 在 Eagle 中打开
-  const openInEagle = async (item: SoundItem) => {
+    setIsGenerating(true);
+    setError('');
     try {
-      await fetch('http://localhost:41595/api/item/highlight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemIds: [item.id] })
+      const result = await (window as any).electronAPI?.musicGenerate?.({
+        title: title.trim(),
+        model,
+        prompt: nextPrompt,
+        lyrics: lyricsOptimizer ? '' : nextLyrics,
+        instrumental,
+        lyricsOptimizer,
+        sampleRate: 44100,
+        bitrate: 256000,
+        format,
       });
-      addLog(`[OPEN] 已定位: ${item.name}`);
-    } catch {
-      addLog('[ERROR] 打开失败');
+
+      if (!result?.success || !result?.audioBase64) {
+        setError(result?.error || '音乐生成失败');
+        return;
+      }
+
+      const mimeType = result.mimeType || (format === 'wav' ? 'audio/wav' : 'audio/mpeg');
+      const audioSrc = createAudioUrl(result.audioBase64, mimeType);
+      createdUrlsRef.current.push(audioSrc);
+
+      const clip: MusicClip = {
+        id: result.clipId || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title: title.trim() || `Untitled Track ${clips.length + 1}`,
+        prompt: nextPrompt,
+        lyrics: lyricsOptimizer ? '' : nextLyrics,
+        instrumental,
+        audioSrc,
+        mimeType,
+        model: result.model || model,
+        traceId: result.traceId,
+        durationMs: result.durationMs,
+        sampleRate: result.sampleRate,
+        bitrate: result.bitrate,
+        sizeBytes: result.sizeBytes,
+        createdAt: Date.now(),
+      };
+
+      setClips((prev) => [clip, ...prev].slice(0, 8));
+      setActiveClipId(clip.id);
+    } catch (err: any) {
+      setError(err?.message || '音乐生成请求失败');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
   return (
     <div className="sound-tab">
-      <div className="search-section">
-        <div className="section-header">
-          <span className="section-title">◈ Sound Search</span>
-          <span className={`eagle-status ${eagleConnected ? 'connected' : 'disconnected'}`}>
-            {eagleConnected ? '●' : '○'} Eagle {eagleConnected ? 'CONNECTED' : 'OFFLINE'}
-          </span>
-        </div>
-        
-        <div className="search-input-area">
-          <span className="input-prompt">&gt;&gt;</span>
-          <input
-            type="text"
-            className="search-input"
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && doSearch()}
-            placeholder="描述你想找的音效... 例如：下雨天室内安静氛围"
-            disabled={isSearching}
-          />
-          <button className="search-btn" onClick={doSearch} disabled={isSearching || !inputValue.trim()}>
-            {isSearching ? '[ 搜索中... ]' : '[ 搜索 ]'}
-          </button>
-        </div>
-
-        {keywords.length > 0 && (
-          <div className="keywords-area">
-            <span className="keywords-label">关键词:</span>
-            {keywords.map((kw, idx) => (
-              <span key={idx} className="keyword-tag">{kw}</span>
-            ))}
+      <section className="music-hero-card">
+        <div className="music-hero-main">
+          <div className="music-hero-topline">
+            <p className="music-kicker">MiniMax Music Studio</p>
+            <div className="music-hero-badges">
+              <span className="music-header-pill">Audio</span>
+              <span className="music-header-pill">Lyrics</span>
+              <span className="music-header-pill">Styles</span>
+            </div>
           </div>
-        )}
-      </div>
+          <div className="music-hero-copyblock">
+            <h2>像 Suno 一样，先写感觉，再决定要不要展开细调。</h2>
+            <p className="music-hero-copy">
+              `Simple` 负责快速出歌，`Advanced` 再展开歌词、风格和输出参数。两套流程共用同一个试听区和最近作品区。
+            </p>
+          </div>
+        </div>
+        <div className="music-status-stack">
+          <div className={`music-status-pill ${apiKeyConfigured ? 'ok' : 'warn'}`}>
+            {apiKeyConfigured ? 'MiniMax Key 已配置' : '等待 MiniMax Key'}
+          </div>
+          <div className="music-status-meta">模型默认：music-2.6</div>
+          <div className="music-status-meta">Simple 自动补歌词，Advanced 自定义歌词</div>
+        </div>
+      </section>
 
-      <div className="results-section">
-        <div className="output-area" ref={outputRef}>
-          {logs.map((log, idx) => (
-            <div key={idx} className="output-line">{log}</div>
-          ))}
-          {logs.length === 0 && (
-            <div className="output-placeholder">
-              <span className="placeholder-icon">◈</span>
-              <span>输入描述开始搜索音效...</span>
+      <div className="music-studio-grid">
+        <section className="music-compose-card">
+          <div className="music-card-header">
+            <span className="music-card-eyebrow">Compose</span>
+            <span className="music-card-hint">先描述感觉，再决定要不要细调</span>
+          </div>
+          <div className="music-compose-scroll">
+            <div className="music-mode-switch" role="tablist" aria-label="compose mode">
+              <button
+                type="button"
+                className={`music-mode-tab ${mode === 'simple' ? 'active' : ''}`}
+                onClick={() => setMode('simple')}
+              >
+                Simple
+              </button>
+              <button
+                type="button"
+                className={`music-mode-tab ${mode === 'advanced' ? 'active' : ''}`}
+                onClick={() => setMode('advanced')}
+              >
+                Advanced
+              </button>
+            </div>
+
+            <label className="music-field">
+              <span>曲目标题</span>
+              <input
+                className="music-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="给这首歌起个名字"
+              />
+            </label>
+
+            {mode === 'simple' ? (
+              <div className="music-simple-panel">
+                <label className="music-field music-field-tight">
+                  <span>Song Description</span>
+                  <textarea
+                    className="music-textarea music-textarea-simple"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="例如：Operatic death metal song about drowning in daylight"
+                  />
+                </label>
+
+                <div className="music-voice-presets">
+                  {VOICE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className={`music-chip ${selectedVoicePresets.includes(preset.id) ? 'music-chip-active' : ''}`}
+                      onClick={() => applyVoicePreset(preset.id)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                {selectedVoicePresets.length > 0 ? (
+                  <div className="music-selected-pills">
+                    {selectedVoicePresets.map((presetId) => {
+                      const preset = VOICE_PRESETS.find((item) => item.id === presetId);
+                      if (!preset) return null;
+                      return (
+                        <button
+                          key={`selected_${preset.id}`}
+                          type="button"
+                          className="music-selected-pill"
+                          onClick={() => removeVoicePreset(preset.id)}
+                        >
+                          {preset.label}
+                          <span>×</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                <div className="music-simple-actions">
+                  <button
+                    type="button"
+                    className="music-pill-btn"
+                    onClick={() => {
+                      setMode('advanced');
+                      setAdvancedSection('audio');
+                    }}
+                  >
+                    + Audio
+                  </button>
+                  <button
+                    type="button"
+                    className="music-pill-btn"
+                    onClick={() => {
+                      setMode('advanced');
+                      setAdvancedSection('lyrics');
+                    }}
+                  >
+                    + Lyrics
+                  </button>
+                  <button
+                    type="button"
+                    className={`music-pill-toggle ${instrumental ? 'active' : ''}`}
+                    onClick={() => setInstrumental((prev) => !prev)}
+                  >
+                    {instrumental ? 'Instrumental On' : 'Instrumental'}
+                  </button>
+                  <button
+                    type="button"
+                    className="music-pill-btn"
+                    onClick={handleGenerateLyrics}
+                    disabled={instrumental || isGeneratingLyrics}
+                  >
+                    {isGeneratingLyrics ? '写词中...' : 'Auto Lyrics'}
+                  </button>
+                </div>
+
+                <div className="music-simple-inspo">
+                  <div className="music-subtitle">Inspiration</div>
+                  <div className="music-preset-row">
+                    {STYLE_TAGS.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className="music-chip"
+                        onClick={() => setPrompt((prev) => (prev.includes(tag) ? prev : `${prev}${prev ? '，' : ''}${tag}`))}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="music-note-inline">MiniMax 当前公开接口没有单独时长参数，常见结果约 30-90 秒。</div>
+                  <div className="music-note-inline">官方文档说明只有 `output_format: url` 时链接有效期为 24 小时；我们当前默认走本地保存，不依赖这个时效。</div>
+                </div>
+              </div>
+            ) : (
+              <div className="music-advanced-panel">
+                <div className="music-advanced-nav">
+                  <button
+                    type="button"
+                    className={`music-advanced-nav-item ${advancedSection === 'audio' ? 'active' : ''}`}
+                    onClick={() => setAdvancedSection('audio')}
+                  >
+                    <span>+</span>
+                    <strong>Audio</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className={`music-advanced-nav-item ${advancedSection === 'lyrics' ? 'active' : ''}`}
+                    onClick={() => setAdvancedSection('lyrics')}
+                  >
+                    <span>+</span>
+                    <strong>Lyrics</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className={`music-advanced-nav-item ${advancedSection === 'styles' ? 'active' : ''}`}
+                    onClick={() => setAdvancedSection('styles')}
+                  >
+                    <span>+</span>
+                    <strong>Styles</strong>
+                  </button>
+                </div>
+
+                <div className="music-advanced-stack">
+                  <section className={`music-card-block ${advancedSection === 'audio' ? 'active' : ''}`}>
+                    <div className="music-card-block-header">
+                      <span>Audio</span>
+                      <span className="music-card-block-meta">模型与输出格式</span>
+                    </div>
+                    <div className="music-advanced-grid">
+                      <label className="music-field music-field-tight">
+                        <span>音乐描述</span>
+                        <textarea
+                          className="music-textarea music-textarea-compact"
+                          value={prompt}
+                          onChange={(e) => setPrompt(e.target.value)}
+                          placeholder="更具体地描述风格、情绪、场景、配器和节奏。"
+                        />
+                      </label>
+                      <div className="music-settings-column">
+                        <div className="music-toggle-row">
+                          <button
+                            type="button"
+                            className={`music-toggle ${instrumental ? 'active' : ''}`}
+                            onClick={() => setInstrumental((prev) => !prev)}
+                          >
+                            {instrumental ? '纯音乐' : '人声歌曲'}
+                          </button>
+                        </div>
+                        <div className="music-voice-presets music-voice-presets-stack">
+                          {VOICE_PRESETS.map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              className={`music-chip ${selectedVoicePresets.includes(preset.id) ? 'music-chip-active' : ''}`}
+                              onClick={() => applyVoicePreset(preset.id)}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                        {selectedVoicePresets.length > 0 ? (
+                          <div className="music-selected-pills">
+                            {selectedVoicePresets.map((presetId) => {
+                              const preset = VOICE_PRESETS.find((item) => item.id === presetId);
+                              if (!preset) return null;
+                              return (
+                                <button
+                                  key={`advanced_selected_${preset.id}`}
+                                  type="button"
+                                  className="music-selected-pill"
+                                  onClick={() => removeVoicePreset(preset.id)}
+                                >
+                                  {preset.label}
+                                  <span>×</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                        <select className="music-select" value={model} onChange={(e) => setModel(e.target.value as 'music-2.6' | 'music-2.5+' | 'music-2.5')}>
+                          <option value="music-2.6">music-2.6</option>
+                          <option value="music-2.5+">music-2.5+</option>
+                          <option value="music-2.5">music-2.5</option>
+                        </select>
+                        <select className="music-select" value={format} onChange={(e) => setFormat(e.target.value as 'mp3' | 'wav')}>
+                          <option value="mp3">MP3</option>
+                          <option value="wav">WAV</option>
+                        </select>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className={`music-card-block ${advancedSection === 'lyrics' ? 'active' : ''}`}>
+                    <div className="music-card-block-header">
+                      <span>Lyrics</span>
+                      <div className="music-inline-actions">
+                        <button
+                          type="button"
+                          className="music-icon-btn"
+                          onClick={() => setLyrics(LYRIC_PRESET)}
+                          disabled={instrumental}
+                        >
+                          填入示例
+                        </button>
+                        <button
+                          type="button"
+                          className="music-icon-btn accent"
+                          onClick={handleGenerateLyrics}
+                          disabled={instrumental || isGeneratingLyrics}
+                        >
+                          {isGeneratingLyrics ? '写词中...' : '自动写词'}
+                        </button>
+                      </div>
+                    </div>
+                    <label className="music-field music-field-tight">
+                      <span>{instrumental ? '纯音乐模式下歌词会被忽略' : 'Write some lyrics or leave blank for instrumental'}</span>
+                      <textarea
+                        className="music-textarea music-textarea-lyrics"
+                        value={lyrics}
+                        onChange={(e) => setLyrics(e.target.value)}
+                        placeholder="支持 [Verse] / [Chorus] / [Bridge] 等结构标签"
+                        disabled={instrumental}
+                      />
+                    </label>
+                    <div className="music-note-inline">支持结构标签：`[Verse]`、`[Chorus]`、`[Bridge]` 等，歌词越完整，时长通常越稳定。</div>
+                  </section>
+
+                  <section className={`music-card-block ${advancedSection === 'styles' ? 'active' : ''}`}>
+                    <div className="music-card-block-header">
+                      <span>Styles</span>
+                      <button
+                        type="button"
+                        className="music-icon-btn accent"
+                        onClick={() => setPrompt(PROMPT_PRESETS[0])}
+                      >
+                        推荐风格
+                      </button>
+                    </div>
+                    <div className="music-style-copy">{prompt}</div>
+                    <div className="music-note-inline">建议提示词结构：曲风 + 人声类型 + 情绪 + 配器 + 场景 + 副歌要求。</div>
+                    <div className="music-preset-row">
+                      {STYLE_TAGS.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className="music-chip"
+                          onClick={() => setPrompt((prev) => (prev.includes(tag) ? prev : `${prev}${prev ? '，' : ''}${tag}`))}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="music-card-block music-card-block-collapsed">
+                    <div className="music-card-block-header">
+                      <span>More Options</span>
+                      <span className="music-card-block-meta">当前官方公开接口没有单独时长 / 男声女声参数，我们通过提示词预设来控制</span>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            )}
+
+            {error ? <div className="music-error-box">{error}</div> : null}
+          </div>
+
+          <div className="music-compose-footer">
+            <div className="music-generate-row">
+              <button
+                type="button"
+                className="music-generate-btn"
+                onClick={handleGenerate}
+                disabled={isGenerating}
+              >
+                {isGenerating ? '生成中，请等音乐落地...' : 'Create'}
+              </button>
+              <span className="music-generate-hint">
+                {mode === 'simple'
+                  ? instrumental
+                    ? 'Simple 模式：按描述直接生成纯音乐'
+                    : 'Simple 模式：按描述自动补歌词'
+                  : instrumental
+                    ? 'Advanced 模式：按描述生成纯音乐'
+                    : 'Advanced 模式：按自定义歌词生成'}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className="music-result-card">
+          <div className="music-card-header">
+            <span className="music-card-eyebrow">Result</span>
+            <span className="music-card-hint">生成成功后可直接试听和下载</span>
+          </div>
+
+          {activeClip ? (
+            <div className="music-player-shell">
+              <div className="music-cover-art">
+                <div className="music-cover-ring" />
+                <div className="music-cover-core">
+                  <span>{activeClip.title.slice(0, 2).toUpperCase()}</span>
+                </div>
+              </div>
+
+              <div className="music-track-meta">
+                <h3>{activeClip.title}</h3>
+                <p>{activeClip.prompt}</p>
+                <div className="music-meta-grid">
+                  <span>{activeClip.model}</span>
+                  <span>{formatDuration(activeClip.durationMs)}</span>
+                  <span>{formatBytes(activeClip.sizeBytes)}</span>
+                  <span>{activeClip.instrumental ? 'Instrumental' : 'Vocal'}</span>
+                </div>
+              </div>
+
+              <audio key={activeClip.id} controls className="music-audio-player" src={activeClip.audioSrc} />
+
+              <div className="music-result-actions">
+                <a className="music-primary-link" href={activeClip.audioSrc} download={`${activeClip.title}.${activeClip.mimeType === 'audio/wav' ? 'wav' : 'mp3'}`}>
+                  下载音频
+                </a>
+                {activeClip.traceId ? <span className="music-trace-id">trace: {activeClip.traceId}</span> : null}
+              </div>
+
+              {!activeClip.instrumental && activeClip.lyrics ? (
+                <div className="music-lyrics-preview">
+                  <div className="music-subtitle">Lyrics</div>
+                  <pre>{activeClip.lyrics}</pre>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="music-empty-state">
+              <div className="music-empty-orb" />
+              <h3>第一首歌还没开始生成</h3>
+              <p>Simple 用一句话快速出歌，Advanced 再写歌词和风格。生成成功后，这里会出现播放器、时长和下载入口。</p>
             </div>
           )}
-        </div>
-
-        {results.length > 0 && (
-          <div className="results-list">
-            <div className="results-header">
-              <span>◈ 搜索结果 ({results.length})</span>
-            </div>
-            <div className="results-items">
-              {results.map((item, idx) => (
-                <div key={item.id} className="result-item">
-                  <span className="result-index">[{String(idx + 1).padStart(2, '0')}]</span>
-                  <span className="result-name">{item.name}</span>
-                  <span className="result-ext">.{item.ext.toUpperCase()}</span>
-                  <span className="result-folder">/{item.folders.length > 0 ? item.folders.join('/') : '未分类'}/</span>
-                  <button className="open-btn" onClick={() => openInEagle(item)}>[ 打开 ]</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        </section>
       </div>
+
+      <section className="music-history-card">
+        <div className="music-card-header">
+          <span className="music-card-eyebrow">Recent</span>
+          <span className="music-card-hint">保留最近 8 首，方便快速回听</span>
+        </div>
+        {clips.length > 0 ? (
+          <div className="music-history-list">
+            {clips.map((clip) => (
+              <button
+                key={clip.id}
+                type="button"
+                className={`music-history-item ${clip.id === activeClip?.id ? 'active' : ''}`}
+                onClick={() => setActiveClipId(clip.id)}
+              >
+                <div>
+                  <strong>{clip.title}</strong>
+                  <span>{clip.model} · {formatDuration(clip.durationMs)}</span>
+                </div>
+                <span>{clip.instrumental ? '纯音乐' : '歌曲'}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="music-history-empty">这里会显示你刚刚生成过的作品版本。</div>
+        )}
+      </section>
     </div>
   );
 };

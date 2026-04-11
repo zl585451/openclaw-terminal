@@ -455,20 +455,107 @@ function extractTextFromPayload(payload: any): string {
   return '';
 }
 
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  'qwen3.5-plus': 131072,
+  'qwen3-max': 131072,
+  'qwen3-max-2026-01-23': 131072,
+  'qwen-plus': 131072,
+  'qwen-max': 131072,
+  'qwen-turbo': 1000000,
+  'qwen3-coder-next': 262144,
+  'qwen3-coder-plus': 262144,
+  'kimi-k2.5': 131072,
+  'MiniMax-M2.5': 1048576,
+  'MiniMax-M2.7': 1000000,
+  'MiniMax-M2.7-highspeed': 1000000,
+  'MiniMax-M2.5-standalone': 1000000,
+  'MiniMax-M2.5-highspeed': 1000000,
+  'MiniMax-M2.1': 1000000,
+  'MiniMax-M2.1-highspeed': 1000000,
+  'MiniMax-M2': 1000000,
+  'glm-5': 131072,
+  'glm-4.7': 131072,
+  'deepseek-v3': 65536,
+  'deepseek-r1': 65536,
+  'deepseek-chat': 65536,
+  'deepseek-reasoner': 65536,
+};
+
+function inferContextWindow(model: any): number | null {
+  const modelId = String(model || '').trim();
+  if (!modelId) return null;
+  if (MODEL_CONTEXT_WINDOWS[modelId] != null) return MODEL_CONTEXT_WINDOWS[modelId];
+  const exactKey = Object.keys(MODEL_CONTEXT_WINDOWS).find((key) => modelId.startsWith(key));
+  return exactKey ? MODEL_CONTEXT_WINDOWS[exactKey] : null;
+}
+
 function extractUsage(payload: any): { inputTokens?: number; outputTokens?: number; cost?: number; ctxUsed?: number; ctxMax?: number; session?: string; model?: string } | null {
   if (!payload) return null;
-  const usage = payload.usage ?? payload.token_usage;
-  const u = usage?.input_tokens ?? usage?.inputTokens ?? usage?.prompt_tokens;
-  const o = usage?.output_tokens ?? usage?.outputTokens ?? usage?.completion_tokens;
-  const cost = payload.cost ?? payload.total_cost ?? usage?.cost;
-  const ctxUsed = payload.ctx_used ?? usage?.context_tokens ?? payload.context_length;
-  const ctxMax = ctxUsed !== undefined
-    ? (payload.ctx_max ?? payload.max_context_length ?? null)
-    : null;
+  const usage = payload.usage ?? payload.token_usage ?? payload.metrics ?? payload.metadata?.usage ?? null;
+  const model =
+    payload.model
+    ?? payload.model_name
+    ?? payload.responseModel
+    ?? payload.response_model
+    ?? usage?.model
+    ?? usage?.model_name
+    ?? usage?.response_model;
+  const u =
+    usage?.input_tokens
+    ?? usage?.inputTokens
+    ?? usage?.prompt_tokens
+    ?? usage?.promptTokens
+    ?? usage?.prefill_tokens
+    ?? usage?.prompt_token_count;
+  const o =
+    usage?.output_tokens
+    ?? usage?.outputTokens
+    ?? usage?.completion_tokens
+    ?? usage?.completionTokens
+    ?? usage?.generated_tokens
+    ?? usage?.completion_token_count
+    ?? usage?.candidates_token_count;
+  const total =
+    usage?.total_tokens
+    ?? usage?.totalTokens
+    ?? usage?.token_count
+    ?? payload.total_tokens;
+  const cost = payload.cost ?? payload.total_cost ?? usage?.cost ?? usage?.total_cost;
+  const ctxUsedRaw =
+    payload.ctx_used
+    ?? usage?.context_tokens
+    ?? usage?.contextTokens
+    ?? payload.context_length
+    ?? usage?.context_length
+    ?? usage?.current_context_tokens
+    ?? usage?.input_tokens
+    ?? usage?.inputTokens
+    ?? usage?.prompt_tokens
+    ?? usage?.promptTokens
+    ?? total;
+  const ctxUsed = ctxUsedRaw != null ? Number(ctxUsedRaw) : undefined;
+  const inferredCtxMax = inferContextWindow(model);
+  const ctxMaxRaw =
+    payload.ctx_max
+    ?? payload.max_context_length
+    ?? usage?.max_context_length
+    ?? usage?.maxContextLength
+    ?? usage?.context_window
+    ?? usage?.contextWindow
+    ?? payload.context_window
+    ?? inferredCtxMax;
+  const ctxMax = ctxMaxRaw != null ? Number(ctxMaxRaw) : null;
   const session = payload.session ?? payload.session_id ?? payload.sessionId;
-  const model = payload.model ?? payload.model_name ?? usage?.model ?? usage?.model_name;
   if (u !== undefined || o !== undefined || cost !== undefined || session !== undefined || model !== undefined || ctxUsed !== undefined) {
-    return { inputTokens: u, outputTokens: o, cost, ctxUsed, ctxMax, session, model };
+    return {
+      inputTokens: u != null ? Number(u) : undefined,
+      outputTokens: o != null ? Number(o) : undefined,
+      cost,
+      ctxUsed,
+      ctxMax: ctxMax ?? undefined,
+      session,
+      model,
+    };
   }
   return null;
 }
@@ -482,7 +569,7 @@ function forwardChatToFrontend(payload: any, eventName?: string, isStreaming = f
     saveSessionState({ ...(lastSessionState || {}), sessionKey: usage.session });
   }
   // 斜杠命令的系统回复：payload 直接有 text，无 message.content
-  const isSystemReply = !!(payload?.text && typeof payload.text === 'string' && !payload?.message?.content);
+  const isSystemReply = payload?.isSystemReply === true || payload?.type === 'system';
   if (text || done !== undefined) {
     const msg: any = { type: 'chat', text: String(text || ''), done: done ?? true, event: eventName };
     if (usage) msg.usage = usage;

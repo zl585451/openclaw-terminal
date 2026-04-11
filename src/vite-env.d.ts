@@ -14,6 +14,63 @@ interface ElectronAPI {
   chatHistorySave: (items: Array<{ role: string; content: string; timestamp: string; isSystemReply?: boolean }>) => Promise<void>;
   enterFloatingMode?: () => void;
   invokeGatewayTool?: (toolName: string, args: any) => Promise<any>;
+  getPersonaSettings?: () => Promise<{ success: boolean; data?: { OCT_AI_NAME: string; OCT_USER_NAME: string; OCT_PERSONA_STYLE: string }; error?: string }>;
+  savePersonaSettings?: (payload: { OCT_AI_NAME?: string; OCT_USER_NAME?: string; OCT_PERSONA_STYLE?: string }) => Promise<{ success: boolean; error?: string }>;
+  ttsSpeak?: (payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) => Promise<{ success: boolean; audioBase64?: string; mimeType?: string; error?: string }>;
+  musicGenerate?: (payload: {
+    title?: string;
+    model?: string;
+    prompt: string;
+    lyrics?: string;
+    instrumental?: boolean;
+    lyricsOptimizer?: boolean;
+    sampleRate?: number;
+    bitrate?: number;
+    format?: 'mp3' | 'wav';
+  }) => Promise<{
+    success: boolean;
+    clipId?: string;
+    audioBase64?: string;
+    mimeType?: string;
+    model?: string;
+    traceId?: string;
+    durationMs?: number;
+    sampleRate?: number;
+    bitrate?: number;
+    sizeBytes?: number;
+    error?: string;
+  }>;
+  musicHistoryLoad?: () => Promise<{
+    success: boolean;
+    clips: Array<{
+      id: string;
+      title: string;
+      prompt: string;
+      lyrics: string;
+      instrumental: boolean;
+      model: string;
+      traceId?: string;
+      durationMs?: number;
+      sampleRate?: number;
+      bitrate?: number;
+      sizeBytes?: number;
+      mimeType: string;
+      createdAt: number;
+      audioBase64: string;
+    }>;
+    error?: string;
+  }>;
+  lyricsGenerate?: (payload: {
+    prompt?: string;
+    title?: string;
+  }) => Promise<{
+    success: boolean;
+    title?: string;
+    styleTags?: string;
+    lyrics?: string;
+    error?: string;
+  }>;
+  asrTranscribe?: (payload: { audioDataUrl: string; language?: string }) => Promise<{ success: boolean; text?: string; error?: string }>;
   [key: string]: unknown;
 }
 

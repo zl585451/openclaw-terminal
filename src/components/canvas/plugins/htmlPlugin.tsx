@@ -51,6 +51,8 @@ function HtmlPreviewViewport({ document }: { document: CanvasDocument }) {
 export const htmlPlugin: CanvasRendererPlugin = {
   id: 'html',
   canRender: (document) => document.mode === 'html',
-  render: (document) => <HtmlPreviewViewport document={document} />,
+  render: (document) => (
+    <HtmlPreviewViewport document={document} />
+  ),
   getExportFilename: () => 'canvas.html',
 };

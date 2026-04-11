@@ -14,6 +14,7 @@
 
 const memory = require('./memory');
 const memoryHistory = require('./memory_history');
+const memoryGovernor = require('./memory_governor');
 const { createLogger } = require('./logger');
 const log = createLogger('clarification');
 
@@ -151,11 +152,11 @@ function classifyPreference(topic, choice) {
  * @param {string} choice - 用户的选择
  */
 async function saveClarificationPreference(topic, choice) {
+  const pref = classifyPreference(topic, choice);
   try {
     const alive = await memory.isAlive();
     if (!alive) return;
 
-    const pref = classifyPreference(topic, choice);
     const uri = `core://my_user/preferences/${pref.path}`;
 
     // 读取现有偏好（如果存在则追加历史），404 静默返回空
@@ -195,15 +196,43 @@ async function saveClarificationPreference(topic, choice) {
       };
     }
 
-    const contentStr = JSON.stringify(content);
     const disclosure = `当用户遇到${pref.label}相关问题时参考`;
+    const routed = memoryGovernor.routeRecord({
+      source: 'clarification_preference',
+      uri,
+      content: JSON.stringify(content),
+      priority: 2,
+      disclosure,
+      userMsg: `${topic} -> ${choice}`,
+    });
+
+    if (routed.decision === 'reject') {
+      log.debug('clarification preference rejected by governor', { path: pref.path, reason: routed.reason });
+      return;
+    }
+    log.info('clarification governor decision', {
+      path: pref.path,
+      originalUri: uri,
+      targetUri: routed.uri,
+      decision: routed.decision,
+      layer: routed.layer,
+      reason: routed.reason,
+    });
+
+    const targetUri = routed.uri;
+    const contentStr = routed.content;
+    const targetDisclosure = routed.disclosure ?? disclosure;
+    const targetPriority = routed.priority ?? 2;
+    const targetParts = targetUri.match(/^([^:]+):\/\/(.+)$/);
+    const targetDomain = targetParts ? targetParts[1] : 'core';
+    const targetPath = targetParts ? targetParts[2] : `my_user/preferences/${pref.path}`;
 
     // ── 第一层：ensurePathExists + createMemory ──
     try {
-      await memoryHistory.ensurePathExists('core', `my_user/preferences/${pref.path}`);
-      const result = await memory.createMemory(uri, contentStr, 2, disclosure, { treat422AsDebug: true });
+      await memoryHistory.ensurePathExists(targetDomain, targetPath);
+      const result = await memory.createMemory(targetUri, contentStr, targetPriority, targetDisclosure, { treat422AsDebug: true });
       if (result.ok) {
-        log.info('saved', { path: pref.path, choice, layer: 'createMemory' });
+        log.info('saved', { path: pref.path, choice, layer: routed.layer, decision: routed.decision, uri: targetUri });
         return;
       }
       throw new Error(result?.error || 'createMemory failed');
@@ -213,9 +242,9 @@ async function saveClarificationPreference(topic, choice) {
 
     // ── 第二层：fallback 到 writeMemory ──
     try {
-      const result = await memory.writeMemory(uri, contentStr, 2, disclosure);
+      const result = await memory.writeMemory(targetUri, contentStr, targetPriority, targetDisclosure);
       if (result.ok) {
-        log.info('saved', { path: pref.path, choice, layer: 'writeMemory' });
+        log.info('saved', { path: pref.path, choice, layer: routed.layer, decision: routed.decision, uri: targetUri });
         return;
       }
       throw new Error(result?.error || 'writeMemory failed');

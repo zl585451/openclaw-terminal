@@ -53,3 +53,34 @@
 | 能力 | ① 展开 overlay 全屏查看 ② 解析 [TAG][TIME][LEVEL] 格式 + JSON 关键字段提取 ③ 模块颜色标签（Memory/Feedback/Gateway 等）④ A+/A- 字体缩放 ⑤ 过滤 pills（全部/错误/记忆/评估/Gateway）⑥ ESC 收回 |
 | 验证 | 点击「↗ 展开」全屏查看、日志有色签、点 A+/A- 缩放、按 ESC 收回 |
 | 状态 | ✅ 正常 |
+
+---
+
+## 7.6 语音输入与语音输出
+
+| 项目 | 内容 |
+|------|------|
+| 做什么 | 为桌面版提供基础语音助手能力：语音输入转文字、回复朗读、云端/本地双链路回退 |
+| 文件 | `electron/main.ts`、`electron/preload.ts`、`src/ui/chat/ChatInput.tsx`、`src/ui/chat/ChatTab.v2.tsx`、`src/components/SettingsPanel.tsx`、`src/ui/settings/tabs/InterfaceTabView.tsx` |
+| 输入侧 | Renderer 录音 → `asr-transcribe` IPC → DashScope ASR → 文本回填输入框 |
+| 输出侧 | `tts-speak` IPC → 当前 Provider 对应云端 TTS；无能力或失败时可回退到浏览器本地朗读 |
+| MiniMax | 使用 `speech-2.8-hd` WebSocket TTS，默认中国区 `api.minimaxi.com` |
+| 日志 | `LogPanel` 新增 `TTS` 分类，仅保留用量、成功、失败、警报，不展示逐分片 WS 噪声 |
+| 关键规则 | `auto` 朗读跟随当前 `OCT_PROVIDER` 的能力，不因机器里残留别家 Key 而偷偷触发 |
+| 状态 | ✅ 可用 |
+
+### 当前行为
+
+- 如果当前 Provider 是 `minimax`
+  - `auto` 会尝试 MiniMax 云端朗读
+  - 设置页会显示 MiniMax 云端音色选择
+- 如果当前 Provider 是 `bailian` / `bailian-coding`
+  - `auto` 会尝试 DashScope 云端朗读
+- 如果当前 Provider 没有云端 TTS 能力
+  - `auto` 直接降级为本地朗读链
+
+### 设计原则
+
+- 语音能力属于产品级 capability routing，不是某家模型的定制分支
+- 没有能力时应静默降级，不应增加后台探测和额外系统负担
+- 音色设置只在存在对应云端能力时展示

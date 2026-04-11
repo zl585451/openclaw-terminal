@@ -10,7 +10,7 @@ function normalizeMode(mode, artifactType) {
 function normalizeArtifactType(artifactType, mode) {
   if (artifactType === 'document' || artifactType === 'diagram' ||
       artifactType === 'ui-draft' || artifactType === 'code' ||
-      artifactType === 'echart') {
+      artifactType === 'react-flow' || artifactType === 'echart') {
     return artifactType;
   }
   if (mode === 'code') return 'code';
@@ -23,7 +23,9 @@ function extractMermaidContent(content) {
   if (!raw) return raw;
 
   const fencedMatch = raw.match(/```mermaid\s*([\s\S]*?)```/i);
-  if (fencedMatch) return fencedMatch[1].trim();
+  if (fencedMatch) {
+    return fencedMatch[1].trim();
+  }
 
   const lines = raw.split(/\r?\n/);
   const startIndex = lines.findIndex((line) =>
@@ -31,7 +33,11 @@ function extractMermaidContent(content) {
       .test(line.trim())
   );
 
-  return startIndex >= 0 ? lines.slice(startIndex).join('\n').trim() : raw;
+  if (startIndex >= 0) {
+    return lines.slice(startIndex).join('\n').trim();
+  }
+
+  return raw;
 }
 
 function normalizeDiagramPayload(content) {
@@ -63,8 +69,8 @@ module.exports = {
           },
           artifactType: {
             type: 'string',
-            enum: ['document', 'diagram', 'ui-draft', 'code', 'echart'],
-            description: 'Artifact category',
+            enum: ['document', 'diagram', 'ui-draft', 'code', 'react-flow', 'echart'],
+            description: 'Artifact category: document=markdown文档, diagram=Mermaid图, react-flow=交互式节点图(JSON格式), echart=ECharts数据图表(bar/line/pie/scatter等), ui-draft=HTML, code=代码',
           },
           mode: {
             type: 'string',
@@ -73,7 +79,7 @@ module.exports = {
           },
           content: {
             type: 'string',
-            description: 'Artifact content',
+            description: 'Artifact content. markdown for documents; pure Mermaid DSL for diagram; {"nodes":[...],"edges":[...],"direction":"LR","title":"..."} JSON for react-flow; {"title":"...","option":{...ECharts option...}} JSON for echart; HTML for ui-draft; raw code for code.',
           },
           language: {
             type: 'string',
@@ -81,7 +87,7 @@ module.exports = {
           },
           explanation: {
             type: 'string',
-            description: 'Short explanation describing the artifact or the update',
+            description: 'Short explanation describing the artifact or the update you made',
           },
         },
         required: ['action'],
@@ -90,13 +96,22 @@ module.exports = {
   },
   execute: async (args) => {
     const action = args?.action;
-    if (!action) return { success: false, error: 'Missing required field: action' };
+
+    if (!action) {
+      return { success: false, error: 'Missing required field: action' };
+    }
 
     if (action === 'create') {
-      if (!args?.content) return { success: false, error: 'create requires content' };
+      if (!args?.content) {
+        return { success: false, error: 'create requires content' };
+      }
+
       const mode = normalizeMode(args.mode, args.artifactType);
       const artifactType = normalizeArtifactType(args.artifactType, mode);
-      const normalizedContent = artifactType === 'diagram' ? normalizeDiagramPayload(args.content) : args.content;
+      // react-flow content is JSON — never run it through the Mermaid extractor
+      const normalizedContent = artifactType === 'diagram'
+        ? normalizeDiagramPayload(args.content)
+        : args.content;
       const payload = {
         document: {
           id: args.documentId,
@@ -104,22 +119,29 @@ module.exports = {
           artifactType,
           mode,
           content: normalizedContent,
-          language: args.language || 'text',
+          language: args.language || (mode === 'code' ? 'text' : 'text'),
           origin: 'ai',
           explanation: args.explanation || '',
           status: 'draft',
         },
       };
+
       return {
         success: true,
         message: `Canvas artifact created: ${payload.document.title}`,
-        canvasEvent: { action: 'create', payload },
+        canvasEvent: {
+          action: 'create',
+          payload,
+        },
         document: payload.document,
       };
     }
 
     if (action === 'update') {
-      if (!args?.documentId) return { success: false, error: 'update requires documentId' };
+      if (!args?.documentId) {
+        return { success: false, error: 'update requires documentId' };
+      }
+
       const patch = {};
       if (typeof args.title === 'string') patch.title = args.title;
       if (typeof args.content === 'string') {
@@ -129,31 +151,56 @@ module.exports = {
       if (typeof args.language === 'string') patch.language = args.language;
       if (typeof args.explanation === 'string') patch.explanation = args.explanation;
       if (typeof args.mode === 'string') patch.mode = normalizeMode(args.mode, args.artifactType);
-      if (typeof args.artifactType === 'string') patch.artifactType = normalizeArtifactType(args.artifactType, patch.mode || args.mode);
+      if (typeof args.artifactType === 'string') {
+        patch.artifactType = normalizeArtifactType(args.artifactType, patch.mode || args.mode);
+      }
+
       return {
         success: true,
         message: `Canvas artifact updated: ${args.documentId}`,
-        canvasEvent: { action: 'update', payload: { documentId: args.documentId, patch } },
+        canvasEvent: {
+          action: 'update',
+          payload: {
+            documentId: args.documentId,
+            patch,
+          },
+        },
         documentId: args.documentId,
         patch,
       };
     }
 
     if (action === 'focus') {
-      if (!args?.documentId) return { success: false, error: 'focus requires documentId' };
+      if (!args?.documentId) {
+        return { success: false, error: 'focus requires documentId' };
+      }
+
       return {
         success: true,
         message: `Canvas artifact focused: ${args.documentId}`,
-        canvasEvent: { action: 'focus', payload: { documentId: args.documentId } },
+        canvasEvent: {
+          action: 'focus',
+          payload: {
+            documentId: args.documentId,
+          },
+        },
       };
     }
 
     if (action === 'delete') {
-      if (!args?.documentId) return { success: false, error: 'delete requires documentId' };
+      if (!args?.documentId) {
+        return { success: false, error: 'delete requires documentId' };
+      }
+
       return {
         success: true,
         message: `Canvas artifact deleted: ${args.documentId}`,
-        canvasEvent: { action: 'delete', payload: { documentId: args.documentId } },
+        canvasEvent: {
+          action: 'delete',
+          payload: {
+            documentId: args.documentId,
+          },
+        },
       };
     }
 
@@ -161,12 +208,16 @@ module.exports = {
       if (!args?.documentId || !args?.explanation) {
         return { success: false, error: 'explain requires documentId and explanation' };
       }
+
       return {
         success: true,
         message: `Canvas explanation updated: ${args.documentId}`,
         canvasEvent: {
           action: 'explain',
-          payload: { documentId: args.documentId, explanation: args.explanation },
+          payload: {
+            documentId: args.documentId,
+            explanation: args.explanation,
+          },
         },
       };
     }

@@ -5,9 +5,11 @@ import { diagramPlugin } from './diagramPlugin';
 import { echartsPlugin } from './echartsPlugin';
 import { htmlPlugin } from './htmlPlugin';
 import { markdownPlugin } from './markdownPlugin';
+import { reactFlowPlugin } from './reactFlowPlugin';
 
 const PLUGINS: CanvasRendererPlugin[] = [
-  echartsPlugin,
+  echartsPlugin,   // must be before diagramPlugin (echart JSON would otherwise fall through)
+  reactFlowPlugin, // must be before diagramPlugin (also catches JSON inside diagram type)
   diagramPlugin,
   markdownPlugin,
   codePlugin,

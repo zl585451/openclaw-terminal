@@ -31,6 +31,7 @@
   font-family: var(--font-sans);
   font-size: 14px;
   color: var(--text-primary);
+  letter-spacing: 0.2px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -41,6 +42,7 @@
   font-family: var(--font-sans);
   font-size: 11px;
   color: var(--text-tertiary);
+  letter-spacing: 0.2px;
 }
 
 .canvas-toolbar-actions {
@@ -48,6 +50,11 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.canvas-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .canvas-action-btn {
@@ -66,11 +73,6 @@
   color: var(--text-primary);
   border-color: var(--border-primary);
   background: var(--bg-hover);
-}
-
-.canvas-action-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .canvas-delete-btn {
@@ -103,6 +105,22 @@
   border-radius: 4px;
 }
 
+.canvas-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.canvas-workspace--single {
+  display: block;
+}
+
+.canvas-workspace--studio {
+  display: flex;
+  flex-direction: column;
+}
+
 .canvas-details-panel {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
@@ -124,6 +142,7 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
+  letter-spacing: 0.3px;
   margin-bottom: 8px;
 }
 
@@ -164,23 +183,16 @@
   color: var(--text-primary);
 }
 
-.canvas-workspace {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  overflow: hidden;
-}
-
-.canvas-workspace--studio {
-  flex-direction: column;
-}
-
 .canvas-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
   min-width: 0;
+}
+
+.canvas-content--single {
+  width: 100%;
 }
 
 .canvas-content--studio {
@@ -215,6 +227,14 @@
   word-break: normal;
 }
 
+.canvas-code-preview--workbench {
+  height: 100%;
+  min-height: 0;
+  border-radius: 0;
+  background: #0d1322;
+  padding: 16px;
+}
+
 .canvas-mermaid-preview {
   height: 100%;
   min-height: 0;
@@ -225,6 +245,211 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.canvas-mermaid-workbench {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--mermaid-card-border);
+  background: #0b1020;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+}
+
+.canvas-mermaid-workbench__toolbar {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #10182a;
+  border-bottom: 1px solid color-mix(in srgb, var(--mermaid-card-border) 40%, transparent 60%);
+}
+
+.canvas-mermaid-workbench__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.canvas-mermaid-workbench__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #182238;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.canvas-mermaid-workbench__label {
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.canvas-mermaid-workbench__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.canvas-mermaid-btn--icon {
+  min-width: 30px;
+  padding: 0 8px;
+}
+
+.canvas-mermaid-workbench__body {
+  display: none;
+}
+
+.canvas-mermaid-pane__viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  background: #0a1220;
+}
+
+.canvas-mermaid-pane__viewport--full {
+  height: 100%;
+}
+
+.canvas-mermaid-pane__surface {
+  min-width: 100%;
+  min-height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.canvas-mermaid-pane__svg {
+  position: relative;
+  flex: 0 0 auto;
+  display: block;
+  transform-origin: top left;
+}
+
+.canvas-mermaid-pane__error {
+  margin: 0;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(161, 42, 42, 0.45);
+  background: rgba(87, 18, 18, 0.35);
+  color: #f3b5b5;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.canvas-mermaid-preview--compact {
+  height: auto;
+  padding: 0;
+  gap: 0;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.canvas-mermaid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.canvas-mermaid-toolbar--compact {
+  padding: 7px 9px 0;
+}
+
+.canvas-mermaid-toolbar-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.canvas-mermaid-toolbar-group--viewer {
+  justify-content: flex-end;
+}
+
+.canvas-mermaid-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mermaid-card-border) 22%, transparent 78%);
+  background: color-mix(in srgb, var(--mermaid-card-header) 82%, #000 18%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.canvas-mermaid-segmented__option {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.canvas-mermaid-segmented__option.is-active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--mermaid-node-fill) 26%, transparent 74%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mermaid-node-border) 42%, transparent 58%);
+}
+
+.canvas-mermaid-segmented__option svg {
+  width: 11px;
+  height: 11px;
+}
+
+.canvas-mermaid-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--mermaid-card-header) 88%, #000 12%);
+  border: 1px solid color-mix(in srgb, var(--mermaid-card-border) 22%, transparent 78%);
+  color: var(--text-secondary);
+  font-family: var(--mermaid-font-family, var(--font-sans));
+  font-size: 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.canvas-mermaid-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+.canvas-mermaid-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .canvas-mermaid-stage {
@@ -235,6 +460,91 @@
   border-radius: 10px;
   background: var(--mermaid-stage-bg);
   border: 1px solid var(--mermaid-stage-border);
+  position: relative;
+  scroll-behavior: auto;
+}
+
+.canvas-mermaid-stage-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.canvas-mermaid-stage-shell--compact {
+  width: 100%;
+}
+
+.canvas-mermaid-stage.is-draggable {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.canvas-mermaid-stage.is-draggable:active {
+  cursor: grabbing;
+}
+
+.canvas-mermaid-stage.is-draggable * {
+  user-select: none;
+}
+
+.canvas-mermaid-pane__viewport.is-draggable {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.canvas-mermaid-pane__viewport.is-draggable:active {
+  cursor: grabbing;
+}
+
+.canvas-mermaid-pane__viewport.is-draggable * {
+  user-select: none;
+}
+
+.canvas-mermaid-stage--compact {
+  overflow: auto;
+  height: 420px;
+  min-height: 420px;
+  max-height: 420px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  overscroll-behavior: contain;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.canvas-mermaid-stage--compact-pie {
+  height: 450px;
+  min-height: 450px;
+  max-height: 450px;
+}
+
+.canvas-mermaid-stage--compact-centered .canvas-mermaid-stage--compact-inner {
+  justify-content: center;
+}
+
+.canvas-mermaid-stage--compact {
+  scrollbar-width: none;
+}
+
+.canvas-mermaid-stage--compact::-webkit-scrollbar {
+  display: none;
+}
+
+/* Inner cell: at least full stage width so small diagrams stay centered; wide SVG expands for scroll */
+.canvas-mermaid-stage--compact-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  padding-right: 36px;
+  padding-bottom: 12px;
 }
 
 .canvas-mermaid-stage-inner {
@@ -243,20 +553,172 @@
   justify-content: center;
   min-width: 100%;
   min-height: 100%;
+  box-sizing: border-box;
+  padding-bottom: 12px;
+}
+
+.canvas-mermaid-scale-shell {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.canvas-mermaid-scale-shell--full {
+  min-width: max-content;
 }
 
 .canvas-mermaid-zoom {
+  /* Using CSS zoom (not transform) so layout reflows correctly.
+     transform: scale() leaves layout-box unchanged and causes
+     left-side clipping when zoom > 1. */
   width: fit-content;
   min-width: 100%;
   display: flex;
   justify-content: center;
 }
 
+.canvas-mermaid-zoom--compact {
+  position: relative;
+  min-width: auto;
+  flex-shrink: 0;
+  transform-origin: top left;
+}
+
+.canvas-mermaid-zoom--full {
+  position: relative;
+  min-width: auto;
+  flex-shrink: 0;
+  transform-origin: top left;
+}
+
+
+.canvas-mermaid-zoomdock {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 1px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mermaid-card-border) 12%, transparent 88%);
+  background: color-mix(in srgb, var(--mermaid-card-header) 84%, #000 16%);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.24);
+  backdrop-filter: blur(8px);
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.canvas-mermaid-zoomdock--compact {
+  right: 12px;
+  bottom: 12px;
+}
+
+.canvas-mermaid-zoomdock__btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mermaid-font-family, var(--font-sans));
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.canvas-mermaid-zoomdock__btn:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--mermaid-node-fill) 22%, transparent 78%);
+}
+
+
 .canvas-mermaid-preview svg {
   width: auto;
   max-width: none;
   height: auto;
   overflow: visible;
+}
+
+.canvas-mermaid-preview svg .node rect,
+.canvas-mermaid-preview svg .node polygon,
+.canvas-mermaid-preview svg .node circle,
+.canvas-mermaid-preview svg .node ellipse,
+.canvas-mermaid-preview svg .cluster rect {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.08));
+  stroke-width: 1.15px !important;
+}
+
+.canvas-mermaid-preview svg .cluster rect {
+  stroke-width: 1px !important;
+}
+
+.canvas-mermaid-preview svg text,
+.canvas-mermaid-preview svg tspan {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-family: var(--mermaid-font-family, var(--font-display, var(--font-sans))) !important;
+}
+
+.canvas-mermaid-preview svg .edgePath path,
+.canvas-mermaid-preview svg .flowchart-link {
+  stroke-width: 1.35px !important;
+}
+
+.canvas-mermaid-preview svg .edgeLabel rect {
+  stroke: none !important;
+  opacity: 0.9;
+}
+
+.canvas-mermaid-preview--compact svg text,
+.canvas-mermaid-preview--compact svg tspan {
+  font-size: 14px !important;
+}
+
+.canvas-mermaid-preview--compact svg .node rect,
+.canvas-mermaid-preview--compact svg .node polygon,
+.canvas-mermaid-preview--compact svg .node circle,
+.canvas-mermaid-preview--compact svg .node ellipse {
+  filter: none;
+  stroke-width: 0.95px !important;
+}
+
+.canvas-mermaid-preview--compact svg .cluster rect {
+  filter: none;
+  stroke-width: 0.8px !important;
+  opacity: 0.46;
+  fill-opacity: 0.34;
+}
+
+.canvas-mermaid-preview--compact svg .edgePath path,
+.canvas-mermaid-preview--compact svg .flowchart-link {
+  stroke-width: 1.05px !important;
+  opacity: 0.8;
+}
+
+.canvas-mermaid-preview--compact svg .cluster-label text,
+.canvas-mermaid-preview--compact svg .cluster-label span,
+.canvas-mermaid-preview--compact svg .cluster text {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  opacity: 0.92;
+}
+
+.canvas-mermaid-preview--compact svg .edgeLabel {
+  opacity: 0.78;
+}
+
+.canvas-mermaid-preview--compact svg .edgeLabel rect {
+  fill-opacity: 0.58 !important;
 }
 
 .canvas-mermaid-fallback {
@@ -337,6 +799,25 @@
   background: #fff;
 }
 
+.canvas-editor {
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+  padding: 14px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  border: none;
+  outline: none;
+  resize: none;
+  line-height: 1.5;
+}
+
+.canvas-editor::placeholder {
+  color: var(--text-tertiary);
+}
+
 .canvas-empty {
   height: 100%;
   display: flex;
@@ -363,6 +844,7 @@
   line-height: 1.6;
 }
 
+/* 确保 markdown 内容在 canvas 中正确显示 */
 .canvas-preview .msg-content.markdown-body {
   background: transparent;
   color: var(--text-primary);

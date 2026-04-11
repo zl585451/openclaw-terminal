@@ -10,19 +10,19 @@ const INVALID = 'Invalid TurnPhase transition';
  */
 export const allowedTransitions: Record<TurnPhase, TurnPhase[]> = {
   [TurnPhase.IDLE]: [TurnPhase.USER_TYPING],
-  [TurnPhase.USER_TYPING]: [TurnPhase.USER_SUBMIT],
-  [TurnPhase.USER_SUBMIT]: [TurnPhase.USER_COMMITTED],
-  [TurnPhase.USER_COMMITTED]: [TurnPhase.REQUEST_DISPATCHED, TurnPhase.ERROR],
+  [TurnPhase.USER_TYPING]: [TurnPhase.USER_SUBMIT, TurnPhase.CANCELLED],
+  [TurnPhase.USER_SUBMIT]: [TurnPhase.USER_COMMITTED, TurnPhase.CANCELLED],
+  [TurnPhase.USER_COMMITTED]: [TurnPhase.REQUEST_DISPATCHED, TurnPhase.ERROR, TurnPhase.CANCELLED],
 
-  [TurnPhase.REQUEST_DISPATCHED]: [TurnPhase.MODEL_THINKING, TurnPhase.ERROR],
-  [TurnPhase.MODEL_THINKING]: [TurnPhase.STREAM_OPEN, TurnPhase.ERROR],
+  [TurnPhase.REQUEST_DISPATCHED]: [TurnPhase.MODEL_THINKING, TurnPhase.ERROR, TurnPhase.CANCELLED],
+  [TurnPhase.MODEL_THINKING]: [TurnPhase.STREAM_OPEN, TurnPhase.ERROR, TurnPhase.CANCELLED],
 
   [TurnPhase.STREAM_OPEN]: [TurnPhase.STREAMING, TurnPhase.ERROR, TurnPhase.CANCELLED],
   [TurnPhase.STREAMING]: [TurnPhase.STREAM_PAUSED, TurnPhase.STREAM_COMPLETE, TurnPhase.ERROR, TurnPhase.CANCELLED],
   [TurnPhase.STREAM_PAUSED]: [TurnPhase.STREAMING, TurnPhase.ERROR, TurnPhase.CANCELLED],
 
-  [TurnPhase.STREAM_COMPLETE]: [TurnPhase.RENDER_COMPLETE],
-  [TurnPhase.RENDER_COMPLETE]: [TurnPhase.TURN_FINISHED],
+  [TurnPhase.STREAM_COMPLETE]: [TurnPhase.RENDER_COMPLETE, TurnPhase.CANCELLED],
+  [TurnPhase.RENDER_COMPLETE]: [TurnPhase.TURN_FINISHED, TurnPhase.CANCELLED],
   [TurnPhase.TURN_FINISHED]: [TurnPhase.IDLE],
 
   [TurnPhase.ERROR]: [TurnPhase.IDLE],

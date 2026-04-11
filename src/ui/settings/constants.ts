@@ -14,6 +14,17 @@ export const FONT_SIZE_OPTIONS = [
   { value: '19', label: '大字 (19px)' },
 ] as const;
 
+export const MINIMAX_TTS_VOICE_OPTIONS = [
+  { value: 'male-qn-qingse', label: '青涩青年男声' },
+  { value: 'male-qn-jingying', label: '精英青年男声' },
+  { value: 'male-qn-badao', label: '霸道青年男声' },
+  { value: 'male-qn-daxuesheng', label: '大学生男声' },
+  { value: 'female-shaonv', label: '少女女声' },
+  { value: 'female-yujie', label: '御姐女声' },
+  { value: 'female-caita', label: '彩铃甜美女声' },
+  { value: 'female-qingxinnvsheng', label: '清新女声' },
+] as const;
+
 export const PERMISSION_ITEMS: Array<{ key: keyof PermissionConfig; label: string }> = [
   { key: 'shellCommands', label: '允许执行 Shell 命令' },
   { key: 'fileWrite', label: '允许文件系统写操作' },

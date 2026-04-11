@@ -37,6 +37,7 @@ const electronAPI = {
         DASHSCOPE_API_KEY?: string;
         DEEPSEEK_API_KEY?: string;
         MINIMAX_API_KEY?: string;
+        TTS_MINIMAX_VOICE_ID?: string;
         CUSTOM_API_KEY?: string;
         OPENCLAW_WS_URL?: string;
         OPENCLAW_TOKEN?: string;
@@ -50,6 +51,32 @@ const electronAPI = {
         BRAVE_SEARCH_API_KEY?: string;
         TAVILY_API_KEY?: string;
       }) => ipcRenderer.invoke('save-api-keys', keys),
+  getPersonaSettings: () => ipcRenderer.invoke('get-persona-settings'),
+  savePersonaSettings: (payload: {
+    OCT_AI_NAME?: string;
+    OCT_USER_NAME?: string;
+    OCT_PERSONA_STYLE?: string;
+  }) => ipcRenderer.invoke('save-persona-settings', payload),
+  ttsSpeak: (payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) =>
+    ipcRenderer.invoke('tts-speak', payload),
+  musicGenerate: (payload: {
+    title?: string;
+    model?: string;
+    prompt: string;
+    lyrics?: string;
+    instrumental?: boolean;
+    lyricsOptimizer?: boolean;
+    sampleRate?: number;
+    bitrate?: number;
+    format?: 'mp3' | 'wav';
+  }) => ipcRenderer.invoke('music-generate', payload),
+  musicHistoryLoad: () => ipcRenderer.invoke('music-history-load'),
+  lyricsGenerate: (payload: {
+    prompt?: string;
+    title?: string;
+  }) => ipcRenderer.invoke('lyrics-generate', payload),
+  asrTranscribe: (payload: { audioDataUrl: string; language?: string }) =>
+    ipcRenderer.invoke('asr-transcribe', payload),
   getProviderList: () => ipcRenderer.invoke('get-provider-list'),
   testAIConnection: (formConfig?: Record<string, string>) => ipcRenderer.invoke('test-ai-connection', formConfig),
   // Nocturne 记忆系统

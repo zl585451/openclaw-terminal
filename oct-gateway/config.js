@@ -3,22 +3,34 @@ const fs = require('fs');
 const os = require('os');
 const { PROVIDERS } = require('./providers');
 
-const envPath = path.join(__dirname, '..', '.env');
-if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
+const envLocalPath = path.join(__dirname, '..', '.env.local');
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
 }
 
-// 网络配置：DashScope 是国内服务，强制不走代理
-// 启动时清理可能影响直连的代理环境变量
-if (process.env.HTTPS_PROXY || process.env.HTTP_PROXY) {
-  console.log('[Config] 检测到系统代理，已配置 DashScope 直连');
-  const existing = process.env.NO_PROXY || '';
-  const dashscopeDomains = 'dashscope.aliyuncs.com,dashscope-intl.aliyuncs.com,coding.dashscope.aliyuncs.com';
-  process.env.NO_PROXY = existing
-    ? `${existing},${dashscopeDomains}`
-    : dashscopeDomains;
-  console.log('[Config] NO_PROXY 已更新:', process.env.NO_PROXY);
+const envPath = path.join(__dirname, '..', '.env');
+if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath, override: false });
 }
+
+function ensureLocalBypassForOct() {
+  const existingNoProxy = process.env.NO_PROXY || process.env.no_proxy || '';
+  const mergedNoProxy = Array.from(new Set(
+    existingNoProxy
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .concat(['localhost', '127.0.0.1', '::1'])
+  ));
+
+  if (mergedNoProxy.length > 0) {
+    const value = mergedNoProxy.join(',');
+    process.env.NO_PROXY = value;
+    process.env.no_proxy = value;
+  }
+}
+
+ensureLocalBypassForOct();
 
 function loadConfigFile() {
   // Try to load from multiple sources in priority order
@@ -487,6 +499,11 @@ const config = {
 
   PROMPTS_DIR: process.env.OCT_PROMPTS_DIR || _fileConfig.OCT_PROMPTS_DIR ||
     path.join(__dirname, '..', 'docs', '01_system_prompts'),
+  persona: {
+    aiName: (process.env.OCT_AI_NAME || _fileConfig.OCT_AI_NAME || 'OpenClaw').trim(),
+    userName: (process.env.OCT_USER_NAME || _fileConfig.OCT_USER_NAME || '用户').trim(),
+    style: (process.env.OCT_PERSONA_STYLE || _fileConfig.OCT_PERSONA_STYLE || 'warm').trim(),
+  },
 
   availableModels: loadAvailableModels(),
 

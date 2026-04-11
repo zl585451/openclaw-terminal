@@ -1,9 +1,34 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
+const CUSTOM_PROVIDER_PRESETS = [
+  {
+    id: '',
+    label: '通用 OpenAI 兼容服务',
+    baseUrl: '',
+    docsUrl: '',
+    modelHint: '',
+  },
+  {
+    id: 'siliconflow',
+    label: '硅基流动 SiliconFlow',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    docsUrl: 'https://docs.siliconflow.cn/cn/userguide/quickstart',
+    modelHint: '例如：Qwen/Qwen2.5-72B-Instruct、deepseek-ai/DeepSeek-R1',
+  },
+];
+
+const SILICONFLOW_MODEL_EXAMPLES = [
+  'Qwen/Qwen2.5-72B-Instruct',
+  'deepseek-ai/DeepSeek-V3',
+  'deepseek-ai/DeepSeek-R1',
+  'Pro/Qwen/Qwen2.5-7B-Instruct',
+];
+
 export type SettingsApiKeysState = {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  TTS_MINIMAX_VOICE_ID: string;
   CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
@@ -37,7 +62,7 @@ export interface ConnectionTabViewProps {
   setShowApiKey: Dispatch<SetStateAction<Record<string, boolean>>>;
   searchKeysRef: MutableRefObject<{ BRAVE_SEARCH_API_KEY: string; TAVILY_API_KEY: string }>;
   gatewaySaveStatus: 'idle' | 'saving' | 'success';
-  saveGatewayAndReconnect: () => void;
+  saveGatewayAndReconnect: () => Promise<boolean>;
   providers: Record<string, ProviderEntry>;
   currentProviderId: string;
   currentProvider: ProviderEntry | undefined;
@@ -68,6 +93,10 @@ export function ConnectionTabView({
   apiKeysRefreshing,
   refetchApiKeys,
 }: ConnectionTabViewProps) {
+  const customPresetId = currentProviderId === 'custom'
+    ? (apiKeys.CUSTOM_BASE_URL || '').toLowerCase().includes('siliconflow') ? 'siliconflow' : ''
+    : '';
+
   return (
     <div className="settings-tab-content">
       <div className="settings-guide-card">
@@ -171,8 +200,10 @@ export function ConnectionTabView({
                     ...k,
                     OCT_PROVIDER: id,
                     OCT_MODEL: p?.defaultModel || k.OCT_MODEL,
-                    DASHSCOPE_BASE_URL: id === 'deepseek' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
+                    DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
                     DEEPSEEK_BASE_URL: id === 'deepseek' ? (p?.baseUrl || '') : k.DEEPSEEK_BASE_URL,
+                    MINIMAX_BASE_URL: id === 'minimax' ? (p?.baseUrl || '') : k.MINIMAX_BASE_URL,
+                    CUSTOM_BASE_URL: id === 'custom' ? (p?.baseUrl || '') : k.CUSTOM_BASE_URL,
                   }));
                 }}
                 className="settings-input settings-input-focusable"
@@ -190,16 +221,18 @@ export function ConnectionTabView({
               <label>API Key</label>
               <div className="settings-input-row">
                 <input
-                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY || showApiKey.CUSTOM_API_KEY ? 'text' : 'password'}
+                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY || showApiKey.MINIMAX_API_KEY || showApiKey.CUSTOM_API_KEY ? 'text' : 'password'}
                   value={
                     currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_API_KEY : 
+                    currentProviderId === 'minimax' ? apiKeys.MINIMAX_API_KEY :
                     currentProviderId === 'custom' ? apiKeys.CUSTOM_API_KEY : 
                     apiKeys.DASHSCOPE_API_KEY
                   }
                   onChange={(e) => {
                     let key: keyof SettingsApiKeysState;
-                    if (apiKeys.OCT_PROVIDER === 'deepseek') key = 'DEEPSEEK_API_KEY';
-                    else if (apiKeys.OCT_PROVIDER === 'custom') key = 'CUSTOM_API_KEY';
+                    if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
+                    else if (currentProviderId === 'minimax') key = 'MINIMAX_API_KEY';
+                    else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
                     else key = 'DASHSCOPE_API_KEY';
                     setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                   }}
@@ -213,6 +246,7 @@ export function ConnectionTabView({
                   onClick={() => {
                     let key: string;
                     if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
+                    else if (currentProviderId === 'minimax') key = 'MINIMAX_API_KEY';
                     else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
                     else key = 'DASHSCOPE_API_KEY';
                     setShowApiKey((s) => ({ ...s, [key]: !s[key as keyof typeof s] }));
@@ -220,6 +254,8 @@ export function ConnectionTabView({
                 >
                   {currentProviderId === 'deepseek' 
                     ? (showApiKey.DEEPSEEK_API_KEY ? '🙈' : '👁') 
+                    : currentProviderId === 'minimax'
+                    ? (showApiKey.MINIMAX_API_KEY ? '🙈' : '👁')
                     : currentProviderId === 'custom'
                     ? (showApiKey.CUSTOM_API_KEY ? '🙈' : '👁')
                     : (showApiKey.DASHSCOPE_API_KEY ? '🙈' : '👁')}
@@ -227,6 +263,11 @@ export function ConnectionTabView({
               </div>
               {currentProvider?.keyLink && (
                 <a href={currentProvider.keyLink} target="_blank" rel="noopener noreferrer" className="settings-link">获取 API Key →</a>
+              )}
+              {currentProviderId === 'minimax' && (
+                <p className="settings-desc" style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)' }}>
+                  MiniMax M2.7 现在建议使用 Token Plan 专属 API Key，通常以 <code>sk-cp-</code> 开头；大陆区 Base URL 保持 <code>https://api.minimaxi.com/v1</code> 即可。
+                </p>
               )}
             </div>
             <div className="settings-field">
@@ -273,24 +314,109 @@ export function ConnectionTabView({
                 <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
                   输入任意 OpenAI 兼容格式的模型名称
                 </p>
+                {currentProviderId === 'custom' && (
+                  <>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                      {SILICONFLOW_MODEL_EXAMPLES.map((model) => (
+                        <button
+                          key={model}
+                          type="button"
+                          className="settings-chip-btn"
+                          onClick={() => setApiKeys((k) => ({
+                            ...k,
+                            CUSTOM_MODEL: model,
+                            OCT_MODEL: k.OCT_MODEL === '__custom__' ? model : k.OCT_MODEL,
+                          }))}
+                        >
+                          {model}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="settings-desc" style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)' }}>
+                      上面这些是常见的硅基流动模型 ID，可直接点选填入。
+                    </p>
+                  </>
+                )}
               </div>
+            )}
+            {currentProviderId === 'custom' && (
+              <>
+                <div className="settings-field">
+                  <label>请求地址预设</label>
+                  <select
+                    value={customPresetId}
+                    onChange={(e) => {
+                      const preset = CUSTOM_PROVIDER_PRESETS.find((item) => item.id === e.target.value);
+                      setApiKeys((k) => ({
+                        ...k,
+                        CUSTOM_BASE_URL: preset?.baseUrl || '',
+                      }));
+                    }}
+                    className="settings-input settings-input-focusable"
+                  >
+                    {CUSTOM_PROVIDER_PRESETS.map((preset) => (
+                      <option key={preset.id || 'generic'} value={preset.id}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                    走 OpenAI 兼容服务时，这里就是 API 请求地址。接硅基流动可直接选择预设。
+                  </p>
+                    {customPresetId === 'siliconflow' && (
+                      <div style={{ marginTop: 8 }}>
+                        <a
+                          href="https://docs.siliconflow.cn/cn/userguide/quickstart"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="settings-link"
+                      >
+                        查看硅基流动快速上手与模型广场 →
+                      </a>
+                    </div>
+                  )}
+                </div>
+                <div className="settings-field">
+                  <label>请求地址（Base URL）</label>
+                  <input
+                    type="text"
+                    value={apiKeys.CUSTOM_BASE_URL}
+                    onChange={(e) => {
+                      setApiKeys((k) => ({ ...k, CUSTOM_BASE_URL: e.target.value }));
+                    }}
+                    placeholder="https://your-api.com/v1"
+                    className="settings-input settings-input-focusable"
+                    autoComplete="off"
+                  />
+                  <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                    输入 OpenAI 兼容格式的 API 地址，通常以 /v1 结尾。按硅基流动中文文档，推荐填写 https://api.siliconflow.cn/v1
+                  </p>
+                </div>
+              </>
             )}
             <details className="settings-details" style={{ marginTop: 8 }}>
               <summary>高级：Base URL</summary>
               <div className="settings-details-content" style={{ marginTop: 8 }}>
+                {currentProviderId === 'custom' ? (
+                  <p className="settings-desc" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    自定义服务的请求地址已在上方主表单中配置，这里无需重复填写。
+                  </p>
+                ) : (
                 <div className="settings-field">
                   <label>Base URL（通常自动填充，自定义时可修改）</label>
                   <input
                     type="text"
                     value={
                       currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : 
+                      currentProviderId === 'minimax' ? apiKeys.MINIMAX_BASE_URL :
                       currentProviderId === 'custom' ? apiKeys.CUSTOM_BASE_URL :
                       apiKeys.DASHSCOPE_BASE_URL
                     }
                     onChange={(e) => {
                       let key: keyof SettingsApiKeysState;
-                      if (apiKeys.OCT_PROVIDER === 'deepseek') key = 'DEEPSEEK_BASE_URL';
-                      else if (apiKeys.OCT_PROVIDER === 'custom') key = 'CUSTOM_BASE_URL';
+                      if (currentProviderId === 'deepseek') key = 'DEEPSEEK_BASE_URL';
+                      else if (currentProviderId === 'minimax') key = 'MINIMAX_BASE_URL';
+                      else if (currentProviderId === 'custom') key = 'CUSTOM_BASE_URL';
                       else key = 'DASHSCOPE_BASE_URL';
                       setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                     }}
@@ -300,10 +426,11 @@ export function ConnectionTabView({
                   />
                   {currentProviderId === 'custom' && (
                     <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
-                      输入 OpenAI 兼容格式的 API 地址，通常以 /v1 结尾
+                      输入 OpenAI 兼容格式的 API 地址，通常以 /v1 结尾。按硅基流动中文文档，推荐填写 https://api.siliconflow.cn/v1
                     </p>
                   )}
                 </div>
+                )}
               </div>
             </details>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
@@ -317,14 +444,18 @@ export function ConnectionTabView({
                   setTestConnectionError('');
                   const providerId = currentProviderId;
                   const p = providers[providerId];
-                  const result = await api.testAIConnection({
-                    OCT_PROVIDER: providerId,
-                    OCT_MODEL: apiKeys.OCT_MODEL || p?.defaultModel || 'qwen3.5-plus',
-                    DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
-                    DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
-                    DASHSCOPE_BASE_URL: providerId === 'deepseek' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
-                    DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
-                  });
+                    const result = await api.testAIConnection({
+                      OCT_PROVIDER: providerId,
+                      OCT_MODEL: apiKeys.OCT_MODEL || p?.defaultModel || 'qwen3.5-plus',
+                      DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
+                      DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
+                      MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
+                      CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
+                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
+                      DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
+                      MINIMAX_BASE_URL: providerId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || p?.baseUrl || '') : '',
+                      CUSTOM_BASE_URL: providerId === 'custom' ? (apiKeys.CUSTOM_BASE_URL || p?.baseUrl || '') : '',
+                    });
                   setTestConnectionStatus(result.success ? 'success' : 'error');
                   if (!result.success) setTestConnectionError(result.error || '');
                   setTimeout(() => setTestConnectionStatus('idle'), 3000);

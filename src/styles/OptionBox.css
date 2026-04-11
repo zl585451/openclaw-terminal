@@ -16,6 +16,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  contain: layout paint;
 }
 
 .option-checkbox-row {
@@ -29,13 +30,15 @@
   font-size: var(--text-md);  /* 15px — 选项文字要和正文一致 */
   cursor: pointer;
   text-align: left;
-  transition: background 0.2s;
+  transition: background-color 0.12s linear, border-color 0.12s linear;
   border-radius: 4px;
   position: relative;
+  border: 1px solid transparent;
 }
 
 .option-checkbox-row:hover {
   background: var(--bg-hover);
+  border-color: var(--border-subtle);
 }
 
 .option-checkbox-row.checked {
@@ -122,11 +125,13 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);  /* 12px */
   cursor: pointer;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear;
 }
 
 .option-page-btn:hover:not(:disabled) {
-  background: var(--accent-primary-muted);
-  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
 }
 
 .option-page-btn:disabled {
@@ -163,11 +168,13 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);  /* 12px */
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear, opacity 0.12s linear;
 }
 
 .option-confirm-btn:hover:not(:disabled) {
-  background: var(--accent-primary-muted);
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
 }
 
 .option-confirm-btn:disabled {
@@ -188,6 +195,7 @@
   overflow: visible;
   position: relative;
   z-index: auto;
+  contain: layout paint;
 }
 
 .option-pill {
@@ -199,14 +207,15 @@
   font-family: var(--font-sans);
   font-size: var(--text-code);
   cursor: pointer;
-  transition: all 0.18s;
+  transition: background-color 0.12s linear, border-color 0.12s linear, color 0.12s linear, opacity 0.12s linear;
   line-height: 1.4;
   letter-spacing: 0.3px;
 }
 
 .option-pill:hover:not(:disabled) {
   background: var(--bg-hover);
-  border-color: var(--border-focus);
+  border-color: var(--border-light);
+  color: var(--text-primary);
 }
 
 .option-pill.sent {

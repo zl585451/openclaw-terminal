@@ -3,7 +3,7 @@ import { useCanvas } from '../contexts/CanvasContext';
 import { resolveCanvasPlugin } from './canvas/plugins';
 import './CanvasPanel.css';
 
-export default function CanvasPanel({ onSendToChat: _onSendToChat }: { onSendToChat?: (text: string) => void }) {
+export default function CanvasPanel() {
   const canvas = useCanvas();
   const activeDocument = canvas.activeDocument;
   const hasMultipleDocuments = canvas.documents.length > 1;
@@ -30,12 +30,15 @@ export default function CanvasPanel({ onSendToChat: _onSendToChat }: { onSendToC
 
   const handleExport = useCallback(() => {
     if (!activeDocument) return;
+
     const blob = new Blob([activeDocument.content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
+
     const plugin = resolveCanvasPlugin(activeDocument);
     const filename = plugin?.getExportFilename?.(activeDocument) || 'canvas.txt';
+
     a.download = filename;
     document.body.appendChild(a);
     a.click();
@@ -58,7 +61,7 @@ export default function CanvasPanel({ onSendToChat: _onSendToChat }: { onSendToC
     <div className="canvas-empty">
       <div className="canvas-empty-title">Canvas Workspace</div>
       <div className="canvas-empty-copy">
-        Open a code block or let the `canvas` tool create an artifact here.
+        Open a code block or send a structured result here to start building artifacts.
       </div>
     </div>
   );
@@ -119,19 +122,40 @@ export default function CanvasPanel({ onSendToChat: _onSendToChat }: { onSendToC
           <div className="canvas-studio-card">
             <div className="canvas-studio-card-title">作品说明</div>
             <div className="canvas-studio-card-body">
-              {activeDocument.explanation?.trim() || '当前产物暂无说明。'}
+              {activeDocument.explanation?.trim() || '当前产物暂无说明。你可以继续让 AI 解释设计意图或补充关键要点。'}
             </div>
           </div>
           <div className="canvas-studio-card">
             <div className="canvas-studio-card-title">元信息</div>
             <div className="canvas-studio-meta-grid">
-              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">类型</span><span className="canvas-studio-meta-value">{activeDocument.artifactType}</span></div>
-              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">模式</span><span className="canvas-studio-meta-value">{activeDocument.mode}</span></div>
-              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">版本</span><span className="canvas-studio-meta-value">v{activeDocument.version}</span></div>
-              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">来源</span><span className="canvas-studio-meta-value">{activeDocument.origin}</span></div>
-              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">行数</span><span className="canvas-studio-meta-value">{lineCount}</span></div>
-              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">字符</span><span className="canvas-studio-meta-value">{charCount}</span></div>
-              <div className="canvas-studio-meta-item"><span className="canvas-studio-meta-key">更新</span><span className="canvas-studio-meta-value">{updatedAtLabel}</span></div>
+              <div className="canvas-studio-meta-item">
+                <span className="canvas-studio-meta-key">类型</span>
+                <span className="canvas-studio-meta-value">{activeDocument.artifactType}</span>
+              </div>
+              <div className="canvas-studio-meta-item">
+                <span className="canvas-studio-meta-key">模式</span>
+                <span className="canvas-studio-meta-value">{activeDocument.mode}</span>
+              </div>
+              <div className="canvas-studio-meta-item">
+                <span className="canvas-studio-meta-key">版本</span>
+                <span className="canvas-studio-meta-value">v{activeDocument.version}</span>
+              </div>
+              <div className="canvas-studio-meta-item">
+                <span className="canvas-studio-meta-key">来源</span>
+                <span className="canvas-studio-meta-value">{activeDocument.origin}</span>
+              </div>
+              <div className="canvas-studio-meta-item">
+                <span className="canvas-studio-meta-key">行数</span>
+                <span className="canvas-studio-meta-value">{lineCount}</span>
+              </div>
+              <div className="canvas-studio-meta-item">
+                <span className="canvas-studio-meta-key">字符</span>
+                <span className="canvas-studio-meta-value">{charCount}</span>
+              </div>
+              <div className="canvas-studio-meta-item">
+                <span className="canvas-studio-meta-key">更新</span>
+                <span className="canvas-studio-meta-value">{updatedAtLabel}</span>
+              </div>
             </div>
           </div>
         </div>

@@ -58,6 +58,31 @@ function isTaskHeader(line: string): boolean {
   return TASK_HEADER_KEYWORDS.some((k) => lower.startsWith(k.toLowerCase()));
 }
 
+const CHOICE_CUE_KEYWORDS = [
+  '请选择',
+  '请选',
+  '选一个',
+  '选哪',
+  '你想选',
+  '你想先做',
+  '想先做哪个',
+  '你更想',
+  '选项',
+  '可选',
+  '从下面选',
+  '从以下选',
+  '可以选',
+  '你要哪个',
+  '哪个方向',
+  '哪个方案',
+  '选哪个',
+];
+
+function hasChoiceCue(text: string): boolean {
+  const normalized = text.replace(/\s+/g, '').toLowerCase();
+  return CHOICE_CUE_KEYWORDS.some((keyword) => normalized.includes(keyword.replace(/\s+/g, '').toLowerCase()));
+}
+
 const START_MARKER = '[选项框开始]';
 const END_MARKER = '[选项框结束]';
 const OPTION_REGEX = /\[选项\s*(\d+)\s*:\s*([^\|\]]+)\s*\|\s*([^\]]+)\]/g;
@@ -129,6 +154,7 @@ export function parseSymbolOptions(text: string): OptionItem[] {
 
 /**
  * 解析换行列表：每行 "1. xxx" 或 "- xxx"。
+ * 仅供显式标签/Hint 分支使用；自动检测阶段不要直接拿普通 "-" Markdown 列表做交互。
  * 含 Markdown 强调（*）的行跳过，避免信息列表误触发交互。
  * 最低阈值提高到 3 条，减少两行普通列表的误触发。
  */
@@ -430,11 +456,7 @@ function enhanceTextSegmentsWithInlineCheckboxes(segments: RenderSegment[]): Ren
       for (let j = lines.length - 1; j >= 0; j--) {
         const t = lines[j].trim().toLowerCase();
         if (!t) continue;
-        return (
-          TASK_HEADER_KEYWORDS.some((k) => t.startsWith(k.toLowerCase())) ||
-          t.includes('任务') ||
-          t.includes('清单')
-        );
+        return TASK_HEADER_KEYWORDS.some((k) => t.startsWith(k.toLowerCase()));
       }
     }
     return false;
@@ -876,8 +898,8 @@ function _parseOptionBox(content: string): ParsedContent {
     return finalCleanup({ text, options: symbolOpts, totalPages, forcePills: true });
   }
 
-  // 自动检测：扫描所有段落的 "1. xxx" / "- xxx" 列表
-  // 注意：parseLineOptions 阈值已提高到 3，减少误触发
+  // 自动检测：仅扫描所有段落的编号列表 "1. xxx"
+  // 普通 "-" Markdown 列表默认保留为正文，避免被误判成交互组件。
   const paragraphs = textForDetection.split(/\n\n+/);
   let bestReflective: { options: OptionItem[]; i: number } | null = null;
   let bestOptions: { options: OptionItem[]; i: number } | null = null;
@@ -885,7 +907,6 @@ function _parseOptionBox(content: string): ParsedContent {
   for (let i = 0; i < paragraphs.length; i++) {
     const block = paragraphs[i].trim();
     let options = parseNumberedOptions(block);
-    if (options.length < 3) options = parseLineOptions(block);
     if (options.length >= 3 && options.length <= 20) {
       const questionOpts = options.filter((o) => isQuestionLabel(o.label));
       // 问题卡片要求所有选项都以问号结尾，且至少 2 个
@@ -907,6 +928,11 @@ function _parseOptionBox(content: string): ParsedContent {
     const { options, i } = chosen;
     const before = paragraphs.slice(0, i).join('\n\n').trim();
     const after = paragraphs.slice(i + 1).join('\n\n').trim();
+    const allowAutoOptionBox = !!bestReflective || hasChoiceCue([before, paragraphs[i]].filter(Boolean).join('\n\n'));
+    if (!allowAutoOptionBox) {
+      const totalPages = parseTotalPages(contentWithoutHint);
+      return { text: filterExpectedEffect(contentWithoutHint), options: [], totalPages };
+    }
     const totalPages = parseTotalPages(contentWithoutHint);
     const text = filterExpectedEffect([before, OPTIONS_PLACEHOLDER, after].filter(Boolean).join('\n\n').trim());
     const isReflectiveQuestions = !!bestReflective;

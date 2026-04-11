@@ -7,6 +7,10 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { ProxyAgent } = (() => {
+  try { return require('undici'); }
+  catch { return { ProxyAgent: null }; }
+})();
 
 const config = require('./config');
 const { createLogger } = require('./logger');
@@ -16,6 +20,32 @@ const BLIP_MODEL_ID = 'Xenova/blip-image-captioning-base';
 let pipe = null;
 let loadPromise = null;
 let firstLoadLogged = false;
+let lastLocalError = null;
+let fetchPatched = false;
+
+function patchFetchForModelDownload() {
+  if (fetchPatched) return;
+  const proxyUrl =
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.https_proxy ||
+    process.env.http_proxy ||
+    '';
+  if (!proxyUrl || !ProxyAgent || typeof globalThis.fetch !== 'function') return;
+
+  const dispatcher = new ProxyAgent(proxyUrl);
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input?.url || '';
+    const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url);
+    if (isLocal || init.dispatcher) {
+      return originalFetch(input, init);
+    }
+    return originalFetch(input, { ...init, dispatcher });
+  };
+  fetchPatched = true;
+  logger.info('[ImageAnalyzerLocal] 已为模型下载启用代理支持', { proxyUrl });
+}
 
 /**
  * 首次加载 BLIP 模型（自动下载并缓存）
@@ -34,14 +64,23 @@ async function loadModel() {
       logger.info('[ImageAnalyzerLocal] 首次使用本地图片分析，正在下载模型（~100MB）…');
     }
 
+    patchFetchForModelDownload();
+
     const { pipeline, env } = await import('@xenova/transformers');
     env.cacheDir = cacheDir;
-    env.allowLocalModels = false;
+    env.allowLocalModels = true;
     env.useBrowserCache = false;
 
     pipe = await pipeline('image-to-text', BLIP_MODEL_ID, { progress_callback: () => {} });
+    lastLocalError = null;
     return pipe;
-  })();
+  })().catch((error) => {
+    pipe = null;
+    loadPromise = null;
+    lastLocalError = error?.message || String(error);
+    const suffix = fetchPatched ? '（已尝试代理下载）' : '（未检测到可用代理）';
+    throw new Error(`${lastLocalError}${suffix}`);
+  });
 
   return loadPromise;
 }
@@ -82,7 +121,8 @@ async function analyzeImageLocal(dataUrl, timeoutMs) {
   try {
     pipeline = await loadModel();
   } catch (e) {
-    logger.warn('[ImageAnalyzerLocal] 模型加载失败:', e?.message || e);
+    lastLocalError = e?.message || String(e);
+    logger.warn('[ImageAnalyzerLocal] 模型加载失败', { error: lastLocalError });
     return null;
   }
 
@@ -94,14 +134,18 @@ async function analyzeImageLocal(dataUrl, timeoutMs) {
     ]);
     const text = Array.isArray(result) ? result[0]?.generated_text : result?.generated_text;
     if (text && typeof text === 'string' && text.trim()) {
+      lastLocalError = null;
       return `[图片分析] ${text.trim()}`;
     }
+    lastLocalError = 'empty_result';
     return null;
   } catch (e) {
     if (e?.message === 'timeout') {
       logger.warn('[ImageAnalyzerLocal] 本地分析超时');
+      lastLocalError = 'timeout';
     } else {
       logger.warn('[ImageAnalyzerLocal]', e?.message || e);
+      lastLocalError = e?.message || String(e);
     }
     return null;
   } finally {
@@ -109,4 +153,8 @@ async function analyzeImageLocal(dataUrl, timeoutMs) {
   }
 }
 
-module.exports = { loadModel, analyzeImageLocal };
+function getLastLocalError() {
+  return lastLocalError;
+}
+
+module.exports = { loadModel, analyzeImageLocal, getLastLocalError };

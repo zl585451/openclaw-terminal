@@ -41,6 +41,10 @@ backups/
 .tmp.drivedownload/
 .DS_Store
 
+# Claude Code 临时工作树（本地 IDE 工作区）
+.claude/
+.claude/worktrees/
+
 # 本机状态 / 不提交（仓库保持干净：单人+AI 本地配置与运行时数据）
 # — Cursor 本地规则与索引；网关任务队列快照；Nocturne 同步生成的 MEMORY 快照
 .cursor/

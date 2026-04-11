@@ -2,6 +2,9 @@ let audioContext: AudioContext | null = null;
 
 function getCtx(): AudioContext {
   if (!audioContext) audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  if (audioContext.state === 'suspended') {
+    void audioContext.resume().catch(() => {});
+  }
   return audioContext;
 }
 
@@ -9,7 +12,7 @@ function getCtx(): AudioContext {
 let charCounter = 0;
 
 /** 打字机：清脆的机械键盘声，每 3 个字触发一次 */
-function playTypewriter() {
+function playTypewriter(volume = 1) {
   charCounter++;
   if (charCounter % 3 !== 0) return;
   const ctx = getCtx();
@@ -23,15 +26,15 @@ function playTypewriter() {
   osc.frequency.value = 600 + Math.random() * 400;
   osc.type = 'square';
   filter.type = 'highpass';
-  filter.frequency.value = 2000;
-  gain.gain.setValueAtTime(0.03, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
+  filter.frequency.value = 1700;
+  gain.gain.setValueAtTime(0.18 * volume, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.003, ctx.currentTime + 0.04);
   osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.03);
+  osc.stop(ctx.currentTime + 0.04);
 }
 
 /** 柔和：轻柔的气泡提示音，每 5 个字触发一次 */
-function playSoft() {
+function playSoft(volume = 1) {
   charCounter++;
   if (charCounter % 5 !== 0) return;
   const ctx = getCtx();
@@ -41,14 +44,14 @@ function playSoft() {
   gain.connect(ctx.destination);
   osc.frequency.value = 1200 + Math.random() * 200;
   osc.type = 'sine';
-  gain.gain.setValueAtTime(0.02, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+  gain.gain.setValueAtTime(0.12 * volume, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.002, ctx.currentTime + 0.07);
   osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.06);
+  osc.stop(ctx.currentTime + 0.07);
 }
 
 /** 水泡：低频水滴声，每 8 个字触发一次 */
-function playBubble() {
+function playBubble(volume = 1) {
   charCounter++;
   if (charCounter % 8 !== 0) return;
   const ctx = getCtx();
@@ -60,20 +63,20 @@ function playBubble() {
   osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
   osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.8, ctx.currentTime + 0.08);
   osc.type = 'sine';
-  gain.gain.setValueAtTime(0.04, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+  gain.gain.setValueAtTime(0.16 * volume, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.002, ctx.currentTime + 0.1);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.1);
 }
 
 export type TypingSoundMode = 'off' | 'typewriter' | 'soft' | 'bubble';
 
-export function playClickSound(mode: TypingSoundMode = 'typewriter') {
+export function playClickSound(mode: TypingSoundMode = 'typewriter', volume = 1) {
   try {
     switch (mode) {
-      case 'typewriter': playTypewriter(); break;
-      case 'soft': playSoft(); break;
-      case 'bubble': playBubble(); break;
+      case 'typewriter': playTypewriter(volume); break;
+      case 'soft': playSoft(volume); break;
+      case 'bubble': playBubble(volume); break;
       default: break;
     }
   } catch {}

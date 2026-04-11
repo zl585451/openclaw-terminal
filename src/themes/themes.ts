@@ -70,6 +70,32 @@ export const terminalTheme: ThemeDefinition = {
     "--border-light":  "rgba(0, 230, 118, 0.15)",
     "--border-medium": "rgba(0, 230, 118, 0.25)",
     "--border-focus":  "#00E676",
+    "--border-primary": "#00E676",
+
+    // Mermaid
+    "--mermaid-card-bg":        "#0E141B",
+    "--mermaid-card-header":    "#111A22",
+    "--mermaid-card-border":    "rgba(0, 230, 118, 0.22)",
+    "--mermaid-stage-bg":       "#0A1016",
+    "--mermaid-stage-border":   "rgba(0, 230, 118, 0.18)",
+    "--mermaid-node-fill":      "#163527",
+    "--mermaid-node-text":      "#E8FFF2",
+    "--mermaid-node-border":    "#00E676",
+    "--mermaid-cluster-fill":   "#13212B",
+    "--mermaid-cluster-text":   "#D4E5D0",
+    "--mermaid-cluster-border": "rgba(0, 230, 118, 0.42)",
+    "--mermaid-line":           "#38F08F",
+    "--mermaid-edge-label-bg":  "#0F1419",
+    "--mermaid-font-family":    "'JetBrains Mono', 'Noto Sans SC', monospace",
+    // Mermaid pie chart — 哑光色板（绿色黑客风）
+    "--mermaid-pie-1": "#38a86c",  // 消光翠绿（主题色调低饱和版）
+    "--mermaid-pie-2": "#3d8faa",  // 钢青
+    "--mermaid-pie-3": "#a88c38",  // 琥珀金
+    "--mermaid-pie-4": "#7858a8",  // 柔紫
+    "--mermaid-pie-5": "#5ea03e",  // 橄榄绿
+    "--mermaid-pie-6": "#a84e40",  // 砖红
+    "--mermaid-pie-7": "#4878b8",  // 钢蓝
+    "--mermaid-pie-8": "#889830",  // 橄榄黄
 
     // 圆角
     "--radius-sm":   "6px",
@@ -175,6 +201,32 @@ export const deepspaceTheme: ThemeDefinition = {
     "--border-light":  "rgba(124, 138, 255, 0.15)",
     "--border-medium": "rgba(124, 138, 255, 0.25)",
     "--border-focus":  "#7C8AFF",
+    "--border-primary":"#7C8AFF",
+
+    // Mermaid
+    "--mermaid-card-bg":        "#11162A",
+    "--mermaid-card-header":    "#161C34",
+    "--mermaid-card-border":    "rgba(124, 138, 255, 0.28)",
+    "--mermaid-stage-bg":       "#0C1120",
+    "--mermaid-stage-border":   "rgba(124, 138, 255, 0.22)",
+    "--mermaid-node-fill":      "#2B448E",
+    "--mermaid-node-text":      "#F5F7FF",
+    "--mermaid-node-border":    "#8EA2FF",
+    "--mermaid-cluster-fill":   "#23263A",
+    "--mermaid-cluster-text":   "#E4E9FF",
+    "--mermaid-cluster-border": "rgba(142, 162, 255, 0.48)",
+    "--mermaid-line":           "#8EA2FF",
+    "--mermaid-edge-label-bg":  "#161A32",
+    "--mermaid-font-family":    "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    // Mermaid pie chart — 哑光色板（深空冷蓝紫风）
+    "--mermaid-pie-1": "#6070d8",  // 主题靛蓝（近 accent 低饱和版）
+    "--mermaid-pie-2": "#38a0a8",  // 深空青
+    "--mermaid-pie-3": "#a88840",  // 星云金
+    "--mermaid-pie-4": "#9060c0",  // 紫水晶
+    "--mermaid-pie-5": "#3a9870",  // 海泡绿
+    "--mermaid-pie-6": "#b06858",  // 暗赭
+    "--mermaid-pie-7": "#7888d0",  // 矢车菊蓝
+    "--mermaid-pie-8": "#7898b0",  // 钢灰蓝
 
     "--radius-sm":   "6px",
     "--radius-md":   "10px",
@@ -277,6 +329,32 @@ export const claudeDarkTheme: ThemeDefinition = {
     "--border-light":   "rgba(255, 255, 255, 0.10)",
     "--border-medium":  "rgba(255, 255, 255, 0.15)",
     "--border-focus":   "#D4764E",
+    "--border-primary": "#D4764E",
+
+    // Mermaid
+    "--mermaid-card-bg":        "#262320",
+    "--mermaid-card-header":    "#2F2A26",
+    "--mermaid-card-border":    "rgba(212, 118, 78, 0.26)",
+    "--mermaid-stage-bg":       "#1F1B18",
+    "--mermaid-stage-border":   "rgba(212, 118, 78, 0.20)",
+    "--mermaid-node-fill":      "#6C4C3B",
+    "--mermaid-node-text":      "#FFF6ED",
+    "--mermaid-node-border":    "#E8956A",
+    "--mermaid-cluster-fill":   "#3F3B36",
+    "--mermaid-cluster-text":   "#F1E7DB",
+    "--mermaid-cluster-border": "rgba(232, 149, 106, 0.42)",
+    "--mermaid-line":           "#E8956A",
+    "--mermaid-edge-label-bg":  "#353430",
+    "--mermaid-font-family":    "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    // Mermaid pie chart — 哑光色板（暖棕黑风）
+    "--mermaid-pie-1": "#b86840",  // 哑光赭橙（近 accent 低饱和版）
+    "--mermaid-pie-2": "#3f9090",  // 青瓷
+    "--mermaid-pie-3": "#b09040",  // 暖金
+    "--mermaid-pie-4": "#806890",  // 烟紫
+    "--mermaid-pie-5": "#4e9258",  // 鼠尾草绿
+    "--mermaid-pie-6": "#a05870",  // 玫瑰棕
+    "--mermaid-pie-7": "#4878a0",  // 铁蓝
+    "--mermaid-pie-8": "#8a7840",  // 苔绿金
 
     "--radius-sm":   "8px",
     "--radius-md":   "12px",

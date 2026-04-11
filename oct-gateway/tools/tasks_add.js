@@ -15,14 +15,21 @@ module.exports = {
         },
         required: ['content'],
       },
-    },
+  },
   },
   execute: async (args) => {
-    const { loadTasksData, saveTasksData, log } = shared;
+    const { loadTasksData, saveTasksData, findOpenDuplicateTask, log } = shared;
     const data = loadTasksData();
+    const content = (args.content || '').trim();
+    if (!content) return { success: false, error: '任务内容不能为空' };
+    const duplicate = findOpenDuplicateTask(data.tasks, content);
+    if (duplicate) {
+      log.info('tasks_add deduped', { existingTaskId: duplicate.id, content });
+      return { success: true, taskId: duplicate.id, message: `任务已存在: ${duplicate.content}`, deduped: true };
+    }
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      content: (args.content || '').trim(),
+      content,
       priority: args.priority || 'p2',
       done: false,
       source: 'amy',

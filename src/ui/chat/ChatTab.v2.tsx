@@ -11,24 +11,23 @@ import { useTimers } from '../../hooks/useTimers';
 import { useContextMenu } from '../../hooks/useContextMenu';
 import { useScrollManager } from '../../hooks/useScrollManager';
 import { ContextMenu } from '../../components/ContextMenu';
-import TaskBoard from '../../components/TaskBoard';
 import SettingsPanel from '../../components/SettingsPanel';
-import HeartbeatWave from '../../components/HeartbeatWave';
 import SetupGuide from '../../components/SetupGuide';
-import LogPanel from '../../components/LogPanel';
 import { TurnFSM } from '../../core/turnFSM';
 import { StreamRouter } from '../../core/streamRouter';
 import { BlockIngest } from '../../core/blockIngest';
 import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
+import { useCanvasBridge } from '../../hooks/useCanvasBridge';
 import { useCanvas } from '../../contexts/CanvasContext';
-import CanvasPanel from '../../components/CanvasPanel';
 // playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
+import { extractAssistantCotAndMain } from '../../utils/cotExtract';
 import { clearProcessedMarkdownCache } from '../../utils/markdownPreprocess';
 import { createMarkdownComponents } from './markdownComponents';
 import ChatInputArea from './ChatInput';
 import { ChatMessageList } from './MessageList';
+import ChatTabRightPanel from './ChatTabRightPanel';
 
 /** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
 // const OCT_V2_DISABLE_TYPEWRITER = false; // 已不再需要
@@ -122,11 +121,12 @@ interface ChatTabProps {
 const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange }) => {
   const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
-  const canvas = useCanvas();
+  const canvasBridge = useCanvasBridge();
+  const { setNodeInspectHandler } = useCanvas();
 
   const mdComponents = useMemo(
-    () => createMarkdownComponents(canvas.openCanvas),
-    [canvas.openCanvas]
+    () => createMarkdownComponents(canvasBridge.openCanvas),
+    [canvasBridge.openCanvas]
   );
 
   const octRuntimeRef = useRef<{ fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest } | null>(null);
@@ -137,6 +137,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const oct = octRuntimeRef.current;
 
   const typewriter = useTypewriter({
+    enabled: false,
     baseDelayMs: streamSpeedMs,
     typingSound: settings.typingSound,
     onFinished: (finalText) => {
@@ -159,14 +160,21 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     },
   });
 
-  const gateway = useGateway();
-
   const files = useFileAttachment();
   const timers = useTimers();
   const { windowFocused } = timers;
   const ctxMenu = useContextMenu();
 
-  const getToolDisplayName = (tool: string): string => {
+  // useWebSocket / 消息状态 / 入站分发 已迁移到 useMessages hook
+
+  // ── UI-only state (消息状态已迁移到 useMessages) ────────────────────────
+  const [showSettings, setShowSettings] = useState(false);
+  const [ttsError, setTtsError] = useState('');
+  const [, setLogPath] = useState('');
+  const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
+  const [injectInputText, setInjectInputText] = useState<string | null>(null);
+
+  const getToolDisplayName = useCallback((tool: string): string => {
     const map: Record<string, string> = {
       'read_file': '📖 读取文件',
       'write_file': '✏️ 写入文件',
@@ -178,20 +186,22 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       'search_files': '🔍 搜索文件',
     };
     return map[tool] || tool;
-  };
+  }, []);
 
-  // useWebSocket / 消息状态 / 入站分发 已迁移到 useMessages hook
+  const onMessageContextMenu = useCallback(
+    (e: React.MouseEvent, msg: ChatMessage, raw: string) => {
+      ctxMenu.onContextMenu(e, msg.id, raw);
+    },
+    [ctxMenu.onContextMenu]
+  );
 
-  // ── UI-only state (消息状态已迁移到 useMessages) ────────────────────────
-  const [showSettings, setShowSettings] = useState(false);
-  const [heartbeatPulse, setHeartbeatPulse] = useState(false);
-  const [, setLogPath] = useState('');
-  const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
-  const [injectInputText, setInjectInputText] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const onQuoteQuestion = useCallback((text: string) => {
+    setInjectInputText(text);
+  }, []);
 
   // ── UI-only refs ──────────────────────────────────────────────────────────
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // ── scrollBridgeRef：打破 useMessages↔useScrollManager 的循环依赖 ───────
@@ -214,8 +224,23 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     setMessages,
     permissions,
     streamSpeedMs,
+    typingSound: settings.typingSound,
+    typingSoundVolume: settings.typingSoundVolume,
     onStatusChange,
   });
+
+  // Register the chat's quickSend as the node-inspect handler so Canvas
+  // renderers can trigger "explain this node" queries without prop drilling.
+  // useEffect keeps registration in sync if quickSend identity changes.
+  useEffect(() => {
+    setNodeInspectHandler((nodeLabel: string, nodeGroup?: string) => {
+      const groupHint = nodeGroup ? `（所属分组：${nodeGroup}）` : '';
+      msgs.quickSend(`请详细说明节点「${nodeLabel}」${groupHint}的含义、作用及与其他节点的关系。`);
+    });
+    return () => setNodeInspectHandler(null);
+  // msgs.quickSend is stable (useCallback), setNodeInspectHandler is stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setNodeInspectHandler]);
 
   const scroll = useScrollManager({
     fsm: oct.fsm,
@@ -228,16 +253,43 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   scrollBridgeRef.current.reconcile = scroll.reconcile;
   scrollBridgeRef.current.scrollAfterUserSend = scroll.scrollAfterUserSend;
 
+  const suspendGatewayLogRef = useRef(false);
+  const isStreamingUiPause = msgs.isStreaming;
+  suspendGatewayLogRef.current = isStreamingUiPause;
+  const gateway = useGateway(suspendGatewayLogRef);
 
+  useEffect(() => {
+    if (!isStreamingUiPause) {
+      gateway.flushPendingLogLines();
+    }
+  }, [isStreamingUiPause, gateway.flushPendingLogLines]);
 
 
   useEffect(() => {
-    if (settings.typingSound === 'off' && audioRef.current) {
+    if (!settings.ttsPlayback && audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
       setSpeakingMessageId(null);
     }
-  }, [settings.typingSound]);
+    if (!settings.ttsPlayback && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      speechUtteranceRef.current = null;
+      setSpeakingMessageId(null);
+    }
+  }, [settings.ttsPlayback]);
+
+  const stopTtsPlayback = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      speechUtteranceRef.current = null;
+    }
+    setSpeakingMessageId(null);
+  }, []);
 
   useEffect(() => {
     ipcRenderer.invoke('get-env', 'OPENCLAW_LOG_PATH').then((p: string) => {
@@ -257,20 +309,67 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     const last = messages[messages.length - 1];
     if (last?.role === 'assistant' && last.id !== lastAssistantMsgIdRef.current) {
       lastAssistantMsgIdRef.current = last.id;
-      setHeartbeatPulse(true);
-      const t = setTimeout(() => setHeartbeatPulse(false), 500);
-      return () => clearTimeout(t);
     }
   }, [messages]);
 
+  const playBrowserTTS = useCallback(async (text: string, msgId: number) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      throw new Error('当前环境不支持浏览器本地朗读');
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onend = () => {
+      if (speechUtteranceRef.current === utterance) {
+        speechUtteranceRef.current = null;
+      }
+      setSpeakingMessageId(null);
+    };
+    utterance.onerror = () => {
+      if (speechUtteranceRef.current === utterance) {
+        speechUtteranceRef.current = null;
+      }
+      setTtsError('浏览器本地朗读失败');
+      setSpeakingMessageId(null);
+    };
+    speechUtteranceRef.current = utterance;
+    setSpeakingMessageId(msgId);
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
   const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
-    if (settings.typingSound === 'off' || !msg.content) return;
-    const plain = stripMarkdown(msg.content);
+    if (!settings.ttsPlayback || !msg.content) return;
+    const { mainContent } = extractAssistantCotAndMain(msg.content || '');
+    const plain = stripMarkdown(mainContent || msg.content);
     const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗口' : plain;
     if (!truncated.trim()) return;
+    setTtsError('');
+    if (settings.ttsProvider === 'browser') {
+      try {
+        await playBrowserTTS(truncated, msg.id);
+      } catch (err: any) {
+        setTtsError(err?.message || '浏览器本地朗读失败');
+      }
+      return;
+    }
     setSpeakingMessageId(msg.id);
-    const result = await ipcRenderer.invoke('tts-speak', { text: truncated });
+    const result = await ipcRenderer.invoke('tts-speak', {
+      text: truncated,
+      providerPreference: settings.ttsProvider,
+    });
     if (!result?.success || !result.audioBase64) {
+      if (settings.ttsProvider === 'auto') {
+        try {
+          await playBrowserTTS(truncated, msg.id);
+          setTtsError('云端朗读不可用，已回退到本地朗读');
+          return;
+        } catch {}
+      }
+      const error = result?.error || '语音朗读失败';
+      setTtsError(error);
+      ipcRenderer.invoke('show-notification', { title: '语音朗读失败', body: String(error).slice(0, 120) });
       setSpeakingMessageId(null);
       return;
     }
@@ -281,11 +380,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       audioRef.current = null;
     };
     audio.onerror = () => {
+      setTtsError('音频播放失败，请检查系统音量与输出设备');
       setSpeakingMessageId(null);
       audioRef.current = null;
     };
-    audio.play().catch(() => setSpeakingMessageId(null));
-  }, [settings.typingSound]);
+    audio.play().catch((err: any) => {
+      setTtsError(err?.message || '音频播放被系统阻止');
+      setSpeakingMessageId(null);
+    });
+  }, [settings.ttsPlayback, settings.ttsProvider, playBrowserTTS]);
 
   useEffect(() => {
     if (prevStreamingRef.current && !msgs.isStreaming) {
@@ -293,7 +396,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       if (lastMsg?.role === 'assistant' && lastMsg.content) {
         if (!windowFocused) {
           const preview = lastMsg.content.slice(0, 30).replace(/\s+/g, ' ') + (lastMsg.content.length > 30 ? '...' : '');
-          ipcRenderer.invoke('show-notification', { title: 'AMY 回复', body: preview });
+          ipcRenderer.invoke('show-notification', { title: `${settings.aiName || 'OpenClaw'} 回复`, body: preview });
         }
         playTTSForMessage(lastMsg);
       }
@@ -324,7 +427,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         onDelete={(msgId) => setMessages((prev) => prev.filter((m) => m.id !== msgId))}
       />
     <div
-      className={`chat-tab${canvas.isOpen ? ' canvas-active' : ''}`}
+      className="chat-tab"
       onPaste={files.handlePaste}
       onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types?.includes('Files')) files.setDragging(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) files.setDragging(false); }}
@@ -362,15 +465,38 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           <>
             <button
               type="button"
-              className={`voice-toggle ${settings.typingSound !== 'off' ? 'on' : 'off'}`}
+              className={`voice-toggle ${settings.ttsPlayback ? 'on' : 'off'}`}
               onClick={() => setSettings((s) => ({
                 ...s,
-                typingSound: s.typingSound === 'off' ? 'typewriter' : 'off'
+                ttsPlayback: !s.ttsPlayback
               }))}
-              title={settings.typingSound !== 'off' ? `音效: ${settings.typingSound}（点击关闭）` : '点击开启打字音效'}
+              title={settings.ttsPlayback ? '回复朗读已开启（点击关闭）' : '点击开启回复朗读'}
             >
-              {settings.typingSound !== 'off' ? '♪ VOICE ON' : '♪ VOICE OFF'}
+              {settings.ttsPlayback ? '♪ VOICE ON' : '♪ VOICE OFF'}
             </button>
+            <button
+              type="button"
+              className={`voice-toggle ${canvasBridge.isOpen ? 'on' : ''}`}
+              onClick={canvasBridge.openPanel}
+              title={canvasBridge.isOpen ? 'Canvas 面板已打开' : '打开 Canvas 面板'}
+            >
+              ▣ OPEN CANVAS
+            </button>
+            {speakingMessageId != null ? (
+              <button
+                type="button"
+                className="voice-toggle"
+                onClick={stopTtsPlayback}
+                title="停止当前语音播报"
+              >
+                ■ STOP VOICE
+              </button>
+            ) : null}
+            {ttsError ? (
+              <span className="ws-status disconnected" style={{ maxWidth: 320 }} title={ttsError}>
+                TTS: {ttsError}
+              </span>
+            ) : null}
             <button
               type="button"
               className="voice-toggle"
@@ -400,7 +526,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           isStreaming={msgs.isStreaming}
           awaitingResponse={msgs.awaitingResponse}
           streamingContent={msgs.fullTextRef.current}
-          displayedText={typewriter.displayedText}
+          displayedText={msgs.fullTextRef.current || typewriter.displayedText}
+          usePlainStreamingText={true}
           speakingMessageId={speakingMessageId}
           agentPhase={msgs.agentPhase}
           thinkingElapsed={msgs.thinkingElapsed}
@@ -408,14 +535,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           quickSend={msgs.quickSend}
           bottomRef={scroll.bottomRef}
           onScroll={scroll.handleChatScroll}
-          onMessageContextMenu={(e, msg, raw) => ctxMenu.onContextMenu(e, msg.id, raw)}
-          onQuoteQuestion={(text: string) => setInjectInputText(text)}
+          onMessageContextMenu={onMessageContextMenu}
+          onQuoteQuestion={onQuoteQuestion}
           pendingPills={msgs.pendingPills}
           messagesContainerRef={scroll.messagesContainerRef}
           activeTools={msgs.activeTools}
           getToolDisplayName={getToolDisplayName}
           streamingDomRef={msgs.streamingDomRef}
           markdownComponents={mdComponents}
+          allowCotDisplay={true}
         />
         {scroll.showScrollBtn && (
           <div
@@ -472,309 +600,20 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         />
       </div>
 
-      <div className="right-panel" style={{
-        width: sidebarCollapsed ? '40px' : '380px',
-        transition: 'width 0.2s ease',
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
-        {/* 折叠按钮 */}
-        <button
-          onClick={() => setSidebarCollapsed(v => !v)}
-          style={{
-            position: 'absolute',
-            left: sidebarCollapsed ? '8px' : '-14px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: '24px',
-            height: '48px',
-            background: 'var(--bg-panel)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '4px',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            fontSize: 'var(--text-sm)',
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {sidebarCollapsed ? '›' : '‹'}
-        </button>
-        {/* 内容区域 - 折叠时隐藏 */}
-        <div style={{
-          display: sidebarCollapsed ? 'none' : 'flex',
-          flexDirection: 'column',
-          height: '100%',
-        }}>
-        {/* 1. 顶部状态行：GW/MEM 信号+ 时间 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '8px 12px',
-              borderBottom: '1px solid var(--border-subtle)',
-            flexShrink: 0,
-          }}
-        >
-          {/* 信号：Gateway 连接状态（绿色*/}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <div
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: msgs.wsConnected ? 'var(--status-success)' : 'var(--status-error)',
-                animation: msgs.wsConnected ? 'pulse-green 2s infinite' : 'pulse-red 1s infinite',
-              }}
-            />
-            <span
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-tertiary)',
-                fontFamily: 'var(--font-mono)',
-              }}
-            >
-              GW
-            </span>
-          </div>
-
-          {/* 信号：Nocturne 记忆系统（青绿） */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <div
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: msgs.nocturneOnline ? 'var(--status-info)' : 'var(--status-error)',
-                animation: msgs.nocturneOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite',
-              }}
-            />
-            <span
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-tertiary)',
-                fontFamily: 'var(--font-mono)',
-              }}
-            >
-              MEM
-            </span>
-          </div>
-
-          {/* 时间日期靠右对齐 - 同行排列 */}
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              gap: '8px',
-            }}
-          >
-            <div
-              style={{
-                fontSize: 'var(--text-3xl)',
-                color: 'var(--text-primary)',
-                fontFamily: 'var(--font-mono)',
-                fontWeight: 500,
-                letterSpacing: '1px',
-                lineHeight: 1,
-              }}
-            >
-              {timers.localTime || '--:--'}
-            </div>
-            <div
-              style={{
-                width: '1px',
-                height: '16px',
-                background: 'var(--border-subtle)',
-              }}
-            />
-            <div
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-secondary)',
-                fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.5px',
-                lineHeight: 1,
-              }}
-            >
-              {timers.localDate || ''}
-            </div>
-          </div>
-        </div>
-
-        {/* 2. 心跳- 完整显示 65px */}
-        <div style={{ 
-          borderBottom: '1px solid var(--border-subtle)', 
-          height: '65px',
-          padding: '8px 0',
-          overflow: 'visible',
-          flexShrink: 0,
-        }}>
-          <HeartbeatWave connected={msgs.wsConnected} pulse={heartbeatPulse} />
-        </div>
-
-        {/* 3. 系统信息 MODEL/TOK/CTX */}
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          padding: '4px 12px',
-          borderBottom: '1px solid var(--border-subtle)',
-          gap: '8px',
-          fontSize: 'var(--text-sm)',
-          fontFamily: 'var(--font-mono)',
-        }}>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <span style={{ color: 'var(--text-tertiary)' }}>MODEL</span>
-            <span style={{ color: 'var(--accent-primary)' }}>{msgs.modelName || '--'}</span>
-          </div>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <span style={{ color: 'var(--text-tertiary)' }}>TOK</span>
-            <span style={{ color: 'var(--accent-primary)' }}>
-              {msgs.tokenIn != null ? `${(msgs.tokenIn/1000).toFixed(1)}k` : '0'}/{msgs.ctxMax != null ? `${(msgs.ctxMax/1000).toFixed(0)}k` : '--'}
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <span style={{ color: 'var(--text-tertiary)' }}>CTX</span>
-            <span style={{ color: msgs.ctxUsed != null && msgs.ctxMax != null && msgs.ctxMax > 0 && (msgs.ctxUsed / msgs.ctxMax) > 0.8 ? 'var(--status-error)' : 'var(--accent-primary)' }}>
-              {msgs.ctxUsed != null && msgs.ctxMax != null && msgs.ctxMax > 0 ? `${(msgs.ctxUsed / 1000).toFixed(1)}k (${Math.round((msgs.ctxUsed / msgs.ctxMax) * 100)}%)` : '0%'}
-            </span>
-          </div>
-          {msgs.streak > 0 && (
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <span style={{ color: 'var(--status-warning)' }}>🔥 STREAK {msgs.streak}</span>
-            </div>
-          )}
-        </div>
-
-        {/* 4. 控制按钮*/}
-        <div style={{
-          display: 'flex',
-          gap: '4px',
-          padding: '6px 12px',
-          borderBottom: '1px solid var(--border-subtle)',
-        }}>
-          <button
-            type="button"
-            onClick={() => {
-              if (gateway.gatewayRunning) {
-                gateway.stopGateway();
-              } else {
-                gateway.startGateway();
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: '4px 0',
-              fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
-              background: 'transparent',
-              borderRadius: '2px',
-              cursor: 'pointer',
-              letterSpacing: '1px',
-              transition: 'all 0.15s',
-              border: `1px solid ${gateway.gatewayRunning ? 'var(--status-error)' : 'var(--status-success)'}`,
-              color: gateway.gatewayRunning ? 'var(--status-error)' : 'var(--status-success)',
-            }}
-          >
-            {gateway.gatewayRunning ? '■ 停止' : '▶ 启动'}
-          </button>
-          <button
-            type="button"
-            onClick={gateway.restartGateway}
-            style={{
-              flex: 1,
-              padding: '4px 0',
-              fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
-              background: 'transparent',
-              borderRadius: '2px',
-              cursor: 'pointer',
-              letterSpacing: '1px',
-              transition: 'all 0.15s',
-              border: '1px solid var(--status-warning)',
-              color: 'var(--status-warning)',
-            }}
-          >
-            ↺ 重启
-          </button>
-          <button
-            type="button"
-            onClick={() => ipcRenderer.invoke('open-terminal-window')}
-            style={{
-              flex: 1,
-              padding: '4px 0',
-              fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
-              background: 'transparent',
-              borderRadius: '2px',
-              cursor: 'pointer',
-              letterSpacing: '1px',
-              transition: 'all 0.15s',
-              border: '1px solid var(--border-light)',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            &gt; 终端
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (typeof window !== 'undefined' && (window as any).electronAPI?.enterFloatingMode) {
-                (window as any).electronAPI.enterFloatingMode();
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: '4px 0',
-              fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
-              background: 'transparent',
-              borderRadius: '2px',
-              cursor: 'pointer',
-              letterSpacing: '1px',
-              transition: 'all 0.15s',
-              border: '1px solid var(--border-light)',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            ◎ 悬浮
-          </button>
-        </div>
-
-        {/* 5. 任务看板 - flex:1 自适应 */}
-        <div className="task-board-section">
-          <TaskBoard compact />
-        </div>
-
-        {/* 6. Gateway 日志 - 固定高度 */}
-        <div className="gateway-log-section">
-          <LogPanel
-            title="Gateway 日志"
-            lines={gateway.logLines}
-            bodyRef={gateway.logContainerRef}
-            emptyText="[LOG] 等待 Gateway 日志..."
-            nocturneOnline={msgs.nocturneOnline}
-            modelName={msgs.modelName}
-            onExport={gateway.exportLogs}
-            onClear={gateway.clearLogs}
-          />
-        </div>
-        {/* 内容区域结束 */}
-      </div>
-      {/* right-panel 结束 */}
-      </div>
+      <ChatTabRightPanel
+        gateway={gateway}
+        wsConnected={msgs.wsConnected}
+        nocturneOnline={msgs.nocturneOnline}
+        modelName={msgs.modelName}
+        tokenIn={msgs.tokenIn}
+        ctxUsed={msgs.ctxUsed}
+        ctxMax={msgs.ctxMax}
+        streak={msgs.streak}
+        pauseSidePanelsDuringStream={isStreamingUiPause}
+        localTime={timers.localTime}
+        localDate={timers.localDate}
+      />
     {/* chat-tab 结束 */}
-    </div>
-
-    <div
-      className={`canvas-drawer${canvas.isOpen ? ' canvas-drawer--open' : ''}`}
-    >
-      <div className="canvas-drawer-shadow" aria-hidden />
-      <CanvasPanel onSendToChat={(text) => msgs.sendMessage(text, null)} />
     </div>
 
     {files.screenshotFlash && (

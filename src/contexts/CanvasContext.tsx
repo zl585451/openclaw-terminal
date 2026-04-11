@@ -1,7 +1,7 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback, useRef } from 'react';
 
 export type CanvasMode = 'markdown' | 'code' | 'html';
-export type CanvasArtifactType = 'document' | 'diagram' | 'code' | 'ui-draft' | 'echart';
+export type CanvasArtifactType = 'document' | 'diagram' | 'code' | 'ui-draft' | 'react-flow' | 'echart';
 export type CanvasDocumentStatus = 'draft' | 'refining' | 'final';
 
 export interface CanvasDocument {
@@ -64,6 +64,10 @@ interface CanvasContextValue extends CanvasState {
   mode: CanvasMode;
   title: string;
   language: string;
+  /** Called when a user clicks a node in a Canvas diagram to ask AI about it */
+  onNodeInspect: ((nodeLabel: string, nodeGroup?: string) => void) | null;
+  /** Register the chat's send function so Canvas renderers can trigger AI queries */
+  setNodeInspectHandler: (fn: ((nodeLabel: string, nodeGroup?: string) => void) | null) => void;
   openPanel: () => void;
   openCanvas: (
     content: string,
@@ -91,6 +95,7 @@ function createCanvasDocument(
   overrides: Partial<CanvasDocument> = {}
 ): CanvasDocument {
   const timestamp = Date.now();
+
   return {
     id: overrides.id || `canvas_${timestamp}_${Math.random().toString(36).slice(2, 8)}`,
     title: overrides.title || title || 'Untitled',
@@ -115,6 +120,19 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     activeDocumentId: null,
   });
 
+  // Node-inspect handler lives in a ref so renderer reads the latest
+  // version without needing to be in the dependency array.
+  const nodeInspectRef = useRef<((nodeLabel: string, nodeGroup?: string) => void) | null>(null);
+  const [nodeInspectVersion, setNodeInspectVersion] = useState(0); // force re-render when set
+
+  const setNodeInspectHandler = useCallback(
+    (fn: ((nodeLabel: string, nodeGroup?: string) => void) | null) => {
+      nodeInspectRef.current = fn;
+      setNodeInspectVersion((v) => v + 1); // expose to consumers
+    },
+    []
+  );
+
   const activeDocument = useMemo(
     () => state.documents.find((document) => document.id === state.activeDocumentId) ?? null,
     [state.activeDocumentId, state.documents]
@@ -128,7 +146,9 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     artifactType?: CanvasArtifactType
   ) => {
     setState((prev) => {
-      const nextDocument = createCanvasDocument(content, mode, title, language, { artifactType });
+      const nextDocument = createCanvasDocument(content, mode, title, language, {
+        artifactType,
+      });
       return {
         isOpen: true,
         documents: [...prev.documents, nextDocument],
@@ -166,11 +186,17 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
   const updateContent = useCallback((content: string) => {
     setState((prev) => {
       if (!prev.activeDocumentId) return prev;
+
       return {
         ...prev,
         documents: prev.documents.map((document) =>
           document.id === prev.activeDocumentId
-            ? { ...document, content, version: document.version + 1, updatedAt: Date.now() }
+            ? {
+                ...document,
+                content,
+                version: document.version + 1,
+                updatedAt: Date.now(),
+              }
             : document
         ),
       };
@@ -179,8 +205,15 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
 
   const setActiveDocument = useCallback((documentId: string) => {
     setState((prev) => {
-      if (!prev.documents.some((document) => document.id === documentId)) return prev;
-      return { ...prev, isOpen: true, activeDocumentId: documentId };
+      if (!prev.documents.some((document) => document.id === documentId)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        isOpen: true,
+        activeDocumentId: documentId,
+      };
     });
   }, []);
 
@@ -190,6 +223,7 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
       const nextActiveId = prev.activeDocumentId === documentId
         ? nextDocuments[nextDocuments.length - 1]?.id ?? null
         : prev.activeDocumentId;
+
       return {
         ...prev,
         documents: nextDocuments,
@@ -217,26 +251,31 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
 
   const applyCanvasEvent = useCallback((event: CanvasEvent) => {
     if (event.type !== 'canvas') return;
+
     if (event.action === 'create') {
       createDocument(event.payload.document);
       return;
     }
+
     if (event.action === 'update') {
       updateDocument(event.payload.documentId, event.payload.patch);
       return;
     }
+
     if (event.action === 'focus') {
       setActiveDocument(event.payload.documentId);
       return;
     }
+
     if (event.action === 'delete') {
       deleteDocument(event.payload.documentId);
       return;
     }
+
     if (event.action === 'explain') {
       updateDocument(event.payload.documentId, { explanation: event.payload.explanation });
     }
-  }, [createDocument, deleteDocument, setActiveDocument, updateDocument]);
+  }, [createDocument, setActiveDocument, updateDocument]);
 
   const value = useMemo<CanvasContextValue>(() => ({
     ...state,
@@ -245,6 +284,8 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     mode: activeDocument?.mode ?? 'markdown',
     title: activeDocument?.title ?? '',
     language: activeDocument?.language ?? 'text',
+    onNodeInspect: nodeInspectRef.current,
+    setNodeInspectHandler,
     openPanel,
     openCanvas,
     closeCanvas,
@@ -254,7 +295,10 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     createDocument,
     updateDocument,
     applyCanvasEvent,
-  }), [activeDocument, applyCanvasEvent, closeCanvas, createDocument, deleteDocument, openCanvas, openPanel, setActiveDocument, state, updateContent, updateDocument]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [activeDocument, applyCanvasEvent, closeCanvas, createDocument, deleteDocument,
+      nodeInspectVersion, openCanvas, openPanel, setActiveDocument, setNodeInspectHandler,
+      state, updateContent, updateDocument]);
 
   return (
     <CanvasContext.Provider value={value}>

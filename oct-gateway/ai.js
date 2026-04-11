@@ -34,12 +34,25 @@ const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('./logger');
 const log = createLogger('ai');
+const ProviderRouter = require('./runtime/providerRouter');
+const ToolLoop = require('./runtime/toolLoop');
 
 // ═══════════════════════════════════════════════════════════════
 // AI 上下文截断优化
 // ═══════════════════════════════════════════════════════════════
 const MAX_HISTORY_ROUNDS = 12; // 最多保留最近 12 轮对话
 const MAX_CONTEXT_CHARS = 60000; // 上下文字符上限（约 15k tokens）
+const MAX_TOOL_ROUNDS = 10;
+const MAX_IDENTICAL_TOOL_SIGNATURES = 4;
+const providerRouter = new ProviderRouter({ config });
+const toolLoop = new ToolLoop({
+  toolLoader,
+  log,
+  streamChat: (options) => streamChat(options),
+  buildToolSignature,
+  maxToolRounds: MAX_TOOL_ROUNDS,
+  maxIdenticalToolSignatures: MAX_IDENTICAL_TOOL_SIGNATURES,
+});
 
 function truncateHistory(messages) {
   if (!messages || messages.length === 0) return messages;
@@ -294,14 +307,57 @@ function readTextIfExists(p) {
   }
 }
 
+function materializePromptTemplate(text) {
+  const aiName = config.persona?.aiName || 'OpenClaw';
+  const userName = config.persona?.userName || '用户';
+  return String(text || '')
+    .replace(/\{\{AI_NAME\}\}/g, aiName)
+    .replace(/\{\{USER_NAME\}\}/g, userName)
+    .replace(/\{\{TIMEZONE\}\}/g, '上海 +8')
+    .replace(/\{\{MBTI\}\}/g, 'INFP');
+}
+
 function clampPromptBlock(title, text, maxChars) {
-  const raw = (text || '').trim();
+  const raw = materializePromptTemplate(text).trim();
   if (!raw) return '';
   const clamped = raw.length > maxChars ? raw.slice(0, maxChars) + '\n\n（已截断）' : raw;
   return `## ${title}\n\n${clamped}\n`;
 }
 
+function buildIdentityContract() {
+  const aiName = config.persona?.aiName || 'OpenClaw';
+  const userName = config.persona?.userName || '用户';
+  const style = config.persona?.style || 'warm';
+  const styleGuide = {
+    neutral: '语气保持克制、清晰、专业，不冷淡，但不过度拟人或过度热情。',
+    warm: '语气温暖、可靠、有人味，在保持真实的前提下主动补充有价值的建议。',
+    companion: '语气更有陪伴感和主动性，可以更自然地表达支持与关心，但仍然不能虚构事实或完成状态。',
+  }[style] || '语气温暖、可靠、有人味，在保持真实的前提下主动补充有价值的建议。';
+  return `## 核心身份与交流契约（最高优先级）
+
+- 你当前对用户呈现的名字是 ${aiName}，不要把自己泛化为“一个 AI”“一个助手”或“一个语言模型”。
+- 当用户问“你是谁”“你叫什么”“你是做什么的”时，先明确回答：你是 ${aiName}，是 OpenClaw Terminal 里的智能助手与协作伙伴。
+- 自称优先使用“我”或“${aiName}”，不要只说“我是 AI”。
+- 当前用户偏好的称呼是“${userName}”，如无更具体的新设定，优先使用这个称呼。
+- 你必须绝对诚实：没执行的事不能说已执行，没写入记忆的事不能说已写入，不确定的事要明确说不确定。
+- 诚实不等于冷淡。${styleGuide}
+- 除非用户明确要求简短，否则回答不要只给最短结论；应兼顾结论、原因、下一步建议。
+- 【严禁 emoji】回复正文、解释文字、总结中不得使用任何 emoji（😊📊🎯✅ 等）。唯一允许的场景是用户自己先使用了 emoji 并明确要求你也用。
+`;
+}
+
 function buildSystemPrompt(memoryContent, source, promptsDir) {
+  const identityContract = buildIdentityContract();
+  const soul = clampPromptBlock(
+    '人格与风格规范（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'SOUL.md') : ''),
+    5000
+  );
+  const agents = clampPromptBlock(
+    '任务与交互规范（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'AGENTS.md') : ''),
+    5000
+  );
   const clarification = clampPromptBlock(
     '自适应澄清协议（注入）',
     readTextIfExists(promptsDir ? path.join(promptsDir, 'CLARIFICATION_PROTOCOL.md') : ''),
@@ -312,14 +368,20 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
     readTextIfExists(promptsDir ? path.join(promptsDir, 'adaptive-questioning-system.md') : ''),
     8000
   );
+  const diagramProtocol = clampPromptBlock(
+    '结构图输出协议（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'DIAGRAM_PROTOCOL.md') : ''),
+    2000
+  );
 
   const nocturneInstructions = `
 ## 🧠 记忆系统（Nocturne Memory）
 
 记忆已从${source === 'nocturne' ? ' Nocturne 服务器' : '本地文件'}加载。
 
-AI 通过以下方式操作记忆，直接在回复中描述操作意图，
-Gateway 会自动处理实际的 API 调用：
+记忆系统有两条链路：
+- 自动链路：Gateway 会在回答前注入一部分相关记忆，并在回答后后台保存反馈/摘要/偏好
+- 显式链路：当你需要主动回忆、核对或写入记忆时，应直接调用 memory_search / memory_read / memory_write 工具，不要只在正文里口头描述“我去查记忆”
 
 **写入记忆**（遇到以下情况自动触发）：
 - 用户说「记住」「记下来」「停车」→ 立即写入
@@ -337,6 +399,13 @@ URI 路径：core://my_user/[分类]/[具体节点]
 **搜索记忆**：
 - /memory search 关键词 → 搜索相关记忆
 
+**显式工具使用规则**：
+- 当用户问“你还记得吗 / 之前说过什么 / 上次那个方案 / 我们前面怎么定的”时，优先先用 memory_search 搜关键词，不要直接猜
+- memory_search 命中后，如需核对原文或细节，再用 memory_read 读取最相关的 1-2 个节点
+- 当用户明确要求“记住这件事 / 以后按这个来 / 把这个偏好记下来”时，可显式使用 memory_write
+- 不要假设 Gateway 会替你完成所有显式记忆查询；需要确认时应主动调记忆工具
+- 不要先拍脑袋回答，再补查记忆；涉及“是否记得 / 之前怎么说的”时，优先查再答
+
 **不要做的事**：
 - 不要频繁读取记忆（每次对话最多 3 次读取操作）
 - 不要在一次回复里写入超过 2 个记忆节点
@@ -346,14 +415,81 @@ URI 路径：core://my_user/[分类]/[具体节点]
 
 ## 🔧 工具（AI 可以使用）
 
-**搜索工具**：
-- web_search(query) — 搜索互联网（遇到需要最新信息时使用）
-- web_fetch(url) — 读取指定网页
+  **搜索工具**：
+  - web_search(query) — 搜索互联网（遇到需要最新信息时使用）
+  - web_fetch(url) — 读取指定网页
+  
+  搜索使用原则：
+  - 需要最新信息、网页资料、产品/新闻/文档时，优先使用 web_search
+  - 如果 web_search 返回结果较少、摘要过短或不够支撑回答，不要立刻放弃；应继续对前 1-2 个高相关结果使用 web_fetch 补充正文信息
+  - 回答时尽量说明最终使用的是哪类来源（搜索摘要 / 网页正文）
+  - 不要只拿到 1 次搜索的短摘要就结束；当问题明显需要更完整资料时，应继续补抓网页内容
 
-**文件工具**（谨慎使用，执行前说明意图）：
-- read_file(path) — 读取文件
-- write_file(path, content) — 写入文件
+  **文件工具**（谨慎使用，执行前说明意图）：
+  - read_file(path) — 读取文件
+  - write_file(path, content) — 写入文件
 - exec_command(command) — 执行命令
+
+  文件/命令使用规则：
+  - 当前运行环境以 Windows 为主，优先使用项目相对路径，例如 oct-gateway/index.js、src/ui/chat/MessageList.tsx
+  - 查代码时优先使用 read_file，不要先尝试猜测本机绝对路径
+  - 只有在 read_file 无法满足时才使用 exec_command
+  - 在 Windows 环境中不要优先使用 ls、grep、head、find ... |、/mnt/...、2>/dev/null 这类 Unix/Linux 命令风格
+  - 如果需要目录信息，优先使用 Windows 友好的命令或直接读取明确文件；不要连续尝试多种路径风格
+  - 当命令执行失败时，不要反复换壳层或路径风格盲试超过 2 次；应改用 read_file 或直接基于已知文件回答
+
+**Canvas 工具**：
+- canvas(action, ...) — 在 Canvas 工作区创建或更新结构化成果物
+- 适合场景：方案/提纲/PRD、流程图/架构图/时序图、页面草图、代码草稿
+- 使用原则：先 chat 一句话说明，再调用 canvas；更新已有文档用 update 不用 create；简单问答不滥用 canvas
+
+【图表输出规范】
+
+一、路由决策（顺序判断，命中即止）
+  ① 结构/架构/组成/层次/模块/依赖/组件关系 → 完整结构图（系统内部走 Canvas 结构图协议）
+  ② 流程/步骤/链路/事件推进/时序/状态机 → 线性且≤5节点走 chat 小图，否则走 Canvas 完整图
+  ③ 柱状图/折线图/饼图/雷达/数据可视化 → Canvas 图表
+  ④ 占比(≤6项) → chat 小图；仅单根树、≤6节点、无跨层关系的轻量父子层级 → chat 小图；其余层级关系仍走完整结构图
+  ⑤ 对比/参数清单/维度>3 → Markdown 表格
+  ⑥ 用户只说“画图/做图/整理成图”但类型不明 → 先追问要流程、结构、数据图还是文档，不猜
+  ⑦ 均未命中 → 不画图，正文回答
+  补充规则：
+  · 用户提的是结果需求，不是底层工具；除非用户明确要求导出源码/指定格式，否则不要在正文主动提 Mermaid/react-flow/echart
+  · 用户明确要求表格/纯文字/文档时，优先尊重结果形式，不强行出图
+  · 用户明确要求“给我 Mermaid 源码”或“输出 JSON 图数据”时，才暴露对应格式
+  chat 区条件（全部满足）：flowchart/pie/hierarchy + 节点≤6 + 边≤5 + 方向TD + 信息密度低。超出 → Canvas
+  禁止 chat 和 Canvas 重复输出同一张图
+
+二、结构图 → 执行【结构图输出协议】（见注入的 DIAGRAM_PROTOCOL）
+  这是 react-flow 专用协议，包含硬约束（≤12节点、≤节点×1.3边、≤5组）和合并公式。
+
+三、Mermaid 规则
+  · chat 区 flowchart 方向必须 TD，节点标签 ≤ 8 字符，无 emoji 无 \\n
+  · 严禁 style/classDef 颜色覆盖（OCT 主题系统管颜色）；classDef 仅可改形状
+  · 严禁实验性图类型：sankey/xychart/bar(独立)/venn/kanban/architecture/radar/treemap/ishikawa/treeview/zenuml/block/packet
+  · 柱状/折线/散点 → 必须用 echart，不用 Mermaid
+  · 单次回复最多 1 个聊天区小图；用户明确要求对比时最多 2 个
+  · 不画的图说”要继续看吗”，不写”已省略”
+  · 线路图/roadmap → canvas LR flowchart，3-4 阶段，宽高比 ~1.5:1
+  · Mermaid 语法必须合法：禁止空标签节点如 A(())；标签内禁止 \\n
+  · chat 区 diagram content 优先用 JSON 格式（diagramType+nodes+edges），系统自动转 Mermaid
+    flowchart: {“diagramType”:”flowchart”,”title”:”标题”,”direction”:”TD”,”nodes”:[{“id”:”a”,”label”:”步骤”}],”edges”:[{“from”:”a”,”to”:”b”}]}
+    pie: {“diagramType”:”pie”,”title”:”标题”,”data”:[{“label”:”A”,”value”:45}]}
+    hierarchy: {“diagramType”:”hierarchy”,”title”:”标题”,”items”:[{“id”:”root”,”label”:”主节点”},{“id”:”c”,”label”:”子节点”,”parentId”:”root”}]}
+
+四、ECharts 规则
+  · content = {“title”:”图表标题”,”option”:{...}}，纯 JSON，不包 Markdown 代码块
+  · 不设 color/backgroundColor/textStyle（主题注入）
+  · legend/tooltip/grid 必须是对象，不能是字符串
+    ✗ {“legend”:”right”} ✓ {“legend”:{“right”:”5%”}}
+  · pie/radar 无 xAxis/yAxis；所有 series 要有 name
+  · 可用 series.type：bar/line/pie/scatter/radar/heatmap/treemap/funnel/gauge
+
+五、通用禁令
+  · 回复正文和 explanation 严禁 emoji
+  · 图表之外只补必要短说明，不散文重复图中内容
+  · 说明文字放 explanation 或 chat，不放进 diagram content
+  · code block 只用于代码，不用于关系/结构示意
 
 ---
 
@@ -384,10 +520,15 @@ AI · Cursor · Claude 三角协作：
 【期望】[想要的结果]
 `;
   let prompt = [
+    identityContract,
+    '\n\n---\n\n',
+    soul ? soul + '\n\n---\n\n' : '',
+    agents ? agents + '\n\n---\n\n' : '',
     memoryContent,
     '\n\n---\n\n',
     clarification ? clarification + '\n\n---\n\n' : '',
     adaptiveSystem ? adaptiveSystem + '\n\n---\n\n' : '',
+    diagramProtocol ? diagramProtocol + '\n\n---\n\n' : '',
     nocturneInstructions,
   ].join('');
 
@@ -400,23 +541,148 @@ AI · Cursor · Claude 三角协作：
   return prompt;
 }
 
-async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
-  const provider = config.getProviderConfig();
-  const apiKey = provider.apiKey;
-  const baseUrl = provider.baseUrl;
-  const model = config.DASHSCOPE_MODEL;
+function buildToolSignature(toolCalls) {
+  return JSON.stringify(
+    (toolCalls || [])
+      .filter(Boolean)
+      .map((tc) => ({
+        id: tc.id || '',
+        name: tc.function?.name || '',
+        arguments: tc.function?.arguments || '',
+      }))
+  );
+}
+
+function decodePseudoToolValue(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (value.startsWith('"') && value.endsWith('"')) {
+    try { return JSON.parse(value); } catch { return value.slice(1, -1); }
+  }
+  if (value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1).replace(/\\'/g, '\'').replace(/\\"/g, '"');
+  }
+  return value;
+}
+
+function parsePseudoToolArgs(blockText) {
+  const args = {};
+  const text = String(blockText || '');
+  const flagRe = /--([a-zA-Z][\w-]*)\s+/g;
+  let match;
+  while ((match = flagRe.exec(text)) !== null) {
+    const key = match[1];
+    const valueStart = flagRe.lastIndex;
+    const nextMatch = flagRe.exec(text);
+    const valueEnd = nextMatch ? nextMatch.index : text.length;
+    const rawValue = text.slice(valueStart, valueEnd).trim();
+    args[key] = decodePseudoToolValue(rawValue);
+    if (nextMatch) {
+      flagRe.lastIndex = nextMatch.index;
+    }
+  }
+  return args;
+}
+
+function extractPseudoToolCalls(text) {
+  const source = String(text || '');
+  if (!source || !/tool\s*=>/i.test(source) || !/args\s*=>/i.test(source)) {
+    return [];
+  }
+
+  const blocks = [];
+  const headerRe = /\{tool\s*=>\s*(?:"([^"]+)"|'([^']+)'|([a-zA-Z_][\w-]*))\s*,\s*args\s*=>\s*\{/gi;
+  let header;
+
+  while ((header = headerRe.exec(source)) !== null) {
+    const toolName = header[1] || header[2] || header[3] || '';
+    const argsOpenBracePos = source.indexOf('{', header.index + header[0].lastIndexOf('args'));
+    if (argsOpenBracePos < 0) continue;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let quoteChar = '"';
+    let i = argsOpenBracePos;
+    let argsClosePos = -1;
+
+    for (; i < source.length; i++) {
+      const ch = source[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === quoteChar) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quoteChar = ch;
+        continue;
+      }
+      if (ch === '{') {
+        depth += 1;
+        continue;
+      }
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          argsClosePos = i;
+          break;
+        }
+      }
+    }
+
+    if (argsClosePos < 0) continue;
+
+    const argsBlock = source.slice(argsOpenBracePos + 1, argsClosePos);
+    const parsedArgs = parsePseudoToolArgs(argsBlock);
+    if (!parsedArgs.action) continue;
+
+    blocks.push({
+      id: `pseudo-${Date.now()}-${blocks.length}`,
+      type: 'function',
+      function: {
+        name: toolName,
+        arguments: JSON.stringify(parsedArgs),
+      },
+    });
+  }
+
+  return blocks;
+}
+
+async function streamChat({
+  messages,
+  onDelta,
+  onDone,
+  onError,
+  onToolEvent,
+  preserveToolChain = false,
+  toolRound = 0,
+  toolSignatures = [],
+  toolChoice = 'auto',
+}) {
+  const resolved = providerRouter.resolve();
+  const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 
   // 上下文截断优化：防止消息过长
-  const truncatedMessages = truncateHistory(messages);
+  const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages);
   getContextUsageRatio(truncatedMessages, model);
 
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
-  const canFallbackToDeepseek = !!(config.DEEPSEEK_API_KEY)
-    && !baseUrl.includes('deepseek');
+  const canFallbackToDeepseek = fallback.canFallbackToDeepseek;
   
   // MiniMax 官方 API 失败时，fallback 到百炼版 MiniMax
-  const canFallbackToBailian = baseUrl.includes('minimaxi.com') 
-    && !!(config.DASHSCOPE_API_KEY);
+  const canFallbackToBailian = fallback.canFallbackToBailian;
 
   log.info('request start', { provider: provider.name, model, messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0 });
 
@@ -426,6 +692,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
   }
 
   let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用
+  let assistantResponseContent = '';
   const _thinkState = {
     inThink: false,
     cotOpen: false,
@@ -462,20 +729,6 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
       m.content.some(c => c.type === 'image_url')
     );
 
-    // 从 provider 或 MODEL_REGISTRY 获取模型能力
-    const modelDef = provider.models.find(m => m.id === model);
-    // modelDef.tools 可能为 undefined（loadAvailableModels 返回的简化对象没有 tools 字段）
-    // 此时 fallback 到 MODEL_REGISTRY（getModelCaps）获取真实能力
-    const registryCaps = config.getModelCaps(model);
-    const caps = modelDef
-      ? {
-          supportsTools: modelDef.tools !== undefined ? modelDef.tools : registryCaps.supportsTools,
-          supportsStreamOptions: provider.supportsStreamOptions,
-          supportsThinking: registryCaps.supportsThinking ?? false,
-          thinkingFormat: registryCaps.thinkingFormat ?? null,
-          maxTokens: modelDef.maxTokens || registryCaps.maxTokens || 4096,
-        }
-      : registryCaps;
     log.info('model caps', { model, supportsTools: caps.supportsTools, supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions });
 
     _thinkTagMode = caps.thinkingFormat === 'think_tags';
@@ -551,6 +804,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
       // 先过滤掉 [TOOL_CALL] / [TOOL_CALLS] 等误输出的标记
       const cleaned = _stripToolCallMarkers(raw);
       if (!cleaned) return;
+      assistantResponseContent += cleaned;
 
       // 标准化思考标签：将标准 <think> 转换为 <redacted_thinking> 格式
       const { normalized, hadCotOpen, hadCotClose } = _normalizeThinkTags(cleaned);
@@ -680,7 +934,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     }
     if (caps.supportsTools) {
       requestBody.tools = toolLoader.getDefinitions();
-      requestBody.tool_choice = 'auto';
+      requestBody.tool_choice = toolChoice;
     }
 
     const res = await fetchWithRetry(`${baseUrl}/chat/completions`, {
@@ -754,6 +1008,7 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
             if (!toolCalls[idx]) {
               toolCalls[idx] = { id: tc.id || '', type: 'function', function: { name: '', arguments: '' } };
             }
+            if (tc.id) toolCalls[idx].id = tc.id;
             if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
             if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
           }
@@ -766,53 +1021,25 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
           stopHeartbeat();
           // 不要在这里 flushThinkState！thinking 状态要保持打开，
           // 等工具返回后继续的 streamChat 会继续处理 thinking 内容
-          log.info('tool_calls', { count: toolCalls.filter(Boolean).length });
-          const toolResults = [];
-          for (const tc of toolCalls.filter(Boolean)) {
-            let args = {};
-            try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
-            log.info('tool call', { name: tc.function.name, args });
-            const toolName = tc.function.name;
-            if (onToolEvent) {
-              try { onToolEvent({ type: 'tool_call', tool: toolName, args, callId: tc.id, state: 'executing' }); } catch {}
-            }
-            const result = await Promise.race([
-              toolLoader.executeTool(toolName, args),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error(`工具 ${toolName} 超时（30秒）`)), 30000)
-              )
-            ]).catch(e => {
-              log.error(`工具 ${toolName} 执行失败: ${e.message}`);
-              if (onToolEvent) {
-                try { onToolEvent({ type: 'tool_result', tool: toolName, callId: tc.id, state: 'error', error: e.message }); } catch {}
-              }
-              return `工具执行失败: ${e.message}，请稍后重试或换个方式表达需求。`;
-            });
-            if (result && typeof result === 'object' && result.canvasEvent && onToolEvent) {
-              try {
-                onToolEvent({
-                  type: 'canvas',
-                  action: result.canvasEvent.action,
-                  payload: result.canvasEvent.payload,
-                });
-              } catch {}
-            }
-            if (onToolEvent) {
-              try { onToolEvent({ type: 'tool_result', tool: toolName, callId: tc.id, state: 'done', resultPreview: JSON.stringify(result).slice(0, 200) }); } catch {}
-            }
-            toolResults.push({
-              tool_call_id: tc.id,
-              role: 'tool',
-              content: JSON.stringify(result),
-            });
-          }
-
-          const continuedMessages = [
-            ...truncatedMessages,
-            { role: 'assistant', content: fullText || null, tool_calls: toolCalls.filter(Boolean) },
-            ...toolResults,
-          ];
-          await streamChat({ messages: continuedMessages, onDelta, onDone, onError, onToolEvent });
+          await toolLoop.handleToolCalls({
+            toolCalls,
+            toolRound,
+            toolSignatures,
+            fullText,
+            totalUsage,
+            responseModel,
+            assistantResponseMessage: {
+              role: 'assistant',
+              content: assistantResponseContent || '',
+              tool_calls: toolCalls.filter(Boolean),
+            },
+            truncatedMessages,
+            onDelta,
+            onDone,
+            onError,
+            onToolEvent,
+            flushThinkAtEnd,
+          });
           return;
         }
       }
@@ -830,6 +1057,33 @@ async function streamChat({ messages, onDelta, onDone, onError, onToolEvent }) {
     }
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
+    const pseudoToolCalls = caps.supportsTools ? extractPseudoToolCalls(fullText || assistantResponseContent) : [];
+    if (pseudoToolCalls.length > 0) {
+      log.warn('pseudo tool call detected, coercing to structured tool execution', {
+        count: pseudoToolCalls.length,
+        tools: pseudoToolCalls.map((call) => call.function?.name).filter(Boolean),
+      });
+      await toolLoop.handleToolCalls({
+        toolCalls: pseudoToolCalls,
+        toolRound,
+        toolSignatures,
+        fullText: '',
+        totalUsage,
+        responseModel,
+        assistantResponseMessage: {
+          role: 'assistant',
+          content: '',
+          tool_calls: pseudoToolCalls,
+        },
+        truncatedMessages,
+        onDelta,
+        onDone,
+        onError,
+        onToolEvent,
+        flushThinkAtEnd,
+      });
+      return;
+    }
     // 关闭 MiniMax CoT 块并释放暂存正文（非 MiniMax 模型此函数直接跳过）
     if (_thinkTagMode) _flushThinkState();
     onDone(fullText, totalUsage, responseModel);

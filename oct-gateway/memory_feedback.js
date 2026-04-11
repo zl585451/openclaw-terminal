@@ -10,6 +10,8 @@
 const config = require('./config');
 const memory = require('./memory');
 const memoryHistory = require('./memory_history');
+const { sanitizeAssistantReply, sanitizeMemoryNodeContent } = require('./cot_sanitize');
+const memoryGovernor = require('./memory_governor');
 const { createLogger } = require('./logger');
 const log = createLogger('memory_feedback');
 
@@ -92,6 +94,7 @@ async function detectAndSaveFeedback(userMsg, amyReply) {
 
   const maxUser = 100;
   const maxAmy = 200;
+  const cleanAmyReply = sanitizeAssistantReply(amyReply || '');
   const { datePath, timePath, timestamp } = nowFragments();
   const base = getBasePath(detected.type);
   const pathSeg = `${base}/${datePath}/${timePath}`;
@@ -100,42 +103,71 @@ async function detectAndSaveFeedback(userMsg, amyReply) {
   const payload = {
     timestamp,
     user_message: (userMsg || '').slice(0, maxUser),
-    amy_reply: (amyReply || '').slice(0, maxAmy),
+    amy_reply: cleanAmyReply.slice(0, maxAmy),
     feedback_type: detected.type,
     reason: detected.reason,
     action_taken: detected.type === 'correction' ? '已更新规则' : '已写入记忆',
   };
-  const content = JSON.stringify(payload, null, 0);
   const disclosure = `用户反馈：${detected.reason}`;
+  const routed = memoryGovernor.routeRecord({
+    source: 'feedback',
+    uri,
+    content: JSON.stringify(payload, null, 0),
+    priority: 2,
+    disclosure,
+    userMsg,
+    assistantReply: cleanAmyReply,
+  });
+
+  if (routed.decision === 'reject') {
+    log.debug('feedback rejected by governor', { uri, reason: routed.reason, type: detected.type });
+    return;
+  }
+  log.info('feedback governor decision', {
+    type: detected.type,
+    originalUri: uri,
+    targetUri: routed.uri,
+    decision: routed.decision,
+    layer: routed.layer,
+    reason: routed.reason,
+  });
+
+  const targetUri = routed.uri;
+  const content = routed.content;
+  const targetDisclosure = routed.disclosure ?? disclosure;
+  const targetPriority = routed.priority ?? 2;
+  const targetParts = targetUri.match(/^([^:]+):\/\/(.+)$/);
+  const targetDomain = targetParts ? targetParts[1] : DOMAIN;
+  const targetPathSeg = targetParts ? targetParts[2] : pathSeg;
 
   try {
     // ── 第一层：ensurePathExists + createMemory ──
     try {
-      await memoryHistory.ensurePathExists(DOMAIN, pathSeg);
+      await memoryHistory.ensurePathExists(targetDomain, targetPathSeg);
 
-      const result = await memory.writeMemory(uri, content, 2, disclosure, { ensureParent: true });
+      const result = await memory.writeMemory(targetUri, content, targetPriority, targetDisclosure, { ensureParent: true });
       if (result.ok) {
-        log.info('saved', { uri, type: detected.type, reason: detected.reason, layer: 'writeMemory' });
+        log.info('saved', { uri: targetUri, originalUri: uri, type: detected.type, reason: detected.reason, layer: routed.layer, decision: routed.decision });
         return;
       }
       throw new Error(result?.error || 'writeMemory failed');
     } catch (e1) {
-      log.warn('layer1 failed, trying writeMemory', { uri, error: e1?.message || String(e1) });
+      log.warn('layer1 failed, trying writeMemory', { uri: targetUri, originalUri: uri, error: e1?.message || String(e1) });
     }
 
     // ── 第二层：fallback 到 writeMemory ──
     try {
-      const result = await memory.writeMemory(uri, content, 2, disclosure);
+      const result = await memory.writeMemory(targetUri, content, targetPriority, targetDisclosure);
       if (result.ok) {
-        log.info('saved', { uri, type: detected.type, reason: detected.reason, layer: 'writeMemory' });
+        log.info('saved', { uri: targetUri, originalUri: uri, type: detected.type, reason: detected.reason, layer: routed.layer, decision: routed.decision });
         return;
       }
       throw new Error(result?.error || 'writeMemory failed');
     } catch (e2) {
-      log.warn('layer2 failed', { uri, error: e2?.message || String(e2) });
+      log.warn('layer2 failed', { uri: targetUri, originalUri: uri, error: e2?.message || String(e2) });
     }
   } catch (error) {
-    log.warn('all layers failed', { uri, error: error?.message || String(error) });
+    log.warn('all layers failed', { uri: targetUri, originalUri: uri, error: error?.message || String(error) });
   }
 }
 
@@ -197,11 +229,12 @@ async function loadFeedbackForBoot() {
         if (r.ok && r.data) {
           const node = r.data?.node || r.data;
           const raw = node?.content || node?.content_snippet || '';
+          const sanitized = sanitizeMemoryNodeContent(raw);
           try {
-            const j = JSON.parse(raw);
+            const j = sanitized.data || JSON.parse(sanitized.content);
             lines.push(`- 用户说「${j.reason}」→ ${(j.amy_reply || '').slice(0, 50)}...`);
           } catch {
-            lines.push(`- ${raw.slice(0, 60)}...`);
+            lines.push(`- ${sanitized.content.slice(0, 60)}...`);
           }
         }
       }
@@ -220,11 +253,12 @@ async function loadFeedbackForBoot() {
         if (r.ok && r.data) {
           const node = r.data?.node || r.data;
           const raw = node?.content || node?.content_snippet || '';
+          const sanitized = sanitizeMemoryNodeContent(raw);
           try {
-            const j = JSON.parse(raw);
+            const j = sanitized.data || JSON.parse(sanitized.content);
             lines.push(`- 用户说「${j.reason}」→ 避免类似：${(j.amy_reply || '').slice(0, 50)}...`);
           } catch {
-            lines.push(`- ${raw.slice(0, 60)}...`);
+            lines.push(`- ${sanitized.content.slice(0, 60)}...`);
           }
         }
       }
