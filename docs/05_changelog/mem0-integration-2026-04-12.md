@@ -31,7 +31,7 @@ Nocturne 记忆系统存在根本性缺陷：
 | `electron/main.ts` | 新增 `getMem0ServicePath()` + `startMem0Service()`，app.whenReady() 中启动，两处进程清理 |
 | `oct-gateway/index.js` | require mem0_client，注入 postProcessor 和 contextBuilder |
 | `oct-gateway/services/postProcessor.js` | 新增 `_extractMemoryWithFallback()`，extractAndSaveMemory 路由到 Mem0（不可用时降级 Nocturne） |
-| `oct-gateway/runtime/contextBuilder.js` | `_buildContextMemory()` 双轨并行：Nocturne 关键词 + Mem0 语义，合并结果（Mem0 优先，score≥0.3） |
+| `oct-gateway/runtime/contextBuilder.js` | `_buildContextMemory()` 双轨并行：Nocturne 关键词 + Mem0 语义，合并结果（Mem0 优先，当前过滤阈值为 score≥0.45，并过滤当前话题回声） |
 
 ## 降级策略
 
@@ -62,7 +62,7 @@ curl -X POST http://127.0.0.1:8002/add \
 curl -X POST http://127.0.0.1:8002/search \
   -H "Content-Type: application/json" \
   -d '{"query":"回复偏好","user_id":"my_user","limit":3}'
-# 预期 score > 0.3 的结果包含"简洁"
+# 预期 score > 0.45 的结果包含"简洁"
 ```
 
 ## 注意事项

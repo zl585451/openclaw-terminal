@@ -35,11 +35,12 @@ OCT (OpenClaw Terminal) 是一个面向中文用户的 AI 桌面客户端。你�
 
 ---
 
-## 🆕 v0.2.3 核心能力
+## 🆕 v0.2.4 核心能力
 
 | 功能 | 说明 |
 |------|------|
 | 💬 智能对话 | 和 AMY 聊天，支持结构化回答、表格优先、上下文记忆 |
+| 🧠 双轨记忆 | `Nocturne` 管身份与长期偏好，`Mem0` 管动态事实与语义召回 |
 | 🧩 Workbench 工作台 | 图表、结构图、文档草稿、代码草稿统一落到 Workbench，Canvas 作为兼容入口保留 |
 | 🎵 Music Studio | MiniMax `music-2.6` 工作台，支持 `Simple / Advanced`、自动写词、试听与下载 |
 | 🖼️ 图片能力 | 图片理解、图片生成、截图上传、文件图片附件 |
@@ -75,25 +76,24 @@ OCT 不只是把答案打出来，还能把结果落到 Canvas / 图表工作区
 
 ## 📦 下载安装
 
-**最新稳定版本**：`v0.2.3`
+**最新稳定版本**：`v0.2.4`
 
 | 平台 | 安装包 | 大小 |
 |------|--------|------|
-| 🪟 Windows | [OCT-Setup-v0.2.3.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-Setup-v0.2.3.exe) | 约 356 MB |
-| 🍎 Mac Intel | [OCT-0.2.3-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Mac-x64.dmg) | 约 248 MB |
-| 🍎 Mac Apple Silicon | [OCT-0.2.3-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Mac-arm64.dmg) | 约 243 MB |
-| 🐧 Linux AppImage | 即将补传到 `v0.2.3` Release | GitHub Actions 构建中 |
-| 🐧 Linux Debian | [OCT-0.2.3-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.3/OCT-0.2.3-Linux-amd64.deb) | 约 216 MB |
+| 🪟 Windows | [OCT-Setup-v0.2.4.exe](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.4/OCT-Setup-v0.2.4.exe) | 约 356 MB |
+| 🍎 Mac Intel | [OCT-0.2.4-Mac-x64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.4/OCT-0.2.4-Mac-x64.dmg) | 待补传 |
+| 🍎 Mac Apple Silicon | [OCT-0.2.4-Mac-arm64.dmg](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.4/OCT-0.2.4-Mac-arm64.dmg) | 待补传 |
+| 🐧 Linux AppImage | [OCT-0.2.4-Linux-x86_64.AppImage](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.4/OCT-0.2.4-Linux-x86_64.AppImage) | 待补传 |
+| 🐧 Linux Debian | [OCT-0.2.4-Linux-amd64.deb](https://github.com/zl585451/openclaw-terminal/releases/download/v0.2.4/OCT-0.2.4-Linux-amd64.deb) | 待补传 |
 
 > macOS 当前为未签名 DMG。首次打开时如被系统拦截，请右键应用选择“打开”，或在系统设置中手动放行。
 
-### v0.2.3 更新重点
+### v0.2.4 更新重点
 
-- `Canvas` 正式升级为 `Workbench` 基础子系统，聊天链路、工作台链路、插件注册层完成拆层
-- 新增 `workbenchEvent / workbenchContext` 主语义，旧 `canvas*` 字段继续保留兼容
-- React Flow 排版增强：补齐层级、连线、节点尺寸估算和大图自适应间距
-- Mermaid / ECharts 容错增强，模型输出不规范时更容易兜底渲染成功
-- 现在可以更稳地在一个工作台里切换 Markdown、ECharts、React Flow 等多种 artifact
+- 正式接入 `Mem0` 动态记忆服务，形成「Nocturne 管身份、Mem0 管事实」的双轨记忆架构
+- 动态记忆召回收紧为更高相关性阈值，并过滤当前话题回声，减少“弱相关记忆打扰当前对话”
+- MiniMax `M2.7` 文本对话新增 `MINIMAX_TEMPERATURE` 配置项，更适合做发散聊天和 brainstorming
+- Mem0 不可用时仍会自动回退到原有 Nocturne 路径，保证主链路稳定
 
 ---
 

@@ -2,6 +2,7 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-12 | `v0.2.4` 发布：主线引入 Mem0 动态记忆服务，形成「Nocturne 管身份、Mem0 管动态事实」的双轨架构；同时收紧 Mem0 召回阈值并过滤当前话题回声，减少噪音注入，并补充 MiniMax `M2.7` 温度可配置能力 | `resources/mem0_service/**`, `electron/main.ts`, `oct-gateway/index.js`, `oct-gateway/mem0_client.js`, `oct-gateway/services/postProcessor.js`, `oct-gateway/runtime/contextBuilder.js`, `oct-gateway/ai.js`, `oct-gateway/config*.json`, `docs/**`, `README.md`, `package*.json` | 面向 `v0.2.4` 的记忆系统升级版，重点解决“记忆不准、太吵、难发散”三个体验问题 |
 | 2026-04-12 | MiniMax 文本对话温度支持通过 `MINIMAX_TEMPERATURE` 配置覆盖；Gateway 对非法值自动回退到 `0.7`，避免用户为调采样参数反复改源码 | `oct-gateway/ai.js`, `oct-gateway/config.json`, `oct-gateway/config.example.json`, `docs/02_architecture/provider-system.md` | 方便按场景调节 M2.7 的稳定性与发散度，同时保留现有默认行为 |
 | 2026-04-12 | `v0.2.3` 发布：`Canvas` 基础架构升级为 `Workbench` 子系统，收口工作台协议与插件主入口，并补齐 React Flow / Mermaid / ECharts 的渲染与容错修复 | `src/workbench/**`, `src/components/workbench/**`, `src/hooks/useWorkbenchBridge.ts`, `src/components/canvas/**`, `src/hooks/useMessages.ts`, `src/hooks/useWebSocket.ts`, `oct-gateway/**`, `docs/05_changelog/**`, `README.md`, `package.json` | 面向 `v0.2.3` 正式发布，给后续文本工作台与更完整的 artifact 体系打基础 |
 | 2026-04-11 | 仓库首页 README 升级为产品展示版：新增 Hero 主图、核心卖点区、使用场景截图区，并将宣传图素材归档到 `docs/assets/homepage/` | `README.md`, `docs/assets/homepage/**` | 面向 GitHub 首页宣传与分发，降低首次访问者理解成本 |
