@@ -65,8 +65,15 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 
 ---
 
+## MiniMax 温度参数
+
+- MiniMax 文本对话默认以 `0.7` 发送 `temperature`
+- 可通过 `MINIMAX_TEMPERATURE` 覆盖，支持放在 `.env`、`.env.local` 或用户运行时 `config.json`
+- 合法范围按官方接口约束为 `0 < x <= 1`；超出范围时 Gateway 会回退到 `0.7`
+
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-04-12 | MiniMax 文本对话新增 `MINIMAX_TEMPERATURE` 可配置项，默认保持 `0.7` |
 | 2026-03-20 | Phase 1 后端抽象、Phase 2 Settings UI |
 | 2026-04-06 | 新增云端语音 capability routing：`auto` 跟随当前主 Provider，不再因残留 Key 乱触发 |

@@ -1,5 +1,6 @@
 {
   "OCT_MODEL": "MiniMax-M2.7",
+  "MINIMAX_TEMPERATURE": 0.7,
   "memory": {
     "auto_save_history": true,
     "auto_save_feedback": true,

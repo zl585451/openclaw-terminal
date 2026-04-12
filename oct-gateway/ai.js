@@ -86,6 +86,18 @@ function getModelContextLimit(modelId) {
   return MODEL_CONTEXT_LIMITS[id] || MODEL_CONTEXT_LIMITS[modelId.split('/').pop()] || 128000;
 }
 
+function getMiniMaxTemperature() {
+  const rawValue = config.getEnvOrConfig('MINIMAX_TEMPERATURE');
+  if (rawValue === '' || rawValue === null || rawValue === undefined) return 0.7;
+
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= 0 || value > 1) {
+    log.warn('Invalid MINIMAX_TEMPERATURE, fallback to default 0.7', { rawValue });
+    return 0.7;
+  }
+  return value;
+}
+
 async function loadSystemPrompt(promptsDir) {
   const nocturneAlive = await memory.isAlive();
 
@@ -899,7 +911,7 @@ async function streamChat({
       messages: truncatedMessages,
       stream: true,
       max_tokens: caps.maxTokens || 4096,
-      temperature: 0.7,
+      temperature: provider.id === 'minimax' ? getMiniMaxTemperature() : 0.7,
     };
     if (provider.supportsStreamOptions) {
       requestBody.stream_options = { include_usage: true };

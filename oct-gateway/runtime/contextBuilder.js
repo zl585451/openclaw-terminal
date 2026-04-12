@@ -144,13 +144,26 @@ class ContextBuilder {
       const seenTexts = new Set();   // 文本去重（避免 Nocturne + Mem0 同一事实注入两次）
       const seenUris = new Set();
 
-      // ── 1. Mem0 结果优先（语义质量高），过滤 score < 0.3 ─────────────────────
+      // 当前消息关键词集合，用于过滤"循环注入"——把正在讨论的话题本身当成背景记忆塞回来
+      const currentMsgTokens = new Set(
+        userMessage.toLowerCase().replace(/[^\u4e00-\u9fa5a-z0-9]/g, ' ').split(/\s+/).filter((w) => w.length > 1)
+      );
+      const _isCurrentTopicEcho = (memText) => {
+        if (currentMsgTokens.size === 0) return false;
+        const tokens = memText.toLowerCase().replace(/[^\u4e00-\u9fa5a-z0-9]/g, ' ').split(/\s+/).filter((w) => w.length > 1);
+        if (tokens.length === 0) return false;
+        const overlap = tokens.filter((w) => currentMsgTokens.has(w)).length;
+        return overlap / tokens.length > 0.45;   // 45% 以上词重叠 → 认定是"本轮话题本身"，跳过
+      };
+
+      // ── 1. Mem0 结果优先（语义质量高），过滤 score < 0.45 ────────────────────
       if (mem0Result.ok && Array.isArray(mem0Result.results)) {
         for (const item of mem0Result.results) {
           const score = item.score ?? 0;
-          if (score < 0.3) continue;
+          if (score < 0.45) continue;
           const text = (item.memory || '').trim();
           if (!text) continue;
+          if (_isCurrentTopicEcho(text)) continue;   // 过滤循环注入
           const textKey = text.slice(0, 60).toLowerCase();
           if (seenTexts.has(textKey)) continue;
           seenTexts.add(textKey);
