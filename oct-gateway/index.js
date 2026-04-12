@@ -41,6 +41,7 @@ const toolLoader = require('./tool_loader');
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
 const nocturneQueue = require('./nocturne_task_queue');
+const mem0Client = require('./mem0_client');
 const aiLibrary = require('./tools/ai_library');
 const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
@@ -71,6 +72,7 @@ const postProcessor = new PostProcessor({
   memoryHistory,
   clarificationMemory,
   nocturneQueue,
+  mem0Client,
   logger: log,
 });
 const slashHandler = new SlashHandler({
@@ -111,6 +113,7 @@ const contextBuilder = new ContextBuilder({
   hypothesis,
   imageService,
   config,
+  mem0Client,
   logger: log,
   helpers: {
     hasRecallIntent,

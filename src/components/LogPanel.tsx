@@ -54,12 +54,12 @@ function categorize(entry: { level: LogLevel; tag: string; raw: string }): LogCa
   if (/\[(?:minimax|dashscope) tts\]|tts:/i.test(entry.raw)) return 'TTS';
   if (['ai'].includes(tag)) return 'AI';
   if (['tool', 'tools'].includes(tag)) return 'Tool';
-  if (['memory', 'memhistory', 'feedback', 'extractmem', 'mem',
+  if (['memory', 'memhistory', 'feedback', 'extractmem', 'mem', 'mem0',
        'memory_history', 'memory_feedback', 'memory_search', 'clarification'].includes(tag)) return 'Memory';
   if (['gateway', 'system', 'session', 'config', 'ai_library'].includes(tag)) return 'System';
   // 关键词兜底
   if (/tool_call|web_search|exec_command|read_file|write_file/i.test(entry.raw)) return 'Tool';
-  if (/memory|nocturne|history|feedback/i.test(entry.raw)) return 'Memory';
+  if (/memory|nocturne|history|feedback|mem0|\[mem0\]/i.test(entry.raw)) return 'Memory';
   if (/gateway|connect|heartbeat|心跳/i.test(entry.raw)) return 'System';
   if (/ai\s|model|stream|request|response/i.test(entry.raw)) return 'AI';
   return 'System';
@@ -113,7 +113,53 @@ function humanize(entry: LogEntry): { brief: string; detail: string } {
     if (/TAVILY_API_KEY 未配置/i.test(raw)) return { brief: 'Tavily API Key 未配置', detail: '请在设置面板填入' };
   }
 
-  // Memory 分类
+  // Memory 分类 — Mem0 智能记忆事件（优先匹配）
+  if (entry.category === 'Memory' && /\[mem0\]/i.test(raw)) {
+    // 写入成功：mem0.add ok facts=N
+    const addM = raw.match(/mem0\.add ok.*facts[=:](\d+)/i);
+    if (addM) return { brief: `Mem0 记忆提取完成 · ${addM[1]} 条`, detail: '' };
+
+    // 规则提取：规则提取: N 条
+    const ruleM = raw.match(/规则提取[：:]\s*(\d+)\s*条/);
+    if (ruleM) return { brief: `Mem0 规则提取 · ${ruleM[1]} 条`, detail: '（LLM提取为空，使用规则兜底）' };
+
+    // 去重跳过
+    if (/规则去重.*跳过/.test(raw)) {
+      const scoreM = raw.match(/score=([\d.]+)/);
+      return { brief: `Mem0 去重跳过${scoreM ? ` · 相似度 ${scoreM[1]}` : ''}`, detail: '' };
+    }
+
+    // 噪声过滤
+    const noiseM = raw.match(/噪声过滤.*丢弃\s*(\d+)\s*条/);
+    if (noiseM) return { brief: `Mem0 过滤噪声 · 丢弃 ${noiseM[1]} 条`, detail: '（图片/临时操作等无效事实）' };
+
+    // 删除记忆
+    if (/mem0\.delete.*ok/i.test(raw)) {
+      const idM = raw.match(/memory_id[=\s]+([a-f0-9-]{8,})/i);
+      return { brief: 'Mem0 记忆已删除', detail: idM?.[1] ?? '' };
+    }
+
+    // 清空全部
+    if (/mem0\.clear_all.*ok/i.test(raw)) return { brief: 'Mem0 全部记忆已清空', detail: '' };
+
+    // 初始化成功
+    if (/Mem0 初始化成功/.test(raw)) return { brief: 'Mem0 服务初始化成功', detail: '' };
+
+    // 初始化失败
+    if (/Mem0 初始化失败/.test(raw)) return { brief: '⚠ Mem0 初始化失败', detail: raw.slice(raw.indexOf('失败') + 2, raw.indexOf('失败') + 60) };
+
+    // 前置过滤跳过（no personal info signal）
+    if (/mem0 skip|no personal info/.test(raw)) return { brief: 'Mem0 跳过（无个人信息）', detail: '' };
+
+    // 搜索返回
+    const searchM = raw.match(/mem0\.search ok.*hits[=:](\d+)/i);
+    if (searchM) return { brief: `Mem0 搜索 · ${searchM[1]} 条命中`, detail: '' };
+
+    // 通用降级
+    return { brief: `Mem0 · ${entry.message.slice(0, 60)}`, detail: '' };
+  }
+
+  // Memory 分类 — Nocturne 记忆事件
   if (entry.category === 'Memory') {
     if (/boot read/i.test(raw)) {
       const uriM = raw.match(/"uri":"([^"]+)"/);

@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import { useSettings } from '../../../contexts/SettingsContext';
 
 export type NocturneStatusBrief = { available: boolean; path: string } | null;
@@ -85,6 +85,84 @@ export function MemoryTabView({
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
   const userName = settings.userName || '用户';
+
+  // ── Mem0 智能记忆 状态 ────────────────────────────────────────────────────
+  const [mem0Key, setMem0Key] = useState('');
+  const [mem0KeyVisible, setMem0KeyVisible] = useState(false);
+  const [mem0Saving, setMem0Saving] = useState(false);
+  const [mem0SaveMsg, setMem0SaveMsg] = useState('');
+  const [mem0Health, setMem0Health] = useState<'unknown' | 'running' | 'no-key' | 'stopped'>('unknown');
+
+  // 记忆查看器状态
+  type Mem0Item = { id: string; memory: string; score?: number };
+  const [mem0PanelOpen, setMem0PanelOpen] = useState(false);
+  const [mem0Items, setMem0Items] = useState<Mem0Item[]>([]);
+  const [mem0Loading, setMem0Loading] = useState(false);
+  const [mem0DeleteId, setMem0DeleteId] = useState<string | null>(null);
+  const [mem0ClearConfirm, setMem0ClearConfirm] = useState(false);
+
+  const fetchMem0Items = async () => {
+    setMem0Loading(true);
+    try {
+      const res = await fetch('http://127.0.0.1:8002/get_all?user_id=my_user',
+        { signal: AbortSignal.timeout(5000) });
+      const data = await res.json();
+      setMem0Items(Array.isArray(data?.results) ? data.results : []);
+    } catch {
+      setMem0Items([]);
+    } finally {
+      setMem0Loading(false);
+    }
+  };
+
+  const handleMem0Delete = async (id: string) => {
+    setMem0DeleteId(id);
+    try {
+      await fetch('http://127.0.0.1:8002/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memory_id: id, user_id: 'my_user' }),
+        signal: AbortSignal.timeout(5000),
+      });
+      setMem0Items((prev) => prev.filter((x) => x.id !== id));
+    } catch { /* ignore */ }
+    setMem0DeleteId(null);
+  };
+
+  const handleMem0ClearAll = async () => {
+    setMem0Loading(true);
+    try {
+      await fetch('http://127.0.0.1:8002/clear_all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: 'my_user' }),
+        signal: AbortSignal.timeout(8000),
+      });
+      setMem0Items([]);
+    } catch { /* ignore */ }
+    setMem0ClearConfirm(false);
+    setMem0Loading(false);
+  };
+
+  // 加载已保存的 Key，并检查 Mem0 服务状态
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    api?.getApiKeys?.().then((r: any) => {
+      if (r?.success && r?.data?.SILICONFLOW_API_KEY) {
+        setMem0Key(r.data.SILICONFLOW_API_KEY);
+      }
+    }).catch(() => {});
+
+    fetch('http://127.0.0.1:8002/health', { signal: AbortSignal.timeout(3000) })
+      .then((res) => res.json())
+      .then((data: any) => {
+        if (data?.ok && data?.mem0_ready) setMem0Health('running');
+        else if (data?.error?.includes('API_KEY')) setMem0Health('no-key');
+        else setMem0Health('stopped');
+      })
+      .catch(() => setMem0Health('stopped'));
+  }, []);
+
   return (
     <div className="settings-tab-content">
       <div className="settings-guide-card" style={{ marginBottom: 20 }}>
@@ -104,6 +182,235 @@ export function MemoryTabView({
           <p style={{ paddingLeft: 12 }}>Python 3.10 或更高版本</p>
         </div>
       </div>
+
+      {/* ── Mem0 智能记忆增强 ───────────────────────────────────────────── */}
+      <section className="settings-section" style={{ marginBottom: 24 }}>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          Mem0 智能记忆增强
+          <span style={{
+            fontSize: 11, fontWeight: 500, padding: '2px 9px', borderRadius: 10,
+            background: 'var(--bg-surface)', color: 'var(--text-secondary)',
+            border: '1px solid var(--border-color)',
+          }}>可选</span>
+          {mem0Health === 'running' && (
+            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: '#0d2e1a', color: '#4ade80', border: '1px solid #166534' }}>
+              ✅ 运行中
+            </span>
+          )}
+          {mem0Health === 'stopped' && (
+            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: 'var(--bg-surface)', color: 'var(--text-tertiary)', border: '1px solid var(--border-color)' }}>
+              — 未启动
+            </span>
+          )}
+          {mem0Health === 'no-key' && (
+            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: '#2e1a0d', color: '#fb923c', border: '1px solid #9a3412' }}>
+              ⚠ 缺少 API Key
+            </span>
+          )}
+        </h3>
+
+        <div style={{
+          padding: '14px 16px', borderRadius: 8, marginBottom: 16,
+          background: 'var(--bg-surface)', fontSize: 'var(--text-code)', lineHeight: 1.8,
+          borderLeft: '3px solid var(--accent-primary)',
+        }}>
+          <p style={{ margin: '0 0 8px', fontWeight: 500 }}>这是什么？</p>
+          <p style={{ margin: '0 0 10px', color: 'var(--text-secondary)' }}>
+            Mem0 是一个 AI 记忆增强模块，能从每次对话中自动提取你说过的重要信息（比如你的名字、职业、偏好），并在之后的对话中智能回忆。
+            无需手动管理，开箱即用。
+          </p>
+          <p style={{ margin: 0, color: 'var(--text-tertiary)' }}>
+            💡 使用硅基流动（SiliconFlow）免费额度即可体验，无需额外付费。
+          </p>
+        </div>
+
+        <div className="settings-row" style={{ alignItems: 'center' }}>
+          <label style={{ minWidth: 100 }}>硅基流动 API Key</label>
+          <div style={{ flex: 1, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type={mem0KeyVisible ? 'text' : 'password'}
+              className="settings-input"
+              style={{ flex: 1, minWidth: 0, fontFamily: mem0KeyVisible ? 'inherit' : 'monospace' }}
+              placeholder="sk-xxxxxxxxxxxxxxxx（填入后重启应用生效）"
+              value={mem0Key}
+              onChange={(e) => { setMem0Key(e.target.value); setMem0SaveMsg(''); }}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              className="settings-btn"
+              style={{ padding: '6px 12px', flexShrink: 0 }}
+              onClick={() => setMem0KeyVisible((v) => !v)}
+            >
+              {mem0KeyVisible ? '隐藏' : '显示'}
+            </button>
+          </div>
+        </div>
+
+        <div className="settings-btn-row" style={{ marginTop: 12, alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <button
+            type="button"
+            className="settings-btn settings-btn-primary"
+            disabled={mem0Saving}
+            onClick={async () => {
+              const api = (window as any).electronAPI;
+              if (!api?.saveApiKeys) return;
+              setMem0Saving(true);
+              setMem0SaveMsg('');
+              try {
+                const r = await api.saveApiKeys({ SILICONFLOW_API_KEY: mem0Key.trim() });
+                if (r?.success) {
+                  setMem0SaveMsg('✅ 已保存，重启应用后生效');
+                } else {
+                  setMem0SaveMsg('❌ 保存失败：' + (r?.error || '未知错误'));
+                }
+              } catch (e: any) {
+                setMem0SaveMsg('❌ ' + (e?.message || String(e)));
+              } finally {
+                setMem0Saving(false);
+              }
+            }}
+          >
+            {mem0Saving ? '保存中…' : '保存 Key'}
+          </button>
+
+          <a
+            href="https://cloud.siliconflow.cn/account/ak"
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              fontSize: 'var(--text-code)', color: 'var(--accent-primary)',
+              textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              (window as any).electronAPI?.openExternal?.('https://cloud.siliconflow.cn/account/ak');
+            }}
+          >
+            🔗 获取 Key（注册硅基流动）
+          </a>
+
+          {mem0SaveMsg && (
+            <span style={{ fontSize: 'var(--text-code)', color: mem0SaveMsg.startsWith('✅') ? 'var(--status-success)' : 'var(--status-error)' }}>
+              {mem0SaveMsg}
+            </span>
+          )}
+        </div>
+
+        <p style={{ marginTop: 12, color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+          保存后请重启应用。Mem0 服务会在后台静默运行，无需额外操作。
+          如不使用此功能，留空即可，不影响其他任何功能。
+        </p>
+
+        {/* ── 记忆管理面板（仅服务运行时显示）─────────────────────────── */}
+        {mem0Health === 'running' && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--border-color)', paddingTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span style={{ fontSize: 'var(--text-code)', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                已存记忆
+                {mem0Items.length > 0 && (
+                  <span style={{ marginLeft: 8, fontSize: 11, padding: '1px 7px', borderRadius: 8,
+                    background: 'var(--bg-surface)', color: 'var(--accent-primary)', border: '1px solid var(--accent-primary)' }}>
+                    {mem0Items.length} 条
+                  </span>
+                )}
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="settings-btn"
+                  style={{ padding: '5px 12px' }}
+                  onClick={() => {
+                    if (!mem0PanelOpen) fetchMem0Items();
+                    setMem0PanelOpen((v) => !v);
+                    setMem0ClearConfirm(false);
+                  }}
+                >
+                  {mem0PanelOpen ? '收起' : '查看记忆'}
+                </button>
+                {mem0PanelOpen && !mem0ClearConfirm && (
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-danger"
+                    style={{ padding: '5px 12px' }}
+                    onClick={() => setMem0ClearConfirm(true)}
+                  >
+                    清空全部
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 清空确认 */}
+            {mem0ClearConfirm && (
+              <div style={{ marginBottom: 12, padding: '12px 16px', borderRadius: 8,
+                background: '#2e1a0d', border: '1px solid #9a3412',
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 'var(--text-code)', color: '#fb923c', flex: 1 }}>
+                  确定清空所有 Mem0 记忆？此操作不可恢复。
+                </span>
+                <button
+                  type="button"
+                  className="settings-btn settings-btn-danger"
+                  style={{ padding: '5px 14px' }}
+                  disabled={mem0Loading}
+                  onClick={handleMem0ClearAll}
+                >
+                  {mem0Loading ? '清空中…' : '确认清空'}
+                </button>
+                <button
+                  type="button"
+                  className="settings-btn"
+                  style={{ padding: '5px 14px' }}
+                  onClick={() => setMem0ClearConfirm(false)}
+                >
+                  取消
+                </button>
+              </div>
+            )}
+
+            {/* 记忆列表 */}
+            {mem0PanelOpen && (
+              <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8,
+                border: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
+                {mem0Loading && (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)',
+                    fontSize: 'var(--text-code)' }}>加载中…</div>
+                )}
+                {!mem0Loading && mem0Items.length === 0 && (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)',
+                    fontSize: 'var(--text-code)' }}>暂无记忆</div>
+                )}
+                {!mem0Loading && mem0Items.map((item, i) => (
+                  <div
+                    key={item.id || i}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10,
+                      padding: '10px 14px',
+                      borderBottom: i < mem0Items.length - 1 ? '1px solid var(--border-color)' : 'none',
+                    }}
+                  >
+                    <span style={{ flex: 1, fontSize: 'var(--text-code)', color: 'var(--text-primary)',
+                      lineHeight: 1.6, wordBreak: 'break-all' }}>
+                      {item.memory}
+                    </span>
+                    <button
+                      type="button"
+                      className="settings-btn settings-btn-danger"
+                      style={{ padding: '3px 10px', fontSize: 11, flexShrink: 0 }}
+                      disabled={mem0DeleteId === item.id}
+                      onClick={() => handleMem0Delete(item.id)}
+                    >
+                      {mem0DeleteId === item.id ? '…' : '删除'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="settings-section" style={{ marginBottom: 24 }}>
         <h3>AI.library 知识库（插件）</h3>

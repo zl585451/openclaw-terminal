@@ -10,6 +10,7 @@ class ContextBuilder {
     hypothesis,
     imageService,
     config,
+    mem0Client,
     logger,
     helpers,
   }) {
@@ -23,6 +24,7 @@ class ContextBuilder {
     this.hypothesis = hypothesis;
     this.imageService = imageService;
     this.config = config;
+    this.mem0Client = mem0Client || null;
     this.log = logger;
     this.helpers = helpers;
   }
@@ -98,7 +100,10 @@ class ContextBuilder {
     let contextMemory = '';
     try {
       const nocturneAlive = await this.nocturneQueue.isNocturneHealthy();
-      if (!nocturneAlive || userMessage.length <= 1) return '';
+      const mem0Alive = this.mem0Client ? await this.mem0Client.isAlive().catch(() => false) : false;
+
+      if (!nocturneAlive && !mem0Alive) return '';
+      if (userMessage.length <= 1) return '';
 
       const recallIntent = this.helpers.hasRecallIntent(userMessage);
       const projectAnalysisIntent = this.helpers.isProjectAnalysisRequest(userMessage);
@@ -115,36 +120,76 @@ class ContextBuilder {
         ...this.helpers.extractMemorySearchTerms(userMessage),
         ...recentContextTexts.flatMap((text) => this.helpers.extractMemorySearchTerms(text).slice(0, 2)),
       ];
-
       const searchWords = [...new Set(entityWords)].slice(0, recallIntent ? 5 : 3);
-      const memContents = [];
-      const seenUris = new Set();
-      const searchResults = await Promise.all(
-        searchWords.map((word) =>
-          this.memorySearch.searchMemory(word, {
-            domain: 'core',
-            limit: recallIntent ? 3 : 2,
-            include_content: true,
-          }).catch(() => ({ ok: false, data: null }))
-        )
-      );
 
-      for (const result of searchResults) {
+      // ── 双轨并行：Nocturne 关键词搜索 + Mem0 语义搜索 ──────────────────────
+      const [nocturneSearchResults, mem0Result] = await Promise.all([
+        nocturneAlive
+          ? Promise.all(
+              searchWords.map((word) =>
+                this.memorySearch.searchMemory(word, {
+                  domain: 'core',
+                  limit: recallIntent ? 3 : 2,
+                  include_content: true,
+                }).catch(() => ({ ok: false, data: null }))
+              )
+            )
+          : Promise.resolve([]),
+        mem0Alive
+          ? this.mem0Client.searchMemory(userMessage, { limit: recallIntent ? 6 : 4 })
+          : Promise.resolve({ ok: false, results: [] }),
+      ]);
+
+      const memContents = [];
+      const seenTexts = new Set();   // 文本去重（避免 Nocturne + Mem0 同一事实注入两次）
+      const seenUris = new Set();
+
+      // ── 1. Mem0 结果优先（语义质量高），过滤 score < 0.3 ─────────────────────
+      if (mem0Result.ok && Array.isArray(mem0Result.results)) {
+        for (const item of mem0Result.results) {
+          const score = item.score ?? 0;
+          if (score < 0.3) continue;
+          const text = (item.memory || '').trim();
+          if (!text) continue;
+          const textKey = text.slice(0, 60).toLowerCase();
+          if (seenTexts.has(textKey)) continue;
+          seenTexts.add(textKey);
+          memContents.push({
+            uri: `mem0://${item.id || 'mem0'}`,
+            content: `[Mem0] ${text.slice(0, 200)}`,
+            priority: 1,
+            match_score: Math.min(score, 1),
+          });
+        }
+        if (mem0Result.results.length > 0) {
+          this.log.debug('mem0 search results', {
+            total: mem0Result.results.length,
+            kept: memContents.length,
+          });
+        }
+      }
+
+      // ── 2. Nocturne 结果补充（身份 / 偏好等结构化数据）──────────────────────
+      for (const result of nocturneSearchResults) {
         if (!result.ok || !result.data) continue;
         for (const item of result.data) {
           if (seenUris.has(item.uri) || item.uri.includes('/history/')) continue;
           seenUris.add(item.uri);
-          const content = this.helpers.stripCotText(item.content || '').slice(0, 200);
-          if (!content) continue;
+          const rawContent = this.helpers.stripCotText(item.content || '').slice(0, 200);
+          if (!rawContent) continue;
+          const textKey = rawContent.slice(0, 60).toLowerCase();
+          if (seenTexts.has(textKey)) continue;
+          seenTexts.add(textKey);
           memContents.push({
             uri: item.uri,
-            content: `[${item.uri}] ${content}`,
+            content: `[${item.uri}] ${rawContent}`,
             priority: item.priority || 2,
             match_score: item.match_score || 0.5,
           });
         }
       }
 
+      // ── 3. 今日历史对话追加 ─────────────────────────────────────────────────
       try {
         const todayStr = new Date().toISOString().slice(0, 10);
         const historyResult = await this.memory.readMemory(
@@ -177,16 +222,19 @@ class ContextBuilder {
         }
       } catch {}
 
+      // ── 4. 注入 ─────────────────────────────────────────────────────────────
       if (shouldInjectContextMemory) {
         const selectedMemories = this.memoryGovernor.selectForInjection(
           memContents,
-          { limit: recallIntent ? 6 : 4, maxChars: recallIntent ? 1000 : 700 }
+          { limit: recallIntent ? 7 : 5, maxChars: recallIntent ? 1100 : 800 }
         );
         if (selectedMemories.length > 0) {
           this.log.info('contextMemory selected', {
             recallIntent,
             projectAnalysisIntent,
             searchWords,
+            mem0Alive,
+            nocturneAlive,
             selectedUris: selectedMemories.map((item) => item.uri),
             count: selectedMemories.length,
           });

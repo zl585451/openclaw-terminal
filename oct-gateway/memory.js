@@ -441,17 +441,27 @@ async function loadBootMemory(coreUris) {
         error: r.ok ? '' : r.error,
       });
       if (r.ok && r.data) {
-        const node = r.data?.node || r.data;
-        const priority = node?.priority;
-        if (priority !== undefined && priority === 2) continue;
         const content =
           r.data?.node?.content ||
           r.data?.content ||
           (typeof r.data === 'string' ? r.data : '');
+        const nodeLines = [];
         if (content && content !== '[DELETED]') {
-          const trimmed =
-            content.length > 500 ? content.slice(0, 500) + '...' : content;
-          results.push(`[${uri}]\n${trimmed}`);
+          const trimmed = content.length > 500 ? content.slice(0, 500) + '...' : content;
+          nodeLines.push(trimmed);
+        }
+        // 同时读取子节点的 content_snippet（解决偏好等父节点内容为空的问题）
+        const children = r.data?.children || [];
+        for (const child of children) {
+          const snippet = child.content_snippet || '';
+          if (snippet && snippet !== '[DELETED]') {
+            const childLabel = child.uri || child.path || '';
+            const childTrimmed = snippet.length > 200 ? snippet.slice(0, 200) + '...' : snippet;
+            nodeLines.push(`  [${childLabel}] ${childTrimmed}`);
+          }
+        }
+        if (nodeLines.length > 0) {
+          results.push(`[${uri}]\n${nodeLines.join('\n')}`);
         }
       }
     } catch (e) {
