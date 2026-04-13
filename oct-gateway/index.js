@@ -263,13 +263,26 @@ async function handleChatRequest(request, connection) {
 
 async function handleTransportMessage(msg, connection) {
   if (msg?.type === 'req' && msg?.method === 'image.generate') {
+    const imgProvider = String(config.getEnvOrConfig('IMAGE_PROVIDER') || 'minimax').trim().toLowerCase();
+    const imgBaseRaw = String(config.getEnvOrConfig('IMAGE_BASE_URL') || '').trim();
+    let imageBaseUrl = imgBaseRaw;
+    if (!imageBaseUrl) {
+      if (imgProvider === 'openai') imageBaseUrl = 'https://api.openai.com';
+      else if (imgProvider === 'siliconflow') imageBaseUrl = 'https://api.siliconflow.cn/v1';
+      else imageBaseUrl = 'https://api.minimax.chat';
+    }
     const imageConfig = {
-      IMAGE_PROVIDER: config.getEnvOrConfig('IMAGE_PROVIDER') || 'minimax',
+      IMAGE_PROVIDER: imgProvider || 'minimax',
       IMAGE_API_KEY: config.getEnvOrConfig('IMAGE_API_KEY') || '',
-      IMAGE_BASE_URL: config.getEnvOrConfig('IMAGE_BASE_URL') || 'https://api.minimax.chat',
-      IMAGE_MODEL: config.getEnvOrConfig('IMAGE_MODEL') || 'image-01',
+      IMAGE_BASE_URL: imageBaseUrl,
+      IMAGE_MODEL: config.getEnvOrConfig('IMAGE_MODEL') || (
+        imgProvider === 'siliconflow' ? 'Kwai-Kolors/Kolors'
+          : imgProvider === 'openai' ? 'dall-e-3'
+            : 'image-01'
+      ),
       IMAGE_SIZE: config.getEnvOrConfig('IMAGE_SIZE') || '1024x1024',
       DASHSCOPE_API_KEY: config.getEnvOrConfig('DASHSCOPE_API_KEY') || '',
+      DEEPSEEK_API_KEY: config.getEnvOrConfig('DEEPSEEK_API_KEY') || '',
       MINIMAX_API_KEY: config.getEnvOrConfig('MINIMAX_API_KEY') || '',
       CUSTOM_API_KEY: config.getEnvOrConfig('CUSTOM_API_KEY') || '',
     };

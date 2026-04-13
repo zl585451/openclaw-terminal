@@ -55,6 +55,9 @@ const electronAPI = {
         CUSTOM_BASE_URL?: string;
         BRAVE_SEARCH_API_KEY?: string;
         TAVILY_API_KEY?: string;
+        VISION_API_KEY?: string;
+        VISION_BASE_URL?: string;
+        VISION_MODEL?: string;
       }) => ipcRenderer.invoke('save-api-keys', keys),
   imageGenerate: (payload: {
     requestId: string;

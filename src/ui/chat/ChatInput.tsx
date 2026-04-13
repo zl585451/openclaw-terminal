@@ -262,13 +262,22 @@ const ChatInputArea = memo(function ChatInputArea({
     onSend(sendText, null);
   }, [onSend]);
 
+  const resetInputHeight = useCallback((el: HTMLTextAreaElement) => {
+    el.style.removeProperty('height');
+    el.style.overflowY = 'hidden';
+  }, []);
+
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
+    if (!inputValue) {
+      resetInputHeight(el);
+      return;
+    }
     el.style.height = '40px';
     el.style.overflowY = el.scrollHeight > 150 ? 'auto' : 'hidden';
     el.style.height = Math.min(Math.max(el.scrollHeight, 40), 150) + 'px';
-  }, [inputValue, inputRef]);
+  }, [inputValue, inputRef, resetInputHeight]);
 
   useEffect(() => {
     if (injectInputText != null) {
@@ -382,9 +391,15 @@ const ChatInputArea = memo(function ChatInputArea({
           className={`chat-input chat-input-textarea ${inputFocused ? 'focused' : ''} ${inputFlash ? 'flash' : ''}`}
           value={inputValue}
           onChange={(e) => {
-            setInputValue(e.target.value);
-            e.target.style.height = 'auto';
-            e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            const v = e.target.value;
+            setInputValue(v);
+            const ta = e.target;
+            if (!v) {
+              resetInputHeight(ta);
+              return;
+            }
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
           }}
           onFocus={() => setInputFocused(true)}
           onBlur={() => setInputFocused(false)}

@@ -2960,6 +2960,9 @@ ipcMain.handle('get-api-keys', async () => {
     keys.BRAVE_SEARCH_API_KEY = pick('BRAVE_SEARCH_API_KEY', cfg.BRAVE_SEARCH_API_KEY);
     keys.TAVILY_API_KEY = pick('TAVILY_API_KEY', cfg.TAVILY_API_KEY);
     keys.SILICONFLOW_API_KEY = pick('SILICONFLOW_API_KEY', cfg.SILICONFLOW_API_KEY);
+    keys.VISION_API_KEY = pick('VISION_API_KEY', cfg.VISION_API_KEY);
+    keys.VISION_BASE_URL = pick('VISION_BASE_URL', cfg.VISION_BASE_URL);
+    keys.VISION_MODEL = pick('VISION_MODEL', cfg.VISION_MODEL);
     return {
       success: true,
       data: {
@@ -2984,6 +2987,9 @@ ipcMain.handle('get-api-keys', async () => {
         BRAVE_SEARCH_API_KEY: keys.BRAVE_SEARCH_API_KEY || '',
         TAVILY_API_KEY: keys.TAVILY_API_KEY || '',
         SILICONFLOW_API_KEY: keys.SILICONFLOW_API_KEY || '',
+        VISION_API_KEY: keys.VISION_API_KEY || '',
+        VISION_BASE_URL: keys.VISION_BASE_URL || '',
+        VISION_MODEL: keys.VISION_MODEL || '',
       }
     };
   } catch (e: any) {
@@ -3011,6 +3017,9 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     DASHSCOPE_BASE_URL?: string;
     DEEPSEEK_BASE_URL?: string;
     MINIMAX_BASE_URL?: string;
+    VISION_API_KEY?: string;
+    VISION_BASE_URL?: string;
+    VISION_MODEL?: string;
     CUSTOM_BASE_URL?: string;
     BRAVE_SEARCH_API_KEY?: string;
     TAVILY_API_KEY?: string;
@@ -3047,6 +3056,9 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.BRAVE_SEARCH_API_KEY !== undefined) cfg.BRAVE_SEARCH_API_KEY = keys.BRAVE_SEARCH_API_KEY || '';
     if (keys.TAVILY_API_KEY !== undefined) cfg.TAVILY_API_KEY = keys.TAVILY_API_KEY || '';
     if (keys.SILICONFLOW_API_KEY !== undefined) cfg.SILICONFLOW_API_KEY = keys.SILICONFLOW_API_KEY || '';
+    if (keys.VISION_API_KEY !== undefined) cfg.VISION_API_KEY = keys.VISION_API_KEY || '';
+    if (keys.VISION_BASE_URL !== undefined) cfg.VISION_BASE_URL = keys.VISION_BASE_URL || '';
+    if (keys.VISION_MODEL !== undefined) cfg.VISION_MODEL = keys.VISION_MODEL || '';
     Object.assign(cfg, {
       OPENCLAW_WS_URL: cfg.OPENCLAW_WS_URL ?? DEFAULT_CONFIG.OPENCLAW_WS_URL,
       OPENCLAW_TOKEN: cfg.OPENCLAW_TOKEN ?? '',
@@ -3088,7 +3100,10 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
       || keys.MINIMAX_API_KEY !== undefined
       || keys.CUSTOM_API_KEY !== undefined
-      || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined;
+      || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined
+      || keys.VISION_API_KEY !== undefined
+      || keys.VISION_BASE_URL !== undefined
+      || keys.VISION_MODEL !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
       octGatewayProcess.kill();
       octGatewayProcess = null;
@@ -3179,100 +3194,10 @@ ipcMain.handle('save-persona-settings', async (_, payload: {
   }
 });
 
-ipcMain.handle('get-local-vision-status', async () => {
-  try {
-    return { success: true, ...getLocalVisionStatusPayload() };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('save-local-vision-settings', async (_, payload: { enabled?: boolean; mirrorHost?: string }) => {
-  try {
-    ensureConfigFile();
-    const cfg = readAppConfig();
-    const imageAnalysis = (cfg.image_analysis && typeof cfg.image_analysis === 'object') ? cfg.image_analysis : {};
-    const local = (imageAnalysis.local && typeof imageAnalysis.local === 'object') ? imageAnalysis.local : {};
-    if (payload.enabled !== undefined) {
-      local.enabled = !!payload.enabled;
-    }
-    if (payload.mirrorHost !== undefined) {
-      local.mirror_host = String(payload.mirrorHost || '').trim();
-    }
-    cfg.image_analysis = {
-      ...imageAnalysis,
-      local: {
-        model_cache_path: local.model_cache_path || './models/blip',
-        timeout_seconds: local.timeout_seconds || 30,
-        ...local,
-      },
-    };
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('download-local-vision-model', async () => {
-  if (localVisionDownloadState.status === 'downloading') {
-    return { success: true, ...getLocalVisionStatusPayload() };
-  }
-
-  localVisionDownloadState = {
-    status: 'downloading',
-    lastError: '',
-    lastMessage: '正在下载本地视觉模型，请保持网络畅通。',
-  };
-
-  try {
-    const gatewayDir = getGatewayDirForHelpers();
-    const child = spawn(
-      process.execPath,
-      [
-        '-e',
-        "const local=require('./image_analyzer_local'); Promise.resolve(local.loadModel()).then(()=>{console.log('LOCAL_VISION_READY'); process.exit(0);}).catch((e)=>{console.error(e?.stack||e?.message||String(e)); process.exit(1);});",
-      ],
-      {
-        cwd: gatewayDir,
-        windowsHide: true,
-        env: buildOctChildEnv({
-          OCT_CONFIG_FILE: CONFIG_FILE,
-        }),
-      }
-    );
-
-    let stderr = '';
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      child.once('error', reject);
-      child.once('exit', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(stderr.trim() || `下载进程退出码 ${code}`));
-        }
-      });
-    });
-
-    localVisionDownloadState = {
-      status: 'ready',
-      lastError: '',
-      lastMessage: '本地视觉模型下载完成，可作为离线兜底。',
-    };
-    return { success: true, ...getLocalVisionStatusPayload() };
-  } catch (e: any) {
-    localVisionDownloadState = {
-      status: 'error',
-      lastError: e?.message || String(e),
-      lastMessage: '',
-    };
-    return { success: false, ...getLocalVisionStatusPayload(), error: e?.message || String(e) };
-  }
-});
+// 本地视觉模型（BLIP）已移除，以下 IPC 保留空壳以兼容旧版前端调用
+ipcMain.handle('get-local-vision-status', async () => ({ success: true, status: 'not_downloaded', enabled: false, downloaded: false, message: '本地视觉功能已移除，请使用「图片理解 API」配置。' }));
+ipcMain.handle('save-local-vision-settings', async () => ({ success: true }));
+ipcMain.handle('download-local-vision-model', async () => ({ success: false, status: 'error', downloaded: false, message: '本地视觉功能已移除，请使用「图片理解 API」配置。', error: '功能已移除' }));
 
 // Provider 列表（供 Settings UI 服务商选择器使用）
 ipcMain.handle('get-provider-list', async () => {

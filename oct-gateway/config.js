@@ -557,6 +557,11 @@ const config = {
 
   // MCP Server 配置（由前端设置面板写入 config.json）
   MCP_SERVERS: _fileConfig.mcpServers || {},
+
+  // 视觉 API（独立于主 provider，用于非视觉模型的图片理解）
+  VISION_API_KEY: getEnvOrConfig('VISION_API_KEY') || '',
+  VISION_BASE_URL: getEnvOrConfig('VISION_BASE_URL') || '',
+  VISION_MODEL: getEnvOrConfig('VISION_MODEL') || '',
 };
 
 Object.defineProperty(config, 'DASHSCOPE_MODEL', {

@@ -1,5 +1,8 @@
 /**
- * 图片自动分析：云端（qwen-vl-max）优先，本地 BLIP 降级。
+ * 图片自动分析：支持三条路径，按优先级依次尝试：
+ *   1. DashScope 云端（仅当主 provider 为 bailian/bailian-coding 时）
+ *   2. 视觉 API（VISION_API_KEY + VISION_BASE_URL + VISION_MODEL，独立于主 provider）
+ *   3. MCP understand_image（最后兜底）
  * 支持 PNG/JPG/WebP，失败不阻塞对话。
  */
 
@@ -7,15 +10,17 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const config = require('./config');
-const imageAnalyzerLocal = require('./image_analyzer_local');
 const toolLoader = require('./tool_loader');
 const { createLogger } = require('./logger');
 const logger = createLogger('image_analyzer');
 
 const DEFAULT_VISION_MODEL = 'qwen-vl-max';
 const PROMPT = '请用一句话描述这张图片的内容。如果是截图，请说明截图中的关键信息（界面、文字、错误信息等）。直接输出描述，不要加引号或前缀。';
+const VISION_API_PROMPT = '详细描述这张图片的内容，包括可见文字、界面布局、主要区域和关键信息。';
 
 const FALLBACK_MSG = '[图片分析] 图片分析失败，请用户描述图片内容。';
+
+// ─── MCP 工具名解析 ──────────────────────────────────────────────────────────
 
 function normalizeToolResultText(text) {
   return String(text || '').trim();
@@ -42,7 +47,6 @@ function looksLikeMcpToolErrorText(text) {
 
   if (startsWithAny) return true;
 
-  // 对特别短的错误文本做宽松识别；正常图片描述通常更长、更像自然语言段落。
   if (compact.length <= 220) {
     const includesAny = [
       'error executing tool',
@@ -95,70 +99,6 @@ function dataUrlToTempFile(dataUrl, mimeType) {
   };
 }
 
-async function analyzeImageViaMcp(dataUrl, mimeType) {
-  const defs = toolLoader.getDefinitions?.() || [];
-  const availableTools = defs.map((def) => def?.function?.name).filter(Boolean);
-  const visionToolName = resolveVisionToolName(defs);
-  if (!visionToolName) {
-    logger.warn('[ImageAnalyzer] 未找到可用的 MCP 图片理解工具', {
-      availableTools: availableTools.slice(0, 20),
-      availableToolCount: availableTools.length,
-      hint: '支持 mcp_minimax_understand_image、MiniMax_understand_image 以及其他 understand_image / image vision 命名。',
-    });
-    return null;
-  }
-
-  const { filePath, cleanup } = dataUrlToTempFile(dataUrl, mimeType);
-  try {
-    logger.info('[ImageAnalyzer] 准备调用 MCP 图片理解工具', {
-      tool: visionToolName,
-      mimeType: mimeType || 'image/png',
-      tempFileExt: path.extname(filePath),
-      availableToolCount: availableTools.length,
-    });
-    const result = await toolLoader.executeTool(visionToolName, {
-      image_source: filePath,
-      image_url: filePath,
-      prompt: '详细描述这张图片的内容，包括可见文字、界面布局、主要区域和关键信息。',
-    });
-    const text = typeof result === 'string' ? result.trim() : JSON.stringify(result);
-    if (!text) return null;
-
-    const looksLikeToolError = looksLikeMcpToolErrorText(text);
-    const failureKind = inferMcpFailureKind(text);
-
-    if (looksLikeToolError) {
-      logger.warn('[ImageAnalyzer] MCP 图片理解返回错误文本', {
-        failureKind,
-        preview: text.slice(0, 220),
-        tool: visionToolName,
-        hint:
-          failureKind === 'network_or_remote_fetch_failed'
-            ? 'MCP server 可能已连接，但其访问 MiniMax 远端接口失败；优先检查网络/代理/Token Plan key。'
-            : failureKind === 'unauthorized'
-              ? '请检查 MINIMAX_API_KEY 是否有效，且是否为 Token Plan 密钥。'
-              : failureKind === 'invalid_arguments' || failureKind === 'argument_name_mismatch'
-                ? '请检查 understand_image 工具参数名与当前 MCP server 版本是否一致。'
-                : '请检查 MCP server 日志和工具返回内容。',
-      });
-      return null;
-    }
-
-    logger.info('[ImageAnalyzer] MCP 图片理解成功', { resultLen: text.length });
-    return `[图片分析] ${text}\n[图片分析说明] 你已经拿到图片分析结果，不要再调用 exec_command、read_file 或查找本地媒体路径来重复找图。`;
-  } catch (error) {
-    logger.warn('[ImageAnalyzer] MCP 图片理解失败', {
-      error: error?.message || String(error),
-      tool: visionToolName,
-      availableTools: availableTools.slice(0, 20),
-      hint: '如果 mcp/status 里 minimax 已连接但这里仍失败，更可能是工具执行阶段的网络、鉴权或远端接口问题，而不是 MCP 进程未启动。',
-    });
-    return null;
-  } finally {
-    cleanup();
-  }
-}
-
 function resolveVisionToolName(defs) {
   const names = (defs || []).map((def) => String(def?.function?.name || '')).filter(Boolean);
   if (names.length === 0) return '';
@@ -189,17 +129,12 @@ function resolveVisionToolName(defs) {
   return '';
 }
 
-/**
- * 云端分析单张图片，成功返回 "[图片分析] ..."，失败返回 null（不抛错，仅打日志）
- * @param {string} url - data:image/xxx;base64,...
- * @param {number} timeoutMs
- * @returns {Promise<string|null>}
- */
+// ─── 路径 1：DashScope 云端（仅 bailian provider）────────────────────────────
+
 async function analyzeImageCloud(url, timeoutMs, options = {}) {
   const cfg = config.image_analysis || {};
   const apiKey = options.apiKey || config.DASHSCOPE_API_KEY;
   const baseUrl = options.baseUrl || config.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-  // 百炼 Coding (coding.dashscope.aliyuncs.com) 不支持 qwen-vl-max，用主对话模型（如 qwen3.5-plus）做看图
   const isCoding = String(baseUrl).includes('coding.dashscope');
   const model = isCoding
     ? (options.model || config.DASHSCOPE_MODEL || 'qwen3.5-plus')
@@ -233,12 +168,7 @@ async function analyzeImageCloud(url, timeoutMs, options = {}) {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      logger.warn('[ImageAnalyzer] 云端 API 错误', {
-        status: res.status,
-        model,
-        baseUrl,
-        bodyPreview: errText.slice(0, 200),
-      });
+      logger.warn('[ImageAnalyzer] 云端 API 错误', { status: res.status, model, baseUrl, bodyPreview: errText.slice(0, 200) });
       return null;
     }
 
@@ -247,20 +177,145 @@ async function analyzeImageCloud(url, timeoutMs, options = {}) {
     if (text) return `[图片分析] ${text}`;
     return null;
   } catch (e) {
-    logger.warn('[ImageAnalyzer] 云端失败', {
-      model,
-      baseUrl,
-      error: e?.message || String(e),
-    });
+    logger.warn('[ImageAnalyzer] 云端失败', { model, baseUrl, error: e?.message || String(e) });
     return null;
   }
 }
 
+// ─── 路径 2：视觉 API（独立 key，与主 provider 无关）────────────────────────
+
+async function analyzeImageVisionApi(url, timeoutMs) {
+  const apiKey = config.getEnvOrConfig('VISION_API_KEY') || '';
+  const baseUrl = (config.getEnvOrConfig('VISION_BASE_URL') || '').replace(/\/$/, '');
+  const model = config.getEnvOrConfig('VISION_MODEL') || '';
+
+  if (!apiKey || !baseUrl || !model) {
+    logger.info('[ImageAnalyzer] 视觉 API 未配置，跳过', {
+      hasKey: !!apiKey,
+      hasBaseUrl: !!baseUrl,
+      hasModel: !!model,
+    });
+    return null;
+  }
+
+  try {
+    logger.info('[ImageAnalyzer] 视觉 API 分析', { model, baseUrl });
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url } },
+              { type: 'text', text: VISION_API_PROMPT },
+            ],
+          },
+        ],
+        max_tokens: 512,
+        temperature: 0.2,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      logger.warn('[ImageAnalyzer] 视觉 API 错误', { status: res.status, model, bodyPreview: errText.slice(0, 200) });
+      return null;
+    }
+
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
+    if (text) {
+      logger.info('[ImageAnalyzer] 视觉 API 分析成功', { model, resultLen: text.length });
+      return `[图片分析] ${text}\n[图片分析说明] 你已经拿到图片分析结果，不要再调用 exec_command、read_file 或查找本地媒体路径来重复找图。`;
+    }
+    return null;
+  } catch (e) {
+    logger.warn('[ImageAnalyzer] 视觉 API 失败', { model, baseUrl, error: e?.message || String(e) });
+    return null;
+  }
+}
+
+// ─── 路径 3：MCP understand_image（最后兜底）────────────────────────────────
+
+async function analyzeImageViaMcp(dataUrl, mimeType) {
+  const defs = toolLoader.getDefinitions?.() || [];
+  const availableTools = defs.map((def) => def?.function?.name).filter(Boolean);
+  const visionToolName = resolveVisionToolName(defs);
+  if (!visionToolName) {
+    logger.warn('[ImageAnalyzer] 未找到可用的 MCP 图片理解工具', {
+      availableTools: availableTools.slice(0, 20),
+      availableToolCount: availableTools.length,
+      hint: '支持 mcp_minimax_understand_image、MiniMax_understand_image 以及其他 understand_image / image vision 命名。',
+    });
+    return null;
+  }
+
+  const { filePath, cleanup } = dataUrlToTempFile(dataUrl, mimeType);
+  try {
+    logger.info('[ImageAnalyzer] 准备调用 MCP 图片理解工具', {
+      tool: visionToolName,
+      mimeType: mimeType || 'image/png',
+      tempFileExt: path.extname(filePath),
+      availableToolCount: availableTools.length,
+    });
+    const result = await toolLoader.executeTool(visionToolName, {
+      image_source: filePath,
+      image_url: filePath,
+      prompt: VISION_API_PROMPT,
+    });
+    const text = typeof result === 'string' ? result.trim() : JSON.stringify(result);
+    if (!text) return null;
+
+    const looksLikeToolError = looksLikeMcpToolErrorText(text);
+    const failureKind = inferMcpFailureKind(text);
+
+    if (looksLikeToolError) {
+      logger.warn('[ImageAnalyzer] MCP 图片理解返回错误文本', {
+        failureKind,
+        preview: text.slice(0, 220),
+        tool: visionToolName,
+        hint:
+          failureKind === 'network_or_remote_fetch_failed'
+            ? 'MCP server 可能已连接，但其访问远端接口失败；优先检查网络/代理/API Key。'
+            : failureKind === 'unauthorized'
+              ? '请检查 API Key 是否有效。'
+              : failureKind === 'invalid_arguments' || failureKind === 'argument_name_mismatch'
+                ? '请检查 understand_image 工具参数名与当前 MCP server 版本是否一致。'
+                : '请检查 MCP server 日志和工具返回内容。',
+      });
+      return null;
+    }
+
+    logger.info('[ImageAnalyzer] MCP 图片理解成功', { resultLen: text.length });
+    return `[图片分析] ${text}\n[图片分析说明] 你已经拿到图片分析结果，不要再调用 exec_command、read_file 或查找本地媒体路径来重复找图。`;
+  } catch (error) {
+    logger.warn('[ImageAnalyzer] MCP 图片理解失败', {
+      error: error?.message || String(error),
+      tool: visionToolName,
+      availableTools: availableTools.slice(0, 20),
+      hint: '如果 mcp/status 里已连接但这里仍失败，更可能是网络、鉴权或远端接口问题，而不是 MCP 进程未启动。',
+    });
+    return null;
+  } finally {
+    cleanup();
+  }
+}
+
+// ─── 主入口 ──────────────────────────────────────────────────────────────────
+
 /**
- * 分析单张图片：云端优先，失败则先尝试 MCP 图片理解，本地 BLIP 仅作最后兜底
- * @param {string} dataUrl - data:image/png;base64,xxx 或 data:image/jpeg;base64,xxx
- * @param {string} [mimeType] - image/png | image/jpeg | image/webp
- * @returns {Promise<string>}
+ * 分析单张图片，降级顺序：
+ *   1. DashScope 云端（provider=bailian 时）
+ *   2. 视觉 API（VISION_API_KEY，独立配置）
+ *   3. MCP understand_image
+ *   4. 降级提示
  */
 async function analyzeImage(dataUrl, mimeType, options = {}) {
   const cfg = config.image_analysis || {};
@@ -284,31 +339,23 @@ async function analyzeImage(dataUrl, mimeType, options = {}) {
     || currentProviderId === 'bailian-coding'
     || currentProviderBaseUrl.includes('dashscope');
   const useCloud = (provider === 'aliyun_vl' || provider === 'auto') && cloudCompatible;
-  const useLocal = cfg.local?.enabled !== false && (
-    provider === 'local_blip' ||
-    provider === 'auto' ||
-    provider === 'aliyun_vl'
-  );
+
   logger.info('[ImageAnalyzer] 开始分析图片', {
     provider,
     mimeType: mimeType || 'image/png',
     timeoutMs,
     useCloud,
-    useLocal,
     currentProviderId: currentProviderId || 'unknown',
   });
 
-  // 1) 首选云端
+  // 1) DashScope 云端（仅 bailian provider）
   if (useCloud) {
     const cloudResult = await analyzeImageCloud(url, timeoutMs, options);
     if (cloudResult) {
       logger.info('[ImageAnalyzer] 云端分析成功', { resultLen: cloudResult.length });
       return cloudResult;
     }
-    logger.warn('[ImageAnalyzer] 云端分析未返回结果，准备尝试本地降级', {
-      localEnabled: cfg.local?.enabled !== false,
-      provider,
-    });
+    logger.warn('[ImageAnalyzer] 云端分析未返回结果，继续尝试视觉 API');
   } else if (provider === 'aliyun_vl' || provider === 'auto') {
     logger.warn('[ImageAnalyzer] 跳过云端视觉分析：当前 provider 与 DashScope 视觉链路不兼容', {
       currentProviderId: currentProviderId || 'unknown',
@@ -316,37 +363,28 @@ async function analyzeImage(dataUrl, mimeType, options = {}) {
     });
   }
 
-  // 2) 先尝试 MCP 图片理解（适合作为非视觉模型的首选兜底）
+  // 2) 视觉 API（VISION_API_KEY，与主 provider 无关）
+  const visionApiResult = await analyzeImageVisionApi(url, timeoutMs);
+  if (visionApiResult) {
+    return visionApiResult;
+  }
+
+  // 3) MCP understand_image（最后兜底）
   const mcpResult = await analyzeImageViaMcp(url, mimeType);
   if (mcpResult) {
     return mcpResult;
   }
 
-  // 3) 最后再尝试本地 BLIP（可选离线兜底）
-  if (useLocal) {
-    const localResult = await imageAnalyzerLocal.analyzeImageLocal(url, timeoutMs);
-    if (localResult) {
-      logger.info('[ImageAnalyzer] 本地分析成功', { resultLen: localResult.length });
-      return localResult;
-    }
-    logger.warn('[ImageAnalyzer] 本地分析未返回结果');
-  }
-
-  // 4) 都失败
+  // 4) 全链路失败
   logger.warn('[ImageAnalyzer] 图片分析全部失败，返回最终降级提示', {
     provider,
-    localEnabled: cfg.local?.enabled !== false,
     currentProviderId: currentProviderId || 'unknown',
   });
-  const localError = imageAnalyzerLocal.getLastLocalError?.();
-  const localHint = localError ? ` 本地视觉模型错误：${localError}。` : '';
-  return `${FALLBACK_MSG}\n[图片分析状态] 当前模型不支持直接看图，且视觉分析器未成功返回结果。${localHint}不要假装已看见图片，也不要继续调用依赖本地媒体路径的额外看图工具；请明确告知用户当前视觉链路失败。`;
+  return `${FALLBACK_MSG}\n[图片分析状态] 当前模型不支持直接看图，且视觉分析器未成功返回结果。不要假装已看见图片，也不要继续调用依赖本地媒体路径的额外看图工具；请明确告知用户当前视觉链路失败。`;
 }
 
 /**
  * 分析多张图片，结果用换行拼接
- * @param {Array<{ mimeType: string, content: string }>} imageAttachments
- * @returns {Promise<string>}
  */
 async function analyzeImages(imageAttachments, options = {}) {
   if (!imageAttachments || imageAttachments.length === 0) return '';

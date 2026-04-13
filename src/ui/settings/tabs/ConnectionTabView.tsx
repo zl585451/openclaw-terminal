@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 const CUSTOM_PROVIDER_PRESETS = [
@@ -46,6 +47,9 @@ export type SettingsApiKeysState = {
   CUSTOM_BASE_URL: string; // 自定义 Base URL
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
+  VISION_API_KEY: string;
+  VISION_BASE_URL: string;
+  VISION_MODEL: string;
 };
 
 export type ProviderEntry = {
@@ -77,18 +81,147 @@ export interface ConnectionTabViewProps {
   setTestConnectionError: Dispatch<SetStateAction<string>>;
   apiKeysRefreshing: boolean;
   refetchApiKeys: () => void;
-  localVisionStatus: 'ready' | 'not_downloaded' | 'downloading' | 'error';
-  localVisionEnabled: boolean;
-  localVisionDownloaded: boolean;
-  localVisionMessage: string;
-  localVisionError: string;
-  localVisionBusy: boolean;
-  localVisionMirrorHost: string;
-  onChangeLocalVisionMirrorHost: (value: string) => void;
-  onSaveLocalVisionMirrorHost: (value: string) => void;
-  onToggleLocalVision: (enabled: boolean) => void;
-  onDownloadLocalVision: () => void;
 }
+
+// ─── 视觉 API 子组件 ──────────────────────────────────────────────────────────
+
+function VisionApiSection({ apiKeys, setApiKeys, showApiKey, setShowApiKey }: {
+  apiKeys: SettingsApiKeysState;
+  setApiKeys: Dispatch<SetStateAction<SettingsApiKeysState>>;
+  showApiKey: Record<string, boolean>;
+  setShowApiKey: Dispatch<SetStateAction<Record<string, boolean>>>;
+}) {
+  const currentBaseUrl = apiKeys.VISION_BASE_URL || '';
+  const presetId = VISION_PRESETS_LIST.find((p) => p.id !== 'custom' && p.baseUrl === currentBaseUrl)?.id || 'custom';
+  const [selectedPreset, setSelectedPreset] = useState(presetId);
+
+  useEffect(() => {
+    setSelectedPreset(presetId);
+  }, [presetId]);
+
+  const onSelectPreset = (id: string) => {
+    setSelectedPreset(id);
+    const preset = VISION_PRESETS_LIST.find((p) => p.id === id);
+    if (preset && id !== 'custom') {
+      setApiKeys((k) => ({
+        ...k,
+        VISION_BASE_URL: preset.baseUrl,
+        VISION_MODEL: k.VISION_MODEL || preset.model,
+      }));
+    }
+  };
+
+  const activePreset = VISION_PRESETS_LIST.find((p) => p.id === selectedPreset) || VISION_PRESETS_LIST[VISION_PRESETS_LIST.length - 1];
+
+  return (
+    <div className="settings-vision-card">
+      <div className="settings-vision-card-head">
+        <div>
+          <div className="settings-vision-title">图片理解 API（视觉助手）</div>
+          <div className="settings-vision-subtitle">
+            为不支持视觉的模型（MiniMax、DeepSeek 等）提供图片理解能力。配置后，发图时会自动调用此接口生成描述，再传给主对话模型。
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-field" style={{ marginBottom: 10 }}>
+        <label>服务商预设</label>
+        <select
+          className="settings-input settings-input-focusable"
+          value={selectedPreset}
+          onChange={(e) => onSelectPreset(e.target.value)}
+        >
+          {VISION_PRESETS_LIST.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+        {activePreset.keyLink && (
+          <p className="settings-desc" style={{ fontSize: 12, marginTop: 4 }}>
+            <a href={activePreset.keyLink} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+              获取 API Key →
+            </a>
+            {activePreset.modelHint && <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{activePreset.modelHint}</span>}
+          </p>
+        )}
+      </div>
+
+      <div className="settings-field" style={{ marginBottom: 10 }}>
+        <label>API Key</label>
+        <div className="settings-input-row">
+          <input
+            type={showApiKey.VISION_API_KEY ? 'text' : 'password'}
+            value={apiKeys.VISION_API_KEY}
+            onChange={(e) => setApiKeys((k) => ({ ...k, VISION_API_KEY: e.target.value }))}
+            placeholder="sk-xxxxxxxxxxxxxxxx"
+            className="settings-input settings-input-focusable"
+            autoComplete="off"
+          />
+          <button
+            type="button"
+            className="settings-eye-btn"
+            onClick={() => setShowApiKey((s) => ({ ...s, VISION_API_KEY: !s.VISION_API_KEY }))}
+          >
+            {showApiKey.VISION_API_KEY ? '🙈' : '👁'}
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-field" style={{ marginBottom: 10 }}>
+        <label>Base URL</label>
+        <input
+          type="text"
+          value={apiKeys.VISION_BASE_URL}
+          onChange={(e) => setApiKeys((k) => ({ ...k, VISION_BASE_URL: e.target.value }))}
+          placeholder="https://api.siliconflow.cn/v1"
+          className="settings-input settings-input-focusable"
+          autoComplete="off"
+        />
+      </div>
+
+      <div className="settings-field">
+        <label>视觉模型</label>
+        <input
+          type="text"
+          value={apiKeys.VISION_MODEL}
+          onChange={(e) => setApiKeys((k) => ({ ...k, VISION_MODEL: e.target.value }))}
+          placeholder={activePreset.model || '例如：Qwen/Qwen2.5-VL-7B-Instruct'}
+          className="settings-input settings-input-focusable"
+          autoComplete="off"
+        />
+        <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+          留空则不启用视觉 API。三个字段（Key / URL / 模型）都填写后生效。
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const VISION_PRESETS_LIST = [
+  {
+    id: 'siliconflow',
+    label: '硅基流动 SiliconFlow（推荐，有免费额度）',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'Qwen/Qwen2.5-VL-7B-Instruct',
+    keyLink: 'https://cloud.siliconflow.cn/',
+    modelHint: '免费：Qwen/Qwen2.5-VL-7B-Instruct　付费：Qwen/Qwen2.5-VL-72B-Instruct',
+  },
+  {
+    id: 'aliyun',
+    label: '阿里云百炼 DashScope',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen-vl-max',
+    keyLink: 'https://bailian.console.aliyun.com/',
+    modelHint: '例如：qwen-vl-max、qwen-vl-plus',
+  },
+  {
+    id: 'custom',
+    label: '自定义 OpenAI 兼容服务',
+    baseUrl: '',
+    model: '',
+    keyLink: '',
+    modelHint: '任何支持 image_url 多模态的 OpenAI 兼容接口',
+  },
+];
 
 export function ConnectionTabView({
   apiKeysLoaded,
@@ -108,17 +241,6 @@ export function ConnectionTabView({
   setTestConnectionError,
   apiKeysRefreshing,
   refetchApiKeys,
-  localVisionStatus,
-  localVisionEnabled,
-  localVisionDownloaded,
-  localVisionMessage,
-  localVisionError,
-  localVisionBusy,
-  localVisionMirrorHost,
-  onChangeLocalVisionMirrorHost,
-  onSaveLocalVisionMirrorHost,
-  onToggleLocalVision,
-  onDownloadLocalVision,
 }: ConnectionTabViewProps) {
   const customPresetId = currentProviderId === 'custom'
     ? (apiKeys.CUSTOM_BASE_URL || '').toLowerCase().includes('siliconflow') ? 'siliconflow' : ''
@@ -424,7 +546,8 @@ export function ConnectionTabView({
             <section className="settings-section" style={{ marginTop: 18 }}>
               <h3>3. 生图配置</h3>
               <p className="settings-desc">
-                独立于聊天模型的生图 API 配置。留空 API Key 时会优先复用当前聊天服务商的 Key。
+                独立于聊天模型的生图 API 配置。留空「生图 API Key」时会复用聊天 Key（硅基流动选官方入口时 Key 在上方「API Key」里，与 DASHSCOPE 字段同源）。
+                硅基流动请选「硅基流动」或选 OpenAI 兼容且 Base URL 填 <code>api.siliconflow.cn</code>。
               </p>
 
               <div className="settings-field">
@@ -435,7 +558,8 @@ export function ConnectionTabView({
                   className="settings-input settings-input-focusable"
                 >
                   <option value="minimax">MiniMax image-01（推荐）</option>
-                  <option value="openai">OpenAI / OpenAI 兼容接口</option>
+                  <option value="openai">OpenAI / 其他 OpenAI 兼容（含手动填硅基 URL）</option>
+                  <option value="siliconflow">硅基流动 SiliconFlow（推荐硅基生图）</option>
                 </select>
               </div>
 
@@ -466,7 +590,13 @@ export function ConnectionTabView({
                   type="text"
                   value={apiKeys.IMAGE_BASE_URL || ''}
                   onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_BASE_URL: e.target.value }))}
-                  placeholder={apiKeys.IMAGE_PROVIDER === 'openai' ? 'https://api.openai.com' : 'https://api.minimax.chat'}
+                  placeholder={
+                    apiKeys.IMAGE_PROVIDER === 'openai'
+                      ? 'https://api.openai.com'
+                      : apiKeys.IMAGE_PROVIDER === 'siliconflow'
+                        ? 'https://api.siliconflow.cn/v1'
+                        : 'https://api.minimax.chat'
+                  }
                   className="settings-input settings-input-focusable"
                   autoComplete="off"
                 />
@@ -478,7 +608,13 @@ export function ConnectionTabView({
                   type="text"
                   value={apiKeys.IMAGE_MODEL || ''}
                   onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_MODEL: e.target.value }))}
-                  placeholder={apiKeys.IMAGE_PROVIDER === 'openai' ? 'dall-e-3' : 'image-01'}
+                  placeholder={
+                    apiKeys.IMAGE_PROVIDER === 'openai'
+                      ? 'dall-e-3'
+                      : apiKeys.IMAGE_PROVIDER === 'siliconflow'
+                        ? 'Kwai-Kolors/Kolors'
+                        : 'image-01'
+                  }
                   className="settings-input settings-input-focusable"
                   autoComplete="off"
                 />
@@ -574,75 +710,7 @@ export function ConnectionTabView({
               )}
             </div>
 
-            <div className="settings-vision-card">
-              <div className="settings-vision-card-head">
-                <div>
-                  <div className="settings-vision-title">本地视觉模型（BLIP）</div>
-                  <div className="settings-vision-subtitle">
-                    可选离线兜底。默认图片理解优先走原生视觉或 MCP `understand_image`，本地模型只在前两者不可用时才使用。
-                  </div>
-                </div>
-                <label className="settings-toggle">
-                  <input
-                    type="checkbox"
-                    checked={localVisionEnabled}
-                    onChange={(e) => onToggleLocalVision(e.target.checked)}
-                    disabled={localVisionBusy}
-                  />
-                  <span>{localVisionEnabled ? '已启用' : '已关闭'}</span>
-                </label>
-              </div>
-
-              <div className="settings-vision-status">
-                <span className={`settings-vision-pill settings-vision-pill-${localVisionStatus}`}>
-                  {localVisionStatus === 'ready'
-                    ? '已就绪'
-                    : localVisionStatus === 'downloading'
-                      ? '下载中'
-                      : localVisionStatus === 'error'
-                        ? '下载失败'
-                        : '未下载'}
-                </span>
-                <span className="settings-vision-meta">
-                  {localVisionDownloaded ? '模型已缓存到本地' : '尚未缓存模型文件'}
-                </span>
-              </div>
-
-              <p className="settings-desc" style={{ marginBottom: 10 }}>
-                {localVisionError || localVisionMessage}
-              </p>
-
-              <div className="settings-field" style={{ marginBottom: 10 }}>
-                <label>模型镜像地址（可选）</label>
-                <input
-                  type="text"
-                  value={localVisionMirrorHost}
-                  onChange={(e) => onChangeLocalVisionMirrorHost(e.target.value)}
-                  onBlur={(e) => onSaveLocalVisionMirrorHost(e.target.value)}
-                  placeholder="例如：https://hf-mirror.com/"
-                  className="settings-input settings-input-focusable"
-                  autoComplete="off"
-                  disabled={localVisionBusy}
-                />
-                <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
-                  适合国内网络。下载时会优先尝试这里填写的 Hugging Face 兼容镜像，失败后自动回退官方源；留空则直接使用官方源。
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className="settings-btn"
-                  onClick={onDownloadLocalVision}
-                  disabled={localVisionBusy}
-                >
-                  {localVisionStatus === 'downloading' ? '下载中...' : localVisionDownloaded ? '重新下载模型' : '下载本地视觉模型'}
-                </button>
-                <span className="settings-vision-hint">
-                  没有代理或网络不稳定时，这个下载可能失败；失败不影响 MCP 图片理解。
-                </span>
-              </div>
-            </div>
+            <VisionApiSection apiKeys={apiKeys} setApiKeys={setApiKeys} showApiKey={showApiKey} setShowApiKey={setShowApiKey} />
           </>
         )}
       </section>

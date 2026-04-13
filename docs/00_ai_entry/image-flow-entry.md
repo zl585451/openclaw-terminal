@@ -96,6 +96,14 @@ flowchart TD
 - 把结果拼进文本上下文
 - 避免图片直传把主文本模型流式回复打断
 
+**降级链路（所有 provider 通用）：**
+1. DashScope 云端（仅 provider=bailian/bailian-coding 时）
+2. 视觉 API（`VISION_API_KEY` + `VISION_BASE_URL` + `VISION_MODEL`，独立配置，与主 provider 无关）
+3. MCP `understand_image`（最后兜底）
+4. 降级提示
+
+> 本地 BLIP 已于 2026-04-13 移除。推荐在设置面板配置「图片理解 API」（硅基流动免费 VL 模型）。
+
 ### hypothesis
 - 图片消息默认不再触发 hypothesis 支线请求
 - 目的是降低竞态和空流 done 风险

@@ -23,6 +23,9 @@ export interface ApiKeysState {
   CUSTOM_BASE_URL: string;
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
+  VISION_API_KEY: string;
+  VISION_BASE_URL: string;
+  VISION_MODEL: string;
 }
 
 export interface ProviderEntry {
@@ -123,6 +126,9 @@ type GatewayConfigPayload = {
   CUSTOM_BASE_URL: string;
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
+  VISION_API_KEY: string;
+  VISION_BASE_URL: string;
+  VISION_MODEL: string;
 };
 
 function resolveProviderId(data: Partial<ApiKeysState>): string {
@@ -192,6 +198,9 @@ function buildGatewayPayload(
     CUSTOM_BASE_URL: currentProviderId === 'custom' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     BRAVE_SEARCH_API_KEY: searchKeys.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
     TAVILY_API_KEY: searchKeys.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
+    VISION_API_KEY: apiKeys.VISION_API_KEY || '',
+    VISION_BASE_URL: apiKeys.VISION_BASE_URL || '',
+    VISION_MODEL: apiKeys.VISION_MODEL || '',
   };
 }
 
@@ -218,6 +227,9 @@ export function useApiKeys() {
     CUSTOM_BASE_URL: '',
     BRAVE_SEARCH_API_KEY: '',
     TAVILY_API_KEY: '',
+    VISION_API_KEY: '',
+    VISION_BASE_URL: '',
+    VISION_MODEL: '',
   });
 
   const searchKeysRef = useRef({ BRAVE_SEARCH_API_KEY: '', TAVILY_API_KEY: '' });
@@ -322,7 +334,11 @@ export function useApiKeys() {
     [apiKeys, currentProviderId, currentProvider],
   );
   const hasGatewayConfigChanges = useMemo(
-    () => apiKeysLoaded && !!savedGatewayConfig && JSON.stringify(currentGatewayConfig) !== JSON.stringify(savedGatewayConfig),
+    () => {
+      if (!apiKeysLoaded) return false;
+      if (!savedGatewayConfig) return true;
+      return JSON.stringify(currentGatewayConfig) !== JSON.stringify(savedGatewayConfig);
+    },
     [apiKeysLoaded, currentGatewayConfig, savedGatewayConfig],
   );
 
