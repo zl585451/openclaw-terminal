@@ -26,6 +26,8 @@ let reconnectRetryCount = 0;
 let appQuitting = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let suppressAutoReconnect = false;
+/** 为 true 时表示即将主动结束 OCT Gateway 子进程，exit 回调不应视为崩溃 */
+let expectOctGatewayProcessExit = false;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
 let currentSessionKey: string = 'main';
 const SESSION_STATE_FILE = path.join(app.getPath('userData'), 'session-state.json');
@@ -870,6 +872,7 @@ function createWindow() {
       gatewayProcess = null;
     }
     if (octGatewayProcess && !octGatewayProcess.killed) {
+      expectOctGatewayProcessExit = true;
       octGatewayProcess.kill();
       octGatewayProcess = null;
       await new Promise(r => setTimeout(r, 500));
@@ -2089,11 +2092,24 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         if (l.trim()) sendGatewayLogLine(`[OCT ERR] ${l.trim()}`);
       });
     });
-    octGatewayProcess.on('exit', (code) => {
-      console.log('[OCT Gateway] 退出，code:', code);
+    octGatewayProcess.on('exit', (code, signal) => {
+      console.log('[Gateway] 进程退出', { code, signal: signal || undefined });
       octGatewayProcess = null;
+      const intentional = expectOctGatewayProcessExit;
+      expectOctGatewayProcessExit = false;
       if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
-        mainWindow.webContents.send('gateway-status', { running: false, managed: false });
+        if (!intentional) {
+          suppressAutoReconnect = true;
+          sendConnLog(
+            `[Gateway] 进程已退出 code=${code == null ? -1 : code}，Gateway 已停止；请使用「启动/重启 Gateway」后再连`
+          );
+          mainWindow.webContents.send('gateway-status', {
+            running: false,
+            managed: true,
+            exitCode: code == null ? -1 : code,
+            processExit: true,
+          });
+        }
       }
     });
 
@@ -2229,6 +2245,7 @@ ipcMain.handle(
       const gwProc = octGatewayProcess;
       const hadGateway = !!(gwProc && !gwProc.killed);
       if (hadGateway && gwProc) {
+        expectOctGatewayProcessExit = true;
         try {
           gwProc.kill('SIGTERM');
         } catch {
@@ -2585,6 +2602,10 @@ ipcMain.handle('start-gateway', async () => {
   const result = await startOctGateway();
   if (result.success) {
     mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已启动 ✅']);
+    suppressAutoReconnect = false;
+    reconnectRetryCount = 0;
+    await new Promise((r) => setTimeout(r, 800));
+    connectOpenClaw();
   }
   return result;
 });
@@ -2592,6 +2613,7 @@ ipcMain.handle('start-gateway', async () => {
 ipcMain.handle('stop-gateway', () => {
   // 停止 OCT Gateway
   if (octGatewayProcess && !octGatewayProcess.killed) {
+    expectOctGatewayProcessExit = true;
     octGatewayProcess.kill();
     octGatewayProcess = null;
   }
@@ -2606,6 +2628,7 @@ ipcMain.handle('stop-gateway', () => {
 
 ipcMain.handle('gateway-restart', async () => {
   if (octGatewayProcess && !octGatewayProcess.killed) {
+    expectOctGatewayProcessExit = true;
     octGatewayProcess.kill();
     octGatewayProcess = null;
   }
@@ -2626,6 +2649,7 @@ ipcMain.handle('gateway-restart', async () => {
       mainWindow?.webContents.send('gateway-status', { running: true, managed: true });
       mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 已启动']);
       if (openclawWs) { openclawWs.close(); openclawWs = null; }
+      suppressAutoReconnect = false;
       reconnectRetryCount = 0;
       connectOpenClaw();
       return { success: true };
@@ -2664,6 +2688,7 @@ ipcMain.handle('kill-port-18789', async () => {
 ipcMain.handle('gateway-clear-port-and-start', async () => {
   mainWindow?.webContents.send('openclaw-log-lines', ['[System] 正在清理 18789 端口并启动 OCT Gateway...']);
   if (octGatewayProcess && !octGatewayProcess.killed) {
+    expectOctGatewayProcessExit = true;
     octGatewayProcess.kill();
     octGatewayProcess = null;
   }
@@ -2717,6 +2742,7 @@ ipcMain.handle('gateway-clear-port-and-start', async () => {
     openclawWs.close();
     openclawWs = null;
   }
+  suppressAutoReconnect = false;
   reconnectRetryCount = 0;
   connectOpenClaw();
   return { success: true };
@@ -2961,6 +2987,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       || keys.VISION_BASE_URL !== undefined
       || keys.VISION_MODEL !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
+      expectOctGatewayProcessExit = true;
       octGatewayProcess.kill();
       octGatewayProcess = null;
       mainWindow?.webContents.send('openclaw-log-lines', ['[系统] AI 配置已更新，正在重启 Gateway...']);
@@ -3857,6 +3884,7 @@ app.on('will-quit', async () => {
   
   // 停止所有子进程并清理端口
   if (octGatewayProcess && !octGatewayProcess.killed) {
+    expectOctGatewayProcessExit = true;
     try { octGatewayProcess.kill('SIGTERM'); } catch {}
     octGatewayProcess = null;
   }
@@ -3901,6 +3929,7 @@ app.on('before-quit', async (e) => {
   
   // 2. 停止所有子进程
   if (octGatewayProcess && !octGatewayProcess.killed) {
+    expectOctGatewayProcessExit = true;
     try { octGatewayProcess.kill('SIGTERM'); } catch {}
     octGatewayProcess = null;
   }

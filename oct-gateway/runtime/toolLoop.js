@@ -68,18 +68,32 @@ class ToolLoop {
         try { onToolEvent({ type: 'tool_call', tool: toolName, args, callId: toolCall.id, state: 'executing' }); } catch {}
       }
 
+      const _toolStart = Date.now();
+      let toolFailed = false;
       const result = await Promise.race([
         this.toolLoader.executeTool(toolName, args),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error(`工具 ${toolName} 超时（30秒）`)), 30000)
         ),
       ]).catch((error) => {
-        this.log.error(`工具 ${toolName} 执行失败: ${error.message}`);
+        toolFailed = true;
+        this.log.error(`工具 ${toolName} 执行失败`, {
+          ms: Date.now() - _toolStart,
+          error: error.message,
+        });
         if (onToolEvent) {
           try { onToolEvent({ type: 'tool_result', tool: toolName, callId: toolCall.id, state: 'error', error: error.message }); } catch {}
         }
         return `工具执行失败: ${error.message}，请稍后重试或换个方式表达需求。`;
       });
+
+      if (!toolFailed) {
+        this.log.info('tool done', {
+          name: toolName,
+          ms: Date.now() - _toolStart,
+          round: toolRound + 1,
+        });
+      }
 
       if (result && typeof result === 'object' && result.workbenchEvent && onToolEvent) {
         try {

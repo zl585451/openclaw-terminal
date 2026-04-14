@@ -1,7 +1,7 @@
 # Bug Triage
 
 > Status: CURRENT  
-> Last Updated: 2026-04-08  
+> Last Updated: 2026-04-14  
 > Purpose: 小模型和工程师 AI 的统一排错顺序
 
 ---
@@ -101,7 +101,25 @@
 
 ---
 
-## 5. 改动前后文档要求
+## 5. WebSocket 异常断开（如 code=1006）
+
+### 现象
+- 调研/多工具轮次中途突然断开
+- 日志：`WebSocket 已断开 code=1006`
+
+### 顺序
+1. `docs/03_specs/WEBSOCKET_PROTOCOL.md`（Gateway ping、`hello-ok`）
+2. `oct-gateway/tools/exec_command.js`（是否长时间阻塞事件循环）
+3. `oct-gateway/transport/ws.js`（服务端 ping）
+4. `electron/main.ts`（客户端 `ping`/`pong` 超时与 `suppressAutoReconnect`）
+
+### 判断规则
+- 长 `exec_command` / 同步阻塞后断连：优先查网关是否已改为异步 exec + 服务端 ping
+- 子进程崩溃：看主进程是否收到 `gateway-status` / `processExit`，与单纯 WS 断连区分
+
+---
+
+## 6. 改动前后文档要求
 
 改代码前：
 - 必须先引用对应入口文档

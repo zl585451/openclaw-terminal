@@ -7,6 +7,18 @@
 | 调用链 | 前端 WebSocket → index.js 收到消息 → **orchestrator.dispatch** → ai.js streamChat → 流式返回前端 |
 | 验证 | 打开 OCT 界面，发消息能收到回复 |
 | 状态 | ✅ 正常 |
+| 保活 | `oct-gateway/transport/ws.js` 握手成功后约每 **25s** 服务端 **ping**，降低长任务期间客户端 pong 超时导致 **1006** 的概率 |
+
+---
+
+## 1.0 Electron 托管 Gateway 与断连语义
+
+| 项目 | 内容 |
+|------|------|
+| 做什么 | 区分 **OCT Gateway 子进程退出** 与 **仅 WebSocket 断连**（对端仍监听端口等） |
+| 文件 | `electron/main.ts`（`octGatewayProcess.on('exit')`、`suppressAutoReconnect`、`expectOctGatewayProcessExit`） |
+| 行为 | 非预期子进程退出：`suppressAutoReconnect = true`，连接日志提示手动启动/重启 Gateway，并向渲染进程发送 `gateway-status`（`managed: true`、`processExit: true`、`exitCode`）。主动 `stop-gateway` / `gateway-restart` / 退出应用前 kill 等路径置 `expectOctGatewayProcessExit`，避免误判为崩溃 |
+| 验证 | 手动结束 Gateway 进程后，连接日志不应再无限次无意义自动重连；点击「启动 Gateway」后应恢复连接 |
 
 ---
 
@@ -30,6 +42,7 @@
 | 文件 | `oct-gateway/orchestrator.js` |
 | 调用链 | chat.send → orchestrator.dispatch() → 意图分析 + tryDispatchAsTask → 返回分析结果 |
 | 特性 | 关键词匹配（code/write/research）、后台任务触发词（帮我搜/查一下/搜索一下等） |
+| 工具执行 | `exec_command` 使用异步 `child_process.exec`，避免同步 `execSync` 阻塞事件循环导致 WS 心跳停滞 |
 | 状态 | ✅ 正常 |
 
 ---

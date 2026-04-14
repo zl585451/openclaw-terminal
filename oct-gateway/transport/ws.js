@@ -2,6 +2,10 @@ const { WebSocketServer } = require('ws');
 const { randomUUID, randomBytes } = require('node:crypto');
 const { safeParseMessage, serializeMessage } = require('./protocol');
 const { createConnectionAdapter } = require('./connection');
+const taskQueue = require('../task_queue');
+
+/** 服务端主动 ping，避免长任务阻塞事件循环时客户端 pong 超时断开 */
+const SERVER_PING_INTERVAL_MS = 25000;
 
 class WsTransport {
   constructor({
@@ -65,6 +69,7 @@ class WsTransport {
 
     let currentAbort = null;
     let thinkingPulseInterval = null;
+    let serverPingInterval = null;
 
     const connection = createConnectionAdapter({
       clientId,
@@ -106,6 +111,16 @@ class WsTransport {
         event: 'connect.challenge',
         payload: { nonce },
       });
+      serverPingInterval = setInterval(() => {
+        if (ws.readyState === ws.OPEN) {
+          try {
+            ws.ping();
+          } catch (_) {}
+        } else if (serverPingInterval) {
+          clearInterval(serverPingInterval);
+          serverPingInterval = null;
+        }
+      }, SERVER_PING_INTERVAL_MS);
     } catch (e) {
       this.log.error('send challenge failed', { clientId, error: e?.message || String(e) });
       try { ws.close(1011, 'Server error'); } catch (_) {}
@@ -125,6 +140,14 @@ class WsTransport {
           return;
         }
         this.authenticatedClients.add(ws);
+        const sessionKey = params?.sessionKey || 'main';
+        const pendingTasks = taskQueue.getRunningTasks(sessionKey).map((t) => ({
+          taskId: t.taskId,
+          type: t.type,
+          status: t.status,
+          startedAt: t.startedAt,
+          createdAt: t.createdAt,
+        }));
         connection.send({
           type: 'res',
           id,
@@ -133,6 +156,7 @@ class WsTransport {
             type: 'hello-ok',
             model: this.modelProvider(),
             agent: { model: this.modelProvider() },
+            pendingTasks,
           },
         });
         this.log.info('client authenticated', { clientId });
@@ -164,6 +188,10 @@ class WsTransport {
     });
 
     ws.on('close', () => {
+      if (serverPingInterval) {
+        clearInterval(serverPingInterval);
+        serverPingInterval = null;
+      }
       connection.abortCurrent();
       connection.setAbort(null);
       connection.stopThinkingPulse();

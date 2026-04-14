@@ -72,6 +72,16 @@ function getTask(taskId) {
   return readTasks()[taskId] || null;
 }
 
+/** 某会话下仍在排队或执行中的后台任务（供 hello-ok pendingTasks） */
+function getRunningTasks(sessionKey) {
+  const tasks = readTasks();
+  return Object.values(tasks).filter(
+    (t) =>
+      t.sessionKey === sessionKey &&
+      (t.status === STATUS.RUNNING || t.status === STATUS.PENDING)
+  );
+}
+
 // 获取某个 session 里已完成但未通知 AMY 的任务
 function getPendingNotifyTasks(sessionKey) {
   const tasks = readTasks();
@@ -133,6 +143,7 @@ function cleanup() {
 
 module.exports = {
   createTask, updateTask, getTask,
+  getRunningTasks,
   getPendingNotifyTasks, markNotified,
   checkTimeouts, cleanup, STATUS
 };

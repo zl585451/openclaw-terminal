@@ -1,8 +1,14 @@
-const { execSync } = require('child_process');
+const { exec } = require('child_process');
 const { convertCommand } = require('./command_converter');
+
+const EXEC_TIMEOUT_MS = 30000;
+const EXEC_MAX_STDOUT = 5000;
+const EXEC_MAX_STDERR_CAPTURE = 2000;
+const EXEC_MAX_BUFFER = 2 * 1024 * 1024;
 
 module.exports = {
   name: 'exec_command',
+  riskLevel: 'guarded',
   definition: {
     type: 'function',
     function: {
@@ -30,23 +36,48 @@ module.exports = {
       ? `chcp 65001 >nul && ${command}`
       : command;
 
-    try {
-      const output = execSync(fullCommand, {
+    return new Promise((resolve) => {
+      const child = exec(fullCommand, {
         cwd: args.cwd || process.cwd(),
-        encoding: 'utf-8',
-        timeout: 30000,
+        encoding: 'utf8',
+        timeout: EXEC_TIMEOUT_MS,
         windowsHide: true,
         shell: true,
+        maxBuffer: EXEC_MAX_BUFFER,
       });
-      return { success: true, output: output.slice(0, 5000) };
-    } catch (e) {
-      const stderr = e.stderr ? e.stderr.toString('utf-8') : '';
-      const stdout = e.stdout ? e.stdout.toString('utf-8') : '';
-      const combined = (stdout + stderr).trim().slice(0, 5000);
-      if (combined) {
-        return { success: false, output: `命令执行出错:\n${combined}` };
-      }
-      return { success: false, output: `命令执行失败: ${e.message}` };
-    }
+
+      let stdout = '';
+      let stderr = '';
+      child.stdout?.on('data', (d) => {
+        const chunk = typeof d === 'string' ? d : d.toString('utf8');
+        if (stdout.length < EXEC_MAX_STDOUT) stdout += chunk;
+      });
+      child.stderr?.on('data', (d) => {
+        const chunk = typeof d === 'string' ? d : d.toString('utf8');
+        if (stderr.length < EXEC_MAX_STDERR_CAPTURE) stderr += chunk;
+      });
+
+      child.on('close', (code) => {
+        const combined = (stdout + stderr).trim();
+        if (code !== 0) {
+          const body = combined.slice(0, EXEC_MAX_STDOUT);
+          resolve({
+            success: false,
+            output: body ? `命令执行出错:\n${body}` : `命令退出码: ${code}`,
+          });
+          return;
+        }
+        resolve({ success: true, output: stdout.slice(0, EXEC_MAX_STDOUT) });
+      });
+
+      child.on('error', (e) => {
+        const combined = (stdout + stderr).trim().slice(0, EXEC_MAX_STDOUT);
+        if (combined) {
+          resolve({ success: false, output: `命令执行出错:\n${combined}` });
+        } else {
+          resolve({ success: false, output: `命令执行失败: ${e.message}` });
+        }
+      });
+    });
   },
 };

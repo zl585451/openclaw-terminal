@@ -1,6 +1,6 @@
 # Gateway WebSocket 消息协议
 
-> **最后更新时间**：2026-04-12  
+> **最后更新时间**：2026-04-14  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：理解前端与 Gateway 的通信格式，调试连接、消息收发问题
 
@@ -35,12 +35,14 @@
   "method": "connect",
   "params": {
     "auth": { "token": "OCT_GATEWAY_TOKEN 或空" },
-    "client": { "id": "xxx", "version": "1.0", "mode": "desktop" }
+    "client": { "id": "xxx", "version": "1.0", "mode": "desktop" },
+    "sessionKey": "main"
   }
 }
 ```
 
 - 无 ECDSA 签名，仅校验 token（若配置了 `OCT_GATEWAY_TOKEN`）
+- `sessionKey`：**可选**，缺省为 `main`；用于 `hello-ok.pendingTasks` 按会话筛选后台任务（见下）
 
 ### chat.send
 
@@ -104,10 +106,22 @@
   "payload": {
     "type": "hello-ok",
     "model": "qwen3.5-plus",
-    "agent": { "model": "qwen3.5-plus" }
+    "agent": { "model": "qwen3.5-plus" },
+    "pendingTasks": [
+      {
+        "taskId": "task-1730-abc",
+        "type": "web_search",
+        "status": "running",
+        "startedAt": 1730000000000,
+        "createdAt": 1729999990000
+      }
+    ]
   }
 }
 ```
+
+- `pendingTasks`：当前 `sessionKey` 下状态为 `pending` 或 `running` 的后台任务（`oct-gateway/task_queue.js`）；无进行中任务时为 `[]`。旧客户端可忽略该字段。
+- Gateway 会按约 **25s** 间隔对客户端发送 **WebSocket ping**（`ws` 帧），与流式 `agent-phase` 无关，用于长工具执行期间保持连接。
 
 ### 生图响应
 
