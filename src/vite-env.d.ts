@@ -128,6 +128,10 @@ interface ElectronAPI {
     DEEPSEEK_BASE_URL?: string;
     MINIMAX_BASE_URL?: string;
     CUSTOM_BASE_URL?: string;
+    GOOGLE_AI_API_KEY?: string;
+    GOOGLE_AI_BASE_URL?: string;
+    HTTPS_PROXY?: string;
+    HTTP_PROXY?: string;
     BRAVE_SEARCH_API_KEY?: string;
     TAVILY_API_KEY?: string;
     VISION_API_KEY?: string;

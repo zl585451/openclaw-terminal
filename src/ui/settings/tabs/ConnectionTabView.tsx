@@ -45,6 +45,10 @@ export type SettingsApiKeysState = {
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
   CUSTOM_BASE_URL: string; // 自定义 Base URL
+  GOOGLE_AI_API_KEY: string;
+  GOOGLE_AI_BASE_URL: string;
+  HTTPS_PROXY: string;
+  HTTP_PROXY: string;
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
   VISION_API_KEY: string;
@@ -349,10 +353,11 @@ export function ConnectionTabView({
                     ...k,
                     OCT_PROVIDER: id,
                     OCT_MODEL: p?.defaultModel || k.OCT_MODEL,
-                    DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
+                    DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' || id === 'google' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
                     DEEPSEEK_BASE_URL: id === 'deepseek' ? (p?.baseUrl || '') : k.DEEPSEEK_BASE_URL,
                     MINIMAX_BASE_URL: id === 'minimax' ? (p?.baseUrl || '') : k.MINIMAX_BASE_URL,
                     CUSTOM_BASE_URL: id === 'custom' ? (p?.baseUrl || '') : k.CUSTOM_BASE_URL,
+                    GOOGLE_AI_BASE_URL: id === 'google' ? (p?.baseUrl || '') : k.GOOGLE_AI_BASE_URL,
                   }));
                 }}
                 className="settings-input settings-input-focusable"
@@ -370,11 +375,12 @@ export function ConnectionTabView({
               <label>API Key</label>
               <div className="settings-input-row">
                 <input
-                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY || showApiKey.MINIMAX_API_KEY || showApiKey.CUSTOM_API_KEY ? 'text' : 'password'}
+                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY || showApiKey.MINIMAX_API_KEY || showApiKey.CUSTOM_API_KEY || showApiKey.GOOGLE_AI_API_KEY ? 'text' : 'password'}
                   value={
                     currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_API_KEY : 
                     currentProviderId === 'minimax' ? apiKeys.MINIMAX_API_KEY :
                     currentProviderId === 'custom' ? apiKeys.CUSTOM_API_KEY : 
+                    currentProviderId === 'google' ? apiKeys.GOOGLE_AI_API_KEY :
                     apiKeys.DASHSCOPE_API_KEY
                   }
                   onChange={(e) => {
@@ -382,6 +388,7 @@ export function ConnectionTabView({
                     if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
                     else if (currentProviderId === 'minimax') key = 'MINIMAX_API_KEY';
                     else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
+                    else if (currentProviderId === 'google') key = 'GOOGLE_AI_API_KEY';
                     else key = 'DASHSCOPE_API_KEY';
                     setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                   }}
@@ -397,6 +404,7 @@ export function ConnectionTabView({
                     if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
                     else if (currentProviderId === 'minimax') key = 'MINIMAX_API_KEY';
                     else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
+                    else if (currentProviderId === 'google') key = 'GOOGLE_AI_API_KEY';
                     else key = 'DASHSCOPE_API_KEY';
                     setShowApiKey((s) => ({ ...s, [key]: !s[key as keyof typeof s] }));
                   }}
@@ -407,6 +415,8 @@ export function ConnectionTabView({
                     ? (showApiKey.MINIMAX_API_KEY ? '🙈' : '👁')
                     : currentProviderId === 'custom'
                     ? (showApiKey.CUSTOM_API_KEY ? '🙈' : '👁')
+                    : currentProviderId === 'google'
+                    ? (showApiKey.GOOGLE_AI_API_KEY ? '🙈' : '👁')
                     : (showApiKey.DASHSCOPE_API_KEY ? '🙈' : '👁')}
                 </button>
               </div>
@@ -416,6 +426,11 @@ export function ConnectionTabView({
               {currentProviderId === 'minimax' && (
                 <p className="settings-desc" style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)' }}>
                   MiniMax M2.7 现在建议使用 Token Plan 专属 API Key，通常以 <code>sk-cp-</code> 开头；大陆区 Base URL 保持 <code>https://api.minimaxi.com/v1</code> 即可。
+                </p>
+              )}
+              {currentProviderId === 'google' && (
+                <p className="settings-desc" style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)' }}>
+                  使用 Google Cloud 控制台 <strong>Vertex AI Studio → 设置 → API 密钥</strong> 创建的密钥；走 Gemini 的 OpenAI 兼容接口，计费归属当前 GCP 项目。预设模型暂不支持工具调用（天气/文件等插件不可用）。
                 </p>
               )}
             </div>
@@ -651,6 +666,7 @@ export function ConnectionTabView({
                       currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : 
                       currentProviderId === 'minimax' ? apiKeys.MINIMAX_BASE_URL :
                       currentProviderId === 'custom' ? apiKeys.CUSTOM_BASE_URL :
+                      currentProviderId === 'google' ? apiKeys.GOOGLE_AI_BASE_URL :
                       apiKeys.DASHSCOPE_BASE_URL
                     }
                     onChange={(e) => {
@@ -658,6 +674,7 @@ export function ConnectionTabView({
                       if (currentProviderId === 'deepseek') key = 'DEEPSEEK_BASE_URL';
                       else if (currentProviderId === 'minimax') key = 'MINIMAX_BASE_URL';
                       else if (currentProviderId === 'custom') key = 'CUSTOM_BASE_URL';
+                      else if (currentProviderId === 'google') key = 'GOOGLE_AI_BASE_URL';
                       else key = 'DASHSCOPE_BASE_URL';
                       setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                     }}
@@ -685,17 +702,26 @@ export function ConnectionTabView({
                   setTestConnectionError('');
                   const providerId = currentProviderId;
                   const p = providers[providerId];
+                  let testModel = apiKeys.OCT_MODEL || p?.defaultModel || 'qwen3.5-plus';
+                  if (providerId === 'custom' && apiKeys.CUSTOM_MODEL) {
+                    testModel = apiKeys.CUSTOM_MODEL;
+                  }
+                  if (providerId === 'google' && testModel === '__custom__' && apiKeys.CUSTOM_MODEL) {
+                    testModel = apiKeys.CUSTOM_MODEL;
+                  }
                     const result = await api.testAIConnection({
                       OCT_PROVIDER: providerId,
-                      OCT_MODEL: apiKeys.OCT_MODEL || p?.defaultModel || 'qwen3.5-plus',
+                      OCT_MODEL: testModel,
                       DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
                       DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
                       MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
                       CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
-                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
+                      GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY,
+                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' || providerId === 'google' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
                       DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
                       MINIMAX_BASE_URL: providerId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || p?.baseUrl || '') : '',
                       CUSTOM_BASE_URL: providerId === 'custom' ? (apiKeys.CUSTOM_BASE_URL || p?.baseUrl || '') : '',
+                      GOOGLE_AI_BASE_URL: providerId === 'google' ? (apiKeys.GOOGLE_AI_BASE_URL || p?.baseUrl || '') : '',
                     });
                   setTestConnectionStatus(result.success ? 'success' : 'error');
                   if (!result.success) setTestConnectionError(result.error || '');
@@ -708,6 +734,21 @@ export function ConnectionTabView({
               {testConnectionStatus === 'error' && testConnectionError && (
                 <span style={{ fontSize: 12, color: 'var(--status-error)' }}>{testConnectionError}</span>
               )}
+            </div>
+
+            <div className="settings-field" style={{ marginTop: 14 }}>
+              <label>HTTPS 代理（可选，仅 oct-gateway 出站）</label>
+              <input
+                type="text"
+                value={apiKeys.HTTPS_PROXY || ''}
+                onChange={(e) => setApiKeys((k) => ({ ...k, HTTPS_PROXY: e.target.value }))}
+                placeholder="http://127.0.0.1:10809"
+                className="settings-input settings-input-focusable"
+                autoComplete="off"
+              />
+              <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                访问 Gemini / Google 等境外接口时使用。填 V2rayN「本地 HTTP 代理」地址（常见 10809，以你本机为准）。留空则不走代理。保存后会写入配置并重启网关。
+              </p>
             </div>
 
             <VisionApiSection apiKeys={apiKeys} setApiKeys={setApiKeys} showApiKey={showApiKey} setShowApiKey={setShowApiKey} />

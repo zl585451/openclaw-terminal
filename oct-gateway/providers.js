@@ -158,6 +158,37 @@ const PROVIDERS = {
     supportsStreamOptions: true,
   },
 
+  /**
+   * Google Gemini：Generative Language API 的 OpenAI 兼容层（Bearer = API Key）。
+   * 与 Cloud 文档里 Vertex 原生 REST（aiplatform.googleapis.com、OAuth/项目路径）不是同一路径；
+   * 与 Vertex AI Studio「API 密钥」及 ai.google.dev OpenAI 示例一致。
+   * @see https://ai.google.dev/gemini-api/docs/openai
+   */
+  google: {
+    id: 'google',
+    name: 'Google Gemini（Vertex AI Studio API 密钥）',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    keyPlaceholder: '在 Vertex AI Studio「API 密钥」处创建',
+    keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
+    keyEnvVars: ['GOOGLE_AI_API_KEY', 'GEMINI_API_KEY'],
+    defaultModel: 'gemini-2.5-flash',
+    models: [
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash（稳定，推荐）', tools: false, thinking: true },
+      { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite（更快更省）', tools: false, thinking: true },
+      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro（深度推理）', tools: false, thinking: true },
+      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: false, thinking: true },
+      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash（官方将弃用）', tools: false, thinking: false },
+      { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite（官方将弃用）', tools: false, thinking: false },
+      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', tools: false, thinking: false },
+      { id: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash-8B', tools: false, thinking: false },
+      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', tools: false, thinking: false },
+      { id: '__custom__', label: '✏️ 自定义模型 ID', tools: false, thinking: false, custom: true },
+    ],
+    supportsStreamOptions: false,
+    allowCustomModel: true,
+  },
+
   custom: {
     id: 'custom',
     name: '自定义 OpenAI 兼容服务',

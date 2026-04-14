@@ -9,6 +9,7 @@ export function inferProviderFromBaseUrl(baseUrl: string): string {
   if (u.includes('groq')) return 'groq';
   if (u.includes('api.openai.com')) return 'openai';
   if (u.includes('localhost:11434')) return 'ollama';
+  if (u.includes('generativelanguage.googleapis.com')) return 'google';
   return 'bailian-coding';
 }
 

@@ -67,8 +67,31 @@ function guessImageExtension(url: string): string {
   return 'jpg';
 }
 
+/** 与 oct-gateway/config.js 一致：Gemini OpenAI 兼容层仅 Bearer；URL 勿带 ?key= 以免 400 重复鉴权 */
+function sanitizeGoogleOpenAiBaseUrlForMain(url: string): string {
+  const s = String(url || '').trim();
+  if (!s) return s;
+  try {
+    const u = new URL(s);
+    if (!u.hostname.toLowerCase().includes('generativelanguage.googleapis.com')) {
+      return s.replace(/\/$/, '');
+    }
+    u.search = '';
+    u.hash = '';
+    let out = u.toString();
+    if (out.endsWith('/')) out = out.slice(0, -1);
+    return out;
+  } catch {
+    return s.split('?')[0].split('#')[0].trim().replace(/\/$/, '');
+  }
+}
+
 function buildOctChildEnv(extraEnv: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
+  // oct-gateway 在 index.js 内对 HTTPS_PROXY 使用 undici ProxyAgent。
+  // 若再启用 NODE_USE_ENV_PROXY，部分 Node 版本会对 Google 等请求叠加环境代理鉴权，
+  // 与 Bearer / API Key 并存时触发 generativelanguage 400「Multiple authentication credentials」。
+  delete env.NODE_USE_ENV_PROXY;
   const noProxyValue = [env.NO_PROXY, env.no_proxy, 'localhost', '127.0.0.1', '::1']
     .filter(Boolean)
     .flatMap((value) => String(value).split(','))
@@ -433,6 +456,24 @@ function getFallbackProviders() {
         { id: 'Qwen/Qwen2.5-72B-Instruct', label: 'Qwen 2.5 72B（免费）', tools: true, thinking: false },
         { id: 'deepseek-ai/DeepSeek-V3', label: 'DeepSeek V3', tools: false, thinking: false },
         { id: 'deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1（推理）', tools: false, thinking: true },
+      ],
+    },
+    google: {
+      id: 'google',
+      name: 'Google Gemini（Vertex AI Studio API 密钥）',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      keyPlaceholder: 'Vertex AI Studio 创建的 API 密钥',
+      keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
+      defaultModel: 'gemini-2.5-flash',
+      models: [
+        { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash（稳定，推荐）', tools: false, thinking: true },
+        { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', tools: false, thinking: true },
+        { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', tools: false, thinking: true },
+        { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: false, thinking: true },
+        { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
+        { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash（将弃用）', tools: false, thinking: false },
+        { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', tools: false, thinking: false },
+        { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', tools: false, thinking: false },
       ],
     },
     custom: {
@@ -2957,6 +2998,10 @@ ipcMain.handle('get-api-keys', async () => {
     keys.DEEPSEEK_BASE_URL = pick('DEEPSEEK_BASE_URL', cfg.DEEPSEEK_BASE_URL);
     keys.MINIMAX_BASE_URL = pick('MINIMAX_BASE_URL', cfg.MINIMAX_BASE_URL);
     keys.CUSTOM_BASE_URL = pick('CUSTOM_BASE_URL', cfg.CUSTOM_BASE_URL);
+    keys.GOOGLE_AI_API_KEY = pick('GOOGLE_AI_API_KEY', cfg.GOOGLE_AI_API_KEY);
+    keys.GOOGLE_AI_BASE_URL = pick('GOOGLE_AI_BASE_URL', cfg.GOOGLE_AI_BASE_URL);
+    keys.HTTPS_PROXY = pick('HTTPS_PROXY', cfg.HTTPS_PROXY);
+    keys.HTTP_PROXY = pick('HTTP_PROXY', cfg.HTTP_PROXY);
     keys.BRAVE_SEARCH_API_KEY = pick('BRAVE_SEARCH_API_KEY', cfg.BRAVE_SEARCH_API_KEY);
     keys.TAVILY_API_KEY = pick('TAVILY_API_KEY', cfg.TAVILY_API_KEY);
     keys.SILICONFLOW_API_KEY = pick('SILICONFLOW_API_KEY', cfg.SILICONFLOW_API_KEY);
@@ -2984,6 +3029,10 @@ ipcMain.handle('get-api-keys', async () => {
         DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
         MINIMAX_BASE_URL: keys.MINIMAX_BASE_URL || '',
         CUSTOM_BASE_URL: keys.CUSTOM_BASE_URL || '',
+        GOOGLE_AI_API_KEY: keys.GOOGLE_AI_API_KEY || '',
+        GOOGLE_AI_BASE_URL: keys.GOOGLE_AI_BASE_URL || '',
+        HTTPS_PROXY: keys.HTTPS_PROXY || '',
+        HTTP_PROXY: keys.HTTP_PROXY || '',
         BRAVE_SEARCH_API_KEY: keys.BRAVE_SEARCH_API_KEY || '',
         TAVILY_API_KEY: keys.TAVILY_API_KEY || '',
         SILICONFLOW_API_KEY: keys.SILICONFLOW_API_KEY || '',
@@ -3021,6 +3070,10 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     VISION_BASE_URL?: string;
     VISION_MODEL?: string;
     CUSTOM_BASE_URL?: string;
+    GOOGLE_AI_API_KEY?: string;
+    GOOGLE_AI_BASE_URL?: string;
+    HTTPS_PROXY?: string;
+    HTTP_PROXY?: string;
     BRAVE_SEARCH_API_KEY?: string;
     TAVILY_API_KEY?: string;
     SILICONFLOW_API_KEY?: string;
@@ -3053,6 +3106,10 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.DEEPSEEK_BASE_URL !== undefined) cfg.DEEPSEEK_BASE_URL = keys.DEEPSEEK_BASE_URL || '';
     if (keys.MINIMAX_BASE_URL !== undefined) cfg.MINIMAX_BASE_URL = keys.MINIMAX_BASE_URL || '';
     if (keys.CUSTOM_BASE_URL !== undefined) cfg.CUSTOM_BASE_URL = keys.CUSTOM_BASE_URL || '';
+    if (keys.GOOGLE_AI_API_KEY !== undefined) cfg.GOOGLE_AI_API_KEY = keys.GOOGLE_AI_API_KEY || '';
+    if (keys.GOOGLE_AI_BASE_URL !== undefined) cfg.GOOGLE_AI_BASE_URL = keys.GOOGLE_AI_BASE_URL || '';
+    if (keys.HTTPS_PROXY !== undefined) cfg.HTTPS_PROXY = keys.HTTPS_PROXY || '';
+    if (keys.HTTP_PROXY !== undefined) cfg.HTTP_PROXY = keys.HTTP_PROXY || '';
     if (keys.BRAVE_SEARCH_API_KEY !== undefined) cfg.BRAVE_SEARCH_API_KEY = keys.BRAVE_SEARCH_API_KEY || '';
     if (keys.TAVILY_API_KEY !== undefined) cfg.TAVILY_API_KEY = keys.TAVILY_API_KEY || '';
     if (keys.SILICONFLOW_API_KEY !== undefined) cfg.SILICONFLOW_API_KEY = keys.SILICONFLOW_API_KEY || '';
@@ -3100,6 +3157,8 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
       || keys.MINIMAX_API_KEY !== undefined
       || keys.CUSTOM_API_KEY !== undefined
+      || keys.GOOGLE_AI_API_KEY !== undefined || keys.GOOGLE_AI_BASE_URL !== undefined
+      || keys.HTTPS_PROXY !== undefined || keys.HTTP_PROXY !== undefined
       || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined
       || keys.VISION_API_KEY !== undefined
       || keys.VISION_BASE_URL !== undefined
@@ -3237,25 +3296,33 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
       providerId === 'deepseek' ? (cfg.DEEPSEEK_BASE_URL || provider?.baseUrl || '')
       : providerId === 'minimax' ? (cfg.MINIMAX_BASE_URL || provider?.baseUrl || '')
       : providerId === 'custom' ? (cfg.CUSTOM_BASE_URL || provider?.baseUrl || '')
+      : providerId === 'google' ? (cfg.GOOGLE_AI_BASE_URL || provider?.baseUrl || '')
       : (cfg.DASHSCOPE_BASE_URL || provider?.baseUrl || '');
     const apiKey =
       providerId === 'deepseek' ? (cfg.DEEPSEEK_API_KEY || '')
       : providerId === 'minimax' ? (cfg.MINIMAX_API_KEY || '')
       : providerId === 'custom' ? (cfg.CUSTOM_API_KEY || '')
+      : providerId === 'google' ? (cfg.GOOGLE_AI_API_KEY || '')
       : (cfg.DASHSCOPE_API_KEY || '');
     const model = cfg.OCT_MODEL || provider?.defaultModel || 'qwen3.5-plus';
     if (!baseUrl || !apiKey) {
       return { success: false, error: '请先填写 API Key 并选择服务商' };
     }
+    const fetchBaseUrl =
+      providerId === 'google' ? sanitizeGoogleOpenAiBaseUrlForMain(baseUrl) : baseUrl;
     if (providerId === 'minimax' && !String(apiKey).trim().startsWith('sk-cp-')) {
       return {
         success: false,
         error: 'MiniMax 现在需要 Token Plan 专属 API Key（通常以 sk-cp- 开头），普通按量计费 Key 不能直接用于 M2.7。',
       };
     }
-    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    const testHeaders: Record<string, string> =
+      providerId === 'google'
+        ? { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }
+        : { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
+    const res = await fetch(`${fetchBaseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      headers: testHeaders,
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: 'hi' }],

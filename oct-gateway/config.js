@@ -290,6 +290,87 @@ const MODEL_REGISTRY = {
     supportsThinking: true,
     maxTokens: 4096,
   },
+  // ─── Google Gemini（OpenAI 兼容端点 generativelanguage…/v1beta/openai）───
+  'gemini-2.5-flash': {
+    provider: 'google',
+    label: 'Gemini 2.5 Flash',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'gemini-2.5-flash-lite': {
+    provider: 'google',
+    label: 'Gemini 2.5 Flash-Lite',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'gemini-2.5-pro': {
+    provider: 'google',
+    label: 'Gemini 2.5 Pro',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'gemini-3-flash-preview': {
+    provider: 'google',
+    label: 'Gemini 3 Flash Preview',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'gemini-3.1-pro-preview': {
+    provider: 'google',
+    label: 'Gemini 3.1 Pro Preview',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'gemini-2.0-flash': {
+    provider: 'google',
+    label: 'Gemini 2.0 Flash',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'gemini-2.0-flash-lite': {
+    provider: 'google',
+    label: 'Gemini 2.0 Flash-Lite',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'gemini-1.5-flash': {
+    provider: 'google',
+    label: 'Gemini 1.5 Flash',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'gemini-1.5-flash-8b': {
+    provider: 'google',
+    label: 'Gemini 1.5 Flash-8B',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'gemini-1.5-pro': {
+    provider: 'google',
+    label: 'Gemini 1.5 Pro',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
 };
 
 // 查询模型能力，未注册的模型返回安全默认值
@@ -342,6 +423,20 @@ function loadAvailableModels() {
 }
 
 const _fileConfig = loadConfigFile();
+
+// 出站代理：写入用户 config.json（OCT_CONFIG_FILE）即可，打包版与开发版一致；不设置则行为与从前相同
+(function applyProxyFromRuntimeConfig() {
+  const pairs = [
+    ['HTTPS_PROXY', _fileConfig.HTTPS_PROXY],
+    ['HTTP_PROXY', _fileConfig.HTTP_PROXY],
+  ];
+  for (const [key, cfgVal] of pairs) {
+    const fromCfg = cfgVal != null ? String(cfgVal).trim() : '';
+    const fromEnv = String(process.env[key] || '').trim();
+    if (!fromEnv && fromCfg) process.env[key] = fromCfg;
+  }
+})();
+
 // 记录第一个命中的配置文件路径，用于 mcp/manager 写入
 const _configSources = [
   process.env.OCT_CONFIG_FILE,
@@ -368,6 +463,27 @@ function pickKey(...sources) {
   return '';
 }
 
+/**
+ * Gemini OpenAI 兼容层：网关请求使用 `x-goog-api-key`（见 ai.js）；Base URL 若带 ?key= 会与头里 API Key 重复，触发 400。
+ */
+function sanitizeGoogleOpenAiBaseUrl(url) {
+  const s = String(url || '').trim();
+  if (!s) return s;
+  try {
+    const u = new URL(s);
+    if (!u.hostname.toLowerCase().includes('generativelanguage.googleapis.com')) {
+      return s.replace(/\/$/, '');
+    }
+    u.search = '';
+    u.hash = '';
+    let out = u.toString();
+    if (out.endsWith('/')) out = out.slice(0, -1);
+    return out;
+  } catch {
+    return s.split('?')[0].split('#')[0].trim().replace(/\/$/, '');
+  }
+}
+
 // 从 baseUrl 推断 provider id
 function inferProviderFromBaseUrl(baseUrl) {
   if (!baseUrl || typeof baseUrl !== 'string') return 'bailian-coding';
@@ -380,6 +496,7 @@ function inferProviderFromBaseUrl(baseUrl) {
   if (u.includes('groq')) return 'groq';
   if (u.includes('api.openai.com')) return 'openai';
   if (u.includes('localhost:11434') || u.includes('127.0.0.1:11434')) return 'ollama';
+  if (u.includes('generativelanguage.googleapis.com')) return 'google';
   if (u && u.length > 10) return 'custom';
   return 'bailian-coding';
 }
@@ -403,6 +520,7 @@ function getProviderConfig() {
   const isBailian = preset.id === 'bailian' || preset.id === 'bailian-coding';
   const isDeepseek = preset.id === 'deepseek';
   const isMinimax = preset.id === 'minimax';
+  const isGoogle = preset.id === 'google';
   const isCustom = preset.id === 'custom';
 
   let apiKey = '';
@@ -426,6 +544,8 @@ function getProviderConfig() {
     baseUrl = getEnvOrConfig('DEEPSEEK_BASE_URL') || preset.baseUrl;
   } else if (isMinimax) {
     baseUrl = getEnvOrConfig('MINIMAX_BASE_URL') || preset.baseUrl;
+  } else if (isGoogle) {
+    baseUrl = sanitizeGoogleOpenAiBaseUrl(getEnvOrConfig('GOOGLE_AI_BASE_URL') || preset.baseUrl);
   } else if (isCustom) {
     // 自定义服务：从配置中读取 Base URL 和 API Key
     baseUrl = _fileConfig.CUSTOM_BASE_URL || process.env.CUSTOM_BASE_URL || '';
@@ -437,6 +557,9 @@ function getProviderConfig() {
   if (isCustom && _fileConfig.CUSTOM_MODEL) {
     effectiveModel = _fileConfig.CUSTOM_MODEL;
   }
+  if (isGoogle && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
+    effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
+  }
 
   let models = preset.models || [];
   if (isCustom && effectiveModel && effectiveModel !== '__custom__') {
@@ -444,6 +567,12 @@ function getProviderConfig() {
     models = [
       { id: effectiveModel, label: `${effectiveModel} (自定义)`, tools: true, thinking: false },
       ...models.filter(m => m.id !== effectiveModel)
+    ];
+  }
+  if (isGoogle && effectiveModel && effectiveModel !== '__custom__' && !models.some((m) => m.id === effectiveModel)) {
+    models = [
+      { id: effectiveModel, label: `${effectiveModel} (自定义)`, tools: false, thinking: false },
+      ...models,
     ];
   }
   if (models.length === 0 && preset.defaultModel) {

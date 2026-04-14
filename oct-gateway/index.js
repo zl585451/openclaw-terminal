@@ -1,5 +1,30 @@
 const path = require('path');
 const config = require('./config');
+
+// Node 原生 fetch 默认不读 HTTP(S)_PROXY；V2rayN 等仅系统/TUN 生效时，网关仍可能直连 Google 导致 fetch failed。
+// 若环境变量或项目 .env 已配置代理，则对全局 fetch 启用 undici ProxyAgent。
+(function setupFetchProxyFromEnv() {
+  try {
+    const raw = (
+      process.env.HTTPS_PROXY
+      || process.env.https_proxy
+      || process.env.HTTP_PROXY
+      || process.env.http_proxy
+      || ''
+    ).trim();
+    if (!raw) return;
+    // 与 undici ProxyAgent 叠用时，部分 Node 的 NODE_USE_ENV_PROXY 会让出站请求携带重复鉴权，
+    // generativelanguage 返回 400「Multiple authentication credentials」。
+    delete process.env.NODE_USE_ENV_PROXY;
+    delete process.env.node_use_env_proxy;
+    const { setGlobalDispatcher, ProxyAgent } = require('undici');
+    setGlobalDispatcher(new ProxyAgent(raw));
+    const safeLog = raw.includes('@') ? raw.replace(/:\/\/[^@]+@/, '://*****@') : raw;
+    console.log('[OCT] [gateway] undici fetch proxy enabled:', safeLog);
+  } catch (e) {
+    console.warn('[OCT] [gateway] undici fetch proxy skipped:', String(e && e.message ? e.message : e));
+  }
+})();
 const { streamChat, loadSystemPrompt } = require('./ai');
 const session = require('./session');
 const memory = require('./memory');

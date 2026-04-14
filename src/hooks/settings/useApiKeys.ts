@@ -21,6 +21,11 @@ export interface ApiKeysState {
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
   CUSTOM_BASE_URL: string;
+  GOOGLE_AI_API_KEY: string;
+  GOOGLE_AI_BASE_URL: string;
+  /** 网关访问境外 API（如 Gemini）时的本地 HTTP 代理，例如 http://127.0.0.1:10809 */
+  HTTPS_PROXY: string;
+  HTTP_PROXY: string;
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
   VISION_API_KEY: string;
@@ -93,6 +98,24 @@ const FALLBACK_PROVIDERS: ProvidersState = {
       { id: 'deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1（推理）', tools: false, thinking: true },
     ],
   },
+  google: {
+    id: 'google',
+    name: 'Google Gemini（Vertex AI Studio API 密钥）',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
+    keyPlaceholder: 'Vertex AI Studio 创建的 API 密钥',
+    defaultModel: 'gemini-2.5-flash',
+    models: [
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash（稳定，推荐）', tools: false, thinking: true },
+      { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', tools: false, thinking: true },
+      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', tools: false, thinking: true },
+      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: false, thinking: true },
+      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash（将弃用）', tools: false, thinking: false },
+      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', tools: false, thinking: false },
+      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', tools: false, thinking: false },
+    ],
+  },
   custom: {
     id: 'custom',
     name: '自定义 OpenAI 兼容服务',
@@ -124,6 +147,10 @@ type GatewayConfigPayload = {
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
   CUSTOM_BASE_URL: string;
+  GOOGLE_AI_API_KEY: string;
+  GOOGLE_AI_BASE_URL: string;
+  HTTPS_PROXY: string;
+  HTTP_PROXY: string;
   BRAVE_SEARCH_API_KEY: string;
   TAVILY_API_KEY: string;
   VISION_API_KEY: string;
@@ -144,7 +171,8 @@ function resolveProviderId(data: Partial<ApiKeysState>): string {
   if (hasCustomRoute) return 'custom';
 
   return inferProviderFromBaseUrl(
-    data.MINIMAX_BASE_URL
+    data.GOOGLE_AI_BASE_URL
+    || data.MINIMAX_BASE_URL
     || data.DASHSCOPE_BASE_URL
     || data.DEEPSEEK_BASE_URL
     || '',
@@ -164,12 +192,17 @@ function buildGatewayPayload(
     baseUrl = apiKeys.MINIMAX_BASE_URL;
   } else if (currentProviderId === 'custom') {
     baseUrl = apiKeys.CUSTOM_BASE_URL;
+  } else if (currentProviderId === 'google') {
+    baseUrl = apiKeys.GOOGLE_AI_BASE_URL;
   } else {
     baseUrl = apiKeys.DASHSCOPE_BASE_URL;
   }
 
   let effectiveModel = apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus';
   if (currentProviderId === 'custom' && apiKeys.CUSTOM_MODEL) {
+    effectiveModel = apiKeys.CUSTOM_MODEL;
+  }
+  if (currentProviderId === 'google' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
     effectiveModel = apiKeys.CUSTOM_MODEL;
   }
 
@@ -191,11 +224,16 @@ function buildGatewayPayload(
     CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
     DASHSCOPE_BASE_URL:
       currentProviderId === 'deepseek' || currentProviderId === 'custom' || currentProviderId === 'minimax'
+      || currentProviderId === 'google'
         ? ''
         : (baseUrl || currentProvider?.baseUrl || ''),
     DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     MINIMAX_BASE_URL: currentProviderId === 'minimax' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     CUSTOM_BASE_URL: currentProviderId === 'custom' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+    GOOGLE_AI_BASE_URL: currentProviderId === 'google' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+    GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY || '',
+    HTTPS_PROXY: apiKeys.HTTPS_PROXY || '',
+    HTTP_PROXY: apiKeys.HTTP_PROXY || '',
     BRAVE_SEARCH_API_KEY: searchKeys.BRAVE_SEARCH_API_KEY || apiKeys.BRAVE_SEARCH_API_KEY || '',
     TAVILY_API_KEY: searchKeys.TAVILY_API_KEY || apiKeys.TAVILY_API_KEY || '',
     VISION_API_KEY: apiKeys.VISION_API_KEY || '',
@@ -225,6 +263,10 @@ export function useApiKeys() {
     DEEPSEEK_BASE_URL: '',
     MINIMAX_BASE_URL: '',
     CUSTOM_BASE_URL: '',
+    GOOGLE_AI_API_KEY: '',
+    GOOGLE_AI_BASE_URL: '',
+    HTTPS_PROXY: '',
+    HTTP_PROXY: '',
     BRAVE_SEARCH_API_KEY: '',
     TAVILY_API_KEY: '',
     VISION_API_KEY: '',
@@ -322,6 +364,7 @@ export function useApiKeys() {
       apiKeys.MINIMAX_BASE_URL,
       apiKeys.DASHSCOPE_BASE_URL,
       apiKeys.DEEPSEEK_BASE_URL,
+      apiKeys.GOOGLE_AI_BASE_URL,
     ],
   );
 

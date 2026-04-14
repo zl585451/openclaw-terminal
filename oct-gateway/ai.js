@@ -83,6 +83,7 @@ function getModelContextLimit(modelId) {
   };
   if (!modelId || typeof modelId !== 'string') return 128000;
   const id = modelId.toLowerCase().replace(/\s/g, '');
+  if (id.startsWith('gemini-')) return 1000000;
   return MODEL_CONTEXT_LIMITS[id] || MODEL_CONTEXT_LIMITS[modelId.split('/').pop()] || 128000;
 }
 
@@ -921,12 +922,35 @@ async function streamChat({
       requestBody.tool_choice = toolChoice;
     }
 
-    const res = await fetchWithRetry(`${baseUrl}/chat/completions`, {
+    // Google 系鉴权策略（两套端点，规则不同）：
+    //
+    // ① generativelanguage.googleapis.com（AI Studio OpenAI 兼容层）
+    //    - AIzaSy... 格式 API Key
+    //    - 官方支持 Bearer / x-goog-api-key / ?key= 三选一
+    //    - 实测 V2rayN HTTPS CONNECT 隧道下 x-goog-api-key 不生效（可能与特定 key 类型限制有关）
+    //    → 使用 Authorization: Bearer
+    //
+    // ② aiplatform.googleapis.com（Vertex AI 原生 / Vertex AI Express）
+    //    - AQ.xxxx 格式 Vertex AI Express API Key
+    //    - 该端点要求 x-goog-api-key；发 Bearer 会返回 401 "Expected OAuth 2.0 access token"
+    //    → 使用 x-goog-api-key
+    //
+    // sanitizeGoogleOpenAiBaseUrl() 已在 config.js 中去掉 baseUrl 里的 ?key=，防双凭证 400。
+    const _baseForAuth = String(baseUrl || '');
+    const isVertexAIEndpoint = _baseForAuth.includes('aiplatform.googleapis.com');
+    const chatHeaders = isVertexAIEndpoint
+      ? {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        }
+      : {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        };
+
+    const res = await fetchWithRetry(`${String(baseUrl || '').replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers: chatHeaders,
       body: JSON.stringify(requestBody),
     });
 

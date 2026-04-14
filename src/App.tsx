@@ -68,6 +68,7 @@ const App: React.FC = () => {
           || String(data.DEEPSEEK_API_KEY || '').trim()
           || String(data.MINIMAX_API_KEY || '').trim()
           || String(data.CUSTOM_API_KEY || '').trim()
+          || String(data.GOOGLE_AI_API_KEY || '').trim()
         );
         if (!hasAnyKey) {
           setShowFirstLaunchSetup(true);
