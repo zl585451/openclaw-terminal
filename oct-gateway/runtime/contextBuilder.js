@@ -10,7 +10,6 @@ class ContextBuilder {
     hypothesis,
     imageService,
     config,
-    mem0Client,
     logger,
     helpers,
   }) {
@@ -24,7 +23,6 @@ class ContextBuilder {
     this.hypothesis = hypothesis;
     this.imageService = imageService;
     this.config = config;
-    this.mem0Client = mem0Client || null;
     this.log = logger;
     this.helpers = helpers;
   }
@@ -100,9 +98,8 @@ class ContextBuilder {
     let contextMemory = '';
     try {
       const nocturneAlive = await this.nocturneQueue.isNocturneHealthy();
-      const mem0Alive = this.mem0Client ? await this.mem0Client.isAlive().catch(() => false) : false;
 
-      if (!nocturneAlive && !mem0Alive) return '';
+      if (!nocturneAlive) return '';
       if (userMessage.length <= 1) return '';
 
       const recallIntent = this.helpers.hasRecallIntent(userMessage);
@@ -122,67 +119,21 @@ class ContextBuilder {
       ];
       const searchWords = [...new Set(entityWords)].slice(0, recallIntent ? 5 : 3);
 
-      // ── 双轨并行：Nocturne 关键词搜索 + Mem0 语义搜索 ──────────────────────
-      const [nocturneSearchResults, mem0Result] = await Promise.all([
-        nocturneAlive
-          ? Promise.all(
-              searchWords.map((word) =>
-                this.memorySearch.searchMemory(word, {
-                  domain: 'core',
-                  limit: recallIntent ? 3 : 2,
-                  include_content: true,
-                }).catch(() => ({ ok: false, data: null }))
-              )
-            )
-          : Promise.resolve([]),
-        mem0Alive
-          ? this.mem0Client.searchMemory(userMessage, { limit: recallIntent ? 6 : 4 })
-          : Promise.resolve({ ok: false, results: [] }),
-      ]);
+      const nocturneSearchResults = await Promise.all(
+        searchWords.map((word) =>
+          this.memorySearch.searchMemory(word, {
+            domain: 'core',
+            limit: recallIntent ? 3 : 2,
+            include_content: true,
+          }).catch(() => ({ ok: false, data: null }))
+        )
+      );
 
       const memContents = [];
-      const seenTexts = new Set();   // 文本去重（避免 Nocturne + Mem0 同一事实注入两次）
+      const seenTexts = new Set();
       const seenUris = new Set();
 
-      // 当前消息关键词集合，用于过滤"循环注入"——把正在讨论的话题本身当成背景记忆塞回来
-      const currentMsgTokens = new Set(
-        userMessage.toLowerCase().replace(/[^\u4e00-\u9fa5a-z0-9]/g, ' ').split(/\s+/).filter((w) => w.length > 1)
-      );
-      const _isCurrentTopicEcho = (memText) => {
-        if (currentMsgTokens.size === 0) return false;
-        const tokens = memText.toLowerCase().replace(/[^\u4e00-\u9fa5a-z0-9]/g, ' ').split(/\s+/).filter((w) => w.length > 1);
-        if (tokens.length === 0) return false;
-        const overlap = tokens.filter((w) => currentMsgTokens.has(w)).length;
-        return overlap / tokens.length > 0.45;   // 45% 以上词重叠 → 认定是"本轮话题本身"，跳过
-      };
-
-      // ── 1. Mem0 结果优先（语义质量高），过滤 score < 0.45 ────────────────────
-      if (mem0Result.ok && Array.isArray(mem0Result.results)) {
-        for (const item of mem0Result.results) {
-          const score = item.score ?? 0;
-          if (score < 0.45) continue;
-          const text = (item.memory || '').trim();
-          if (!text) continue;
-          if (_isCurrentTopicEcho(text)) continue;   // 过滤循环注入
-          const textKey = text.slice(0, 60).toLowerCase();
-          if (seenTexts.has(textKey)) continue;
-          seenTexts.add(textKey);
-          memContents.push({
-            uri: `mem0://${item.id || 'mem0'}`,
-            content: `[Mem0] ${text.slice(0, 200)}`,
-            priority: 1,
-            match_score: Math.min(score, 1),
-          });
-        }
-        if (mem0Result.results.length > 0) {
-          this.log.debug('mem0 search results', {
-            total: mem0Result.results.length,
-            kept: memContents.length,
-          });
-        }
-      }
-
-      // ── 2. Nocturne 结果补充（身份 / 偏好等结构化数据）──────────────────────
+      // ── Nocturne 结果（身份 / 偏好等结构化数据）──────────────────────────────
       for (const result of nocturneSearchResults) {
         if (!result.ok || !result.data) continue;
         for (const item of result.data) {
@@ -246,8 +197,6 @@ class ContextBuilder {
             recallIntent,
             projectAnalysisIntent,
             searchWords,
-            mem0Alive,
-            nocturneAlive,
             selectedUris: selectedMemories.map((item) => item.uri),
             count: selectedMemories.length,
           });

@@ -125,18 +125,6 @@ function getNocturnePath(): string {
   return '';
 }
 
-function getMem0ServicePath(): string {
-  const candidates = [
-    path.join(process.resourcesPath || '', 'mem0_service', 'server.py'),
-    path.join(__dirname, '..', 'resources', 'mem0_service', 'server.py'),
-    path.join(__dirname, '..', '..', 'resources', 'mem0_service', 'server.py'),
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-  return '';
-}
-
 // 获取 Nocturne 预编译 exe 路径（PyInstaller 打包，无需 Python）
 // 打包后位于 resources/nocturne_server/nocturne_server.exe
 function getNocturneExePath(): string {
@@ -889,10 +877,6 @@ function createWindow() {
     if (nocturneBackendProcess && !nocturneBackendProcess.killed) {
       nocturneBackendProcess.kill();
       nocturneBackendProcess = null;
-    }
-    if (mem0ServiceProcess && !mem0ServiceProcess.killed) {
-      mem0ServiceProcess.kill();
-      mem0ServiceProcess = null;
     }
     mainWindow = null;
     floatWindow?.close();
@@ -2363,7 +2347,6 @@ ipcMain.handle('setup-nocturne-memory', async (): Promise<{ success: boolean; er
 // Nocturne 进程管理
 let nocturneBackendProcess: ReturnType<typeof spawn> | null = null;
 let nocturneFrontendProcess: ReturnType<typeof spawn> | null = null;
-let mem0ServiceProcess: ReturnType<typeof spawn> | null = null;
 
 function getLocalIP(): string {
   const interfaces = os.networkInterfaces();
@@ -2503,192 +2486,6 @@ async function startNocturneBackend(): Promise<boolean> {
   console.warn('[Nocturne] /health 未返回 200，可能数据库未连接');
   mainWindow?.webContents.send('openclaw-log-lines', ['[Nocturne] 端口已监听，若仍显示不可用请点「重启 Nocturne 后端」']);
   return true;
-}
-
-/**
- * 启动 Mem0 动态记忆服务（port 8002）
- * - 优先读取 MINIMAX_API_KEY / MINIMAX_BASE_URL（当前主力 provider）
- * - 回退到 DASHSCOPE_API_KEY / DASHSCOPE_BASE_URL
- * - 复用 getPythonForNocturne() 获取 Python 路径
- * - 启动失败不中断主程序（graceful degradation to Nocturne）
- */
-async function startMem0Service(): Promise<boolean> {
-  if (mem0ServiceProcess && !mem0ServiceProcess.killed) return true;
-
-  const portInUse = await isPortInUse(8002);
-  if (portInUse) {
-    console.log('[Mem0] 端口 8002 已被占用，跳过启动');
-    return true;
-  }
-
-  const serverPath = getMem0ServicePath();
-  if (!serverPath) {
-    console.warn('[Mem0] 未找到 mem0_service/server.py，跳过自动启动');
-    return false;
-  }
-
-  // LLM Key（事实提取）+ Embed Key（向量存储）
-  // 优先级：SiliconFlow > DeepSeek+MiniMax > DashScope
-  let mem0LlmApiKey    = '';
-  let mem0LlmBaseUrl   = 'https://api.siliconflow.cn/v1';
-  let mem0LlmModel     = 'deepseek-ai/DeepSeek-V3';
-  let mem0EmbedApiKey  = '';
-  let mem0EmbedBaseUrl = 'https://api.siliconflow.cn/v1';
-  let mem0EmbedModel   = 'BAAI/bge-m3';
-  let mem0EmbedDims    = '1024';
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      // 硅基流动：一个 Key 同时做 LLM + Embedding，最省事
-      if (cfg.SILICONFLOW_API_KEY) {
-        mem0LlmApiKey    = cfg.SILICONFLOW_API_KEY;
-        mem0LlmBaseUrl   = 'https://api.siliconflow.cn/v1';
-        mem0LlmModel     = 'deepseek-ai/DeepSeek-V3';
-        mem0EmbedApiKey  = cfg.SILICONFLOW_API_KEY;
-        mem0EmbedBaseUrl = 'https://api.siliconflow.cn/v1';
-        mem0EmbedModel   = 'BAAI/bge-m3';
-        mem0EmbedDims    = '1024';
-      // DeepSeek LLM + MiniMax Embedding
-      } else if (cfg.DEEPSEEK_API_KEY && cfg.MINIMAX_API_KEY) {
-        mem0LlmApiKey    = cfg.DEEPSEEK_API_KEY;
-        mem0LlmBaseUrl   = cfg.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-        mem0LlmModel     = 'deepseek-chat';
-        mem0EmbedApiKey  = cfg.MINIMAX_API_KEY;
-        mem0EmbedBaseUrl = cfg.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1';
-        mem0EmbedModel   = 'embo-01';
-        mem0EmbedDims    = '1536';
-      // DashScope 兜底（支持 json_object + 标准 embedding）
-      } else if (cfg.DASHSCOPE_API_KEY) {
-        mem0LlmApiKey    = cfg.DASHSCOPE_API_KEY;
-        mem0LlmBaseUrl   = cfg.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-        mem0LlmModel     = 'qwen-plus';
-        mem0EmbedApiKey  = cfg.DASHSCOPE_API_KEY;
-        mem0EmbedBaseUrl = cfg.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-        mem0EmbedModel   = 'text-embedding-v3';
-        mem0EmbedDims    = '1024';
-      }
-    }
-  } catch {}
-
-  if (!mem0LlmApiKey || !mem0EmbedApiKey) {
-    console.warn('[Mem0] LLM 或 Embed API Key 未配置，Mem0 服务以降级模式启动');
-  }
-
-  const [pyExe, ...pyArgs] = getPythonForNocturne();
-  const mem0DataDir = path.join(app.getPath('userData'), 'mem0_qdrant');
-
-  mem0ServiceProcess = spawn(pyExe, [...pyArgs, serverPath], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-    detached: false,
-    env: buildOctChildEnv({
-      MEM0_LLM_API_KEY:   mem0LlmApiKey,
-      MEM0_LLM_BASE_URL:  mem0LlmBaseUrl,
-      MEM0_LLM_MODEL:     mem0LlmModel,
-      MEM0_EMBED_API_KEY:  mem0EmbedApiKey,
-      MEM0_EMBED_BASE_URL: mem0EmbedBaseUrl,
-      MEM0_EMBED_MODEL:    mem0EmbedModel,
-      MEM0_EMBED_DIMS:     mem0EmbedDims,
-      MEM0_DATA_DIR: mem0DataDir,
-      MEM0_PORT: '8002',
-      PYTHONIOENCODING: 'utf-8',
-    }),
-  });
-
-  const mem0LogPath = path.join(app.getPath('userData'), 'mem0_stderr.log');
-  let mem0StderrStream: import('fs').WriteStream | null = null;
-  try {
-    mem0StderrStream = fs.createWriteStream(mem0LogPath, { flags: 'a' });
-    mem0StderrStream.write(`\n--- Mem0 启动 ${new Date().toISOString()} ---\n`);
-  } catch (e) {
-    console.warn('[Mem0] 无法创建日志文件:', mem0LogPath, (e as Error)?.message);
-  }
-
-  // Mem0 stdout → 写文件 + 有选择地转发到 UI 日志面板（记忆版块）
-  mem0ServiceProcess.stdout?.on('data', (data: Buffer) => {
-    const raw = data.toString();
-    const lines = raw.split('\n');
-    for (const line of lines) {
-      const msg = line.trim();
-      if (!msg) continue;
-      mem0StderrStream?.write(`[${new Date().toISOString()}] ${msg}\n`);
-
-      // ── 过滤 uvicorn 的 HTTP 请求行（太频繁，不展示）──────────────────
-      if (/INFO:\s+[\d.]+:\d+ -/.test(msg)) continue;                  // HTTP 访问日志
-      if (/uvicorn|Application startup|Waiting for|Started server process/.test(msg)) continue;
-
-      // ── 只转发有意义的 Mem0 业务事件到 UI ────────────────────────────
-      const isMemEvent =
-        msg.includes('mem0.add') ||
-        msg.includes('mem0.delete') ||
-        msg.includes('mem0.search') ||
-        msg.includes('mem0.clear') ||
-        msg.includes('\u89c4\u5219\u63d0\u53d6') ||   // 规则提取
-        msg.includes('\u89c4\u5219\u53bb\u91cd') ||   // 规则去重
-        msg.includes('\u566a\u58f0\u8fc7\u6ee4') ||   // 噪声过滤
-        msg.includes('\u76f4\u63a5\u5199\u5165') ||   // 直接写入
-        msg.includes('Mem0 \u521d\u59cb\u5316') ||    // Mem0 初始化
-        msg.includes('httpx debug');
-
-      if (isMemEvent) {
-        mainWindow?.webContents.send('openclaw-log-lines', [`[mem0] ${msg}`]);
-      }
-    }
-  });
-  mem0ServiceProcess.stderr?.on('data', (data: Buffer) => {
-    const raw = data.toString();
-    const lines = raw.split('\n');
-    for (const line of lines) {
-      const msg = line.trim();
-      if (!msg) continue;
-      console.log('[Mem0]', msg);
-      mem0StderrStream?.write(`[${new Date().toISOString()}] STDERR ${msg}\n`);
-      // stderr 里的错误也发到 UI
-      if (/error|failed|traceback|exception/i.test(msg)) {
-        mainWindow?.webContents.send('openclaw-log-lines', [`[mem0] ⚠ ${msg}`]);
-      }
-    }
-  });
-  mem0ServiceProcess.on('exit', (code: number | null) => {
-    mem0StderrStream?.end();
-    mem0StderrStream = null;
-    console.log('[Mem0] 服务退出，code:', code);
-    mem0ServiceProcess = null;
-  });
-  mem0ServiceProcess.on('error', (err: Error) => {
-    console.warn('[Mem0] 启动失败（可忽略）:', err.message);
-    mem0ServiceProcess = null;
-  });
-
-  // 等待 port 8002 就绪（最多 30 秒）
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 1000));
-    if (await isPortInUse(8002)) break;
-  }
-  if (!(await isPortInUse(8002))) {
-    console.warn('[Mem0] 端口 8002 未就绪，启动超时（将自动降级到 Nocturne）');
-    return false;
-  }
-
-  // 等待 /health 返回 200
-  for (let i = 0; i < 20; i++) {
-    await new Promise(r => setTimeout(r, 500));
-    try {
-      const res = await fetch('http://127.0.0.1:8002/health', { signal: AbortSignal.timeout(2000) });
-      if (res.ok) {
-        const data = await res.json() as { ok: boolean; mem0_ready: boolean };
-        if (data.mem0_ready) {
-          console.log('[Mem0] 动态记忆服务已就绪 port 8002 ✅');
-          mainWindow?.webContents.send('openclaw-log-lines', ['[Mem0] 动态记忆服务已启动 ✅']);
-        } else {
-          console.warn('[Mem0] 服务已启动但 mem0_ready=false（可能缺少 API Key 或依赖未安装）');
-        }
-        return true;
-      }
-    } catch {}
-  }
-  console.warn('[Mem0] /health 未返回 200，将自动降级到 Nocturne');
-  return false;
 }
 
 // 检测端口是否被监听
@@ -3979,9 +3776,6 @@ app.whenReady().then(async () => {
   startNocturneBackend().catch(e =>
     console.warn('[Nocturne] 自动启动失败:', e)
   );
-  startMem0Service().catch(e =>
-    console.warn('[Mem0] 自动启动失败（可忽略）:', e)
-  );
 
   // 2b. AI.library 插件（可选，在 Gateway 之前启动以便注入 AI_LIBRARY_URL）
   try {
@@ -4121,10 +3915,6 @@ app.on('before-quit', async (e) => {
   if (nocturneFrontendProcess && !nocturneFrontendProcess.killed) {
     try { nocturneFrontendProcess.kill('SIGTERM'); } catch {}
     nocturneFrontendProcess = null;
-  }
-  if (mem0ServiceProcess && !mem0ServiceProcess.killed) {
-    try { mem0ServiceProcess.kill('SIGTERM'); } catch {}
-    mem0ServiceProcess = null;
   }
   if (aiLibraryProcess && !aiLibraryProcess.killed) {
     try { aiLibraryProcess.kill('SIGTERM'); } catch {}
