@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-15（P0-4：右栏 `ChatTabRightPanel` 默认折叠，`oct.devpanel.expanded`）  
+> **最后更新**：2026-04-15（P0-5：`TabBar` 主导航中文化 + Beta 徽标）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -146,6 +146,10 @@
 ### 2026-04-15 聊天输入占位符（Phase P0 · Task P0-3）
 - **ChatInput.tsx**（`ChatInputArea`）：可选 `isEmptyConversation`；空会话与有消息时切换中文 `placeholder`；`hasPendingPills` 时仍为「或者自己输入...」。
 - **ChatTab.v2**：传入 `isEmptyConversation={messages.length === 0}`。
+
+### 2026-04-15 主导航 Tab 文案（Phase P0 · Task P0-5）
+- **TabBar**：`对话` / `音频`（Beta）/ `Reaper`（Beta）/ `保险箱`；Tab `id` 仍为 `chat` | `sound` | `reaper`，`SHOW_BETA_TABS` 逻辑不变。
+- **TabBar.css**：`.oct-tab-beta-badge`。
 
 ### 2026-04-15 右栏默认折叠（Phase P0 · Task P0-4）
 - **ChatTabRightPanel**：默认折叠为 **40px** 窄条；`oct.devpanel.expanded === '1'` 时初始展开；收放为侧边 **`right-panel-toggle`**（旧版同款箭头按钮），与早期交互一致；GW/MEM 状态点仍在面板内展示。

@@ -14,10 +14,16 @@ interface TabBarProps {
 
 const SHOW_BETA_TABS = true; // MiniMax Music Studio 使用 SOUND 标签位
 
-const tabs: { id: TabType; label: string }[] = [
-  { id: 'chat', label: 'CHAT' },
-  { id: 'sound', label: 'MUSIC' },
-  { id: 'reaper', label: 'REAPER' },
+interface TabConfig {
+  id: TabType;
+  label: string;
+  beta?: boolean;
+}
+
+const tabs: TabConfig[] = [
+  { id: 'chat', label: '对话' },
+  { id: 'sound', label: '音频', beta: true },
+  { id: 'reaper', label: 'Reaper', beta: true },
 ];
 
 const visibleTabs = SHOW_BETA_TABS ? tabs : tabs.filter((t) => t.id === 'chat');
@@ -52,6 +58,7 @@ const TabBar: React.FC<TabBarProps> = ({
           <span className="tab-bracket">[</span>
           <span className="tab-label">{tab.label}</span>
           <span className="tab-bracket">]</span>
+          {tab.beta ? <span className="oct-tab-beta-badge">Beta</span> : null}
         </button>
       ))}
       {setVaultOpen && (
@@ -64,7 +71,7 @@ const TabBar: React.FC<TabBarProps> = ({
           >
             <span className="tab-bracket">[</span>
             <span className="tab-label">
-              VAULT
+              保险箱
               {vaultUnlocked && (
                 <span
                   style={{

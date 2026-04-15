@@ -67,3 +67,15 @@
 .tab-btn.active .tab-bracket {
   color: var(--accent-primary);
 }
+
+.oct-tab-beta-badge {
+  font-size: 9px;
+  margin-left: 2px;
+  padding: 1px 4px;
+  background: rgba(232, 168, 124, 0.15);
+  color: var(--accent-color, #e8a87c);
+  border-radius: 2px;
+  letter-spacing: 0.5px;
+  font-family: var(--font-sans);
+  line-height: 1.2;
+}
