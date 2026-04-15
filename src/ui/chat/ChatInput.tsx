@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import QuickCommandMenu from '../../components/QuickCommandMenu';
 import { useSettings } from '../../contexts/SettingsContext';
 import type { UploadedFile } from './ChatTab.v2';
@@ -27,6 +27,8 @@ export interface ChatInputAreaProps {
   onClearHistory?: () => void;
   hasPendingPills?: boolean;
   extraControls?: React.ReactNode;
+  /** When true, show first-time friendly placeholder copy */
+  isEmptyConversation?: boolean;
 }
 
 const ChatInputArea = memo(function ChatInputArea({
@@ -43,9 +45,16 @@ const ChatInputArea = memo(function ChatInputArea({
   onClearHistory,
   hasPendingPills,
   extraControls,
+  isEmptyConversation = false,
 }: ChatInputAreaProps) {
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
+  const conversationPlaceholder = useMemo(() => {
+    if (isEmptyConversation) {
+      return '今天想让 OCT 帮你做什么?  · 聊天 · 搜资料 · 画图 · 生图';
+    }
+    return '继续聊,或按 / 唤出命令';
+  }, [isEmptyConversation]);
   const [inputValue, setInputValue] = useState('');
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -440,7 +449,7 @@ const ChatInputArea = memo(function ChatInputArea({
               }
             }
           }}
-          placeholder={hasPendingPills ? '或者自己输入...' : '// INPUT COMMAND OR MESSAGE...'}
+          placeholder={hasPendingPills ? '或者自己输入...' : conversationPlaceholder}
           rows={1}
         />
         {micError ? (
