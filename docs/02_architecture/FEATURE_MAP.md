@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-15（P0-3：`ChatInput` 空会话/非空会话占位符中文化）  
+> **最后更新**：2026-04-15（P0-4：右栏 `ChatTabRightPanel` 默认折叠，`oct.devpanel.expanded`）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -146,6 +146,10 @@
 ### 2026-04-15 聊天输入占位符（Phase P0 · Task P0-3）
 - **ChatInput.tsx**（`ChatInputArea`）：可选 `isEmptyConversation`；空会话与有消息时切换中文 `placeholder`；`hasPendingPills` 时仍为「或者自己输入...」。
 - **ChatTab.v2**：传入 `isEmptyConversation={messages.length === 0}`。
+
+### 2026-04-15 右栏默认折叠（Phase P0 · Task P0-4）
+- **ChatTabRightPanel**：默认折叠为 24px 条；色点表示 `wsConnected`（绿/红）；`oct.devpanel.expanded === '1'` 时初始展开；展开后顶部提供「收起」按钮。
+- **ChatTab.css**：`.oct-devpanel-expand` / `.oct-status-dot` / `.oct-devpanel-collapse`。
 
 ### 2026-04-15 开发临时：首屏复测按钮
 - **DEV**：输入区 **「欢迎页」** 按钮重置引导并可选择清空记录（见 `docs/05_changelog/2026-04-15-dev-onboarding-force-welcome.md`）；产品化前删除。

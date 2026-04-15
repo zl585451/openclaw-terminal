@@ -68,6 +68,7 @@ function formatTokenK(value: number | null | undefined): string {
 
 /**
  * 右侧栏独立成子组件：折叠状态在内部，切换时不会触发 ChatTab 主列（含 MessageList）重渲染。
+ * 默认折叠（P0-4）；展开态持久化 key：oct.devpanel.expanded === '1'。
  */
 const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   gateway,
@@ -82,7 +83,14 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   localTime,
   localDate,
 }) => {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  /** P0-4：默认折叠；仅当用户曾展开过并写入 oct.devpanel.expanded=1 时首次展开 */
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('oct.devpanel.expanded') !== '1';
+    } catch {
+      return true;
+    }
+  });
   const effectiveCtxMax = ctxMax ?? inferContextWindow(modelName);
   const effectiveCtxUsed = ctxUsed ?? tokenIn ?? null;
   const isEstimatedCtxUsed = ctxUsed == null && effectiveCtxUsed != null;
@@ -91,19 +99,35 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
     : null;
 
   const toggleSidebar = () => {
-    startTransition(() => setSidebarCollapsed((v) => !v));
+    startTransition(() => {
+      setSidebarCollapsed((v) => {
+        const nextCollapsed = !v;
+        try {
+          localStorage.setItem('oct.devpanel.expanded', nextCollapsed ? '0' : '1');
+        } catch {
+          /* ignore */
+        }
+        return nextCollapsed;
+      });
+    });
   };
 
   return (
     <div className={`right-panel ${sidebarCollapsed ? 'right-panel--collapsed' : ''}`}>
-      <button
-        type="button"
-        onClick={toggleSidebar}
-        className={`right-panel-toggle ${sidebarCollapsed ? 'is-collapsed' : ''}`}
-      >
-        {sidebarCollapsed ? '›' : '‹'}
-      </button>
+      {sidebarCollapsed ? (
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className="oct-devpanel-expand"
+          title="展开开发者面板"
+        >
+          <span className={`oct-status-dot${wsConnected ? '' : ' disconnected'}`}>●</span>
+        </button>
+      ) : null}
       <div className={`right-panel-inner ${sidebarCollapsed ? 'is-hidden' : ''}`}>
+        <button type="button" className="oct-devpanel-collapse" onClick={toggleSidebar}>
+          ▸ 收起
+        </button>
         <div
           style={{
             display: 'flex',
