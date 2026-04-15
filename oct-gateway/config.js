@@ -471,7 +471,12 @@ function sanitizeGoogleOpenAiBaseUrl(url) {
   if (!s) return s;
   try {
     const u = new URL(s);
-    if (!u.hostname.toLowerCase().includes('generativelanguage.googleapis.com')) {
+    const host = u.hostname.toLowerCase();
+    // 对所有 Google 端点（AI Studio 和 Vertex AI）统一去掉 ?key= 防止双凭证 400
+    const isGoogleEndpoint =
+      host.includes('generativelanguage.googleapis.com') ||
+      host.includes('aiplatform.googleapis.com');
+    if (!isGoogleEndpoint) {
       return s.replace(/\/$/, '');
     }
     u.search = '';

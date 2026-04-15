@@ -919,7 +919,15 @@ async function streamChat({
     }
     if (caps.supportsTools) {
       requestBody.tools = toolLoader.getDefinitions();
-      requestBody.tool_choice = toolChoice;
+      // 部分 OpenAI 兼容服务商（如硅基流动）不支持 tool_choice 指定具体函数名，
+      // 只允许 'auto' / 'none'。仅在 provider 明确声明支持时才发对象形式。
+      const isObjectToolChoice = toolChoice && typeof toolChoice === 'object';
+      requestBody.tool_choice = (isObjectToolChoice && !provider.supportsToolChoiceFunction)
+        ? 'auto'
+        : toolChoice;
+      if (isObjectToolChoice && !provider.supportsToolChoiceFunction) {
+        log.warn('tool_choice 对象形式降级为 auto（provider 不支持指定函数）', { provider: provider.id, requested: JSON.stringify(toolChoice) });
+      }
     }
 
     // Google 系鉴权策略（两套端点，规则不同）：

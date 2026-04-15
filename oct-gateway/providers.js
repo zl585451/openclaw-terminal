@@ -20,6 +20,7 @@ const PROVIDERS = {
       { id: 'qwen-vl-max',   label: 'Qwen VL Max（图片理解）',              tools: false, thinking: false, vision: true },
     ],
     supportsStreamOptions: true,
+    supportsToolChoiceFunction: true,
   },
 
   'bailian-coding': {
@@ -43,6 +44,7 @@ const PROVIDERS = {
       { id: 'deepseek-r1',       label: 'DeepSeek R1（深度推理）',      tools: false, thinking: true  },
     ],
     supportsStreamOptions: true,
+    supportsToolChoiceFunction: true,
   },
 
   deepseek: {
@@ -123,6 +125,7 @@ const PROVIDERS = {
       { id: 'o1',          label: 'O1（深度推理）',     tools: false, thinking: true  },
     ],
     supportsStreamOptions: true,
+    supportsToolChoiceFunction: true,
   },
 
   ollama: {
@@ -159,30 +162,28 @@ const PROVIDERS = {
   },
 
   /**
-   * Google Gemini：Generative Language API 的 OpenAI 兼容层（Bearer = API Key）。
-   * 与 Cloud 文档里 Vertex 原生 REST（aiplatform.googleapis.com、OAuth/项目路径）不是同一路径；
-   * 与 Vertex AI Studio「API 密钥」及 ai.google.dev OpenAI 示例一致。
-   * @see https://ai.google.dev/gemini-api/docs/openai
+   * Google Gemini：Vertex AI Express OpenAI 兼容层。
+   * - Key 格式：AQ.xxxx（在 Google Cloud Console → Vertex AI → API Keys 创建）
+   * - 端点：aiplatform.googleapis.com，认证用 x-goog-api-key 头（不是 Bearer）
+   * - Base URL 格式：https://aiplatform.googleapis.com/v1beta1/projects/PROJECT_ID/locations/LOCATION/endpoints/openapi
+   *   将 PROJECT_ID 替换为你的 Google Cloud 项目 ID，LOCATION 通常为 us-central1
+   * @see https://cloud.google.com/vertex-ai/docs/generative-ai/start/quickstarts/api-quickstart
    */
   google: {
     id: 'google',
-    name: 'Google Gemini（Vertex AI Studio API 密钥）',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    keyPlaceholder: '在 Vertex AI Studio「API 密钥」处创建',
+    name: 'Google Gemini（Vertex AI Express，AQ Key）',
+    baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/gemini-key-493216/locations/us-central1/endpoints/openapi',
+    keyPlaceholder: 'AQ.xxxxxxxxxxxxxxxxxx（Vertex AI API Key）',
     keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
     keyEnvVars: ['GOOGLE_AI_API_KEY', 'GEMINI_API_KEY'],
-    defaultModel: 'gemini-2.5-flash',
+    defaultModel: 'google/gemini-2.5-flash-preview-04-17',
     models: [
-      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash（稳定，推荐）', tools: false, thinking: true },
-      { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite（更快更省）', tools: false, thinking: true },
-      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro（深度推理）', tools: false, thinking: true },
-      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: false, thinking: true },
-      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash（官方将弃用）', tools: false, thinking: false },
-      { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite（官方将弃用）', tools: false, thinking: false },
-      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', tools: false, thinking: false },
-      { id: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash-8B', tools: false, thinking: false },
-      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', tools: false, thinking: false },
+      { id: 'google/gemini-2.5-flash-preview-04-17', label: 'Gemini 2.5 Flash（推荐）', tools: false, thinking: true },
+      { id: 'google/gemini-2.5-pro-preview-03-25',   label: 'Gemini 2.5 Pro（深度推理）', tools: false, thinking: true },
+      { id: 'google/gemini-2.0-flash-001',           label: 'Gemini 2.0 Flash（稳定）', tools: false, thinking: false },
+      { id: 'google/gemini-1.5-flash-001',           label: 'Gemini 1.5 Flash', tools: false, thinking: false },
+      { id: 'google/gemini-1.5-flash-8b-001',        label: 'Gemini 1.5 Flash-8B（轻量）', tools: false, thinking: false },
+      { id: 'google/gemini-1.5-pro-001',             label: 'Gemini 1.5 Pro', tools: false, thinking: false },
       { id: '__custom__', label: '✏️ 自定义模型 ID', tools: false, thinking: false, custom: true },
     ],
     supportsStreamOptions: false,

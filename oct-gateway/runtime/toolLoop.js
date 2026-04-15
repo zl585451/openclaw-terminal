@@ -82,7 +82,7 @@ class ToolLoop {
           error: error.message,
         });
         if (onToolEvent) {
-          try { onToolEvent({ type: 'tool_result', tool: toolName, callId: toolCall.id, state: 'error', error: error.message }); } catch {}
+          try { onToolEvent({ type: 'tool_result', tool: toolName, callId: toolCall.id, state: 'error', error: error.message, elapsedMs: Date.now() - _toolStart }); } catch {}
         }
         return `工具执行失败: ${error.message}，请稍后重试或换个方式表达需求。`;
       });
@@ -121,6 +121,7 @@ class ToolLoop {
             callId: toolCall.id,
             state: 'done',
             resultPreview: JSON.stringify(result).slice(0, 200),
+            elapsedMs: Date.now() - _toolStart,
           });
         } catch {}
       }
