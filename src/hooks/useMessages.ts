@@ -10,7 +10,7 @@ import { toWorkbenchCommand } from '../workbench/types';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
-import type { ChatMessage, UploadedFile } from '../ui/chat/ChatTab.v2';
+import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/ChatTab.v2';
 import { extractAssistantCotAndMain, hasAssistantCotMarkers, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
@@ -579,6 +579,20 @@ export function useMessages({
           }
           return next;
         });
+        // 同步写入当前 streaming 消息的 toolEvents
+        setMessages((prev) => {
+          const lastIdx = prev.length - 1;
+          const last = prev[lastIdx];
+          if (!last || last.role !== 'assistant' || !last.isStreaming) return prev;
+          const newEvent: ToolEventItem = {
+            callId: payload.callId || payload.tool + '_' + Date.now(),
+            tool: payload.tool,
+            args: payload.args as Record<string, unknown> | undefined,
+            state: 'executing',
+            startedAt: Date.now(),
+          };
+          return [...prev.slice(0, lastIdx), { ...last, toolEvents: [...(last.toolEvents || []), newEvent] }];
+        });
       } else if (payload.type === 'tool_result') {
         const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
         setActiveTools((prev) =>
@@ -588,6 +602,22 @@ export function useMessages({
               : t
           )
         );
+        // 同步更新消息里对应卡片的状态
+        setMessages((prev) => {
+          const lastIdx = prev.length - 1;
+          const last = prev[lastIdx];
+          if (!last || last.role !== 'assistant' || !last.toolEvents?.length) return prev;
+          const updatedEvents = last.toolEvents.map((evt) =>
+            evt.callId !== payload.callId ? evt : {
+              ...evt,
+              state: finalState,
+              resultPreview: payload.resultPreview,
+              error: payload.error,
+              elapsedMs: payload.elapsedMs,
+            }
+          );
+          return [...prev.slice(0, lastIdx), { ...last, toolEvents: updatedEvents }];
+        });
       }
     },
 

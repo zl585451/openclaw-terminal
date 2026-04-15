@@ -28,6 +28,7 @@ import { createMarkdownComponents } from './markdownComponents';
 import ChatInputArea from './ChatInput';
 import { ChatMessageList } from './MessageList';
 import ChatTabRightPanel from './ChatTabRightPanel';
+import { WelcomeHero } from '../onboarding/WelcomeHero';
 import ImageStudio from '../image/ImageStudio';
 
 /** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
@@ -61,6 +62,17 @@ const ipcRenderer =
 
 // formatTime / formatFullTime 已迁移到 MessageList.tsx
 
+export interface ToolEventItem {
+  callId: string;
+  tool: string;
+  args?: Record<string, unknown>;
+  state: 'executing' | 'done' | 'error';
+  resultPreview?: string;
+  error?: string;
+  elapsedMs?: number;
+  startedAt: number;
+}
+
 export interface ChatMessage {
   id: number;
   role: 'user' | 'assistant' | 'system';
@@ -72,6 +84,8 @@ export interface ChatMessage {
   imageDataUrl?: string;
   isSystemReply?: boolean;
   files?: UploadedFile[];
+  /** 内联工具调用卡片数据，跟随消息持久展示 */
+  toolEvents?: ToolEventItem[];
 }
 
 export interface UploadedFile {
@@ -207,6 +221,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [imageStudioOpen, setImageStudioOpen] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
+    try {
+      return localStorage.getItem('oct.onboarding.dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     if (!imageStudioOpen) return;
@@ -276,6 +297,44 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     typingSoundVolume: settings.typingSoundVolume,
     onStatusChange,
   });
+
+  const showWelcome = messages.length === 0 && !onboardingDismissed;
+
+  const handleWelcomeCardClick = useCallback(
+    (prompt: string, capabilityId: string) => {
+      setOnboardingDismissed(true);
+      try {
+        localStorage.setItem('oct.onboarding.dismissed', '1');
+      } catch {
+        /* ignore */
+      }
+
+      if (capabilityId === 'image_gen') {
+        // 直接打开 Image Studio 面板并预填 prompt，不走 AI 聊天
+        setImageStudioOpen(true);
+        // imagePromptInjectorRef 在 ImageStudio mount 后注册，用 rAF 等一帧确保面板已渲染
+        requestAnimationFrame(() => {
+          imagePromptInjectorRef.current?.(prompt);
+        });
+        return;
+      }
+
+      if (capabilityId === 'canvas') {
+        canvasBridge.openPanel();
+      }
+      void msgs.sendMessage(prompt, null);
+    },
+    [msgs.sendMessage, canvasBridge.openPanel],
+  );
+
+  const handleSkipOnboarding = useCallback(() => {
+    setOnboardingDismissed(true);
+    try {
+      localStorage.setItem('oct.onboarding.dismissed', '1');
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // Register the chat's quickSend as the node-inspect handler so Canvas
   // renderers can trigger "explain this node" queries without prop drilling.
@@ -460,6 +519,23 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     (window as any).electronAPI?.chatHistorySave?.([]);
   }, []);
 
+  /** TEMP：仅开发模式。输入框旁「欢迎页」按钮：重置首屏引导；有消息时会先问是否清空。产品化前删除。 */
+  const handleDevShowWelcomeAgain = useCallback(() => {
+    if (!import.meta.env.DEV) return;
+    if (messages.length > 0) {
+      if (!window.confirm('要先清空聊天才能显示欢迎页。确定清空全部记录吗？')) return;
+      clearProcessedMarkdownCache();
+      setMessages([]);
+      void (window as any).electronAPI?.chatHistorySave?.([]);
+    }
+    try {
+      localStorage.removeItem('oct.onboarding.dismissed');
+    } catch {
+      /* ignore */
+    }
+    setOnboardingDismissed(false);
+  }, [messages.length, setMessages]);
+
   const insertImageToChat = useCallback((imageUrl: string, prompt: string) => {
     setMessages((prev) => ([
       ...prev,
@@ -616,6 +692,19 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           streamingDomRef={msgs.streamingDomRef}
           markdownComponents={mdComponents}
           allowCotDisplay={true}
+          emptyConversationPlaceholder={
+            showWelcome ? (
+              <div className="chat-empty">
+                <WelcomeHero onCardClick={handleWelcomeCardClick} onSkip={handleSkipOnboarding} />
+              </div>
+            ) : (
+              <div className="chat-empty">
+                <div className="oct-empty-simple">
+                  <div className="oct-empty-glyph">{'\u2726'}</div>
+                </div>
+              </div>
+            )
+          }
         />
         {scroll.showScrollBtn && (
           <div
@@ -669,19 +758,32 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           injectInputText={injectInputText}
           onInjectConsumed={() => setInjectInputText(null)}
           onClearHistory={handleClearHistory}
+          isEmptyConversation={messages.length === 0}
           extraControls={(
-            <button
-              type="button"
-              className="attach-btn"
-              title="打开生图工作台"
-              onClick={() => setImageStudioOpen((v) => !v)}
-              style={{
-                background: imageStudioOpen ? 'var(--accent-primary)' : undefined,
-                color: imageStudioOpen ? 'var(--bg-base)' : undefined,
-              }}
-            >
-              🎨
-            </button>
+            <>
+              {import.meta.env.DEV ? (
+                <button
+                  type="button"
+                  className="attach-btn"
+                  title="开发用：重新显示首屏欢迎"
+                  onClick={handleDevShowWelcomeAgain}
+                >
+                  欢迎页
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="attach-btn"
+                title="打开生图工作台"
+                onClick={() => setImageStudioOpen((v) => !v)}
+                style={{
+                  background: imageStudioOpen ? 'var(--accent-primary)' : undefined,
+                  color: imageStudioOpen ? 'var(--bg-base)' : undefined,
+                }}
+              >
+                🎨
+              </button>
+            </>
           )}
         />
       </div>

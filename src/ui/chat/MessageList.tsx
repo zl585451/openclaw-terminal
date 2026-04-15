@@ -16,6 +16,7 @@ import AmyAvatar from '../../components/AmyAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown, normalizeCustomEchartBlocks } from '../../utils/markdownPreprocess';
 import type { ChatMessage } from './ChatTab.v2';
+import ToolCard from './ToolCard';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
 
@@ -634,6 +635,14 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
           )}
         </>
       )}
+      {/* 工具调用内联卡片：持久显示，不随流式结束消失 */}
+      {msg.toolEvents && msg.toolEvents.length > 0 && (
+        <div style={{ margin: '4px 0' }}>
+          {msg.toolEvents.map((evt) => (
+            <ToolCard key={evt.callId} event={evt} />
+          ))}
+        </div>
+      )}
       {isStreamingMsg && <TypewriterCursor show />}
     </div>
   );
@@ -837,6 +846,8 @@ export interface ChatMessageListProps {
   usePlainStreamingText?: boolean;
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
   allowCotDisplay?: boolean;
+  /** 空会话时替换默认「输入消息开始对..」占位（由 ChatTab 注入 Welcome等） */
+  emptyConversationPlaceholder?: React.ReactNode;
 }
 
 export const ChatMessageList = function ChatMessageList({
@@ -863,6 +874,7 @@ export const ChatMessageList = function ChatMessageList({
   usePlainStreamingText = false,
   markdownComponents,
   allowCotDisplay = true,
+  emptyConversationPlaceholder,
 }: ChatMessageListProps) {
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
@@ -927,10 +939,12 @@ export const ChatMessageList = function ChatMessageList({
     >
       <div className="chat-messages">
         {messages.length === 0 && (
+          emptyConversationPlaceholder ?? (
           <div className="chat-empty">
             <span className="empty-icon">✦</span>
             <span>输入消息开始对..</span>
           </div>
+          )
         )}
         {showTypingIndicator && !emptyStreamingAssistantTail && (
           agentPhase === 'thinking' ? (

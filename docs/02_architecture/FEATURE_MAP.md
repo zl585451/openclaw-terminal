@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-12（新增 Workbench 独立化架构方案入口）  
+> **最后更新**：2026-04-15（P0-3：`ChatInput` 空会话/非空会话占位符中文化）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -134,6 +134,24 @@
   - MiniMax Token Plan 用户可直接启用云端朗读
   - 非 MiniMax 用户不会平白承担额外系统负担
   - 后续生图/多模态套餐能力可沿用同一套路由思路
+
+### 2026-04-15 首屏引导组件（Phase P0 · Task P0-1）
+- **新增**：`src/ui/onboarding/WelcomeHero.tsx`、`CapabilityCards.tsx`、`onboarding.css`（`oct-` 类名前缀；卡片点击带调试日志）
+- **类型**：`vite-env.d.ts` 中 `musicHistoryLoad` 的 `clips` 形状与主进程 IPC 对齐（修复历史加载与构建）
+
+### 2026-04-15 首屏引导接入聊天（Phase P0 · Task P0-2）
+- **ChatTab.v2**：空会话时 `ChatMessageList` 注入 `WelcomeHero`；跳过或点卡后写入 `oct.onboarding.dismissed`；点卡发送走 `sendMessage(text, null)`。
+- **MessageList**：`emptyConversationPlaceholder` 可选 prop，仅替换空会话占位，不碰消息列表渲染。
+
+### 2026-04-15 聊天输入占位符（Phase P0 · Task P0-3）
+- **ChatInput.tsx**（`ChatInputArea`）：可选 `isEmptyConversation`；空会话与有消息时切换中文 `placeholder`；`hasPendingPills` 时仍为「或者自己输入...」。
+- **ChatTab.v2**：传入 `isEmptyConversation={messages.length === 0}`。
+
+### 2026-04-15 开发临时：首屏复测按钮
+- **DEV**：输入区 **「欢迎页」** 按钮重置引导并可选择清空记录（见 `docs/05_changelog/2026-04-15-dev-onboarding-force-welcome.md`）；产品化前删除。
+
+### 2026-04-15 欢迎卡画布能力
+- **ChatTab.v2**：`capabilityId === 'canvas'` 时打开画布面板；发送文案 **仅为卡片 prompt**（见 `docs/05_changelog/2026-04-15-welcome-canvas-capability.md`）。
 
 ### 2026-03-24 网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉
 - **网络稳定性**：ai.js 代理绕过（getDirectFetchOptions）、fetchWithRetry（90s 超时 + 重试）、流中断截断提示、工具调用 30s 超时隔离；config.js NO_PROXY 直连 DashScope
