@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import '../styles/SoundTab.css';
 
 type MusicClip = {
@@ -7,7 +7,8 @@ type MusicClip = {
   prompt: string;
   lyrics: string;
   instrumental: boolean;
-  audioSrc: string;
+  audioSrc: string;   // file:// URL
+  filePath: string;   // 本地绝对路径（用于下载）
   mimeType: string;
   model: string;
   traceId?: string;
@@ -76,14 +77,9 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function createAudioUrl(audioBase64: string, mimeType: string): string {
-  const byteChars = atob(audioBase64);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i += 1) {
-    bytes[i] = byteChars.charCodeAt(i);
-  }
-  const blob = new Blob([bytes], { type: mimeType });
-  return URL.createObjectURL(blob);
+function filePathToUrl(filePath: string): string {
+  // Windows 路径转 file:// URL（正斜杠）
+  return `file:///${filePath.replace(/\\/g, '/')}`;
 }
 
 const SoundTab: React.FC = () => {
@@ -101,8 +97,8 @@ const SoundTab: React.FC = () => {
   const [error, setError] = useState('');
   const [clips, setClips] = useState<MusicClip[]>([]);
   const [activeClipId, setActiveClipId] = useState<string | null>(null);
+  const [rightTab, setRightTab] = useState<'player' | 'history'>('player');
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
-  const createdUrlsRef = useRef<string[]>([]);
 
   const activeClip = useMemo(
     () => clips.find((clip) => clip.id === activeClipId) || clips[0] || null,
@@ -122,35 +118,27 @@ const SoundTab: React.FC = () => {
     window.electronAPI?.musicHistoryLoad?.()
       .then((result) => {
         if (!result?.success || !Array.isArray(result.clips)) return;
-        const loadedClips = result.clips.map((clip) => {
-          const audioSrc = createAudioUrl(clip.audioBase64, clip.mimeType);
-          createdUrlsRef.current.push(audioSrc);
-          return {
-            id: clip.id,
-            title: clip.title,
-            prompt: clip.prompt,
-            lyrics: clip.lyrics,
-            instrumental: clip.instrumental,
-            audioSrc,
-            mimeType: clip.mimeType,
-            model: clip.model,
-            traceId: clip.traceId,
-            durationMs: clip.durationMs,
-            sampleRate: clip.sampleRate,
-            bitrate: clip.bitrate,
-            sizeBytes: clip.sizeBytes,
-            createdAt: clip.createdAt,
-          } as MusicClip;
-        });
+        const loadedClips = result.clips.map((clip) => ({
+          id: clip.id,
+          title: clip.title,
+          prompt: clip.prompt,
+          lyrics: clip.lyrics,
+          instrumental: clip.instrumental,
+          audioSrc: filePathToUrl(clip.filePath),
+          filePath: clip.filePath,
+          mimeType: clip.mimeType,
+          model: clip.model,
+          traceId: clip.traceId,
+          durationMs: clip.durationMs,
+          sampleRate: clip.sampleRate,
+          bitrate: clip.bitrate,
+          sizeBytes: clip.sizeBytes,
+          createdAt: clip.createdAt,
+        } as MusicClip));
         setClips(loadedClips);
         setActiveClipId(loadedClips[0]?.id || null);
       })
       .catch(() => {});
-
-    return () => {
-      createdUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-      createdUrlsRef.current = [];
-    };
   }, []);
 
   const appendPromptFragment = (base: string, fragment: string) => {
@@ -243,14 +231,14 @@ const SoundTab: React.FC = () => {
         format,
       });
 
-      if (!result?.success || !result?.audioBase64) {
+      if (!result?.success || !result?.filePath) {
         setError(result?.error || '音乐生成失败');
         return;
       }
 
       const mimeType = result.mimeType || (format === 'wav' ? 'audio/wav' : 'audio/mpeg');
-      const audioSrc = createAudioUrl(result.audioBase64, mimeType);
-      createdUrlsRef.current.push(audioSrc);
+      const filePath: string = result.filePath || '';
+      const audioSrc = filePath ? filePathToUrl(filePath) : '';
 
       const clip: MusicClip = {
         id: result.clipId || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -259,6 +247,7 @@ const SoundTab: React.FC = () => {
         lyrics: lyricsOptimizer ? '' : nextLyrics,
         instrumental,
         audioSrc,
+        filePath,
         mimeType,
         model: result.model || model,
         traceId: result.traceId,
@@ -271,11 +260,24 @@ const SoundTab: React.FC = () => {
 
       setClips((prev) => [clip, ...prev].slice(0, 8));
       setActiveClipId(clip.id);
+      setRightTab('player');
     } catch (err: any) {
       setError(err?.message || '音乐生成请求失败');
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleDeleteClip = async (id: string) => {
+    await (window as any).electronAPI?.musicHistoryDelete?.(id);
+    setClips((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      if (activeClipId === id) {
+        setActiveClipId(next[0]?.id || null);
+        if (next.length === 0) setRightTab('player');
+      }
+      return next;
+    });
   };
 
   return (
@@ -640,11 +642,63 @@ const SoundTab: React.FC = () => {
 
         <section className="music-result-card">
           <div className="music-card-header">
-            <span className="music-card-eyebrow">Result</span>
-            <span className="music-card-hint">生成成功后可直接试听和下载</span>
+            <div className="music-mode-switch" role="tablist">
+              <button
+                type="button"
+                className={`music-mode-tab ${rightTab === 'player' ? 'active' : ''}`}
+                onClick={() => setRightTab('player')}
+              >
+                Now Playing
+              </button>
+              <button
+                type="button"
+                className={`music-mode-tab ${rightTab === 'history' ? 'active' : ''}`}
+                onClick={() => setRightTab('history')}
+              >
+                History{clips.length > 0 ? ` (${clips.length})` : ''}
+              </button>
+            </div>
+            <span className="music-card-hint">
+              {rightTab === 'player' ? '生成成功后可直接试听和下载' : '点击曲目切换播放，× 删除'}
+            </span>
           </div>
 
-          {activeClip ? (
+          {rightTab === 'history' ? (
+            <div className="music-history-panel">
+              {clips.length > 0 ? (
+                <div className="music-history-list">
+                  {clips.map((clip) => (
+                    <div
+                      key={clip.id}
+                      className={`music-history-item ${clip.id === activeClip?.id ? 'active' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className="music-history-item-main"
+                        onClick={() => { setActiveClipId(clip.id); setRightTab('player'); }}
+                      >
+                        <div>
+                          <strong>{clip.title}</strong>
+                          <span>{clip.model} · {formatDuration(clip.durationMs)}</span>
+                        </div>
+                        <span className="music-history-type">{clip.instrumental ? '纯音乐' : '歌曲'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="music-history-delete"
+                        title="删除"
+                        onClick={() => handleDeleteClip(clip.id)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="music-history-empty">还没有生成过作品。</div>
+              )}
+            </div>
+          ) : activeClip ? (
             <div className="music-player-shell">
               <div className="music-cover-art">
                 <div className="music-cover-ring" />
@@ -667,9 +721,11 @@ const SoundTab: React.FC = () => {
               <audio key={activeClip.id} controls className="music-audio-player" src={activeClip.audioSrc} />
 
               <div className="music-result-actions">
-                <a className="music-primary-link" href={activeClip.audioSrc} download={`${activeClip.title}.${activeClip.mimeType === 'audio/wav' ? 'wav' : 'mp3'}`}>
-                  下载音频
-                </a>
+                {activeClip.audioSrc ? (
+                  <a className="music-primary-link" href={activeClip.audioSrc} download={`${activeClip.title}.${activeClip.mimeType === 'audio/wav' ? 'wav' : 'mp3'}`} target="_blank" rel="noreferrer">
+                    下载音频
+                  </a>
+                ) : null}
                 {activeClip.traceId ? <span className="music-trace-id">trace: {activeClip.traceId}</span> : null}
               </div>
 
@@ -690,32 +746,6 @@ const SoundTab: React.FC = () => {
         </section>
       </div>
 
-      <section className="music-history-card">
-        <div className="music-card-header">
-          <span className="music-card-eyebrow">Recent</span>
-          <span className="music-card-hint">保留最近 8 首，方便快速回听</span>
-        </div>
-        {clips.length > 0 ? (
-          <div className="music-history-list">
-            {clips.map((clip) => (
-              <button
-                key={clip.id}
-                type="button"
-                className={`music-history-item ${clip.id === activeClip?.id ? 'active' : ''}`}
-                onClick={() => setActiveClipId(clip.id)}
-              >
-                <div>
-                  <strong>{clip.title}</strong>
-                  <span>{clip.model} · {formatDuration(clip.durationMs)}</span>
-                </div>
-                <span>{clip.instrumental ? '纯音乐' : '歌曲'}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="music-history-empty">这里会显示你刚刚生成过的作品版本。</div>
-        )}
-      </section>
     </div>
   );
 };

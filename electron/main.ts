@@ -3515,19 +3515,26 @@ ipcMain.handle('music-history-load', async () => {
     const clips = history.flatMap((item) => {
       const filePath = path.join(MUSIC_STUDIO_DIR, item.filename);
       if (!fs.existsSync(filePath)) return [];
-      try {
-        const audioBase64 = fs.readFileSync(filePath).toString('base64');
-        return [{
-          ...item,
-          audioBase64,
-        }];
-      } catch {
-        return [];
-      }
+      return [{ ...item, filePath }];
     });
     return { success: true, clips };
   } catch (e: any) {
     return { success: false, error: e?.message || '音乐历史读取失败', clips: [] };
+  }
+});
+
+ipcMain.handle('music-history-delete', async (_, id: string) => {
+  try {
+    const history = readMusicHistory();
+    const item = history.find((h) => h.id === id);
+    if (item) {
+      const filePath = path.join(MUSIC_STUDIO_DIR, item.filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+    writeMusicHistory(history.filter((h) => h.id !== id));
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || '删除失败' };
   }
 });
 
@@ -3643,7 +3650,7 @@ ipcMain.handle('music-generate', async (_, payload: {
     return {
       success: true,
       clipId,
-      audioBase64: audioBuffer.toString('base64'),
+      filePath: path.join(MUSIC_STUDIO_DIR, filename),
       mimeType,
       model,
       traceId,

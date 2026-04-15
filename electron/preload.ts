@@ -103,6 +103,7 @@ const electronAPI = {
     format?: 'mp3' | 'wav';
   }) => ipcRenderer.invoke('music-generate', payload),
   musicHistoryLoad: () => ipcRenderer.invoke('music-history-load'),
+  musicHistoryDelete: (id: string) => ipcRenderer.invoke('music-history-delete', id),
   lyricsGenerate: (payload: {
     prompt?: string;
     title?: string;

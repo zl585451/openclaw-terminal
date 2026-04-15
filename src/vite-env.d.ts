@@ -71,8 +71,9 @@ interface ElectronAPI {
       bitrate?: number;
       sizeBytes?: number;
       mimeType: string;
+      filename: string;
       createdAt: number;
-      audioBase64: string;
+      filePath: string;
     }>;
     error?: string;
   }>;

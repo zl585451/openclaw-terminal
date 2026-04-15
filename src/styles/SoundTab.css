@@ -691,23 +691,29 @@
   margin-bottom: 8px;
 }
 
+/* History panel inside right column */
+.music-history-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
 .music-history-list {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .music-history-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 14px;
-  width: 100%;
+  gap: 8px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   color: var(--text-primary);
-  padding: 12px 14px;
-  text-align: left;
+  overflow: hidden;
 }
 
 .music-history-item.active {
@@ -715,32 +721,76 @@
   background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-secondary));
 }
 
-.music-history-item strong,
-.music-history-item span {
+.music-history-item-main {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.music-history-item-main:hover {
+  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+}
+
+.music-history-item-main > div {
+  min-width: 0;
+}
+
+.music-history-item-main strong,
+.music-history-item-main span {
   display: block;
 }
 
-.music-history-item div span {
+.music-history-item-main > div > span {
   margin-top: 4px;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
 
+.music-history-type {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.music-history-delete {
+  flex-shrink: 0;
+  width: 32px;
+  height: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.music-history-item:hover .music-history-delete {
+  opacity: 1;
+}
+
+.music-history-delete:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, red 15%, transparent);
+}
+
 .music-history-empty {
   color: var(--text-tertiary);
   padding: 12px 2px 2px;
-}
-
-.music-history-card {
-  flex: none;
-  min-height: 108px;
-  max-height: 132px;
-}
-
-.music-history-list {
-  max-height: 68px;
-  overflow: auto;
-  padding-right: 4px;
 }
 
 @media (max-width: 980px) {
@@ -800,14 +850,13 @@
   }
 
   .music-compose-card,
-  .music-result-card,
-  .music-history-card {
+  .music-result-card {
     overflow: visible;
   }
 
   .music-compose-scroll,
   .music-player-shell,
-  .music-history-list {
+  .music-history-panel {
     overflow: visible;
     max-height: none;
   }
