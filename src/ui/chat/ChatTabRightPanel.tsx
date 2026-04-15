@@ -68,7 +68,7 @@ function formatTokenK(value: number | null | undefined): string {
 
 /**
  * 右侧栏独立成子组件：折叠状态在内部，切换时不会触发 ChatTab 主列（含 MessageList）重渲染。
- * 默认折叠（P0-4）；展开态持久化 key：oct.devpanel.expanded === '1'。
+ * 默认折叠（P0-4）；展开态持久化 key：oct.devpanel.expanded === '1'。收放用侧边箭头按钮（与早期交互一致）。
  */
 const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   gateway,
@@ -114,20 +114,15 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
 
   return (
     <div className={`right-panel ${sidebarCollapsed ? 'right-panel--collapsed' : ''}`}>
-      {sidebarCollapsed ? (
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          className="oct-devpanel-expand"
-          title="展开开发者面板"
-        >
-          <span className={`oct-status-dot${wsConnected ? '' : ' disconnected'}`}>●</span>
-        </button>
-      ) : null}
+      <button
+        type="button"
+        onClick={toggleSidebar}
+        className={`right-panel-toggle ${sidebarCollapsed ? 'is-collapsed' : ''}`}
+        title={sidebarCollapsed ? '展开开发者面板' : '收起开发者面板'}
+      >
+        {sidebarCollapsed ? '\u203A' : '\u2039'}
+      </button>
       <div className={`right-panel-inner ${sidebarCollapsed ? 'is-hidden' : ''}`}>
-        <button type="button" className="oct-devpanel-collapse" onClick={toggleSidebar}>
-          ▸ 收起
-        </button>
         <div
           style={{
             display: 'flex',

@@ -148,8 +148,8 @@
 - **ChatTab.v2**：传入 `isEmptyConversation={messages.length === 0}`。
 
 ### 2026-04-15 右栏默认折叠（Phase P0 · Task P0-4）
-- **ChatTabRightPanel**：默认折叠为 24px 条；色点表示 `wsConnected`（绿/红）；`oct.devpanel.expanded === '1'` 时初始展开；展开后顶部提供「收起」按钮。
-- **ChatTab.css**：`.oct-devpanel-expand` / `.oct-status-dot` / `.oct-devpanel-collapse`。
+- **ChatTabRightPanel**：默认折叠为 **40px** 窄条；`oct.devpanel.expanded === '1'` 时初始展开；收放为侧边 **`right-panel-toggle`**（旧版同款箭头按钮），与早期交互一致；GW/MEM 状态点仍在面板内展示。
+- **ChatTab.css**：沿用 `.right-panel-toggle` / `.right-panel--collapsed` 等既有样式。
 
 ### 2026-04-15 开发临时：首屏复测按钮
 - **DEV**：输入区 **「欢迎页」** 按钮重置引导并可选择清空记录（见 `docs/05_changelog/2026-04-15-dev-onboarding-force-welcome.md`）；产品化前删除。
