@@ -888,6 +888,130 @@
   font-weight: 600;
 }
 
+/* ========================================================================
+   文档类 Canvas 专用：阅读模式
+   仅作用于 markdownPlugin 输出的 .canvas-preview--document
+   不影响 Mermaid / HTML / Code / ECharts / ReactFlow
+   ======================================================================== */
+
+/* 1. 解除外壳的固定高度 + overflow:hidden，把滚动权交还给父级 .canvas-content */
+.canvas-preview.canvas-preview--document {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+  padding: 0;
+  display: block;
+}
+
+/* 2. 阅读栏宽容器：限制正文宽度，提升阅读舒适度 */
+.canvas-document-reader {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 40px 96px;
+  /* 底部预留空间，给未来的 AI 追加栏让位 */
+  box-sizing: border-box;
+}
+
+/* 3. 文档类 markdown 专属排版（覆盖聊天气泡的紧凑样式） */
+.canvas-preview--document .markdown-body {
+  font-size: 15px;
+  line-height: 1.78;
+  color: var(--text-primary);
+}
+
+.canvas-preview--document .markdown-body p {
+  margin: 0 0 1em;
+}
+
+.canvas-preview--document .markdown-body h1 {
+  font-size: 26px;
+  line-height: 1.35;
+  margin: 1.8em 0 0.6em;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.canvas-preview--document .markdown-body h2 {
+  font-size: 20px;
+  line-height: 1.4;
+  margin: 1.6em 0 0.5em;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.canvas-preview--document .markdown-body h3 {
+  font-size: 17px;
+  line-height: 1.4;
+  margin: 1.4em 0 0.4em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.canvas-preview--document .markdown-body h4,
+.canvas-preview--document .markdown-body h5,
+.canvas-preview--document .markdown-body h6 {
+  font-size: 15px;
+  margin: 1.2em 0 0.4em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.canvas-preview--document .markdown-body ul,
+.canvas-preview--document .markdown-body ol {
+  margin: 0.6em 0 1em;
+  padding-left: 1.6em;
+}
+
+.canvas-preview--document .markdown-body li {
+  margin: 0.3em 0;
+}
+
+.canvas-preview--document .markdown-body blockquote {
+  margin: 1em 0;
+  padding: 0.6em 1em;
+  border-left: 3px solid var(--accent-primary);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-style: normal;
+}
+
+.canvas-preview--document .markdown-body hr {
+  margin: 2em 0;
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* 4. 例外：代码块、表格、图片允许溢出阅读栏宽 */
+.canvas-preview--document .markdown-body pre,
+.canvas-preview--document .markdown-body table,
+.canvas-preview--document .markdown-body img {
+  max-width: 100%;
+}
+
+.canvas-preview--document .markdown-body pre {
+  margin: 1em 0;
+  padding: 14px 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.canvas-preview--document .markdown-body table {
+  margin: 1em 0;
+  display: block;
+  overflow-x: auto;
+}
+
+/* 5. 移动端缩窄阅读栏宽 padding */
+@media (max-width: 700px) {
+  .canvas-document-reader {
+    padding: 20px 16px 80px;
+  }
+  .canvas-preview--document .markdown-body {
+    font-size: 14px;
+    line-height: 1.7;
+  }
+}
+
 @media (max-width: 900px) {
   .canvas-toolbar {
     height: auto;

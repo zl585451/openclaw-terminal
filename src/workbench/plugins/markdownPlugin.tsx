@@ -64,15 +64,17 @@ export const markdownPlugin: WorkbenchRendererPlugin = {
   id: 'markdown',
   canRender: (document) => document.mode === 'markdown',
   render: (document) => (
-    <div className="canvas-preview">
-      <div className="msg-content markdown-body">
-        <ReactMarkdown
-          remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-          rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-          components={workbenchMarkdownComponents}
-        >
-          {document.content}
-        </ReactMarkdown>
+    <div className="canvas-preview canvas-preview--document">
+      <div className="canvas-document-reader">
+        <div className="msg-content markdown-body">
+          <ReactMarkdown
+            remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+            rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+            components={workbenchMarkdownComponents}
+          >
+            {document.content}
+          </ReactMarkdown>
+        </div>
       </div>
     </div>
   ),
