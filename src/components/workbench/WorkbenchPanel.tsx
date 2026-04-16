@@ -19,6 +19,17 @@ export default function WorkbenchPanel() {
       })
     : '';
 
+  // 中文字数：去掉所有空白字符后的长度，对中英文混排都是合理近似
+  const cnCharCount = activeDocument?.content
+    ? activeDocument.content.replace(/\s+/g, '').length
+    : 0;
+
+  // 阅读时长：按中文 400 字/分钟估算，最少 1 分钟
+  const readMinutes = cnCharCount > 0 ? Math.max(1, Math.ceil(cnCharCount / 400)) : 0;
+
+  // 是否为文档类，控制是否在 toolbar 显示字数与阅读时长
+  const isDocumentArtifact = activeDocument?.artifactType === 'document';
+
   const handleCopy = useCallback(async () => {
     if (!activeDocument) return;
     try {
@@ -76,6 +87,9 @@ export default function WorkbenchPanel() {
           {activeDocument && (
             <div className="canvas-toolbar-meta">
               {activeDocument.artifactType} · {activeDocument.origin} · v{activeDocument.version}
+              {isDocumentArtifact && cnCharCount > 0 && (
+                <> · {cnCharCount.toLocaleString('zh-CN')} 字 · 约 {readMinutes} 分钟</>
+              )}
             </div>
           )}
         </div>
