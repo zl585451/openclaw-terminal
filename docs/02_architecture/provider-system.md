@@ -1,6 +1,6 @@
 # Provider 系统 — AI 服务商市场化
 
-> **最后更新**：2026-04-14（Gemini 400 重复鉴权说明） | **状态**：✅ 正常
+> **最后更新**：2026-04-16（硅基流动设置页模型自由填写；原 2026-04-14 Gemini 400 说明仍有效） | **状态**：✅ 正常
 
 ---
 
@@ -12,7 +12,7 @@
 - `oct-gateway/config.js` — getProviderConfig、currentProvider
 - `oct-gateway/ai.js` — 按 provider 能力组装请求
 - `oct-gateway/index.js` — `/model`、`/provider` 命令
-- `src/ui/settings/tabs/ConnectionTabView.tsx` — 连接页：服务商选择器、Key、Base URL、测试连接
+- `src/ui/settings/tabs/ConnectionTabView.tsx` — 连接页：服务商选择器、Key、Base URL、测试连接；**硅基流动**（`OCT_PROVIDER=siliconflow`）下「当前模型」为文本框，直接编辑 `OCT_MODEL`，并附带常用模型快捷填入
 
 ## 预设服务商
 | ID | 名称 | Base URL |

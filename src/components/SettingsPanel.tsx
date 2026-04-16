@@ -200,6 +200,15 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     saveShortcut();
     saveAdvancedSettings();
 
+    if (hasGatewayConfigChanges) {
+      const ok = await saveGatewayAndReconnect();
+      if (!ok) {
+        setApplyStatus('error');
+        setApplyError('连接配置保存失败，请稍后重试');
+        return;
+      }
+    }
+
     if (api?.savePersonaSettings || ipcRenderer) {
       const payload = {
         OCT_AI_NAME: aiName,
@@ -212,15 +221,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       if (!personaResult?.success) {
         setApplyStatus('error');
         setApplyError(personaResult?.error || '人格设置保存失败');
-        return;
-      }
-    }
-
-    if (hasGatewayConfigChanges) {
-      const ok = await saveGatewayAndReconnect();
-      if (!ok) {
-        setApplyStatus('error');
-        setApplyError('连接配置保存失败，请稍后重试');
         return;
       }
     }

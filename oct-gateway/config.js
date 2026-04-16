@@ -531,6 +531,36 @@ function getProviderConfig() {
   let apiKey = '';
   if (preset.fixedApiKey) {
     apiKey = preset.fixedApiKey;
+  } else if (preset.id === 'siliconflow') {
+    // 硅基与百炼共用 DASHSCOPE_API_KEY 字段时，易把 sk-sp-（Coding Plan）误带到硅基导致 401。
+    // 优先 SILICONFLOW_API_KEY；否则仅当 DASHSCOPE 不像百炼 Coding 前缀时才采用。
+    const sfKey = pickKey(
+      process.env.SILICONFLOW_API_KEY,
+      _fileConfig.SILICONFLOW_API_KEY,
+    );
+    const dashKey = pickKey(
+      _fileConfig.DASHSCOPE_API_KEY,
+      process.env.DASHSCOPE_API_KEY,
+      legacyConfig.DASHSCOPE_API_KEY,
+    );
+    const dashLooksCodingPlan = dashKey && String(dashKey).trim().toLowerCase().startsWith('sk-sp-');
+    if (sfKey) {
+      apiKey = sfKey;
+    } else if (dashKey && !dashLooksCodingPlan) {
+      apiKey = dashKey;
+    } else {
+      apiKey = '';
+      if (dashLooksCodingPlan) {
+        try {
+          const { createLogger } = require('./logger');
+          createLogger('config').warn(
+            'OCT_PROVIDER=siliconflow：DASHSCOPE_API_KEY 为百炼 Coding(sk-sp-)，不能用于硅基。请填写硅基 API Key（设置保存会写入 SILICONFLOW_API_KEY），或编辑 config.json。',
+          );
+        } catch (_) {
+          console.warn('[config] siliconflow: sk-sp- in DASHSCOPE is not valid for api.siliconflow.cn');
+        }
+      }
+    }
   } else if (preset.keyEnvVars && preset.keyEnvVars.length > 0) {
     const sources = preset.keyEnvVars.flatMap(k => [
       process.env[k],
@@ -716,9 +746,14 @@ config.PROVIDERS = PROVIDERS;
 try {
   const { createLogger } = require('./logger');
   const log = createLogger('config');
-  log.info('API Key', { prefix: config.DASHSCOPE_API_KEY ? config.DASHSCOPE_API_KEY.slice(0, 8) + '***' : 'EMPTY' });
-  log.info('Base URL', { url: config.DASHSCOPE_BASE_URL });
+  const pc = getProviderConfig();
+  log.info('Active provider', { id: pc.id, name: pc.name });
+  log.info('API Key (resolved for chat)', { prefix: pc.apiKey ? pc.apiKey.slice(0, 8) + '***' : 'EMPTY' });
+  log.info('Base URL (resolved for chat)', { url: pc.baseUrl });
   log.info('Model', { model: config.DASHSCOPE_MODEL });
+  log.debug('DASHSCOPE_API_KEY file prefix', {
+    prefix: config.DASHSCOPE_API_KEY ? config.DASHSCOPE_API_KEY.slice(0, 8) + '***' : 'EMPTY',
+  });
   log.debug('Available models', { models: config.availableModels.map(m => m.id) });
 } catch {}
 

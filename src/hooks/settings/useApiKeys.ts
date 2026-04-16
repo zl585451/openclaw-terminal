@@ -156,6 +156,8 @@ type GatewayConfigPayload = {
   VISION_API_KEY: string;
   VISION_BASE_URL: string;
   VISION_MODEL: string;
+  /** 与 DASHSCOPE_API_KEY 同步写入，供网关 oct-gateway 读取 SILICONFLOW_API_KEY */
+  SILICONFLOW_API_KEY: string;
 };
 
 function resolveProviderId(data: Partial<ApiKeysState>): string {
@@ -179,6 +181,14 @@ function resolveProviderId(data: Partial<ApiKeysState>): string {
   );
 }
 
+/** 与 useMemo(currentGatewayConfig) 一致：用于 savedGatewayConfig，避免 undefined provider 导致 JSON 对比失真、Apply 跳过保存 */
+function providerSnapshotForBaseline(
+  providerId: string,
+  providers: ProvidersState,
+): ProviderEntry | undefined {
+  return providers[providerId] || FALLBACK_PROVIDERS[providerId];
+}
+
 function buildGatewayPayload(
   apiKeys: ApiKeysState,
   currentProviderId: string,
@@ -194,6 +204,11 @@ function buildGatewayPayload(
     baseUrl = apiKeys.CUSTOM_BASE_URL;
   } else if (currentProviderId === 'google') {
     baseUrl = apiKeys.GOOGLE_AI_BASE_URL;
+  } else if (currentProviderId === 'siliconflow') {
+    const u = (apiKeys.DASHSCOPE_BASE_URL || '').toLowerCase();
+    baseUrl = u.includes('siliconflow')
+      ? apiKeys.DASHSCOPE_BASE_URL
+      : (currentProvider?.baseUrl || 'https://api.siliconflow.cn/v1');
   } else {
     baseUrl = apiKeys.DASHSCOPE_BASE_URL;
   }
@@ -239,6 +254,8 @@ function buildGatewayPayload(
     VISION_API_KEY: apiKeys.VISION_API_KEY || '',
     VISION_BASE_URL: apiKeys.VISION_BASE_URL || '',
     VISION_MODEL: apiKeys.VISION_MODEL || '',
+    SILICONFLOW_API_KEY:
+      currentProviderId === 'siliconflow' ? (apiKeys.DASHSCOPE_API_KEY || '') : '',
   };
 }
 
@@ -301,7 +318,8 @@ export function useApiKeys() {
             const nextApiKeys = { ...apiKeys, ...data };
             setApiKeys((prev) => ({ ...prev, ...data }));
             const providerId = resolveProviderId(data);
-            setSavedGatewayConfig(buildGatewayPayload(nextApiKeys, providerId, undefined, nextSearchKeys));
+            const snap = providerSnapshotForBaseline(providerId, {});
+            setSavedGatewayConfig(buildGatewayPayload(nextApiKeys, providerId, snap, nextSearchKeys));
           }
           setApiKeysLoaded(true);
         })
@@ -348,7 +366,8 @@ export function useApiKeys() {
           const nextApiKeys = { ...apiKeys, ...data };
           setApiKeys((prev) => ({ ...prev, ...data }));
           const providerId = resolveProviderId(data);
-          setSavedGatewayConfig(buildGatewayPayload(nextApiKeys, providerId, undefined, nextSearchKeys));
+          const snap = providerSnapshotForBaseline(providerId, providers);
+          setSavedGatewayConfig(buildGatewayPayload(nextApiKeys, providerId, snap, nextSearchKeys));
         }
       })
       .finally(() => setApiKeysRefreshing(false));

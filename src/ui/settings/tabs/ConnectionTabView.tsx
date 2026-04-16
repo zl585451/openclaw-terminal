@@ -436,27 +436,80 @@ export function ConnectionTabView({
             </div>
             <div className="settings-field">
               <label>当前模型</label>
-              <select
-                value={apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus'}
-                onChange={(e) => {
-                  const modelId = e.target.value;
-                  setApiKeys((k) => ({ 
-                    ...k, 
-                    OCT_MODEL: modelId,
-                    // 如果选择了自定义模型，使用已保存的自定义模型名称
-                    CUSTOM_MODEL: modelId === '__custom__' ? (k.CUSTOM_MODEL || '') : k.CUSTOM_MODEL
-                  }));
-                }}
-                className="settings-input settings-input-focusable"
-                style={{ maxWidth: '100%' }}
-              >
-                {(currentProvider?.models || []).map((m) => (
-                  <option key={m.id} value={m.id}>{m.label} {m.tools ? '🔧' : ''} {m.thinking ? '🧠' : ''}</option>
-                ))}
-                {(!currentProvider?.models?.length) && (
-                  <option value="qwen3.5-plus">Qwen 3.5 Plus</option>
-                )}
-              </select>
+              {currentProviderId === 'siliconflow' ? (
+                <>
+                  <input
+                    type="text"
+                    value={apiKeys.OCT_MODEL || ''}
+                    onChange={(e) => setApiKeys((k) => ({ ...k, OCT_MODEL: e.target.value }))}
+                    placeholder={
+                      currentProvider?.defaultModel
+                      || 'Qwen/Qwen2.5-72B-Instruct（与硅基模型广场 ID 一致）'
+                    }
+                    className="settings-input settings-input-focusable"
+                    style={{ maxWidth: '100%' }}
+                    autoComplete="off"
+                  />
+                  <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                    硅基流动模型较多且更新快，请直接填写官方模型 ID（与 OpenAI 兼容字段 <code>model</code> 一致）。
+                    <a
+                      href="https://docs.siliconflow.cn/cn/userguide/quickstart"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="settings-link"
+                      style={{ marginLeft: 6 }}
+                    >
+                      文档与模型广场 →
+                    </a>
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    {(currentProvider?.models || []).map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className="settings-chip-btn"
+                        onClick={() => setApiKeys((k) => ({ ...k, OCT_MODEL: m.id }))}
+                        title={m.label}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                    {SILICONFLOW_MODEL_EXAMPLES.filter(
+                      (id) => !(currentProvider?.models || []).some((m) => m.id === id),
+                    ).map((model) => (
+                      <button
+                        key={model}
+                        type="button"
+                        className="settings-chip-btn"
+                        onClick={() => setApiKeys((k) => ({ ...k, OCT_MODEL: model }))}
+                      >
+                        {model}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <select
+                  value={apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus'}
+                  onChange={(e) => {
+                    const modelId = e.target.value;
+                    setApiKeys((k) => ({
+                      ...k,
+                      OCT_MODEL: modelId,
+                      CUSTOM_MODEL: modelId === '__custom__' ? (k.CUSTOM_MODEL || '') : k.CUSTOM_MODEL,
+                    }));
+                  }}
+                  className="settings-input settings-input-focusable"
+                  style={{ maxWidth: '100%' }}
+                >
+                  {(currentProvider?.models || []).map((m) => (
+                    <option key={m.id} value={m.id}>{m.label} {m.tools ? '🔧' : ''} {m.thinking ? '🧠' : ''}</option>
+                  ))}
+                  {(!currentProvider?.models?.length) && (
+                    <option value="qwen3.5-plus">Qwen 3.5 Plus</option>
+                  )}
+                </select>
+              )}
             </div>
             {/* 自定义模型输入框 - 当选择 __custom__ 或 provider 支持自定义模型时显示 */}
             {(apiKeys.OCT_MODEL === '__custom__' || currentProvider?.allowCustomModel) && (

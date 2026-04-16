@@ -2,6 +2,11 @@
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
 |------|----------|----------|------|
+| 2026-04-16 | 网关：硅基流动解析 API Key 时跳过百炼 Coding `sk-sp-`，优先 `SILICONFLOW_API_KEY`；启动日志改为输出解析后的 provider/Key/BaseURL | `oct-gateway/config.js` | 详见 `docs/05_changelog/2026-04-16-siliconflow-skip-sk-sp-dashscope.md` |
+| 2026-04-16 | 设置：修复「应用」时连接配置快照与当前表单不一致导致跳过保存；先落盘 Gateway 再保存人格；硅基流动同步 `SILICONFLOW_API_KEY` 并规范化 Base URL | `src/hooks/settings/useApiKeys.ts`, `src/components/SettingsPanel.tsx`, `electron/main.ts`, `electron/preload.ts`, `src/vite-env.d.ts` | 详见 `docs/05_changelog/2026-04-16-settings-apply-gateway-baseline.md` |
+| 2026-04-16 | 网关：`request start` 日志增加 `providerId`、`baseUrl`，便于确认出站是否为 `api.siliconflow.cn` | `oct-gateway/ai.js` | 详见 `docs/05_changelog/2026-04-16-ai-request-log-baseurl.md` |
+| 2026-04-16 | 网关：硅基流动读取 API Key 时优先 `DASHSCOPE_API_KEY`，避免残留 `SILICONFLOW_API_KEY` 覆盖设置面板保存的 Key 导致 401 | `oct-gateway/providers.js` | 详见 `docs/05_changelog/2026-04-16-siliconflow-api-key-priority.md` |
+| 2026-04-16 | 设置页：硅基流动服务商下「当前模型」改为可编辑文本框（`OCT_MODEL`），并保留常用模型快捷芯片 | `src/ui/settings/tabs/ConnectionTabView.tsx`, `docs/02_architecture/provider-system.md` | 详见 `docs/05_changelog/2026-04-16-siliconflow-chat-model-free-text.md` |
 | 2026-04-13 | 图片理解链路：移除 BLIP、接入通用视觉 API 与 MiniMax 直连视觉兜底；精简 Electron 本地视觉相关 IPC；设置面板同步 | `oct-gateway/image_analyzer.js`, `oct-gateway/index.js`, `oct-gateway/config.js`, `electron/main.ts`, `electron/preload.ts`, `src/components/SettingsPanel.tsx`, `docs/00_ai_entry/image-flow-entry.md` | 详见 `docs/05_changelog/2026-04-13-vision-api-fallback.md`、`docs/05_changelog/2026-04-13-minimax-vision-direct-fallback.md` |
 | 2026-04-13 | 生图：硅基流动 OpenAI 兼容适配、HTTP 超时与默认 Base URL/模型对齐；连接页增加硅基流动选项 | `oct-gateway/image_gen.js`, `oct-gateway/index.js`, `src/ui/settings/tabs/ConnectionTabView.tsx`, `docs/03_specs/WEBSOCKET_PROTOCOL.md` | 详见 `docs/05_changelog/2026-04-13-image-gen-siliconflow-and-timeout.md` |
 | 2026-04-13 | 修复“图片理解 API（视觉助手）”设置不易保存的问题：视觉预设选择会跟随已保存 Base URL 正确回填；当首次读取配置失败或未建立已保存快照时，连接配置仍可继续保存，避免用户点击“应用”后内容丢失 | `src/ui/settings/tabs/ConnectionTabView.tsx`, `src/hooks/settings/useApiKeys.ts`, `electron/preload.ts`, `src/vite-env.d.ts` | 解决视觉助手面板填写后重新打开丢失、或保存按钮看似无效的体验问题 |

@@ -68,7 +68,9 @@ const PROVIDERS = {
     baseUrl: 'https://api.siliconflow.cn/v1',
     keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
     keyLink: 'https://cloud.siliconflow.cn/',
-    keyEnvVars: ['SILICONFLOW_API_KEY', 'DASHSCOPE_API_KEY'],
+    // 与设置面板一致：连接页「API Key」写入 DASHSCOPE_API_KEY；若仍优先读 SILICONFLOW_API_KEY，
+    // 用户 config 里残留的旧 SILICONFLOW 值会覆盖新保存的 Key，导致 401。
+    keyEnvVars: ['DASHSCOPE_API_KEY', 'SILICONFLOW_API_KEY'],
     defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
     models: [
       { id: 'Qwen/Qwen2.5-72B-Instruct',    label: 'Qwen 2.5 72B（免费）',      tools: true,  thinking: false },

@@ -2985,7 +2985,8 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined
       || keys.VISION_API_KEY !== undefined
       || keys.VISION_BASE_URL !== undefined
-      || keys.VISION_MODEL !== undefined;
+      || keys.VISION_MODEL !== undefined
+      || keys.SILICONFLOW_API_KEY !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
       expectOctGatewayProcessExit = true;
       octGatewayProcess.kill();

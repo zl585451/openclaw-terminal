@@ -669,7 +669,13 @@ async function streamChat({
   // MiniMax 官方 API 失败时，fallback 到百炼版 MiniMax
   const canFallbackToBailian = fallback.canFallbackToBailian;
 
-  log.info('request start', { provider: provider.name, model, messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0 });
+  log.info('request start', {
+    provider: provider.name,
+    providerId: provider.id,
+    baseUrl: String(baseUrl || '').replace(/\/$/, ''),
+    model,
+    messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0,
+  });
 
   if (!apiKey) {
     onError(new Error('API Key 未配置，请在设置中填入' + (provider.keyLink ? `（${provider.name}）` : '')));
