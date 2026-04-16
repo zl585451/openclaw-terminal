@@ -161,6 +161,11 @@
 ### 2026-04-15 欢迎卡画布能力
 - **ChatTab.v2**：`capabilityId === 'canvas'` 时打开画布面板；发送文案 **仅为卡片 prompt**（见 `docs/05_changelog/2026-04-15-welcome-canvas-capability.md`）。
 
+### 2026-04-16 能力系统核心（Phase P1 · Task P1-1～7）
+- **core**：`src/core/capabilities/`（`types`、`providers`、`resolver`）；`src/hooks/useCapabilities.ts`（`oct.capabilities.userKeys` / `oct.capabilities.secrets`、自定义事件 `oct:capabilities-updated`）
+- **onboarding**：`CapabilitySetupDrawer.tsx`、`CapabilityStatusBar.tsx`；`CapabilityCards` / `WelcomeHero` 按能力状态分支；`onboarding.css` 抽屉与状态条
+- **ChatTab.v2**：首屏 `handleWelcomeSend` 仅 `sendMessage(prompt, null)` 并 dismiss onboarding（与此前欢迎卡「生图 / 画布」专用分支解耦；详见 `docs/05_changelog/2026-04-16-p1-capability-core.md`）
+
 ### 2026-03-24 网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉
 - **网络稳定性**：ai.js 代理绕过（getDirectFetchOptions）、fetchWithRetry（90s 超时 + 重试）、流中断截断提示、工具调用 30s 超时隔离；config.js NO_PROXY 直连 DashScope
 - **OpenClaw Skills**：skill_adapter.js 解析 SKILL.md（YAML frontmatter），注入 `<skills>` 到系统提示词，支持 bins 依赖检查

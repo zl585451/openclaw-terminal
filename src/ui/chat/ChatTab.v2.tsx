@@ -313,31 +313,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   const showWelcome = messages.length === 0 && !onboardingDismissed;
 
-  const handleWelcomeCardClick = useCallback(
-    (prompt: string, capabilityId: string) => {
+  const handleWelcomeSend = useCallback(
+    (prompt: string) => {
       setOnboardingDismissed(true);
-      try {
-        localStorage.setItem('oct.onboarding.dismissed', '1');
-      } catch {
-        /* ignore */
-      }
-
-      if (capabilityId === 'image_gen') {
-        // 直接打开 Image Studio 面板并预填 prompt，不走 AI 聊天
-        setImageStudioOpen(true);
-        // imagePromptInjectorRef 在 ImageStudio mount 后注册，用 rAF 等一帧确保面板已渲染
-        requestAnimationFrame(() => {
-          imagePromptInjectorRef.current?.(prompt);
-        });
-        return;
-      }
-
-      if (capabilityId === 'canvas') {
-        canvasBridge.openPanel();
-      }
+      try { localStorage.setItem('oct.onboarding.dismissed', '1'); } catch { /* ignore */ }
       void msgs.sendMessage(prompt, null);
     },
-    [msgs.sendMessage, canvasBridge.openPanel],
+    [msgs.sendMessage],
   );
 
   const handleSkipOnboarding = useCallback(() => {
@@ -708,7 +690,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           emptyConversationPlaceholder={
             showWelcome ? (
               <div className="chat-empty">
-                <WelcomeHero onCardClick={handleWelcomeCardClick} onSkip={handleSkipOnboarding} />
+                <WelcomeHero onSend={handleWelcomeSend} onSkip={handleSkipOnboarding} />
               </div>
             ) : (
               <div className="chat-empty">
