@@ -9,7 +9,7 @@ Phase P0 Task P0-3：将聊天输入框默认英文占位符改为对新用户�
 - **`src/ui/chat/ChatInput.tsx`**
   - `ChatInputAreaProps` 新增可选 `isEmptyConversation?: boolean`。
   - 使用 `useMemo` 计算占位符：
-    - 空会话：`今天想让 OCT 帮你做什么?  · 聊天 · 搜资料 · 画图 · 生图`
+    - 空会话：`今天想让OCT帮你做什么？`（2026-04-16 起缩短，避免折行重叠；此前为带能力列举的长文案）
     - 非空：`继续聊,或按 / 唤出命令`
   - 保留 `hasPendingPills` 时的 `或者自己输入...` 优先级。
 - **`src/ui/chat/ChatTab.v2.tsx`**

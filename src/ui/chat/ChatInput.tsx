@@ -51,7 +51,7 @@ const ChatInputArea = memo(function ChatInputArea({
   const assistantName = settings.aiName || 'OpenClaw';
   const conversationPlaceholder = useMemo(() => {
     if (isEmptyConversation) {
-      return '今天想让 OCT 帮你做什么?  · 聊天 · 搜资料 · 画图 · 生图';
+      return '今天想让OCT帮你做什么？';
     }
     return '继续聊,或按 / 唤出命令';
   }, [isEmptyConversation]);
