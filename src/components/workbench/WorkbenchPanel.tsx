@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useWorkbench } from '../../workbench/WorkbenchContext';
 import { resolveWorkbenchPlugin } from '../../workbench/plugins';
+import DocumentAppendBar from './DocumentAppendBar';
 import '../CanvasPanel.css';
 
 export default function WorkbenchPanel() {
@@ -186,6 +187,10 @@ export default function WorkbenchPanel() {
           </div>
         )}
       </div>
+
+      {activeDocument?.artifactType === 'document' && (
+        <DocumentAppendBar />
+      )}
     </div>
   );
 }

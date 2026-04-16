@@ -1012,6 +1012,145 @@
   }
 }
 
+/* ========================================================================
+   DocumentAppendBar — 文档类 Canvas 底部 AI 追加栏
+   仅在 artifactType === 'document' 时由 WorkbenchPanel 渲染
+   ======================================================================== */
+
+.document-append-bar {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.document-append-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.document-append-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.document-append-chip:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+.document-append-chip.is-active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-primary-muted);
+}
+
+.document-append-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.document-append-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.document-append-textarea {
+  flex: 1;
+  min-height: 36px;
+  max-height: 120px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.document-append-textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.document-append-textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.document-append-textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.document-append-send-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.document-append-send-btn:hover:not(:disabled) {
+  background: var(--accent-primary);
+  color: var(--bg-base);
+}
+
+.document-append-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--border-subtle);
+  color: var(--text-tertiary);
+}
+
+.document-append-meta {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.document-append-intent {
+  font-family: var(--font-mono);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.document-append-hint {
+  color: var(--text-tertiary);
+}
+
+/* 小屏适配 */
+@media (max-width: 700px) {
+  .document-append-bar {
+    padding: 8px 10px 10px;
+  }
+  .document-append-chip {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+}
+
 @media (max-width: 900px) {
   .canvas-toolbar {
     height: auto;
