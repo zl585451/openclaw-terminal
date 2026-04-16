@@ -11,7 +11,7 @@ import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/ChatTab.v2';
-import { extractAssistantCotAndMain, hasAssistantCotMarkers, stripTextToolAnnotations } from '../utils/cotExtract';
+import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 
@@ -201,7 +201,9 @@ export function useMessages({
     );
   }, [fsmPhase, messages]);
   const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
-    const finalRaw = stripTextToolAnnotations(stripThinkModeMarker(rawText ?? fullTextRef.current ?? ''));
+    const finalRaw = stripTextToolAnnotations(
+      stripLeakedToolCallSections(stripThinkModeMarker(rawText ?? fullTextRef.current ?? '')),
+    );
     if (finalizeFallbackTimerRef.current != null) {
       clearTimeout(finalizeFallbackTimerRef.current);
       finalizeFallbackTimerRef.current = null;
@@ -246,7 +248,9 @@ export function useMessages({
     }
     finalizeFallbackTimerRef.current = setTimeout(() => {
       finalizeFallbackTimerRef.current = null;
-      const fallbackRaw = stripTextToolAnnotations(stripThinkModeMarker(rawText ?? fullTextRef.current ?? ''));
+      const fallbackRaw = stripTextToolAnnotations(
+        stripLeakedToolCallSections(stripThinkModeMarker(rawText ?? fullTextRef.current ?? '')),
+      );
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!(last?.role === 'assistant' && last.isStreaming)) {
@@ -281,8 +285,7 @@ export function useMessages({
     streamPaintLastTsRef.current = now;
     const raw = fullTextRef.current;
     const el = streamingDomRef.current;
-    const markers = hasAssistantCotMarkers(raw);
-    const main = markers ? extractAssistantCotAndMain(raw).mainContent : raw;
+    const main = getAssistantVisibleMain(raw);
     const targetLen = main.length;
     let shown = streamPaintShownLenRef.current;
     if (shown > targetLen) {
@@ -343,9 +346,7 @@ export function useMessages({
     }
 
     const rawEnd = fullTextRef.current;
-    const mainEnd = hasAssistantCotMarkers(rawEnd)
-      ? extractAssistantCotAndMain(rawEnd).mainContent.length
-      : rawEnd.length;
+    const mainEnd = getAssistantVisibleMain(rawEnd).length;
     if (streamPaintShownLenRef.current < mainEnd) {
       streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
       return;
@@ -367,9 +368,7 @@ export function useMessages({
     pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
       pendingFullTextSyncRafRef.current = null;
       const buf = fullTextRef.current;
-      const visibleMain = hasAssistantCotMarkers(buf)
-        ? extractAssistantCotAndMain(buf).mainContent
-        : buf;
+      const visibleMain = getAssistantVisibleMain(buf);
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
@@ -461,7 +460,9 @@ export function useMessages({
       }
 
       if (!systemReply) {
-        const fallbackText = stripTextToolAnnotations(stripThinkModeMarker(String(content || '').trim()));
+        const fallbackText = stripTextToolAnnotations(
+          stripLeakedToolCallSections(stripThinkModeMarker(String(content || '').trim())),
+        );
         if (fallbackText && !fullTextRef.current.trim()) {
           streamingMessageRef.current = fallbackText;
           fullTextRef.current = fallbackText;

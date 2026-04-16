@@ -117,14 +117,15 @@
 .oct-cap-card-hint { margin-top: 8px; font-size: 11px; color: var(--text-tertiary, #666); letter-spacing: 0.5px; }
 
 /* P1-5: Setup Drawer */
-.oct-drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; animation: oct-fade-in 0.15s ease; }
-.oct-drawer { background: var(--drawer-bg, #1a1a1a); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 8px; width: 480px; max-width: 90vw; display: flex; flex-direction: column; }
+/* Portal 到 body，z-index 需高于聊天区、侧栏与多数浮层（见 SettingsPanel 1000、FirstLaunch 1200） */
+.oct-drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 13000; pointer-events: auto; animation: oct-fade-in 0.15s ease; }
+.oct-drawer { background: var(--drawer-bg, #1a1a1a); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 8px; width: 480px; max-width: 90vw; display: flex; flex-direction: column; pointer-events: auto; position: relative; }
 .oct-drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08)); }
 .oct-drawer-title { font-size: 14px; color: var(--accent-color, #e8a87c); letter-spacing: 1px; }
 .oct-drawer-close { background: transparent; border: none; color: var(--text-secondary, #999); cursor: pointer; font-size: 16px; }
 .oct-drawer-body { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
 .oct-drawer-hint { font-size: 12px; color: var(--text-secondary, #999); }
-.oct-drawer-input { background: var(--input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); color: var(--text-primary, #ddd); padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px; resize: vertical; outline: none; }
+.oct-drawer-input { background: var(--input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); color: var(--text-primary, #ddd); padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px; resize: vertical; outline: none; pointer-events: auto; }
 .oct-drawer-input:focus { border-color: var(--accent-color, #e8a87c); }
 .oct-drawer-detected { font-size: 11px; color: #4ade80; }
 .oct-drawer-error { font-size: 11px; color: #ef4444; }

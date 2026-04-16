@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
-import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../../utils/cotExtract';
+import { extractAssistantCotAndMain, hasAssistantCotMarkers, stripLeakedToolCallSections, stripTextToolAnnotations } from '../../utils/cotExtract';
 import { summarizeCotForDisplay } from '../../utils/cotSummary';
 import { blockRouter } from '../../core/blockRouter';
 import { blocksToSegments } from '../../core/blockAdapter';
@@ -985,14 +985,17 @@ export const ChatMessageList = function ChatMessageList({
                   : (streamingContent || raw)
               )
             : raw;
+        /** 与 useMessages 流式正文一致：先去掉泄漏的工具段，再走 CoT / Markdown */
+        const fullForCot =
+          msg.role === 'assistant' && fullContent ? stripLeakedToolCallSections(fullContent) : fullContent;
         const displayedLength = displayedText.length;
 
         // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
         const { cotContent: streamingCotContent, cotStarted: streamingCotStarted, mainContent: mainTextFull } =
-          allowCotDisplay && msg.role === 'assistant' && fullContent
-            ? !hasAssistantCotMarkers(fullContent)
-              ? { cotContent: null, cotStarted: false, mainContent: fullContent }
-              : extractAssistantCotAndMain(fullContent)
+          allowCotDisplay && msg.role === 'assistant' && fullForCot
+            ? !hasAssistantCotMarkers(fullForCot)
+              ? { cotContent: null, cotStarted: false, mainContent: stripTextToolAnnotations(fullForCot) }
+              : extractAssistantCotAndMain(fullForCot)
             : { cotContent: null, cotStarted: false, mainContent: fullContent };
         const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
         const shouldBypassStreamingParse =

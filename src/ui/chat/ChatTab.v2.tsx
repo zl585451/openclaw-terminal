@@ -753,6 +753,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           injectInputText={injectInputText}
           onInjectConsumed={() => setInjectInputText(null)}
           onClearHistory={handleClearHistory}
+          onRestartGateway={gateway.restartGateway}
           isEmptyConversation={messages.length === 0}
           extraControls={(
             <>

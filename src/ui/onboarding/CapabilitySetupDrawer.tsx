@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { CapabilityId } from '../../core/capabilities/types'
 import { guessProviders, maskKey } from '../../core/capabilities/resolver'
 import { PROVIDERS } from '../../core/capabilities/providers'
@@ -18,6 +19,11 @@ export const CapabilitySetupDrawer: React.FC<Props> = ({ capabilityId, onClose, 
   const providersForCap = useMemo(() => capabilityId ? PROVIDERS.filter(p => p.capabilities.includes(capabilityId)) : [], [capabilityId])
   const guessed = useMemo(() => keyInput.trim() ? guessProviders(keyInput) : [], [keyInput])
 
+  useEffect(() => {
+    setKeyInput('')
+    setError('')
+  }, [capabilityId])
+
   const handleSubmit = () => {
     const key = keyInput.trim()
     if (!key) { setError('请粘贴一个 Key'); return }
@@ -27,18 +33,19 @@ export const CapabilitySetupDrawer: React.FC<Props> = ({ capabilityId, onClose, 
     onSetupDone?.(); onClose()
   }
 
-  if (!capabilityId) return null
-  return (
-    <div className="oct-drawer-backdrop" onClick={onClose}>
-      <div className="oct-drawer" onClick={e => e.stopPropagation()}>
+  if (!capabilityId || typeof document === 'undefined') return null
+
+  const modal = (
+    <div className="oct-drawer-backdrop" onClick={onClose} role="presentation">
+      <div className="oct-drawer" role="dialog" aria-modal="true" aria-labelledby="oct-cap-drawer-title" onClick={e => e.stopPropagation()}>
         <div className="oct-drawer-header">
-          <div className="oct-drawer-title">开启「{CAP_NAME[capabilityId] || capabilityId}」能力</div>
+          <div id="oct-cap-drawer-title" className="oct-drawer-title">开启「{CAP_NAME[capabilityId] || capabilityId}」能力</div>
           <button type="button" className="oct-drawer-close" onClick={onClose}>{'\u2715'}</button>
         </div>
         <div className="oct-drawer-body">
           <div className="oct-drawer-hint">粘贴任意一家的 Key，OCT 会自动识别:</div>
           <textarea className="oct-drawer-input" placeholder="sk-..." value={keyInput}
-            onChange={e => { setKeyInput(e.target.value); setError('') }} rows={2} autoFocus />
+            onChange={e => { setKeyInput(e.target.value); setError('') }} rows={3} autoFocus />
           {guessed.length > 0 && <div className="oct-drawer-detected">已识别: {guessed.map(pid => PROVIDERS.find(p => p.id === pid)?.displayName).filter(Boolean).join(' / ')}</div>}
           {error && <div className="oct-drawer-error">{error}</div>}
           <div className="oct-drawer-supported">{'\u{1F4A1}'} 支持: {providersForCap.map(p => p.displayName).join(' / ')}</div>
@@ -50,4 +57,6 @@ export const CapabilitySetupDrawer: React.FC<Props> = ({ capabilityId, onClose, 
       </div>
     </div>
   )
+
+  return createPortal(modal, document.body)
 }

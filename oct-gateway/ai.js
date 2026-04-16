@@ -569,7 +569,7 @@ function parsePseudoToolArgs(blockText) {
   return args;
 }
 
-function extractPseudoToolCalls(text) {
+function extractRubyPseudoToolCalls(text) {
   const source = String(text || '');
   if (!source || !/tool\s*=>/i.test(source) || !/args\s*=>/i.test(source)) {
     return [];
@@ -643,6 +643,90 @@ function extractPseudoToolCalls(text) {
   }
 
   return blocks;
+}
+
+/** Kimi 等模型把 function call 以 `<|…tool_calls_section…|>` 形式写进正文 */
+function findBalancedJsonObjectSlice(s, fromIndex) {
+  const start = s.indexOf('{', fromIndex);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let quoteChar = '"';
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === quoteChar) {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quoteChar = ch;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return { start, end: i + 1, jsonStr: s.slice(start, i + 1) };
+      }
+    }
+  }
+  return null;
+}
+
+function extractKimiStylePseudoToolCalls(text) {
+  const source = String(text || '');
+  if (!source || !/tool_calls_section_begin/i.test(source)) {
+    return [];
+  }
+  const sectionRe = /<\|[^|]*tool_calls_section_begin[^|]*\|>([\s\S]*?)<\|[^|]*tool_calls_section_end[^|]*\|>/gi;
+  const calls = [];
+  let sec;
+  while ((sec = sectionRe.exec(source)) !== null) {
+    const inner = sec[1];
+    const argSep = /<\|[^|]*tool_call_argument_begin[^|]*\|>/i;
+    const am = inner.match(argSep);
+    if (!am || am.index === undefined) continue;
+    const jsonFrom = inner.slice(am.index + am[0].length);
+    const hit = findBalancedJsonObjectSlice(jsonFrom, 0);
+    if (!hit) continue;
+    let obj;
+    try {
+      obj = JSON.parse(hit.jsonStr);
+    } catch {
+      continue;
+    }
+    const toolName = obj.name || (obj.function && obj.function.name);
+    const args = obj.arguments !== undefined ? obj.arguments : (obj.args !== undefined ? obj.args : undefined);
+    if (!toolName) continue;
+    const argString = typeof args === 'string' ? args : JSON.stringify(args || {});
+    calls.push({
+      id: `pseudo-kimi-${Date.now()}-${calls.length}`,
+      type: 'function',
+      function: {
+        name: toolName,
+        arguments: argString,
+      },
+    });
+  }
+  return calls;
+}
+
+function extractPseudoToolCalls(text) {
+  const ruby = extractRubyPseudoToolCalls(text);
+  if (ruby.length > 0) return ruby;
+  return extractKimiStylePseudoToolCalls(text);
 }
 
 async function streamChat({

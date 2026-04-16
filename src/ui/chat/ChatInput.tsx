@@ -25,6 +25,7 @@ export interface ChatInputAreaProps {
   injectInputText?: string | null;
   onInjectConsumed?: () => void;
   onClearHistory?: () => void;
+  onRestartGateway?: () => void;
   hasPendingPills?: boolean;
   extraControls?: React.ReactNode;
   /** When true, show first-time friendly placeholder copy */
@@ -43,6 +44,7 @@ const ChatInputArea = memo(function ChatInputArea({
   injectInputText,
   onInjectConsumed,
   onClearHistory,
+  onRestartGateway,
   hasPendingPills,
   extraControls,
   isEmptyConversation = false,
@@ -394,6 +396,7 @@ const ChatInputArea = memo(function ChatInputArea({
           onClose={() => setQuickMenuOpen(false)}
           onSelect={handleQuickCommand}
           onClearHistory={onClearHistory}
+          onRestartGateway={onRestartGateway}
         />
         <textarea
           ref={inputRef as React.RefObject<HTMLTextAreaElement>}
