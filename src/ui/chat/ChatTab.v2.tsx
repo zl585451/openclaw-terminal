@@ -20,6 +20,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { useCanvasBridge } from '../../hooks/useCanvasBridge';
 import { useCanvas } from '../../contexts/CanvasContext';
+import { workbenchBus } from '../../workbench/WorkbenchBus';
 // playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
 import { extractAssistantCotAndMain } from '../../utils/cotExtract';
@@ -297,6 +298,18 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     typingSoundVolume: settings.typingSoundVolume,
     onStatusChange,
   });
+
+  // ── Workbench → Chat 桥接：监听面板内的发送请求 ─────────────────
+  // 当 DocumentAppendBar / 其他面板内 UI 通过 workbenchBus.requestSendMessage 发起请求时，
+  // 这里转成实际的 sendMessage 调用，并按 intent 注入 roundtrip 上下文。
+  useEffect(() => {
+    const unsubscribe = workbenchBus.subscribeSendRequest((request) => {
+      const intent = request.intent ?? 'continue';
+      const context = workbenchBus.getContext(intent);
+      msgs.sendMessage(request.text, null, undefined, context);
+    });
+    return unsubscribe;
+  }, [msgs]);
 
   const showWelcome = messages.length === 0 && !onboardingDismissed;
 
