@@ -138,6 +138,7 @@ const App: React.FC = () => {
               setMessages={setMessages}
               getNextMessageId={getNextMessageId}
               onStatusChange={() => {}}
+              onSwitchTab={setActiveTab}
             />
           )}
           {activeTab === 'sound' && <SoundTab />}

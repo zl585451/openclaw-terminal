@@ -9,7 +9,7 @@ interface Props { capabilityId: CapabilityId | null; onClose: () => void; onSetu
 
 const CAP_NAME: Record<string, string> = {
   chat:'对话', chat_vision:'看图', image_gen:'生图', canvas:'画布',
-  background_task:'后台任务', web_search:'联网搜索', tts:'语音合成', asr:'语音识别',
+  background_task:'后台任务', web_search:'联网搜索', music_gen:'音乐生成', tts:'语音合成', asr:'语音识别',
 }
 
 export const CapabilitySetupDrawer: React.FC<Props> = ({ capabilityId, onClose, onSetupDone }) => {

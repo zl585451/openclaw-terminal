@@ -29,17 +29,25 @@ function computeImageGenReadyFromApiKeys(data: Record<string, unknown>): boolean
   return hasValue(data.IMAGE_API_KEY)
 }
 
+function computeMusicGenReadyFromApiKeys(data: Record<string, unknown>): boolean {
+  // 音乐链路采用严格判定：当前仅 MINIMAX_API_KEY 视为可用凭据。
+  return hasValue(data.MINIMAX_API_KEY)
+}
+
 export function useCapabilities() {
   const [userKeys, setUserKeys] = useState<UserKeyRecord[]>(() => loadUserKeys())
   const [imageGenReady, setImageGenReady] = useState<boolean | null>(null)
+  const [musicGenReady, setMusicGenReady] = useState<boolean | null>(null)
 
   const refreshImageCapability = useCallback(async () => {
     try {
       const result = await (window as any).electronAPI?.getApiKeys?.()
       const data = (result?.data || {}) as Record<string, unknown>
       setImageGenReady(computeImageGenReadyFromApiKeys(data))
+      setMusicGenReady(computeMusicGenReadyFromApiKeys(data))
     } catch {
       setImageGenReady(null)
+      setMusicGenReady(null)
     }
   }, [])
 
@@ -56,23 +64,37 @@ export function useCapabilities() {
   }, [refreshImageCapability])
   const capabilities = useMemo(() => {
     const resolved = resolveCapabilities(userKeys)
-    if (imageGenReady === null) return resolved
 
-    if (imageGenReady) {
+    if (imageGenReady !== null && imageGenReady) {
       resolved.set('image_gen', {
         id: 'image_gen',
         status: 'available',
         activeProvider: 'panel_config',
       })
-    } else {
+    } else if (imageGenReady !== null) {
       resolved.set('image_gen', {
         id: 'image_gen',
         status: 'missing_key',
         reason: '需先在设置中完成生图配置',
       })
     }
+
+    if (musicGenReady !== null && musicGenReady) {
+      resolved.set('music_gen', {
+        id: 'music_gen',
+        status: 'available',
+        activeProvider: 'minimax_config',
+      })
+    } else if (musicGenReady !== null) {
+      resolved.set('music_gen', {
+        id: 'music_gen',
+        status: 'missing_key',
+        reason: '需先在设置中配置 MINIMAX_API_KEY',
+      })
+    }
+
     return resolved
-  }, [imageGenReady, userKeys])
+  }, [imageGenReady, musicGenReady, userKeys])
   const getCapability = useCallback((id: CapabilityId): Capability => capabilities.get(id) || { id, status: 'missing_key' }, [capabilities])
   const addUserKey = useCallback((providerId: string, key: string, maskedKey: string) => {
     const record: UserKeyRecord = { providerId, maskedKey, addedAt: Date.now() }

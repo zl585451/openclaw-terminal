@@ -2,6 +2,7 @@ export type CapabilityId =
   | 'chat'
   | 'chat_vision'
   | 'image_gen'
+  | 'music_gen'
   | 'canvas'
   | 'background_task'
   | 'web_search'

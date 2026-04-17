@@ -5,6 +5,7 @@ import { CapabilityId } from '../../core/capabilities/types'
 const CAPS: Array<{id: CapabilityId, label: string}> = [
   { id: 'chat', label: '对话' }, { id: 'canvas', label: '画布' },
   { id: 'background_task', label: '后台任务' }, { id: 'image_gen', label: '生图' },
+  { id: 'music_gen', label: '音乐' },
   { id: 'web_search', label: '联网搜索' },
 ]
 

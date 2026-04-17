@@ -63,6 +63,15 @@ const LYRIC_PRESET = `[Verse]
 把没说出口的愿望
 都写进这一段回响`;
 
+const MUSIC_KEY_GUIDE = [
+  '未检测到可用的音乐 Key（MINIMAX_API_KEY）。',
+  '',
+  '请按以下步骤配置：',
+  '1. 点击右上方 [SETTINGS] → [连接]',
+  '2. 填入可用的 [MINIMAX_API_KEY] 并点击 [应用]',
+  '3. 返回 [音频] 面板后，再点击 [Create] 或 [自动写词]',
+].join('\n');
+
 function formatDuration(ms?: number): string {
   if (!ms || ms <= 0) return '--:--';
   const totalSeconds = Math.round(ms / 1000);
@@ -176,6 +185,10 @@ const SoundTab: React.FC = () => {
   };
 
   const handleGenerateLyrics = async () => {
+    if (apiKeyConfigured === false) {
+      setError(MUSIC_KEY_GUIDE);
+      return;
+    }
     setIsGeneratingLyrics(true);
     setError('');
     try {
@@ -205,6 +218,10 @@ const SoundTab: React.FC = () => {
   };
 
   const handleGenerate = async () => {
+    if (apiKeyConfigured === false) {
+      setError(MUSIC_KEY_GUIDE);
+      return;
+    }
     const nextPrompt = prompt.trim();
     const nextLyrics = lyrics.trim();
     if (!nextPrompt) {
@@ -307,6 +324,21 @@ const SoundTab: React.FC = () => {
           <div className="music-status-meta">Simple 自动补歌词，Advanced 自定义歌词</div>
         </div>
       </section>
+      {apiKeyConfigured === false && (
+        <section className="music-hero-card" style={{ marginTop: '12px' }}>
+          <div className="music-hero-main">
+            <div className="music-card-header">
+              <span className="music-card-eyebrow">配置引导</span>
+            </div>
+            <div className="music-note-inline">
+              未检测到可用的音乐 Key（MINIMAX_API_KEY）。
+            </div>
+            <div className="music-note-inline">
+              点击右上角 [SETTINGS] → [连接]，填入 MINIMAX_API_KEY 并应用后，再回到音频面板生成。
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="music-studio-grid">
         <section className="music-compose-card">

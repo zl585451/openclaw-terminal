@@ -165,10 +165,11 @@ interface ChatTabProps {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   getNextMessageId: () => number;
   onStatusChange?: (wsConnected: boolean, isStreaming: boolean, modelName?: string, tokenIn?: number | null, tokenOut?: number | null, ctxUsed?: number | null, ctxMax?: number | null) => void;
+  onSwitchTab?: (tab: 'chat' | 'sound' | 'reaper') => void;
 }
 
 
-const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange }) => {
+const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange, onSwitchTab }) => {
   const { settings, setSettings, streamSpeedMs } = useSettings();
   const { permissions } = usePermissions();
   const canvasBridge = useCanvasBridge();
@@ -353,6 +354,26 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     ]));
   }, [getNextMessageId, setMessages]);
 
+  const appendMusicCapabilityGuideMessage = useCallback(() => {
+    setMessages((prev) => ([
+      ...prev,
+      {
+        id: getNextMessageId(),
+        role: 'assistant',
+        content: [
+          '我这边检测到你还没有配置音乐 Key（MINIMAX_API_KEY）。',
+          '',
+          '你可以按以下步继续：',
+          '',
+          '点击右上方 [⚙️SETTINGS]→[连接]→填入 MINIMAX_API_KEY → [应用]',
+          '',
+          '然后点顶部 [音频] 标签，输入描述后点击 [Create] 开始生成。',
+        ].join('\n'),
+        timestamp: Date.now(),
+      },
+    ]));
+  }, [getNextMessageId, setMessages]);
+
   const handleWelcomeAction = useCallback(
     (card: CardDef, capabilityStatus: CapabilityStatus) => {
       if (card.action.type === 'send_prompt') {
@@ -376,8 +397,17 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           msgs.quickSend(buildPromptOptimizeRequest(prefill));
         }
       }
+
+      if (card.action.type === 'open_tab' && card.action.tabId === 'sound') {
+        dismissOnboarding();
+        if (capabilityStatus !== 'available') {
+          appendMusicCapabilityGuideMessage();
+        }
+        onSwitchTab?.('sound');
+        return;
+      }
     },
-    [appendImageCapabilityGuideMessage, buildPromptOptimizeRequest, dismissOnboarding, msgs, openImageStudioWithPrefill],
+    [appendImageCapabilityGuideMessage, appendMusicCapabilityGuideMessage, buildPromptOptimizeRequest, dismissOnboarding, msgs, onSwitchTab, openImageStudioWithPrefill],
   );
 
   const handleSkipOnboarding = useCallback(() => {

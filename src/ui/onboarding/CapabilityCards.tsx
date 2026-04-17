@@ -5,6 +5,7 @@ import { CapabilityId, CapabilityStatus } from '../../core/capabilities/types'
 export type CardAction =
   | { type: 'send_prompt'; prompt: string }
   | { type: 'open_panel'; panelId: 'image_studio'; prefill?: string }
+  | { type: 'open_tab'; tabId: 'sound' }
 
 export interface CardDef {
   id: string
@@ -52,6 +53,14 @@ export const DEFAULT_CARDS: CardDef[] = [
       prefill: '赛博朋克风格的终端海报，暗色调，霓虹灯光',
     },
   },
+  {
+    id: 'music',
+    icon: '\u{1F3B5}',
+    title: '音乐',
+    subtitle: '写一段描述，生成一首可试听的音乐',
+    capabilityId: 'music_gen',
+    action: { type: 'open_tab', tabId: 'sound' },
+  },
 ]
 
 interface Props {
@@ -69,7 +78,7 @@ export const CapabilityCards: React.FC<Props> = ({ onAction, onRequestSetup, car
       return
     }
     if (cap.status === 'missing_key') {
-      if (card.action.type === 'open_panel') {
+      if (card.action.type === 'open_panel' || card.action.type === 'open_tab') {
         // 面板型能力在缺配置时交给上层做“可解释提示”，避免用户点了没反应
         onAction(card, cap.status)
         return
@@ -94,9 +103,7 @@ export const CapabilityCards: React.FC<Props> = ({ onAction, onRequestSetup, car
             <div className="oct-cap-card-icon">{card.icon}</div>
             <div className="oct-cap-card-title">{card.title}</div>
             <div className="oct-cap-card-prompt">{card.subtitle}</div>
-            {card.action.type === 'open_panel' && !needsSetup && (
-              <div className="oct-cap-card-hint">打开工作台 →</div>
-            )}
+            {(card.action.type === 'open_panel' || card.action.type === 'open_tab') && !needsSetup && <div className="oct-cap-card-hint">打开工作台 →</div>}
             {needsSetup && <div className="oct-cap-card-hint">需先开通 →</div>}
           </button>
         )
