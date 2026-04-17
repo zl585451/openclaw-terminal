@@ -683,6 +683,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           pendingPills={msgs.pendingPills}
           messagesContainerRef={scroll.messagesContainerRef}
           activeTools={msgs.activeTools}
+          activityTimeline={msgs.activityTimeline}
           getToolDisplayName={getToolDisplayName}
           streamingDomRef={msgs.streamingDomRef}
           markdownComponents={mdComponents}

@@ -1,0 +1,214 @@
+.activity-panel {
+  display: flex;
+  gap: 0;
+  margin: 4px 0 8px 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.activity-panel__accent-bar {
+  width: 3px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--accent-primary, #6c8aff);
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.activity-panel--streaming .activity-panel__accent-bar {
+  opacity: 1;
+  animation: activity-bar-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes activity-bar-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.activity-panel__content {
+  flex: 1;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+.activity-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.activity-panel__header:hover {
+  color: var(--text-primary);
+}
+
+.activity-panel__icon {
+  display: flex;
+  align-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.activity-panel__label {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  letter-spacing: 0.3px;
+}
+
+.activity-panel__chevron {
+  font-size: 12px;
+  transition: transform 0.15s;
+  opacity: 0.6;
+}
+
+.activity-panel__chevron--up {
+  transform: rotate(180deg);
+}
+
+.activity-panel__spinner {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.activity-panel__spinner span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-primary, #6c8aff);
+  animation: activity-dot-bounce 1.2s ease-in-out infinite;
+}
+
+.activity-panel__spinner span:nth-child(2) { animation-delay: 0.15s; }
+.activity-panel__spinner span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes activity-dot-bounce {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
+
+.activity-panel__body-wrapper {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.activity-panel__body--open {
+  max-height: 600px;
+  opacity: 1;
+}
+
+.activity-panel__body--closed {
+  max-height: 0;
+  opacity: 0;
+}
+
+.activity-panel__body {
+  padding: 6px 0 4px 0;
+  overflow-y: auto;
+  max-height: 500px;
+}
+
+.activity-entry {
+  padding: 2px 0;
+}
+
+.activity-entry--hint {
+  color: var(--text-tertiary, var(--text-secondary));
+  font-style: italic;
+  font-size: var(--text-xs);
+  padding: 4px 0;
+}
+
+.activity-entry__hint-text {
+  opacity: 0.7;
+}
+
+.activity-entry--cot {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.activity-entry--cot p {
+  margin: 4px 0;
+}
+
+.activity-entry--tool-call {
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0 2px 0;
+}
+
+.activity-tool__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.activity-tool__icon {
+  font-size: 13px;
+}
+
+.activity-tool__name {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.5px;
+}
+
+.activity-tool__args {
+  margin-top: 4px;
+  padding-left: 22px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-entry--tool-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 6px 10px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.activity-tool__result-icon {
+  font-size: 12px;
+  color: var(--status-success, #4ade80);
+}
+
+.activity-entry--tool-error .activity-tool__result-icon {
+  color: var(--status-error, #ef4444);
+}
+
+.activity-tool__result-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.activity-tool__result-preview {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
