@@ -78,6 +78,28 @@ export interface ActiveTool {
   resultPreview?: string;
 }
 
+export type ActivityEntryType =
+  | 'thinking_placeholder'
+  | 'cot'
+  | 'tool_call'
+  | 'tool_result'
+  | 'keepalive_hint';
+
+export interface ActivityEntry {
+  id: string;
+  type: ActivityEntryType;
+  timestamp: number;
+  content?: string;
+  toolName?: string;
+  argsPreview?: string;
+  callId?: string;
+  resultPreview?: string;
+  elapsedMs?: number;
+  isError?: boolean;
+  hint?: string;
+  keepaliveElapsedMs?: number;
+}
+
 export interface UseMessagesOptions {
   oct: { fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest };
   typewriter: UseTypewriterReturn;
@@ -114,6 +136,7 @@ export interface UseMessagesReturn {
   agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
   thinkingElapsed: number;
   activeTools: ActiveTool[];
+  activityTimeline: ActivityEntry[];
   tokenIn: number | null;
   tokenOut: number | null;
   ctxUsed: number | null;
@@ -150,6 +173,9 @@ export function useMessages({
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
   const [activeTools, setActiveTools] = useState<ActiveTool[]>([]);
+  const [activityTimeline, setActivityTimeline] = useState<ActivityEntry[]>([]);
+  const activityIdCounter = useRef(0);
+  const nextActivityId = () => `act_${++activityIdCounter.current}`;
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [tokenIn, setTokenIn] = useState<number | null>(null);
   const [tokenOut, setTokenOut] = useState<number | null>(null);
@@ -190,6 +216,7 @@ export function useMessages({
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
+  const cotSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // ── isStreaming (memo) ────────────────────────────────────────────────────
   const isStreaming = useMemo(() => {
     const lf = deriveLegacyFlags(fsmPhase);
@@ -439,6 +466,60 @@ export function useMessages({
         }
         fullTextRef.current = streamingMessageRef.current;
 
+        if (!cotSyncTimerRef.current) {
+          cotSyncTimerRef.current = setTimeout(() => {
+            cotSyncTimerRef.current = null;
+            const currentFull = fullTextRef.current;
+            const syncCotEntry = (cotText: string) => {
+              const trimmedCot = cotText.trim();
+              setActivityTimeline((prev) => {
+                const existingCotIdx = prev.findIndex((entry) => entry.type === 'cot');
+                if (existingCotIdx !== -1) {
+                  const updated = [...prev];
+                  updated[existingCotIdx] = { ...updated[existingCotIdx], content: trimmedCot };
+                  return updated;
+                }
+                const filtered = prev.filter((entry) => entry.type !== 'thinking_placeholder');
+                return [
+                  ...filtered,
+                  {
+                    id: nextActivityId(),
+                    type: 'cot',
+                    timestamp: Date.now(),
+                    content: trimmedCot,
+                  },
+                ];
+              });
+            };
+
+            const cotOpen = currentFull.indexOf('[cot]');
+            if (cotOpen !== -1) {
+              const afterOpen = currentFull.slice(cotOpen + 5);
+              const cotClose = afterOpen.indexOf('[/cot]');
+              const cotText = cotClose !== -1 ? afterOpen.slice(0, cotClose) : afterOpen;
+              syncCotEntry(cotText);
+              return;
+            }
+
+            const thinkOpen = currentFull.indexOf('<think>');
+            if (thinkOpen !== -1) {
+              const afterThink = currentFull.slice(thinkOpen + 7);
+              const thinkClose = afterThink.indexOf('</think>');
+              const thinkText = thinkClose !== -1 ? afterThink.slice(0, thinkClose) : afterThink;
+              syncCotEntry(thinkText);
+              return;
+            }
+
+            const redactedThinkOpen = currentFull.indexOf('<redacted_thinking>');
+            if (redactedThinkOpen !== -1) {
+              const afterThink = currentFull.slice(redactedThinkOpen + '<redacted_thinking>'.length);
+              const thinkClose = afterThink.indexOf('</redacted_thinking>');
+              const thinkText = thinkClose !== -1 ? afterThink.slice(0, thinkClose) : afterThink;
+              syncCotEntry(thinkText);
+            }
+          }, 300);
+        }
+
         if (isDelta && oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
           try { oct.fsm.onToken(); } catch {}
         }
@@ -457,6 +538,9 @@ export function useMessages({
         setAwaitingResponse(false);
         setAgentPhase('idle');
         setActiveTools([]);
+        setActivityTimeline((prev) =>
+          prev.filter((entry) => entry.type !== 'keepalive_hint' && entry.type !== 'thinking_placeholder')
+        );
       }
 
       if (!systemReply) {
@@ -594,6 +678,30 @@ export function useMessages({
           };
           return [...prev.slice(0, lastIdx), { ...last, toolEvents: [...(last.toolEvents || []), newEvent] }];
         });
+        setActivityTimeline((prev) => {
+          const filtered = prev.filter((entry, index) =>
+            !(index === prev.length - 1 && entry.type === 'keepalive_hint')
+          );
+          const argsStr = payload.args
+            ? Object.entries(payload.args as Record<string, unknown>)
+                .map(([key, value]) =>
+                  `${key}: ${typeof value === 'string' ? value.slice(0, 60) : JSON.stringify(value).slice(0, 60)}`
+                )
+                .join(', ')
+                .slice(0, 120)
+            : '';
+          return [
+            ...filtered,
+            {
+              id: nextActivityId(),
+              type: 'tool_call',
+              timestamp: Date.now(),
+              toolName: payload.tool,
+              callId: payload.callId,
+              argsPreview: argsStr,
+            },
+          ];
+        });
       } else if (payload.type === 'tool_result') {
         const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
         setActiveTools((prev) =>
@@ -619,7 +727,55 @@ export function useMessages({
           );
           return [...prev.slice(0, lastIdx), { ...last, toolEvents: updatedEvents }];
         });
+        setActivityTimeline((prev) => [
+          ...prev,
+          {
+            id: nextActivityId(),
+            type: 'tool_result',
+            timestamp: Date.now(),
+            toolName: payload.tool,
+            callId: payload.callId,
+            resultPreview: payload.resultPreview?.slice(0, 120),
+            elapsedMs: payload.elapsedMs,
+            isError: payload.state === 'error',
+          },
+        ]);
       }
+    },
+
+    onKeepalive: (payload) => {
+      const { phase, elapsedMs, toolName } = payload;
+
+      let hint = '';
+      if (phase === 'waiting_first_token') {
+        if (elapsedMs < 2000) hint = '让我想想...';
+        else if (elapsedMs < 6000) hint = '分析你的问题中...';
+        else if (elapsedMs < 12000) hint = '这个需要好好想一下...';
+        else hint = '还在努力思考，请稍等...';
+      } else if (phase === 'tool_running') {
+        hint = toolName ? `正在使用 ${toolName}...` : '正在调用工具...';
+      } else if (phase === 'waiting_continuation') {
+        hint = '整理工具返回的结果...';
+      } else if (phase === 'streaming') {
+        hint = '继续整理中...';
+      }
+
+      setActivityTimeline((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.type === 'keepalive_hint') {
+          return [...prev.slice(0, -1), { ...last, hint, keepaliveElapsedMs: elapsedMs }];
+        }
+        return [
+          ...prev,
+          {
+            id: nextActivityId(),
+            type: 'keepalive_hint',
+            timestamp: Date.now(),
+            hint,
+            keepaliveElapsedMs: elapsedMs,
+          },
+        ];
+      });
     },
 
     onWorkbenchEvent: (event) => {
@@ -712,6 +868,10 @@ export function useMessages({
   // ── streamPaintRafRef / usageFlushRafRef cleanup ───────────────────────────
   useEffect(() => {
     return () => {
+      if (cotSyncTimerRef.current != null) {
+        clearTimeout(cotSyncTimerRef.current);
+        cotSyncTimerRef.current = null;
+      }
       if (finalizeFallbackTimerRef.current != null) {
         clearTimeout(finalizeFallbackTimerRef.current);
         finalizeFallbackTimerRef.current = null;
@@ -796,6 +956,14 @@ export function useMessages({
       setAgentPhase('thinking');
     }
     setActiveTools([]);
+    setActivityTimeline([]);
+    activityIdCounter.current = 0;
+    setActivityTimeline([{
+      id: nextActivityId(),
+      type: 'thinking_placeholder',
+      timestamp: Date.now(),
+      hint: '让我想想...',
+    }]);
     setStreak(touchStreak());
     setPendingPills(null);
     setMessages((prev) => {
@@ -899,6 +1067,14 @@ export function useMessages({
       setAgentPhase('thinking');
     }
     setActiveTools([]);
+    setActivityTimeline([]);
+    activityIdCounter.current = 0;
+    setActivityTimeline([{
+      id: nextActivityId(),
+      type: 'thinking_placeholder',
+      timestamp: Date.now(),
+      hint: '让我想想...',
+    }]);
     setPendingPills(null);
     setMessages((prev) => {
       const next: ChatMessage[] = [
@@ -957,6 +1133,7 @@ export function useMessages({
     agentPhase,
     thinkingElapsed,
     activeTools,
+    activityTimeline,
     tokenIn,
     tokenOut,
     ctxUsed,

@@ -10,6 +10,7 @@ interface UseWebSocketOptions {
   onChatDone: (content: string, isSystemReply: boolean) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: any) => void;
+  onKeepalive?: (payload: { phase: string; elapsedMs: number; toolName?: string | null }) => void;
   onWorkbenchEvent: (event: CanvasEvent | WorkbenchEvent) => void;
   onCanvasEvent?: (event: CanvasEvent | WorkbenchEvent) => void;
   onUsage: (usage: any, isSnapshot: boolean) => void;
@@ -94,6 +95,20 @@ export function useWebSocket(options: UseWebSocketOptions) {
       if (data.type === 'tool' || data.event === 'tool') {
         const payload = data.payload || data.data || data;
         opt.onToolEvent(payload);
+        return;
+      }
+
+      if (data.type === 'keepalive' || data.event === 'keepalive') {
+        const payload = (data.payload || data.data || data) as {
+          phase?: string;
+          elapsedMs?: number;
+          toolName?: string | null;
+        };
+        opt.onKeepalive?.({
+          phase: String(payload?.phase || ''),
+          elapsedMs: Number(payload?.elapsedMs || 0),
+          toolName: payload?.toolName ?? null,
+        });
         return;
       }
 

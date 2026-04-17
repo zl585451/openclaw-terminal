@@ -194,8 +194,25 @@ async function handleChatRequest(request, connection) {
   const userMessage = params?.message || '';
   const attachments = params?.attachments || [];
   const workbenchContext = params?.workbenchContext || params?.canvasContext || null;
+  let keepalivePhase = 'waiting_first_token';
+  let keepaliveToolName = null;
+  const keepaliveStartTime = Date.now();
+  let keepaliveTimer = null;
+  const stopKeepalive = () => {
+    if (keepaliveTimer) {
+      clearInterval(keepaliveTimer);
+      keepaliveTimer = null;
+    }
+  };
 
   const sendToolEvent = (evt) => {
+    if (evt?.type === 'tool_call') {
+      keepalivePhase = 'tool_running';
+      keepaliveToolName = evt.tool || null;
+    } else if (evt?.type === 'tool_result') {
+      keepalivePhase = 'waiting_continuation';
+      keepaliveToolName = null;
+    }
     if (!connection.isOpen()) return;
     if ((evt?.type === 'workbench' || evt?.type === 'canvas') && evt.action) {
       sendCanvasTransportEvent(connection, evt.action, evt.payload || {}, evt.type === 'workbench' ? 'workbench' : 'canvas');
@@ -229,6 +246,23 @@ async function handleChatRequest(request, connection) {
   connection.setAbort?.(() => { cancelled = true; });
 
   const prevAssistantReplyForPost = history.filter((m) => m.role === 'assistant').slice(-1)[0]?.content || '';
+  keepaliveTimer = setInterval(() => {
+    if (!connection.isOpen()) return;
+    const elapsed = Date.now() - keepaliveStartTime;
+    try {
+      connection.send({
+        type: 'event',
+        event: 'keepalive',
+        payload: {
+          phase: keepalivePhase,
+          elapsedMs: elapsed,
+          toolName: keepaliveToolName,
+        },
+      });
+    } catch {
+      // ignore keepalive failures
+    }
+  }, 2000);
 
   await chatEngine.execute({
     sessionKey,
@@ -248,6 +282,7 @@ async function handleChatRequest(request, connection) {
     },
     onDelta: (chunk) => {
       if (cancelled || !connection.isOpen()) return;
+      if (keepalivePhase === 'waiting_first_token') keepalivePhase = 'streaming';
       connection.send({
         type: 'event',
         event: 'chat',
@@ -260,6 +295,7 @@ async function handleChatRequest(request, connection) {
       connection.stopThinkingPulse?.();
     },
     onDone: ({ reply, usage, model: responseModel }) => {
+      stopKeepalive();
       if (cancelled || !connection.isOpen()) return;
       const donePayload = { text: reply, state: 'done', done: true };
       if (usage) donePayload.usage = usage;
@@ -268,6 +304,7 @@ async function handleChatRequest(request, connection) {
       connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
     },
     onError: (err) => {
+      stopKeepalive();
       if (cancelled) return;
       connection.setAbort?.(null);
       connection.stopThinkingPulse?.();
