@@ -6,8 +6,8 @@ const ipcRenderer = typeof window !== 'undefined' && typeof (window as any).requ
   : { invoke: () => Promise.resolve(null), on: () => {}, off: () => {}, removeListener: () => {} };
 
 interface UseWebSocketOptions {
-  onChatDelta: (content: string, isDelta: boolean, isSystemReply: boolean) => void;
-  onChatDone: (content: string, isSystemReply: boolean) => void;
+  onChatDelta: (content: string, isDelta: boolean, isSystemReply: boolean, turnId?: string) => void;
+  onChatDone: (content: string, isSystemReply: boolean, turnId?: string) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: any) => void;
   onKeepalive?: (payload: { phase: string; elapsedMs: number; toolName?: string | null }) => void;
@@ -88,7 +88,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
 
   useEffect(() => {
     const handleIncomingMessage = (
-      data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; action?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean; elapsed?: number }
+      data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; action?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean; elapsed?: number; turnId?: string }
     ) => {
       const opt = optionsRef.current;
       if (!data || data.type === 'status' || data.connected !== undefined) return;
@@ -173,6 +173,14 @@ export function useWebSocket(options: UseWebSocketOptions) {
       content = (content || '').replace(/\u200B/g, '');
       const done = (data.done === true) || (data.payload?.done === true);
       const isDelta = isDeltaPayload(data);
+      const turnId = (() => {
+        const raw = (data as any)?.turnId
+          ?? data?.payload?.turnId
+          ?? data?.data?.turnId;
+        if (raw == null) return undefined;
+        const normalized = String(raw).trim();
+        return normalized || undefined;
+      })();
 
       try {
         if (data.event === 'chat' && !content && !done) {
@@ -190,9 +198,9 @@ export function useWebSocket(options: UseWebSocketOptions) {
         (data as any).isSystemReply === true;
 
       if (done) {
-        opt.onChatDone(content, isSystemReply);
+        opt.onChatDone(content, isSystemReply, turnId);
       } else {
-        opt.onChatDelta(content, isDelta, isSystemReply);
+        opt.onChatDelta(content, isDelta, isSystemReply, turnId);
       }
     };
 
@@ -299,8 +307,10 @@ export function useWebSocket(options: UseWebSocketOptions) {
     imageDataUrl?: string,
     files?: any[],
     pacingMs?: number,
-    workbenchContext?: WorkbenchRoundtripContext
+    workbenchContext?: WorkbenchRoundtripContext,
+    requestId?: string
   ): Promise<{success?: boolean}> => {
+    const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
     try {
       const result = await ipcRenderer.invoke('openclaw-send', {
         content: content.trim(),
@@ -309,6 +319,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
         pacingMs,
         workbenchContext,
         canvasContext: workbenchContext,
+        requestId: normalizedRequestId || undefined,
       });
       return result || {};
     } catch (error) {

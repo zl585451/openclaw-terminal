@@ -512,14 +512,17 @@ export function useMessages({
 
   // ── useWebSocket ──────────────────────────────────────────────────────────
   const ws = useWebSocket({
-    onChatDelta: (content, isDelta, isSystemReply) => {
+    onChatDelta: (content, isDelta, isSystemReply, turnId) => {
+      const currentTurnId = lastSentRequestId.current;
+      if (turnId && currentTurnId && turnId !== currentTurnId) return;
       if (!content) return;
       if (!isSystemReply) {
         setAwaitingResponse(false);
         if (isDelta) setAgentPhase('typing');
       }
 
-      const pendingSysDelta = isSystemReply || (pendingSystemReplyMap.current.get(lastSentRequestId.current) ?? false);
+      const pendingSystemReplyKey = turnId || currentTurnId;
+      const pendingSysDelta = isSystemReply || (pendingSystemReplyMap.current.get(pendingSystemReplyKey) ?? false);
       if (pendingSysDelta) {
         systemReplyBufferRef.current = isDelta
           ? systemReplyBufferRef.current + content
@@ -596,11 +599,13 @@ export function useMessages({
       }
     },
 
-    onChatDone: (content, systemReplyHint) => {
-      clearRoundTimeout();
+    onChatDone: (content, systemReplyHint, turnId) => {
       const currentRequestId = lastSentRequestId.current;
-      const systemReply = systemReplyHint || (pendingSystemReplyMap.current.get(currentRequestId) ?? false);
-      pendingSystemReplyMap.current.delete(currentRequestId);
+      if (turnId && currentRequestId && turnId !== currentRequestId) return;
+      clearRoundTimeout();
+      const systemReplyKey = turnId || currentRequestId;
+      const systemReply = systemReplyHint || (pendingSystemReplyMap.current.get(systemReplyKey) ?? false);
+      pendingSystemReplyMap.current.delete(systemReplyKey);
 
       if (!systemReply) {
         setAwaitingResponse(false);
@@ -1086,7 +1091,14 @@ export function useMessages({
     }
 
     const roundtripContext = workbenchContext ?? workbenchBus.getContext('continue');
-    const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, transportPacingMs, roundtripContext);
+    const result = await ws.send(
+      fullContentForAMY,
+      imageDataUrl || undefined,
+      files,
+      transportPacingMs,
+      roundtripContext,
+      newRequestId,
+    );
     if (!result?.success && !cmdIsSystem) {
       clearRoundTimeout();
       setAwaitingResponse(false);
@@ -1188,7 +1200,14 @@ export function useMessages({
         console.warn('[useMessages] oct runtime (quickSend)', e);
       }
     }
-    ws.send(content.trim(), undefined, undefined, transportPacingMs, workbenchBus.getContext('continue')).then((result) => {
+    ws.send(
+      content.trim(),
+      undefined,
+      undefined,
+      transportPacingMs,
+      workbenchBus.getContext('continue'),
+      newRequestId,
+    ).then((result) => {
       if (!result?.success && !isSystem) {
         clearRoundTimeout();
         setAwaitingResponse(false);

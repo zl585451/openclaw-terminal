@@ -1304,6 +1304,7 @@ function forwardChatToFrontend(payload: any, eventName?: string, isStreaming = f
     };
     if (usage) msg.payload.usage = usage;
     if (isSystemReply) msg.payload.isSystemReply = true;
+    if (payload?.turnId) msg.payload.turnId = String(payload.turnId);
     sendMessage(msg);
     if (text) floatFlash();
   }
@@ -1335,6 +1336,7 @@ function handleMessage(msg: any) {
         if (text || src?.done !== undefined) {
           const out: any = { type: 'chat', text: String(text || ''), done: src?.done ?? !isDelta, event: msg.event };
           if (usage) out.usage = usage;
+          if (src?.turnId) out.turnId = String(src.turnId);
           sendMessage(out);
           if (text) floatFlash();
         }
@@ -1425,7 +1427,8 @@ function sendChatMessage(
   imageDataUrl?: string | null,
   files?: UploadedFile[],
   pacingMs?: number,
-  workbenchContext?: any
+  workbenchContext?: any,
+  requestId?: string
 ): { success: boolean; error?: string } {
   if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
     return { success: false, error: 'WebSocket not connected' };
@@ -1437,7 +1440,8 @@ function sendChatMessage(
     return { success: false, error: '消息不能为空' };
   }
 
-  const reqId = generateId();
+  const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
+  const reqId = normalizedRequestId || generateId();
   const idempotencyKey = crypto.randomUUID();
 
   // OpenClaw chat.send: message 必须是字符串，图片放入 attachments；sessionKey 一致则 Gateway 在同一会话内回复
@@ -3254,12 +3258,21 @@ ipcMain.handle('openclaw-connect', () => {
   return { success: true };
 });
 
-ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDataUrl?: string | null; files?: UploadedFile[]; pacingMs?: number; workbenchContext?: any; canvasContext?: any }) => {
+ipcMain.handle('openclaw-send', (_, payload: string | {
+  content: string;
+  imageDataUrl?: string | null;
+  files?: UploadedFile[];
+  pacingMs?: number;
+  workbenchContext?: any;
+  canvasContext?: any;
+  requestId?: string;
+}) => {
   let content: string;
   let imageDataUrl: string | null | undefined;
   let files: UploadedFile[] | undefined;
   let pacingMs: number | undefined;
   let workbenchContext: any;
+  let requestId: string | undefined;
 
   if (typeof payload === 'string') {
     content = payload;
@@ -3267,6 +3280,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDa
     files = undefined;
     pacingMs = undefined;
     workbenchContext = undefined;
+    requestId = undefined;
   } else if (payload && typeof payload === 'object') {
     const c = payload.content;
     content = typeof c === 'string' ? c : (c ? String(c) : '');
@@ -3274,15 +3288,19 @@ ipcMain.handle('openclaw-send', (_, payload: string | { content: string; imageDa
     files = payload.files;
     pacingMs = payload.pacingMs;
     workbenchContext = payload.workbenchContext ?? payload.canvasContext;
+    requestId = typeof payload.requestId === 'string'
+      ? String(payload.requestId).trim()
+      : undefined;
   } else {
     content = '';
     imageDataUrl = null;
     files = undefined;
     pacingMs = undefined;
     workbenchContext = undefined;
+    requestId = undefined;
   }
 
-  return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext);
+  return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext, requestId);
 });
 
 ipcMain.handle('image-generate', async (_event, payload: {

@@ -324,7 +324,7 @@ async function handleChatRequest(request, connection) {
       connection.send({
         type: 'event',
         event: 'chat',
-        payload: { delta: chunk, state: 'delta', done: false },
+        payload: { delta: chunk, state: 'delta', done: false, turnId },
       });
     },
     onToolEvent: sendToolEvent,
