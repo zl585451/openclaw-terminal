@@ -278,14 +278,11 @@ class ContextBuilder {
   }
 
   async _buildSystemPrompt({ systemPrompt, userMessage, history, imageAttachments, sessionKey }) {
-    let hypothesisResult = null;
-    if (!userMessage.startsWith('/') && userMessage.length > 15 && imageAttachments.length === 0) {
-      this.hypothesis.selectBestApproach(userMessage, systemPrompt, history.slice(-6))
-        .then((result) => {
-          if (result) hypothesisResult = result;
-        })
-        .catch(() => {});
-    }
+    // 会话稳定性止血：暂时停用并发 hypothesis sidecar。
+    // 该 sidecar 通过独立 streamChat 运行，历史上会与主 turn 形成并发链路，
+    // 触发 turnId 混流与“主会话空收尾”的风险（见 2026-04-17 会话断开排查）。
+    // 后续若恢复，需要改为“同 turn 同链路、禁工具、可观测可隔离”的实现。
+    const hypothesisResult = null;
 
     let finalSystemPrompt = systemPrompt;
     if (hypothesisResult?.should_challenge && hypothesisResult?.challenge_point) {

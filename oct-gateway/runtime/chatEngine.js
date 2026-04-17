@@ -35,7 +35,13 @@ class ChatEngine {
         streamCtrl.flush();
 
         const finalizedReply = streamCtrl.getFullReply() || _text || '';
-        const sanitizedReply = this.sanitizeAssistantReply(finalizedReply);
+        let sanitizedReply = this.sanitizeAssistantReply(finalizedReply);
+        if (!sanitizedReply || !String(sanitizedReply).trim()) {
+          sanitizedReply = '⚠️ 本轮未产出可用内容（可能是模型状态异常）。请重试，或切换模型后再继续。';
+          this.log.warn('empty assistant reply coerced to fallback text', {
+            turnId: request.turnId || null,
+          });
+        }
         if (sanitizedReply) {
           this.session.addMessage(request.sessionKey, 'assistant', sanitizedReply);
           this.postProcessor.process({

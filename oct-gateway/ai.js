@@ -1190,6 +1190,7 @@ async function streamChat({
     let totalUsage = null;
     let responseModel = null;  // API 返回的实际模型名（用于校验和展示）
     let sawDone = false;
+    let terminalStreamError = null;
 
     startHeartbeat();
     log.debug('stream start');
@@ -1279,7 +1280,28 @@ async function streamChat({
           onError(new Error('工具调用解析失败：模型声明了 tool_calls，但未收到有效调用数据'));
           return;
         }
+        if (finishReason === 'unexpected_state') {
+          const hasOutput = String(fullText || '').trim().length > 0;
+          const hasParsedToolCalls = toolCalls.filter(Boolean).length > 0;
+          if (!hasOutput && !hasParsedToolCalls) {
+            terminalStreamError = new Error('模型返回异常状态（unexpected_state），本轮未产出可用内容。请重试，或切换模型后再试。');
+            sawDone = true;
+            break;
+          }
+        }
       }
+      if (terminalStreamError) break;
+    }
+    if (terminalStreamError) {
+      stopHeartbeat();
+      log.error('terminal stream state error', {
+        error: terminalStreamError.message,
+        turnId: turnId || null,
+        provider: provider.name,
+        model,
+      });
+      onError(terminalStreamError);
+      return;
     }
 
     if (!sawDone) {
