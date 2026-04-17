@@ -876,6 +876,7 @@ const memoryConfig = _fileConfig.memory && typeof _fileConfig.memory === 'object
 
 const config = {
   PORT: parseInt(process.env.OCT_GATEWAY_PORT || '18789', 10),
+  ENABLE_BACKGROUND_TASK_DISPATCH: readBoolConfig('ENABLE_BACKGROUND_TASK_DISPATCH', false),
 
   DASHSCOPE_API_KEY: pickKey(process.env.DASHSCOPE_API_KEY, _fileConfig.DASHSCOPE_API_KEY, legacyConfig.DASHSCOPE_API_KEY),
   DASHSCOPE_BASE_URL: process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1',

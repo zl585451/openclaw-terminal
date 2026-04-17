@@ -53,7 +53,7 @@ class ContextBuilder {
     }
 
     const contextMemory = await this._buildContextMemory({ sessionKey, userMessage });
-    const backgroundTaskNotice = orchestratorResult?.hasBackgroundTask
+    const backgroundTaskNotice = this.config.ENABLE_BACKGROUND_TASK_DISPATCH === true && orchestratorResult?.hasBackgroundTask
       ? '\n\n[系统] 用户这条消息已派发后台任务执行（如查邮件），请简短回复「好的，我已经派出去查了，我们继续聊」之类，不要在主对话中调用 email_reader 等工具。'
       : '';
     const canvasSuggestionNotice = this._buildCanvasSuggestion(orchestratorResult);
@@ -328,6 +328,7 @@ class ContextBuilder {
   }
 
   _injectTaskContext(messages, sessionKey) {
+    if (this.config.ENABLE_BACKGROUND_TASK_DISPATCH !== true) return messages;
     const taskContext = this.helpers.getCompletedTasksContext(sessionKey);
     if (!taskContext) return messages;
 

@@ -38,6 +38,8 @@ const TASK_TOOL_MAP = {
 };
 
 function tryDispatchAsTask(userMessage, sessionKey, onToolEvent) {
+  if (config.ENABLE_BACKGROUND_TASK_DISPATCH !== true) return null;
+
   const ASYNC_TRIGGERS = [
     '后台', '帮我查', '帮我搜', '查一下', '搜索一下',
     '顺便', '同时', '另外帮我', '后台执行', '读取文件',
@@ -228,7 +230,8 @@ async function dispatch(userMessage, sessionKey, onToolEvent) {
   const analysis = analyzeIntent(userMessage);
   const canvasIntent = analyzeCanvasIntent(userMessage);
 
-  // 尝试异步任务派发（传入 onToolEvent 以向前端推送工具调用事件）
+  // 默认禁用“后台派子任务”链路，避免主会话出现“已派出但无下文”。
+  // 如需恢复，请显式开启 ENABLE_BACKGROUND_TASK_DISPATCH=true。
   const taskId = tryDispatchAsTask(userMessage, sessionKey, onToolEvent);
 
   if (taskId) {
