@@ -103,7 +103,10 @@ module.exports = {
 
     if (action === 'create') {
       if (!args?.content) {
-        return { success: false, error: 'create requires content' };
+        return {
+          success: false,
+          error: 'canvas create 失败：缺少 content 参数。你必须在 content 字段中提供完整的文档内容（Markdown 文本），不能为空。请重新调用 canvas 并填入 content。',
+        };
       }
 
       const mode = normalizeMode(args.mode, args.artifactType);

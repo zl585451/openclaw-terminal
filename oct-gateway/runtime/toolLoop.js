@@ -42,11 +42,11 @@ class ToolLoop {
           : '检测到重复的工具调用模式';
       const gracefulStop =
         `${fullText ? `${fullText}\n\n` : ''}` +
-        `⚠️ ${stopReason}，我先停止继续自动试探工具，避免一直卡住。` +
-        `\n\n目前已拿到一部分工具结果，但还没整理成最终结论。你可以：` +
-        `\n1. 让我基于当前结果直接总结` +
-        `\n2. 把问题缩小到更明确的文件或模块` +
-        `\n3. 让我优先用 read_file 分析，少用命令行工具`;
+        `⚠️ ${stopReason}，已自动停止以避免卡住。` +
+        `\n\n已拿到部分工具结果。你可以：` +
+        `\n1. 让我基于当前结果直接完成` +
+        `\n2. 缩小任务范围后重试` +
+        `\n3. 换一种方式描述你的需求`;
       this.log.warn('tool loop guard triggered', {
         toolRound,
         repeatedCount,

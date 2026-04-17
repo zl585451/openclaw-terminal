@@ -27,7 +27,7 @@ module.exports = {
     type: 'function',
     function: {
       name: 'read_file',
-      description: '读取文件内容。优先传项目根目录下的相对路径；也可传任意绝对路径。读取项目外文件时会记录兼容性日志。',
+      description: '读取纯文本文件内容（.txt/.md/.json/.js/.ts/.css/.html/.csv 等）。注意：.docx/.xlsx/.xls/.pdf 等二进制文档请使用 read_document 工具，read_file 会读到乱码。',
       parameters: {
         type: 'object',
         properties: {

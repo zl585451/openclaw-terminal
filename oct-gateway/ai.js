@@ -15,8 +15,8 @@ const ToolLoop = require('./runtime/toolLoop');
 // ═══════════════════════════════════════════════════════════════
 const MAX_HISTORY_ROUNDS = 12; // 最多保留最近 12 轮对话
 const MAX_CONTEXT_CHARS = 60000; // 上下文字符上限（约 15k tokens）
-const MAX_TOOL_ROUNDS = 10;
-const MAX_IDENTICAL_TOOL_SIGNATURES = 4;
+const MAX_TOOL_ROUNDS = 8;
+const MAX_IDENTICAL_TOOL_SIGNATURES = 2;
 const providerRouter = new ProviderRouter({ config });
 const toolLoop = new ToolLoop({
   toolLoader,
@@ -531,7 +531,6 @@ function buildToolSignature(toolCalls) {
     (toolCalls || [])
       .filter(Boolean)
       .map((tc) => ({
-        id: tc.id || '',
         name: tc.function?.name || '',
         arguments: tc.function?.arguments || '',
       }))
