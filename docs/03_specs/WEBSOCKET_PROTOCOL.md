@@ -49,7 +49,7 @@
 ```json
 {
   "type": "req",
-  "id": "chat-xxx",
+  "id": "chat-xxx（建议使用前端 requestId 透传）",
   "method": "chat.send",
   "params": {
     "sessionKey": "main",
@@ -63,6 +63,7 @@
 
 - `message`：必填（可为空字符串，图片时可用 `[文件/图片]`）
 - `attachments`：图片等，Gateway 会转成多模态 content 格式给模型
+- `id` 同时作为本轮 `turnId` 的归属键；Gateway 在 `chat delta/done` 事件里会回传同值，前端应按该键过滤非当前回合事件
 
 ### image.generate
 
@@ -179,7 +180,7 @@
 | `error` | 错误 |
 
 补充字段：
-- `chat done` payload 可能包含 `turnId`，用于日志链路追踪（前后端同一回合 ID）。
+- `chat delta` 与 `chat done` payload 均可包含 `turnId`（当前实现会透传），用于前端只消费“当前回合”消息，避免旧流误结束新回合。
 
 ### Workbench / Canvas 事件
 
@@ -247,7 +248,7 @@
 ## 五、Electron 转发
 
 - **前端** 不直连 WebSocket，通过 IPC `openclaw-send` 发消息
-- **main.ts** 将对话消息组装成 `chat.send` 请求，通过 WebSocket 发给 Gateway
+- **main.ts** 将对话消息组装成 `chat.send` 请求，通过 WebSocket 发给 Gateway；若前端提供 `requestId`，则优先作为 `chat.send.id`
 - **main.ts** 将图片请求组装成 `image.generate` 请求，通过 WebSocket 发给 Gateway
 - **main.ts** 收到聊天消息后，通过 `mainWindow.webContents.send('openclaw-message', msg)` 推给前端
 - **main.ts** 收到图片结果后，通过 `mainWindow.webContents.send('image-result', payload)` 推给前端
