@@ -76,3 +76,10 @@ const result = await searcher.search({ query: '关键词' });
 || 做什么 | 检测危险命令（rm -rf、格式化、注册表修改等） |
 || 文件 | `src/utils/permissionCheck.ts` |
 || 状态 | ✅ 正常 |
+
+### 工具超时策略（2026-04-17）
+
+- `tool_loader` 支持每个工具声明 `timeoutMs` 元数据。
+- `toolLoop` 执行时优先读取工具级超时；未声明时默认 30 秒。
+- 已示例配置：`web_search` / `web_fetch`（45s）、`exec_command`（60s）。
+- 目的：避免“大仓库检索/慢网络请求”被固定 30s 误判失败。

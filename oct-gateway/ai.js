@@ -867,6 +867,7 @@ async function streamChat({
   toolRound = 0,
   toolSignatures = [],
   toolChoice = 'auto',
+  turnId = null,
 }) {
   const resolved = providerRouter.resolve();
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
@@ -882,6 +883,7 @@ async function streamChat({
   const canFallbackToBailian = fallback.canFallbackToBailian;
 
   log.info('request start', {
+    turnId: turnId || null,
     provider: provider.name,
     providerId: provider.id,
     baseUrl: String(baseUrl || '').replace(/\/$/, ''),
@@ -943,6 +945,7 @@ async function streamChat({
     }
 
     log.info('model caps', {
+      turnId: turnId || null,
       model,
       toolsSupport: caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown'),
       capabilitySource: caps.capabilitySource || 'unknown',
@@ -1264,14 +1267,15 @@ async function streamChat({
             onDelta,
             onDone,
             onError,
-            onToolEvent,
-            flushThinkAtEnd,
-          });
-          return;
-        }
+          onToolEvent,
+          flushThinkAtEnd,
+          turnId,
+        });
+        return;
+      }
         if (finishReason === 'tool_calls' && toolCalls.filter(Boolean).length === 0) {
           stopHeartbeat();
-          log.error('finish_reason=tool_calls but no tool calls parsed');
+          log.error('finish_reason=tool_calls but no tool calls parsed', { turnId: turnId || null });
           onError(new Error('工具调用解析失败：模型声明了 tool_calls，但未收到有效调用数据'));
           return;
         }
@@ -1315,6 +1319,7 @@ async function streamChat({
         onError,
         onToolEvent,
         flushThinkAtEnd,
+        turnId,
       });
       return;
     }

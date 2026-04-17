@@ -78,6 +78,7 @@ module.exports = {
   category: 'web',
   riskLevel: 'guarded',
   displayName: '网页搜索',
+  timeoutMs: 45000,
   definition: {
     type: 'function',
     function: {

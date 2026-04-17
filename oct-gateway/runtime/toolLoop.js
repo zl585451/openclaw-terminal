@@ -29,6 +29,7 @@ class ToolLoop {
     onError,
     onToolEvent,
     flushThinkAtEnd,
+    turnId,
   }) {
     const normalizedToolCalls = toolCalls.filter(Boolean);
     const toolSignature = this.buildToolSignature(normalizedToolCalls);
@@ -56,13 +57,14 @@ class ToolLoop {
       return true;
     }
 
-    this.log.info('tool_calls', { count: normalizedToolCalls.length, toolRound: toolRound + 1 });
+    this.log.info('tool_calls', { count: normalizedToolCalls.length, toolRound: toolRound + 1, turnId: turnId || null });
     const toolResults = [];
     for (const toolCall of normalizedToolCalls) {
       let args = {};
       try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch {}
-      this.log.info('tool call', { name: toolCall.function.name, args });
+      this.log.info('tool call', { name: toolCall.function.name, args, turnId: turnId || null });
       const toolName = toolCall.function.name;
+      const toolTimeoutMs = this.toolLoader.getToolMeta?.(toolName)?.timeoutMs || 30000;
 
       if (onToolEvent) {
         try { onToolEvent({ type: 'tool_call', tool: toolName, args, callId: toolCall.id, state: 'executing' }); } catch {}
@@ -73,13 +75,15 @@ class ToolLoop {
       const result = await Promise.race([
         this.toolLoader.executeTool(toolName, args),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`工具 ${toolName} 超时（30秒）`)), 30000)
+          setTimeout(() => reject(new Error(`工具 ${toolName} 超时（${Math.round(toolTimeoutMs / 1000)}秒）`)), toolTimeoutMs)
         ),
       ]).catch((error) => {
         toolFailed = true;
         this.log.error(`工具 ${toolName} 执行失败`, {
           ms: Date.now() - _toolStart,
           error: error.message,
+          timeoutMs: toolTimeoutMs,
+          turnId: turnId || null,
         });
         if (onToolEvent) {
           try { onToolEvent({ type: 'tool_result', tool: toolName, callId: toolCall.id, state: 'error', error: error.message, elapsedMs: Date.now() - _toolStart }); } catch {}
@@ -92,6 +96,8 @@ class ToolLoop {
           name: toolName,
           ms: Date.now() - _toolStart,
           round: toolRound + 1,
+          timeoutMs: toolTimeoutMs,
+          turnId: turnId || null,
         });
       }
 
@@ -114,13 +120,19 @@ class ToolLoop {
       }
 
       if (onToolEvent) {
+        let resultPreview = '';
+        try {
+          resultPreview = JSON.stringify(result).slice(0, 200);
+        } catch {
+          resultPreview = '[unserializable tool result]';
+        }
         try {
           onToolEvent({
             type: 'tool_result',
             tool: toolName,
             callId: toolCall.id,
             state: 'done',
-            resultPreview: JSON.stringify(result).slice(0, 200),
+            resultPreview,
             elapsedMs: Date.now() - _toolStart,
           });
         } catch {}
@@ -159,6 +171,7 @@ class ToolLoop {
       preserveToolChain: true,
       toolRound: toolRound + 1,
       toolSignatures: [...toolSignatures, toolSignature].slice(-8),
+      turnId,
     });
     return true;
   }

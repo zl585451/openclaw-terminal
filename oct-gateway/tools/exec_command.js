@@ -9,6 +9,7 @@ const EXEC_MAX_BUFFER = 2 * 1024 * 1024;
 module.exports = {
   name: 'exec_command',
   riskLevel: 'guarded',
+  timeoutMs: 60000,
   definition: {
     type: 'function',
     function: {

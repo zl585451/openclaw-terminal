@@ -81,8 +81,12 @@ const systemPromptReady = (async () => {
   log.info('System prompt loaded', { len: SYSTEM_PROMPT.length });
   taskQueue.checkTimeouts();
   taskQueue.cleanup();
-  memoryHistory.cleanupOldHistory().catch(() => {});
-  memorySearch.warmGlossaryCache().catch(() => {});
+  memoryHistory.cleanupOldHistory().catch((e) => {
+    log.warn('cleanupOldHistory failed (non-fatal)', { error: e?.message || String(e) });
+  });
+  memorySearch.warmGlossaryCache().catch((e) => {
+    log.warn('warmGlossaryCache failed (non-fatal)', { error: e?.message || String(e) });
+  });
   return SYSTEM_PROMPT;
 })();
 
@@ -162,12 +166,16 @@ function getGatewayCapabilities(modelId = config.DASHSCOPE_MODEL) {
   };
   try {
     caps = providerRouter.resolve(modelId).caps || caps;
-  } catch {}
+  } catch (e) {
+    log.warn('resolve model caps failed, using defaults', { modelId, error: e?.message || String(e) });
+  }
 
   let mcpStatus = {};
   try {
     mcpStatus = mcpManager.getStatus() || {};
-  } catch {}
+  } catch (e) {
+    log.warn('read mcp status failed, using empty status', { error: e?.message || String(e) });
+  }
   const mcpServers = Object.keys(mcpStatus).length;
   const mcpConnectedServers = Object.values(mcpStatus).filter((item) => item?.status === 'connected').length;
 
@@ -218,6 +226,7 @@ const handleTransportHttpRequest = createHttpRequestHandler({
 
 async function handleChatRequest(request, connection) {
   const params = request?.params || {};
+  const turnId = request?.id || `turn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const sessionKey = params?.sessionKey || 'main';
   const userMessage = params?.message || '';
   const attachments = params?.attachments || [];
@@ -293,6 +302,7 @@ async function handleChatRequest(request, connection) {
   }, 2000);
 
   await chatEngine.execute({
+    turnId,
     sessionKey,
     userMessage,
     messages,
@@ -322,10 +332,10 @@ async function handleChatRequest(request, connection) {
       connection.setAbort?.(null);
       connection.stopThinkingPulse?.();
     },
-    onDone: ({ reply, usage, model: responseModel }) => {
+    onDone: ({ reply, usage, model: responseModel, turnId: doneTurnId }) => {
       stopKeepalive();
       if (cancelled || !connection.isOpen()) return;
-      const donePayload = { text: reply, state: 'done', done: true };
+      const donePayload = { text: reply, state: 'done', done: true, turnId: doneTurnId || turnId };
       if (usage) donePayload.usage = usage;
       if (responseModel) donePayload.model = responseModel;
       connection.send({ type: 'event', event: 'chat', payload: donePayload });
@@ -336,12 +346,12 @@ async function handleChatRequest(request, connection) {
       if (cancelled) return;
       connection.setAbort?.(null);
       connection.stopThinkingPulse?.();
-      log.error('AI error', { error: err?.message || String(err) });
+      log.error('AI error', { error: err?.message || String(err), turnId });
       if (!connection.isOpen()) return;
       connection.send({
         type: 'event',
         event: 'chat',
-        payload: { text: `❌ AI 调用失败：${err.message}`, state: 'done', done: true },
+        payload: { text: `❌ AI 调用失败：${err.message}`, state: 'done', done: true, turnId },
       });
       connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
     },

@@ -29,6 +29,7 @@ function resolveToolMeta(tool) {
 
 let _definitions = [];
 let _executors = {};
+let _metaByToolName = {};
 
 /** 动态工具提供者（MCP 等批量工具源） */
 const _providers = [];
@@ -36,6 +37,7 @@ const _providers = [];
 function loadTools() {
   _definitions = [];
   _executors = {};
+  _metaByToolName = {};
 
   if (fs.existsSync(TOOLS_DIR)) {
     const files = fs.readdirSync(TOOLS_DIR).filter(f => f.endsWith('.js'));
@@ -55,6 +57,13 @@ function loadTools() {
         _definitions.push(tool.definition);
         _executors[tool.name] = tool.execute;
         const meta = resolveToolMeta(tool);
+        let timeoutMs = Number(tool.timeoutMs);
+        if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) timeoutMs = 30000;
+        timeoutMs = Math.min(10 * 60 * 1000, Math.max(1000, Math.round(timeoutMs)));
+        _metaByToolName[tool.name] = {
+          ...meta,
+          timeoutMs,
+        };
         console.log(`[ToolLoader] 已加载工具: ${tool.name} (${meta.category}/${meta.riskLevel})`);
       } catch (e) {
         console.error(`[ToolLoader] 加载 ${file} 失败:`, e.message);
@@ -136,6 +145,7 @@ module.exports = {
   loadTools,
   getDefinitions,
   executeTool,
+  getToolMeta: (name) => _metaByToolName[name] || null,
   registerProvider,
   setOnTaskBoardUpdate: shared.setOnTaskBoardUpdate,
 };

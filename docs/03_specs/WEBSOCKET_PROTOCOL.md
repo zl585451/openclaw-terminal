@@ -178,6 +178,9 @@
 | `canvas` | Canvas 兼容事件（旧字段名，仍保留兼容） |
 | `error` | 错误 |
 
+补充字段：
+- `chat done` payload 可能包含 `turnId`，用于日志链路追踪（前后端同一回合 ID）。
+
 ### Workbench / Canvas 事件
 
 当 Gateway 或工具链需要更新前端 Workbench 时，优先发送：
