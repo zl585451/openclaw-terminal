@@ -729,6 +729,134 @@ function extractPseudoToolCalls(text) {
   return extractKimiStylePseudoToolCalls(text);
 }
 
+function buildChatHeaders(baseUrl, apiKey) {
+  const _baseForAuth = String(baseUrl || '');
+  const isVertexAIEndpoint = _baseForAuth.includes('aiplatform.googleapis.com');
+  return isVertexAIEndpoint
+    ? {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      }
+    : {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      };
+}
+
+function classifyProbeFailure(message) {
+  const m = String(message || '').toLowerCase();
+  const unsupportedHints = [
+    'tool',
+    'function calling',
+    'function_call',
+    'tool_calls',
+    'tool_choice',
+    'unrecognized request argument',
+    'unknown field',
+    'does not support',
+    'not supported',
+    'invalid parameter',
+  ];
+  const hasToolHint = unsupportedHints.some((token) => m.includes(token));
+  if (hasToolHint) return 'unsupported';
+  return 'unknown';
+}
+
+async function probeModelToolsSupport({ provider, baseUrl, apiKey, model }) {
+  const cached = config.getProbeCacheEntry?.({
+    providerId: provider.id,
+    baseUrl,
+    modelId: model,
+  });
+  if (cached?.toolsSupport) return cached;
+
+  const probeToolName = 'oct_capability_probe_noop';
+  const probeBody = {
+    model,
+    stream: false,
+    max_tokens: 1,
+    temperature: 0,
+    messages: [
+      { role: 'system', content: 'You are running a capability probe.' },
+      { role: 'user', content: 'Call the probe function now.' },
+    ],
+    tools: [
+      {
+        type: 'function',
+        function: {
+          name: probeToolName,
+          description: 'Capability probe noop tool.',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+    ],
+    tool_choice: {
+      type: 'function',
+      function: { name: probeToolName },
+    },
+  };
+
+  const endpoint = `${String(baseUrl || '').replace(/\/$/, '')}/chat/completions`;
+  try {
+    const res = await fetchWithRetry(endpoint, {
+      method: 'POST',
+      headers: buildChatHeaders(baseUrl, apiKey),
+      body: JSON.stringify(probeBody),
+    }, 0);
+    const json = await res.json().catch(() => ({}));
+    const choice = json?.choices?.[0] || {};
+    const finishReason = choice?.finish_reason || '';
+    const toolCalls = choice?.message?.tool_calls || [];
+    const toolsSupport = (Array.isArray(toolCalls) && toolCalls.length > 0) || finishReason === 'tool_calls'
+      ? 'supported'
+      : 'unknown';
+    return config.setProbeCacheEntry?.({
+      providerId: provider.id,
+      baseUrl,
+      modelId: model,
+      toolsSupport,
+      capabilitySource: 'runtime_probe',
+    }) || { toolsSupport, capabilitySource: 'runtime_probe' };
+  } catch (e) {
+    const toolsSupport = classifyProbeFailure(e?.message || String(e));
+    return config.setProbeCacheEntry?.({
+      providerId: provider.id,
+      baseUrl,
+      modelId: model,
+      toolsSupport,
+      capabilitySource: 'runtime_probe',
+    }) || { toolsSupport, capabilitySource: 'runtime_probe' };
+  }
+}
+
+function hasUnverifiedExecutionNarrative(text) {
+  const source = String(text || '');
+  if (!source.trim()) return false;
+  const alreadyHonest = /无法(直接)?(调用|使用)工具|不支持工具|不能(联网|调用工具)|未触发工具调用/.test(source);
+  if (alreadyHonest) return false;
+
+  const patterns = [
+    /我(去|来)?查(一下|下)?/i,
+    /我(将|会|正在|先)?调用(工具|搜索|查询|检索|web_search|read_file|memory_search)/i,
+    /正在(调用工具|搜索|查询|检索|联网查)/i,
+    /已(调用|执行)(了)?(工具|搜索|查询|检索)/i,
+    /\b(let me|i('| wi)?ll|i am)\s+(search|look up|call|use)\b/i,
+  ];
+  return patterns.some((re) => re.test(source));
+}
+
+function enforceExecutionContract({ text, supportsTools, hasToolEvidence }) {
+  const source = String(text || '');
+  if (!source.trim()) return source;
+  if (hasToolEvidence) return source;
+  if (!hasUnverifiedExecutionNarrative(source)) return source;
+
+  if (!supportsTools) {
+    return `当前模型不支持工具执行，我会基于现有上下文直接回答。\n\n${source}`;
+  }
+  return `本轮未触发可验证的工具调用，先基于现有信息继续回答。\n\n${source}`;
+}
+
 async function streamChat({
   messages,
   onDelta,
@@ -776,6 +904,7 @@ async function streamChat({
     thinkCount: 0,
   };
   let _thinkTagMode = false;
+  let hasToolEvidence = false;
   /** 在 fetch 前赋值，确保 catch 块也可用 */
   let flushThinkAtEnd = () => {};
 
@@ -804,7 +933,22 @@ async function streamChat({
       m.content.some(c => c.type === 'image_url')
     );
 
-    log.info('model caps', { model, supportsTools: caps.supportsTools, supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions });
+    if (caps.toolsSupport === 'unknown') {
+      const probeResult = await probeModelToolsSupport({ provider, baseUrl, apiKey, model });
+      if (probeResult?.toolsSupport) {
+        caps.toolsSupport = probeResult.toolsSupport;
+        caps.supportsTools = probeResult.toolsSupport === 'supported';
+        caps.capabilitySource = probeResult.capabilitySource || 'runtime_probe';
+      }
+    }
+
+    log.info('model caps', {
+      model,
+      toolsSupport: caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown'),
+      capabilitySource: caps.capabilitySource || 'unknown',
+      supportsTools: caps.supportsTools,
+      supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions,
+    });
 
     _thinkTagMode = caps.thinkingFormat === 'think_tags';
     _thinkState.inThink = false;
@@ -1020,31 +1164,7 @@ async function streamChat({
       }
     }
 
-    // Google 系鉴权策略（两套端点，规则不同）：
-    //
-    // ① generativelanguage.googleapis.com（AI Studio OpenAI 兼容层）
-    //    - AIzaSy... 格式 API Key
-    //    - 官方支持 Bearer / x-goog-api-key / ?key= 三选一
-    //    - 实测 V2rayN HTTPS CONNECT 隧道下 x-goog-api-key 不生效（可能与特定 key 类型限制有关）
-    //    → 使用 Authorization: Bearer
-    //
-    // ② aiplatform.googleapis.com（Vertex AI 原生 / Vertex AI Express）
-    //    - AQ.xxxx 格式 Vertex AI Express API Key
-    //    - 该端点要求 x-goog-api-key；发 Bearer 会返回 401 "Expected OAuth 2.0 access token"
-    //    → 使用 x-goog-api-key
-    //
-    // sanitizeGoogleOpenAiBaseUrl() 已在 config.js 中去掉 baseUrl 里的 ?key=，防双凭证 400。
-    const _baseForAuth = String(baseUrl || '');
-    const isVertexAIEndpoint = _baseForAuth.includes('aiplatform.googleapis.com');
-    const chatHeaders = isVertexAIEndpoint
-      ? {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        }
-      : {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        };
+    const chatHeaders = buildChatHeaders(baseUrl, apiKey);
 
     const res = await fetchWithRetry(`${String(baseUrl || '').replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
@@ -1124,6 +1244,7 @@ async function streamChat({
         if (finishReason) log.info('finishReason', { finishReason, toolCallsLen: toolCalls.filter(Boolean).length });
         if (finishReason === 'stop') sawDone = true;
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
+          hasToolEvidence = true;
           stopHeartbeat();
           // 不要在这里 flushThinkState！thinking 状态要保持打开，
           // 等工具返回后继续的 streamChat 会继续处理 thinking 内容
@@ -1148,6 +1269,12 @@ async function streamChat({
           });
           return;
         }
+        if (finishReason === 'tool_calls' && toolCalls.filter(Boolean).length === 0) {
+          stopHeartbeat();
+          log.error('finish_reason=tool_calls but no tool calls parsed');
+          onError(new Error('工具调用解析失败：模型声明了 tool_calls，但未收到有效调用数据'));
+          return;
+        }
       }
     }
 
@@ -1165,6 +1292,7 @@ async function streamChat({
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
     const pseudoToolCalls = caps.supportsTools ? extractPseudoToolCalls(fullText || assistantResponseContent) : [];
     if (pseudoToolCalls.length > 0) {
+      hasToolEvidence = true;
       log.warn('pseudo tool call detected, coercing to structured tool execution', {
         count: pseudoToolCalls.length,
         tools: pseudoToolCalls.map((call) => call.function?.name).filter(Boolean),
@@ -1192,7 +1320,12 @@ async function streamChat({
     }
     // 关闭 MiniMax CoT 块并释放暂存正文（非 MiniMax 模型此函数直接跳过）
     if (_thinkTagMode) _flushThinkState();
-    onDone(fullText, totalUsage, responseModel);
+    const safeReply = enforceExecutionContract({
+      text: fullText,
+      supportsTools: !!caps.supportsTools,
+      hasToolEvidence,
+    });
+    onDone(safeReply, totalUsage, responseModel);
   } catch (e) {
     stopHeartbeat();
     log.error('流中断:', e?.message || String(e), {

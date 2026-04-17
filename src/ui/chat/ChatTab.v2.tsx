@@ -652,6 +652,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               {msgs.wsConnected && <span className="status-dot" />}
               {msgs.wsConnected ? 'CONNECTED' : msgs.wsReconnecting ? '重连..' : msgs.wsError || 'DISCONNECTED'}
             </span>
+            {msgs.wsConnected && (msgs.gatewayCapabilities?.toolsSupport ?? (msgs.gatewayCapabilities?.supportsTools ? 'supported' : 'unknown')) !== 'supported' ? (
+              <span
+                className="ws-status disconnected"
+                style={{ fontSize: '11px' }}
+                title={`工具能力：${msgs.gatewayCapabilities?.toolsSupport || 'unknown'} 来源：${msgs.gatewayCapabilities?.capabilitySource || 'unknown'}`}
+              >
+                {msgs.gatewayCapabilities?.toolsSupport === 'unknown' ? 'TOOL UNKNOWN' : 'NO TOOL EXEC'}
+              </span>
+            ) : null}
           </>,
           document.getElementById('chat-header-portal')!
         )}

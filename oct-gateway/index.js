@@ -155,6 +155,34 @@ const mcpManager = require('./mcp/manager');
 // MCP 初始化（非致命，失败不阻断 Gateway 启动）
 mcpManager.init().catch(e => log.warn('MCP 初始化失败（非致命）', { error: e.message }));
 
+function getGatewayCapabilities(modelId = config.DASHSCOPE_MODEL) {
+  let caps = {
+    supportsTools: false,
+    supportsStreamOptions: false,
+  };
+  try {
+    caps = providerRouter.resolve(modelId).caps || caps;
+  } catch {}
+
+  let mcpStatus = {};
+  try {
+    mcpStatus = mcpManager.getStatus() || {};
+  } catch {}
+  const mcpServers = Object.keys(mcpStatus).length;
+  const mcpConnectedServers = Object.values(mcpStatus).filter((item) => item?.status === 'connected').length;
+
+  return {
+    model: modelId,
+    toolsSupport: caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown'),
+    capabilitySource: caps.capabilitySource || 'unknown',
+    supportsTools: !!caps.supportsTools,
+    supportsStreamOptions: !!caps.supportsStreamOptions,
+    mcpReady: mcpConnectedServers > 0,
+    mcpServers,
+    mcpConnectedServers,
+  };
+}
+
 scheduleMemoryHealthCheck({
   memory,
   logger: log,
@@ -362,6 +390,7 @@ const wsTransport = new WsTransport({
   port: PORT,
   logger: log,
   modelProvider: () => config.DASHSCOPE_MODEL,
+  capabilityProvider: () => getGatewayCapabilities(config.DASHSCOPE_MODEL),
   authTokenProvider: () => process.env.OCT_GATEWAY_TOKEN || '',
   onAuthenticatedMessage: handleTransportMessage,
 }).start();

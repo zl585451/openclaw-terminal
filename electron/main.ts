@@ -30,6 +30,17 @@ let suppressAutoReconnect = false;
 let expectOctGatewayProcessExit = false;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
 let currentSessionKey: string = 'main';
+let currentGatewayModel: string | undefined;
+let currentGatewayCapabilities: {
+  model?: string;
+  toolsSupport?: 'supported' | 'unknown' | 'unsupported';
+  capabilitySource?: string;
+  supportsTools?: boolean;
+  supportsStreamOptions?: boolean;
+  mcpReady?: boolean;
+  mcpServers?: number;
+  mcpConnectedServers?: number;
+} | undefined;
 const SESSION_STATE_FILE = path.join(app.getPath('userData'), 'session-state.json');
 const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
 
@@ -1069,9 +1080,26 @@ async function waitForPortRelease(port: number, timeoutMs = 5000): Promise<void>
   }
 }
 
-function sendStatus(status: { connected: boolean; error?: string; model?: string; reconnecting?: boolean }) {
+function sendStatus(status: {
+  connected: boolean;
+  error?: string;
+  model?: string;
+  reconnecting?: boolean;
+  capabilities?: {
+    model?: string;
+    toolsSupport?: 'supported' | 'unknown' | 'unsupported';
+    capabilitySource?: string;
+    supportsTools?: boolean;
+    supportsStreamOptions?: boolean;
+    mcpReady?: boolean;
+    mcpServers?: number;
+    mcpConnectedServers?: number;
+  };
+}) {
   if (appQuitting) return;
   if (status.connected) reconnectRetryCount = 0;
+  if (status.model) currentGatewayModel = status.model;
+  if (status.capabilities) currentGatewayCapabilities = status.capabilities;
   console.log('[OCT] Sending status to frontend:', status);
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
     mainWindow.webContents.send('openclaw-status', status);
@@ -1328,9 +1356,10 @@ function handleMessage(msg: any) {
         sendImageResult(msg.payload || {});
       } else if (msg.ok && (msg.payload?.type === 'hello-ok' || msg.method === 'connect')) {
         const model = msg.payload?.model || msg.payload?.agent?.model || undefined;
+        const capabilities = msg.payload?.capabilities || undefined;
         console.log('[OCT] Connection successful!');
         sendConnLog(`认证成功，已连接 (model: ${model || '—'})`);
-        sendStatus({ connected: true, model });
+        sendStatus({ connected: true, model, capabilities });
       } else if (!msg.ok) {
         const errMsg = msg.error?.message || JSON.stringify(msg.error) || 'Connection failed';
         console.error('[OCT] Error:', JSON.stringify(msg.error, null, 2));
@@ -3343,7 +3372,12 @@ ipcMain.handle('download-image', async (_event, payload: { url: string; suggeste
 });
 
 ipcMain.handle('openclaw-status', () => {
-  return { connected: openclawWs?.readyState === WebSocket.OPEN, sessionKey: currentSessionKey };
+  return {
+    connected: openclawWs?.readyState === WebSocket.OPEN,
+    sessionKey: currentSessionKey,
+    model: currentGatewayModel,
+    capabilities: currentGatewayCapabilities,
+  };
 });
 
 ipcMain.handle('show-notification', (_, { title, body }: { title: string; body: string }) => {

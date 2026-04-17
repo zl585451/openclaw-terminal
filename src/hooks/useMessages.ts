@@ -100,6 +100,17 @@ export interface ActivityEntry {
   keepaliveElapsedMs?: number;
 }
 
+export interface GatewayCapabilities {
+  model?: string;
+  toolsSupport?: 'supported' | 'unknown' | 'unsupported';
+  capabilitySource?: string;
+  supportsTools?: boolean;
+  supportsStreamOptions?: boolean;
+  mcpReady?: boolean;
+  mcpServers?: number;
+  mcpConnectedServers?: number;
+}
+
 export interface UseMessagesOptions {
   oct: { fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest };
   typewriter: UseTypewriterReturn;
@@ -137,6 +148,7 @@ export interface UseMessagesReturn {
   thinkingElapsed: number;
   activeTools: ActiveTool[];
   activityTimeline: ActivityEntry[];
+  gatewayCapabilities: GatewayCapabilities | null;
   tokenIn: number | null;
   tokenOut: number | null;
   ctxUsed: number | null;
@@ -174,6 +186,7 @@ export function useMessages({
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
   const [activeTools, setActiveTools] = useState<ActiveTool[]>([]);
   const [activityTimeline, setActivityTimeline] = useState<ActivityEntry[]>([]);
+  const [gatewayCapabilities, setGatewayCapabilities] = useState<GatewayCapabilities | null>(null);
   const activityIdCounter = useRef(0);
   const nextActivityId = () => `act_${++activityIdCounter.current}`;
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
@@ -217,6 +230,8 @@ export function useMessages({
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
   const cotSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ROUND_TIMEOUT_MS = 10 * 60 * 1000;
   // ── isStreaming (memo) ────────────────────────────────────────────────────
   const isStreaming = useMemo(() => {
     const lf = deriveLegacyFlags(fsmPhase);
@@ -443,6 +458,58 @@ export function useMessages({
     });
   }, []);
 
+  const clearRoundTimeout = useCallback(() => {
+    if (roundTimeoutRef.current != null) {
+      clearTimeout(roundTimeoutRef.current);
+      roundTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startRoundTimeout = useCallback(() => {
+    clearRoundTimeout();
+    roundTimeoutRef.current = setTimeout(() => {
+      roundTimeoutRef.current = null;
+      setAwaitingResponse(false);
+      setAgentPhase('idle');
+      setActiveTools([]);
+      setActivityTimeline((prev) => prev.filter((entry) => entry.type !== 'keepalive_hint'));
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        const timeoutText = '⏱️ 本轮请求超时（10 分钟），已自动结束。你可以重试，或先让我用不依赖工具的方式回答。';
+        if (last?.role === 'assistant' && last.isStreaming) {
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...last,
+              isStreaming: false,
+              isStreamingRaw: false,
+              content: timeoutText,
+              isSystemReply: true,
+              timestamp: Date.now(),
+            },
+          ];
+        }
+        return [
+          ...prev,
+          {
+            id: getNextMessageId(),
+            role: 'assistant' as const,
+            content: timeoutText,
+            isStreaming: false,
+            isSystemReply: true,
+            timestamp: Date.now(),
+          },
+        ];
+      });
+      try {
+        oct.stream.abortToIdle();
+      } catch {}
+      try {
+        recoverOctStreamFromEndFailure(oct);
+      } catch {}
+    }, ROUND_TIMEOUT_MS);
+  }, [ROUND_TIMEOUT_MS, clearRoundTimeout, getNextMessageId, oct, setMessages]);
+
   // ── useWebSocket ──────────────────────────────────────────────────────────
   const ws = useWebSocket({
     onChatDelta: (content, isDelta, isSystemReply) => {
@@ -530,6 +597,7 @@ export function useMessages({
     },
 
     onChatDone: (content, systemReplyHint) => {
+      clearRoundTimeout();
       const currentRequestId = lastSentRequestId.current;
       const systemReply = systemReplyHint || (pendingSystemReplyMap.current.get(currentRequestId) ?? false);
       pendingSystemReplyMap.current.delete(currentRequestId);
@@ -788,6 +856,10 @@ export function useMessages({
     },
 
     onModelName: (name) => setModelName(name),
+    onGatewayCapabilities: (caps) => {
+      setGatewayCapabilities(caps);
+      if (caps?.model) setModelName(caps.model);
+    },
   });
 
   // ── FSM subscribe ─────────────────────────────────────────────────────────
@@ -872,6 +944,10 @@ export function useMessages({
         clearTimeout(cotSyncTimerRef.current);
         cotSyncTimerRef.current = null;
       }
+      if (roundTimeoutRef.current != null) {
+        clearTimeout(roundTimeoutRef.current);
+        roundTimeoutRef.current = null;
+      }
       if (finalizeFallbackTimerRef.current != null) {
         clearTimeout(finalizeFallbackTimerRef.current);
         finalizeFallbackTimerRef.current = null;
@@ -954,6 +1030,7 @@ export function useMessages({
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
+      startRoundTimeout();
     }
     setActiveTools([]);
     setActivityTimeline([]);
@@ -1011,6 +1088,7 @@ export function useMessages({
     const roundtripContext = workbenchContext ?? workbenchBus.getContext('continue');
     const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, transportPacingMs, roundtripContext);
     if (!result?.success && !cmdIsSystem) {
+      clearRoundTimeout();
       setAwaitingResponse(false);
       console.warn('[useMessages] Send failed:', result);
       try {
@@ -1065,6 +1143,7 @@ export function useMessages({
     if (!isSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
+      startRoundTimeout();
     }
     setActiveTools([]);
     setActivityTimeline([]);
@@ -1111,6 +1190,7 @@ export function useMessages({
     }
     ws.send(content.trim(), undefined, undefined, transportPacingMs, workbenchBus.getContext('continue')).then((result) => {
       if (!result?.success && !isSystem) {
+        clearRoundTimeout();
         setAwaitingResponse(false);
         try {
           oct.stream.abortToIdle();
@@ -1134,6 +1214,7 @@ export function useMessages({
     thinkingElapsed,
     activeTools,
     activityTimeline,
+    gatewayCapabilities,
     tokenIn,
     tokenOut,
     ctxUsed,
