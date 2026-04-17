@@ -1,6 +1,6 @@
 # 1.1 Gateway WebSocket 服务器
 
-> **最后更新**：2026-03-24 | **状态**：✅ 正常
+> **最后更新**：2026-04-17 | **状态**：✅ 正常
 
 ---
 
@@ -14,6 +14,13 @@
 ```
 前端 WebSocket → index.js 收到消息 → orchestrator.dispatch → ai.js streamChat → 流式返回前端
 ```
+
+## 2026-04-17 新增约束
+
+1. `hello-ok` 增加 `capabilities` 字段（`supportsTools` / `supportsStreamOptions` / `mcpReady`）。
+2. `chat.send` 期间新增 `keepalive` 事件，阶段值为：
+`waiting_first_token -> streaming -> tool_running -> waiting_continuation`。
+3. 前端收到能力后可显式提示“当前模型不支持工具执行”，避免工具能力误判。
 
 ## 写到哪
 - 消息转发给 AI 引擎

@@ -21,6 +21,7 @@ interface QuickCommandMenuProps {
   onClose: () => void;
   onSelect: (sendText: string) => void;
   onClearHistory?: () => void;
+  onRestartGateway?: () => void;
 }
 
 const MENU_STRUCTURE: { group: string; items: QuickCommandItem[] }[] = [
@@ -71,13 +72,20 @@ const MENU_STRUCTURE: { group: string; items: QuickCommandItem[] }[] = [
   {
     group: '━━ SYSTEM ━━━━━━━━━━━━',
     items: [
-      { id: 'restart', label: '重启Gateway', sendText: '/restart' },
+      { id: 'restart', label: '重启Gateway', isAction: true },
       { id: 'clear-history', label: '清理历史对话', isAction: true },
     ],
   },
 ];
 
-export default function QuickCommandMenu({ anchorRef, visible, onClose, onSelect, onClearHistory }: QuickCommandMenuProps) {
+export default function QuickCommandMenu({
+  anchorRef,
+  visible,
+  onClose,
+  onSelect,
+  onClearHistory,
+  onRestartGateway,
+}: QuickCommandMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const submenuHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,11 +117,19 @@ export default function QuickCommandMenu({ anchorRef, visible, onClose, onSelect
     if (item.children) {
       return;
     }
-    if (item.isAction && item.id === 'clear-history' && onClearHistory) {
-      onClearHistory();
-      setExpandedId(null);
-      onClose();
-      return;
+    if (item.isAction) {
+      if (item.id === 'clear-history' && onClearHistory) {
+        onClearHistory();
+        setExpandedId(null);
+        onClose();
+        return;
+      }
+      if (item.id === 'restart' && onRestartGateway) {
+        onRestartGateway();
+        setExpandedId(null);
+        onClose();
+        return;
+      }
     }
     if (item.sendText) {
       handleSend(item.sendText);

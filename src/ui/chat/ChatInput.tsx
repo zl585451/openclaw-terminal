@@ -25,6 +25,7 @@ export interface ChatInputAreaProps {
   injectInputText?: string | null;
   onInjectConsumed?: () => void;
   onClearHistory?: () => void;
+  onRestartGateway?: () => void;
   hasPendingPills?: boolean;
   extraControls?: React.ReactNode;
   /** When true, show first-time friendly placeholder copy */
@@ -43,6 +44,7 @@ const ChatInputArea = memo(function ChatInputArea({
   injectInputText,
   onInjectConsumed,
   onClearHistory,
+  onRestartGateway,
   hasPendingPills,
   extraControls,
   isEmptyConversation = false,
@@ -51,7 +53,7 @@ const ChatInputArea = memo(function ChatInputArea({
   const assistantName = settings.aiName || 'OpenClaw';
   const conversationPlaceholder = useMemo(() => {
     if (isEmptyConversation) {
-      return '今天想让 OCT 帮你做什么?  · 聊天 · 搜资料 · 画图 · 生图';
+      return '今天想让OCT帮你做什么？';
     }
     return '继续聊,或按 / 唤出命令';
   }, [isEmptyConversation]);
@@ -394,6 +396,7 @@ const ChatInputArea = memo(function ChatInputArea({
           onClose={() => setQuickMenuOpen(false)}
           onSelect={handleQuickCommand}
           onClearHistory={onClearHistory}
+          onRestartGateway={onRestartGateway}
         />
         <textarea
           ref={inputRef as React.RefObject<HTMLTextAreaElement>}

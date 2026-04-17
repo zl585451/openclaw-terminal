@@ -1,6 +1,6 @@
 # Gateway WebSocket 消息协议
 
-> **最后更新时间**：2026-04-14  
+> **最后更新时间**：2026-04-17  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：理解前端与 Gateway 的通信格式，调试连接、消息收发问题
 
@@ -107,6 +107,16 @@
     "type": "hello-ok",
     "model": "qwen3.5-plus",
     "agent": { "model": "qwen3.5-plus" },
+    "capabilities": {
+      "model": "qwen3.5-plus",
+      "toolsSupport": "supported",
+      "capabilitySource": "provider_model_def",
+      "supportsTools": true,
+      "supportsStreamOptions": true,
+      "mcpReady": false,
+      "mcpServers": 0,
+      "mcpConnectedServers": 0
+    },
     "pendingTasks": [
       {
         "taskId": "task-1730-abc",
@@ -120,6 +130,9 @@
 }
 ```
 
+- `capabilities`：网关当前模型能力快照，供前端展示“是否支持真实工具调用”等状态。  
+  - `toolsSupport`：`supported | unknown | unsupported`  
+  - `capabilitySource`：能力来源（如 `provider_model_def` / `registry_exact` / `registry_prefix` / `fallback_unknown`）
 - `pendingTasks`：当前 `sessionKey` 下状态为 `pending` 或 `running` 的后台任务（`oct-gateway/task_queue.js`）；无进行中任务时为 `[]`。旧客户端可忽略该字段。
 - Gateway 会按约 **25s** 间隔对客户端发送 **WebSocket ping**（`ws` 帧），与流式 `agent-phase` 无关，用于长工具执行期间保持连接。
 
@@ -159,10 +172,14 @@
 | `stream.delta` | 流式文本片段 |
 | `stream.done` | 流结束 |
 | `thinking` | 思考心跳（长任务时每 8 秒） |
+| `keepalive` | 阶段心跳（`waiting_first_token / streaming / tool_running / waiting_continuation`） |
 | `tool_call` | 工具调用（若需展示） |
 | `workbench` | Workbench 工作台事件（创建/更新/聚焦 artifact），当前主路径 |
 | `canvas` | Canvas 兼容事件（旧字段名，仍保留兼容） |
 | `error` | 错误 |
+
+补充字段：
+- `chat done` payload 可能包含 `turnId`，用于日志链路追踪（前后端同一回合 ID）。
 
 ### Workbench / Canvas 事件
 

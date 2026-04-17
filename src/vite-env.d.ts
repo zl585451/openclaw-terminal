@@ -138,6 +138,7 @@ interface ElectronAPI {
     VISION_API_KEY?: string;
     VISION_BASE_URL?: string;
     VISION_MODEL?: string;
+    SILICONFLOW_API_KEY?: string;
   }) => Promise<{ success: boolean; error?: string }>;
   [key: string]: unknown;
 }

@@ -37,6 +37,7 @@ module.exports = {
   category: 'web',
   riskLevel: 'guarded',
   displayName: '网页抓取',
+  timeoutMs: 45000,
   definition: {
     type: 'function',
     function: {

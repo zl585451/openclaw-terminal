@@ -45,6 +45,45 @@ const TAG_SPECS: TagSpec[] = [
  * [To="canvas"] { ...json... }
  * [To='memory.write'] { ... }
  */
+/**
+ * 剥离模型泄漏到正文里的「伪工具调用」片段（如 Kimi：`<|…tool_calls_section_begin|>…end|>`）。
+ * 流式未闭合时：截断到 section_begin 之前，避免半段标签刷屏。
+ */
+export function stripLeakedToolCallSections(input: string): string {
+  const text = String(input || '');
+  if (!text) return '';
+
+  const beginRe = /<\|[^|]*tool_calls_section_begin[^|]*\|>/gi;
+  const endRe = /<\|[^|]*tool_calls_section_end[^|]*\|>/gi;
+
+  let out = text;
+  let guard = 0;
+  while (guard++ < 80) {
+    beginRe.lastIndex = 0;
+    const bm = beginRe.exec(out);
+    if (!bm) break;
+    const start = bm.index;
+    const headLen = bm[0].length;
+    const tail = out.slice(start + headLen);
+    endRe.lastIndex = 0;
+    const em = endRe.exec(tail);
+    if (!em) {
+      out = out.slice(0, start).replace(/\s+$/u, '');
+      break;
+    }
+    const cut = em.index + em[0].length;
+    out = out.slice(0, start) + tail.slice(cut);
+  }
+  return out.replace(/\n{3,}/g, '\n\n').replace(/\s+$/u, '');
+}
+
+/** 流式/打字机用：与 finalize 阶段可见正文一致的处理顺序 */
+export function getAssistantVisibleMain(raw: string): string {
+  const pre = stripLeakedToolCallSections(String(raw || ''));
+  const base = stripTextToolAnnotations(pre);
+  return hasAssistantCotMarkers(base) ? extractAssistantCotAndMain(base).mainContent : base;
+}
+
 export function stripTextToolAnnotations(input: string): string {
   const text = String(input || '');
   if (!text) return '';
@@ -169,7 +208,7 @@ export function extractAssistantCotAndMain(fullContent: string): CotExtractResul
     return { cotContent: null, cotDone: true, cotStarted: false, mainContent: fullContent };
   }
 
-  const normalizedContent = stripTextToolAnnotations(fullContent);
+  const normalizedContent = stripTextToolAnnotations(stripLeakedToolCallSections(fullContent));
   const cotParts: string[] = [];
   const mainParts: string[] = [];
   let cursor = 0;

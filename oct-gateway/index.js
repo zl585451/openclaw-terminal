@@ -81,8 +81,12 @@ const systemPromptReady = (async () => {
   log.info('System prompt loaded', { len: SYSTEM_PROMPT.length });
   taskQueue.checkTimeouts();
   taskQueue.cleanup();
-  memoryHistory.cleanupOldHistory().catch(() => {});
-  memorySearch.warmGlossaryCache().catch(() => {});
+  memoryHistory.cleanupOldHistory().catch((e) => {
+    log.warn('cleanupOldHistory failed (non-fatal)', { error: e?.message || String(e) });
+  });
+  memorySearch.warmGlossaryCache().catch((e) => {
+    log.warn('warmGlossaryCache failed (non-fatal)', { error: e?.message || String(e) });
+  });
   return SYSTEM_PROMPT;
 })();
 
@@ -155,6 +159,38 @@ const mcpManager = require('./mcp/manager');
 // MCP 初始化（非致命，失败不阻断 Gateway 启动）
 mcpManager.init().catch(e => log.warn('MCP 初始化失败（非致命）', { error: e.message }));
 
+function getGatewayCapabilities(modelId = config.DASHSCOPE_MODEL) {
+  let caps = {
+    supportsTools: false,
+    supportsStreamOptions: false,
+  };
+  try {
+    caps = providerRouter.resolve(modelId).caps || caps;
+  } catch (e) {
+    log.warn('resolve model caps failed, using defaults', { modelId, error: e?.message || String(e) });
+  }
+
+  let mcpStatus = {};
+  try {
+    mcpStatus = mcpManager.getStatus() || {};
+  } catch (e) {
+    log.warn('read mcp status failed, using empty status', { error: e?.message || String(e) });
+  }
+  const mcpServers = Object.keys(mcpStatus).length;
+  const mcpConnectedServers = Object.values(mcpStatus).filter((item) => item?.status === 'connected').length;
+
+  return {
+    model: modelId,
+    toolsSupport: caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown'),
+    capabilitySource: caps.capabilitySource || 'unknown',
+    supportsTools: !!caps.supportsTools,
+    supportsStreamOptions: !!caps.supportsStreamOptions,
+    mcpReady: mcpConnectedServers > 0,
+    mcpServers,
+    mcpConnectedServers,
+  };
+}
+
 scheduleMemoryHealthCheck({
   memory,
   logger: log,
@@ -190,12 +226,30 @@ const handleTransportHttpRequest = createHttpRequestHandler({
 
 async function handleChatRequest(request, connection) {
   const params = request?.params || {};
+  const turnId = request?.id || `turn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const sessionKey = params?.sessionKey || 'main';
   const userMessage = params?.message || '';
   const attachments = params?.attachments || [];
   const workbenchContext = params?.workbenchContext || params?.canvasContext || null;
+  let keepalivePhase = 'waiting_first_token';
+  let keepaliveToolName = null;
+  const keepaliveStartTime = Date.now();
+  let keepaliveTimer = null;
+  const stopKeepalive = () => {
+    if (keepaliveTimer) {
+      clearInterval(keepaliveTimer);
+      keepaliveTimer = null;
+    }
+  };
 
   const sendToolEvent = (evt) => {
+    if (evt?.type === 'tool_call') {
+      keepalivePhase = 'tool_running';
+      keepaliveToolName = evt.tool || null;
+    } else if (evt?.type === 'tool_result') {
+      keepalivePhase = 'waiting_continuation';
+      keepaliveToolName = null;
+    }
     if (!connection.isOpen()) return;
     if ((evt?.type === 'workbench' || evt?.type === 'canvas') && evt.action) {
       sendCanvasTransportEvent(connection, evt.action, evt.payload || {}, evt.type === 'workbench' ? 'workbench' : 'canvas');
@@ -229,8 +283,26 @@ async function handleChatRequest(request, connection) {
   connection.setAbort?.(() => { cancelled = true; });
 
   const prevAssistantReplyForPost = history.filter((m) => m.role === 'assistant').slice(-1)[0]?.content || '';
+  keepaliveTimer = setInterval(() => {
+    if (!connection.isOpen()) return;
+    const elapsed = Date.now() - keepaliveStartTime;
+    try {
+      connection.send({
+        type: 'event',
+        event: 'keepalive',
+        payload: {
+          phase: keepalivePhase,
+          elapsedMs: elapsed,
+          toolName: keepaliveToolName,
+        },
+      });
+    } catch {
+      // ignore keepalive failures
+    }
+  }, 2000);
 
   await chatEngine.execute({
+    turnId,
     sessionKey,
     userMessage,
     messages,
@@ -248,6 +320,7 @@ async function handleChatRequest(request, connection) {
     },
     onDelta: (chunk) => {
       if (cancelled || !connection.isOpen()) return;
+      if (keepalivePhase === 'waiting_first_token') keepalivePhase = 'streaming';
       connection.send({
         type: 'event',
         event: 'chat',
@@ -259,24 +332,26 @@ async function handleChatRequest(request, connection) {
       connection.setAbort?.(null);
       connection.stopThinkingPulse?.();
     },
-    onDone: ({ reply, usage, model: responseModel }) => {
+    onDone: ({ reply, usage, model: responseModel, turnId: doneTurnId }) => {
+      stopKeepalive();
       if (cancelled || !connection.isOpen()) return;
-      const donePayload = { text: reply, state: 'done', done: true };
+      const donePayload = { text: reply, state: 'done', done: true, turnId: doneTurnId || turnId };
       if (usage) donePayload.usage = usage;
       if (responseModel) donePayload.model = responseModel;
       connection.send({ type: 'event', event: 'chat', payload: donePayload });
       connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
     },
     onError: (err) => {
+      stopKeepalive();
       if (cancelled) return;
       connection.setAbort?.(null);
       connection.stopThinkingPulse?.();
-      log.error('AI error', { error: err?.message || String(err) });
+      log.error('AI error', { error: err?.message || String(err), turnId });
       if (!connection.isOpen()) return;
       connection.send({
         type: 'event',
         event: 'chat',
-        payload: { text: `❌ AI 调用失败：${err.message}`, state: 'done', done: true },
+        payload: { text: `❌ AI 调用失败：${err.message}`, state: 'done', done: true, turnId },
       });
       connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
     },
@@ -325,6 +400,7 @@ const wsTransport = new WsTransport({
   port: PORT,
   logger: log,
   modelProvider: () => config.DASHSCOPE_MODEL,
+  capabilityProvider: () => getGatewayCapabilities(config.DASHSCOPE_MODEL),
   authTokenProvider: () => process.env.OCT_GATEWAY_TOKEN || '',
   onAuthenticatedMessage: handleTransportMessage,
 }).start();

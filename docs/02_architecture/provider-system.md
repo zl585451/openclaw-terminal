@@ -1,6 +1,6 @@
 # Provider 系统 — AI 服务商市场化
 
-> **最后更新**：2026-04-14（Gemini 400 重复鉴权说明） | **状态**：✅ 正常
+> **最后更新**：2026-04-17（能力三态 + 动态探测缓存） | **状态**：✅ 正常
 
 ---
 
@@ -12,7 +12,7 @@
 - `oct-gateway/config.js` — getProviderConfig、currentProvider
 - `oct-gateway/ai.js` — 按 provider 能力组装请求
 - `oct-gateway/index.js` — `/model`、`/provider` 命令
-- `src/ui/settings/tabs/ConnectionTabView.tsx` — 连接页：服务商选择器、Key、Base URL、测试连接
+- `src/ui/settings/tabs/ConnectionTabView.tsx` — 连接页：服务商选择器、Key、Base URL、测试连接；**硅基流动**（`OCT_PROVIDER=siliconflow`）下「当前模型」为文本框，直接编辑 `OCT_MODEL`，并附带常用模型快捷填入
 
 ## 预设服务商
 | ID | 名称 | Base URL |
@@ -71,6 +71,35 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 ## 能力声明
 每个 provider 的 models 声明 `tools`、`thinking`。仅 `tools: true` 的模型才会传 `tools`/`tool_choice`，避免 deepseek-v3 等报错。
 
+从 2026-04-17 起，网关内部能力升级为三态：
+
+- `supported`：允许工具执行（`supportsTools=true`）
+- `unsupported`：明确不支持工具执行
+- `unknown`：能力未知，默认按禁用执行处理，并在状态中显式透出
+
+能力来源会标记在 `capabilitySource`（例如 `provider_model_def`、`registry_exact`、`registry_prefix`、`fallback_unknown`）。
+
+## 多供应商模型 ID 抽象（2026-04-17）
+
+为适配不同供应商的模型命名差异（如 `Pro/zai-org/GLM-5`、`Qwen/Qwen3.5-32B`），网关采用分层抽象：
+
+1. `normalizeModelId(modelId)`：统一大小写、去常见前缀/后缀，提取尾段模型名。
+2. `buildModelIdCandidates(modelId)`：生成候选 ID（原始、lowercase、尾段、归一化）。
+3. 注册表匹配顺序：`registry_exact -> registry_prefix -> fallback_unknown`。
+4. `fallback_unknown` 时执行运行时探测（`runtime_probe`）并写入缓存。
+5. 下次同 `provider + baseUrl + normalizedModelId` 直接读 `runtime_probe_cache`，避免重复探测。
+
+探测缓存默认 TTL：
+- `supported`: 7 天
+- `unsupported`: 7 天
+- `unknown`: 1 天
+
+## 自定义模型工具开关
+
+- `OCT_PROVIDER=custom` 时，自定义模型默认 `tools=false`（安全默认）
+- 可通过 `CUSTOM_MODEL_SUPPORTS_TOOLS=true` 显式开启
+- `/status` 与连接握手 `hello-ok.capabilities` 会显示当前工具能力与来源
+
 ---
 
 ## MiniMax 温度参数
@@ -82,6 +111,8 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-04-17 | 新增模型 ID 归一化与动态能力探测缓存（runtime_probe/runtime_probe_cache），缓解跨供应商模型命名不一致问题 |
+| 2026-04-17 | 能力协商升级为三态（supported/unknown/unsupported），并在 `/status` 与 `hello-ok.capabilities` 透出来源；`custom` 模型默认工具关闭，可由 `CUSTOM_MODEL_SUPPORTS_TOOLS=true` 显式开启 |
 | 2026-04-14 | `google` 主对话改为仅 `x-goog-api-key`，避免与 Bearer 叠用导致 400；文档与测试连接 IPC 同步 |
 | 2026-04-14 | 文档：`google` 出现 400 *Multiple authentication credentials* 时的排查（Base URL 勿带 `?key=`、`NODE_USE_ENV_PROXY` 与 undici 代理勿叠用）；网关侧已做 URL 净化与代理启动时清理 `NODE_USE_ENV_PROXY` |
 | 2026-04-13 | 扩充 `google` 预设模型（2.5 / 3.x 预览），默认 `gemini-2.5-flash`；文档区分 Generative Language OpenAI 兼容层与 Vertex 原生推理 API |

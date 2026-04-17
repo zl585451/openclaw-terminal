@@ -62,6 +62,7 @@ const electronAPI = {
         VISION_API_KEY?: string;
         VISION_BASE_URL?: string;
         VISION_MODEL?: string;
+        SILICONFLOW_API_KEY?: string;
       }) => ipcRenderer.invoke('save-api-keys', keys),
   imageGenerate: (payload: {
     requestId: string;

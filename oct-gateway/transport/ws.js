@@ -13,6 +13,7 @@ class WsTransport {
     host = '0.0.0.0',
     logger,
     modelProvider,
+    capabilityProvider,
     authTokenProvider,
     onAuthenticatedMessage,
   }) {
@@ -20,6 +21,7 @@ class WsTransport {
     this.host = host;
     this.log = logger;
     this.modelProvider = modelProvider || (() => '');
+    this.capabilityProvider = capabilityProvider || (() => ({}));
     this.authTokenProvider = authTokenProvider || (() => '');
     this.onAuthenticatedMessage = onAuthenticatedMessage;
     this.wss = null;
@@ -156,6 +158,7 @@ class WsTransport {
             type: 'hello-ok',
             model: this.modelProvider(),
             agent: { model: this.modelProvider() },
+            capabilities: this.capabilityProvider(),
             pendingTasks,
           },
         });

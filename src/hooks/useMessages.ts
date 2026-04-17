@@ -11,7 +11,7 @@ import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/ChatTab.v2';
-import { extractAssistantCotAndMain, hasAssistantCotMarkers, stripTextToolAnnotations } from '../utils/cotExtract';
+import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 
@@ -78,6 +78,39 @@ export interface ActiveTool {
   resultPreview?: string;
 }
 
+export type ActivityEntryType =
+  | 'thinking_placeholder'
+  | 'cot'
+  | 'tool_call'
+  | 'tool_result'
+  | 'keepalive_hint';
+
+export interface ActivityEntry {
+  id: string;
+  type: ActivityEntryType;
+  timestamp: number;
+  content?: string;
+  toolName?: string;
+  argsPreview?: string;
+  callId?: string;
+  resultPreview?: string;
+  elapsedMs?: number;
+  isError?: boolean;
+  hint?: string;
+  keepaliveElapsedMs?: number;
+}
+
+export interface GatewayCapabilities {
+  model?: string;
+  toolsSupport?: 'supported' | 'unknown' | 'unsupported';
+  capabilitySource?: string;
+  supportsTools?: boolean;
+  supportsStreamOptions?: boolean;
+  mcpReady?: boolean;
+  mcpServers?: number;
+  mcpConnectedServers?: number;
+}
+
 export interface UseMessagesOptions {
   oct: { fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest };
   typewriter: UseTypewriterReturn;
@@ -114,6 +147,8 @@ export interface UseMessagesReturn {
   agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
   thinkingElapsed: number;
   activeTools: ActiveTool[];
+  activityTimeline: ActivityEntry[];
+  gatewayCapabilities: GatewayCapabilities | null;
   tokenIn: number | null;
   tokenOut: number | null;
   ctxUsed: number | null;
@@ -150,6 +185,10 @@ export function useMessages({
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
   const [activeTools, setActiveTools] = useState<ActiveTool[]>([]);
+  const [activityTimeline, setActivityTimeline] = useState<ActivityEntry[]>([]);
+  const [gatewayCapabilities, setGatewayCapabilities] = useState<GatewayCapabilities | null>(null);
+  const activityIdCounter = useRef(0);
+  const nextActivityId = () => `act_${++activityIdCounter.current}`;
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [tokenIn, setTokenIn] = useState<number | null>(null);
   const [tokenOut, setTokenOut] = useState<number | null>(null);
@@ -190,6 +229,9 @@ export function useMessages({
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
+  const cotSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ROUND_TIMEOUT_MS = 10 * 60 * 1000;
   // ── isStreaming (memo) ────────────────────────────────────────────────────
   const isStreaming = useMemo(() => {
     const lf = deriveLegacyFlags(fsmPhase);
@@ -201,7 +243,9 @@ export function useMessages({
     );
   }, [fsmPhase, messages]);
   const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
-    const finalRaw = stripTextToolAnnotations(stripThinkModeMarker(rawText ?? fullTextRef.current ?? ''));
+    const finalRaw = stripTextToolAnnotations(
+      stripLeakedToolCallSections(stripThinkModeMarker(rawText ?? fullTextRef.current ?? '')),
+    );
     if (finalizeFallbackTimerRef.current != null) {
       clearTimeout(finalizeFallbackTimerRef.current);
       finalizeFallbackTimerRef.current = null;
@@ -246,7 +290,9 @@ export function useMessages({
     }
     finalizeFallbackTimerRef.current = setTimeout(() => {
       finalizeFallbackTimerRef.current = null;
-      const fallbackRaw = stripTextToolAnnotations(stripThinkModeMarker(rawText ?? fullTextRef.current ?? ''));
+      const fallbackRaw = stripTextToolAnnotations(
+        stripLeakedToolCallSections(stripThinkModeMarker(rawText ?? fullTextRef.current ?? '')),
+      );
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!(last?.role === 'assistant' && last.isStreaming)) {
@@ -281,8 +327,7 @@ export function useMessages({
     streamPaintLastTsRef.current = now;
     const raw = fullTextRef.current;
     const el = streamingDomRef.current;
-    const markers = hasAssistantCotMarkers(raw);
-    const main = markers ? extractAssistantCotAndMain(raw).mainContent : raw;
+    const main = getAssistantVisibleMain(raw);
     const targetLen = main.length;
     let shown = streamPaintShownLenRef.current;
     if (shown > targetLen) {
@@ -343,9 +388,7 @@ export function useMessages({
     }
 
     const rawEnd = fullTextRef.current;
-    const mainEnd = hasAssistantCotMarkers(rawEnd)
-      ? extractAssistantCotAndMain(rawEnd).mainContent.length
-      : rawEnd.length;
+    const mainEnd = getAssistantVisibleMain(rawEnd).length;
     if (streamPaintShownLenRef.current < mainEnd) {
       streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
       return;
@@ -367,9 +410,7 @@ export function useMessages({
     pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
       pendingFullTextSyncRafRef.current = null;
       const buf = fullTextRef.current;
-      const visibleMain = hasAssistantCotMarkers(buf)
-        ? extractAssistantCotAndMain(buf).mainContent
-        : buf;
+      const visibleMain = getAssistantVisibleMain(buf);
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.isStreaming) {
@@ -417,6 +458,58 @@ export function useMessages({
     });
   }, []);
 
+  const clearRoundTimeout = useCallback(() => {
+    if (roundTimeoutRef.current != null) {
+      clearTimeout(roundTimeoutRef.current);
+      roundTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startRoundTimeout = useCallback(() => {
+    clearRoundTimeout();
+    roundTimeoutRef.current = setTimeout(() => {
+      roundTimeoutRef.current = null;
+      setAwaitingResponse(false);
+      setAgentPhase('idle');
+      setActiveTools([]);
+      setActivityTimeline((prev) => prev.filter((entry) => entry.type !== 'keepalive_hint'));
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        const timeoutText = '⏱️ 本轮请求超时（10 分钟），已自动结束。你可以重试，或先让我用不依赖工具的方式回答。';
+        if (last?.role === 'assistant' && last.isStreaming) {
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...last,
+              isStreaming: false,
+              isStreamingRaw: false,
+              content: timeoutText,
+              isSystemReply: true,
+              timestamp: Date.now(),
+            },
+          ];
+        }
+        return [
+          ...prev,
+          {
+            id: getNextMessageId(),
+            role: 'assistant' as const,
+            content: timeoutText,
+            isStreaming: false,
+            isSystemReply: true,
+            timestamp: Date.now(),
+          },
+        ];
+      });
+      try {
+        oct.stream.abortToIdle();
+      } catch {}
+      try {
+        recoverOctStreamFromEndFailure(oct);
+      } catch {}
+    }, ROUND_TIMEOUT_MS);
+  }, [ROUND_TIMEOUT_MS, clearRoundTimeout, getNextMessageId, oct, setMessages]);
+
   // ── useWebSocket ──────────────────────────────────────────────────────────
   const ws = useWebSocket({
     onChatDelta: (content, isDelta, isSystemReply) => {
@@ -440,6 +533,60 @@ export function useMessages({
         }
         fullTextRef.current = streamingMessageRef.current;
 
+        if (!cotSyncTimerRef.current) {
+          cotSyncTimerRef.current = setTimeout(() => {
+            cotSyncTimerRef.current = null;
+            const currentFull = fullTextRef.current;
+            const syncCotEntry = (cotText: string) => {
+              const trimmedCot = cotText.trim();
+              setActivityTimeline((prev) => {
+                const existingCotIdx = prev.findIndex((entry) => entry.type === 'cot');
+                if (existingCotIdx !== -1) {
+                  const updated = [...prev];
+                  updated[existingCotIdx] = { ...updated[existingCotIdx], content: trimmedCot };
+                  return updated;
+                }
+                const filtered = prev.filter((entry) => entry.type !== 'thinking_placeholder');
+                return [
+                  ...filtered,
+                  {
+                    id: nextActivityId(),
+                    type: 'cot',
+                    timestamp: Date.now(),
+                    content: trimmedCot,
+                  },
+                ];
+              });
+            };
+
+            const cotOpen = currentFull.indexOf('[cot]');
+            if (cotOpen !== -1) {
+              const afterOpen = currentFull.slice(cotOpen + 5);
+              const cotClose = afterOpen.indexOf('[/cot]');
+              const cotText = cotClose !== -1 ? afterOpen.slice(0, cotClose) : afterOpen;
+              syncCotEntry(cotText);
+              return;
+            }
+
+            const thinkOpen = currentFull.indexOf('<think>');
+            if (thinkOpen !== -1) {
+              const afterThink = currentFull.slice(thinkOpen + 7);
+              const thinkClose = afterThink.indexOf('</think>');
+              const thinkText = thinkClose !== -1 ? afterThink.slice(0, thinkClose) : afterThink;
+              syncCotEntry(thinkText);
+              return;
+            }
+
+            const redactedThinkOpen = currentFull.indexOf('<redacted_thinking>');
+            if (redactedThinkOpen !== -1) {
+              const afterThink = currentFull.slice(redactedThinkOpen + '<redacted_thinking>'.length);
+              const thinkClose = afterThink.indexOf('</redacted_thinking>');
+              const thinkText = thinkClose !== -1 ? afterThink.slice(0, thinkClose) : afterThink;
+              syncCotEntry(thinkText);
+            }
+          }, 300);
+        }
+
         if (isDelta && oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
           try { oct.fsm.onToken(); } catch {}
         }
@@ -450,6 +597,7 @@ export function useMessages({
     },
 
     onChatDone: (content, systemReplyHint) => {
+      clearRoundTimeout();
       const currentRequestId = lastSentRequestId.current;
       const systemReply = systemReplyHint || (pendingSystemReplyMap.current.get(currentRequestId) ?? false);
       pendingSystemReplyMap.current.delete(currentRequestId);
@@ -458,10 +606,15 @@ export function useMessages({
         setAwaitingResponse(false);
         setAgentPhase('idle');
         setActiveTools([]);
+        setActivityTimeline((prev) =>
+          prev.filter((entry) => entry.type !== 'keepalive_hint' && entry.type !== 'thinking_placeholder')
+        );
       }
 
       if (!systemReply) {
-        const fallbackText = stripTextToolAnnotations(stripThinkModeMarker(String(content || '').trim()));
+        const fallbackText = stripTextToolAnnotations(
+          stripLeakedToolCallSections(stripThinkModeMarker(String(content || '').trim())),
+        );
         if (fallbackText && !fullTextRef.current.trim()) {
           streamingMessageRef.current = fallbackText;
           fullTextRef.current = fallbackText;
@@ -593,6 +746,30 @@ export function useMessages({
           };
           return [...prev.slice(0, lastIdx), { ...last, toolEvents: [...(last.toolEvents || []), newEvent] }];
         });
+        setActivityTimeline((prev) => {
+          const filtered = prev.filter((entry, index) =>
+            !(index === prev.length - 1 && entry.type === 'keepalive_hint')
+          );
+          const argsStr = payload.args
+            ? Object.entries(payload.args as Record<string, unknown>)
+                .map(([key, value]) =>
+                  `${key}: ${typeof value === 'string' ? value.slice(0, 60) : JSON.stringify(value).slice(0, 60)}`
+                )
+                .join(', ')
+                .slice(0, 120)
+            : '';
+          return [
+            ...filtered,
+            {
+              id: nextActivityId(),
+              type: 'tool_call',
+              timestamp: Date.now(),
+              toolName: payload.tool,
+              callId: payload.callId,
+              argsPreview: argsStr,
+            },
+          ];
+        });
       } else if (payload.type === 'tool_result') {
         const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
         setActiveTools((prev) =>
@@ -618,7 +795,55 @@ export function useMessages({
           );
           return [...prev.slice(0, lastIdx), { ...last, toolEvents: updatedEvents }];
         });
+        setActivityTimeline((prev) => [
+          ...prev,
+          {
+            id: nextActivityId(),
+            type: 'tool_result',
+            timestamp: Date.now(),
+            toolName: payload.tool,
+            callId: payload.callId,
+            resultPreview: payload.resultPreview?.slice(0, 120),
+            elapsedMs: payload.elapsedMs,
+            isError: payload.state === 'error',
+          },
+        ]);
       }
+    },
+
+    onKeepalive: (payload) => {
+      const { phase, elapsedMs, toolName } = payload;
+
+      let hint = '';
+      if (phase === 'waiting_first_token') {
+        if (elapsedMs < 2000) hint = '让我想想...';
+        else if (elapsedMs < 6000) hint = '分析你的问题中...';
+        else if (elapsedMs < 12000) hint = '这个需要好好想一下...';
+        else hint = '还在努力思考，请稍等...';
+      } else if (phase === 'tool_running') {
+        hint = toolName ? `正在使用 ${toolName}...` : '正在调用工具...';
+      } else if (phase === 'waiting_continuation') {
+        hint = '整理工具返回的结果...';
+      } else if (phase === 'streaming') {
+        hint = '继续整理中...';
+      }
+
+      setActivityTimeline((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.type === 'keepalive_hint') {
+          return [...prev.slice(0, -1), { ...last, hint, keepaliveElapsedMs: elapsedMs }];
+        }
+        return [
+          ...prev,
+          {
+            id: nextActivityId(),
+            type: 'keepalive_hint',
+            timestamp: Date.now(),
+            hint,
+            keepaliveElapsedMs: elapsedMs,
+          },
+        ];
+      });
     },
 
     onWorkbenchEvent: (event) => {
@@ -631,6 +856,10 @@ export function useMessages({
     },
 
     onModelName: (name) => setModelName(name),
+    onGatewayCapabilities: (caps) => {
+      setGatewayCapabilities(caps);
+      if (caps?.model) setModelName(caps.model);
+    },
   });
 
   // ── FSM subscribe ─────────────────────────────────────────────────────────
@@ -711,6 +940,14 @@ export function useMessages({
   // ── streamPaintRafRef / usageFlushRafRef cleanup ───────────────────────────
   useEffect(() => {
     return () => {
+      if (cotSyncTimerRef.current != null) {
+        clearTimeout(cotSyncTimerRef.current);
+        cotSyncTimerRef.current = null;
+      }
+      if (roundTimeoutRef.current != null) {
+        clearTimeout(roundTimeoutRef.current);
+        roundTimeoutRef.current = null;
+      }
       if (finalizeFallbackTimerRef.current != null) {
         clearTimeout(finalizeFallbackTimerRef.current);
         finalizeFallbackTimerRef.current = null;
@@ -793,8 +1030,17 @@ export function useMessages({
     if (!cmdIsSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
+      startRoundTimeout();
     }
     setActiveTools([]);
+    setActivityTimeline([]);
+    activityIdCounter.current = 0;
+    setActivityTimeline([{
+      id: nextActivityId(),
+      type: 'thinking_placeholder',
+      timestamp: Date.now(),
+      hint: '让我想想...',
+    }]);
     setStreak(touchStreak());
     setPendingPills(null);
     setMessages((prev) => {
@@ -842,6 +1088,7 @@ export function useMessages({
     const roundtripContext = workbenchContext ?? workbenchBus.getContext('continue');
     const result = await ws.send(fullContentForAMY, imageDataUrl || undefined, files, transportPacingMs, roundtripContext);
     if (!result?.success && !cmdIsSystem) {
+      clearRoundTimeout();
       setAwaitingResponse(false);
       console.warn('[useMessages] Send failed:', result);
       try {
@@ -896,8 +1143,17 @@ export function useMessages({
     if (!isSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
+      startRoundTimeout();
     }
     setActiveTools([]);
+    setActivityTimeline([]);
+    activityIdCounter.current = 0;
+    setActivityTimeline([{
+      id: nextActivityId(),
+      type: 'thinking_placeholder',
+      timestamp: Date.now(),
+      hint: '让我想想...',
+    }]);
     setPendingPills(null);
     setMessages((prev) => {
       const next: ChatMessage[] = [
@@ -934,6 +1190,7 @@ export function useMessages({
     }
     ws.send(content.trim(), undefined, undefined, transportPacingMs, workbenchBus.getContext('continue')).then((result) => {
       if (!result?.success && !isSystem) {
+        clearRoundTimeout();
         setAwaitingResponse(false);
         try {
           oct.stream.abortToIdle();
@@ -956,6 +1213,8 @@ export function useMessages({
     agentPhase,
     thinkingElapsed,
     activeTools,
+    activityTimeline,
+    gatewayCapabilities,
     tokenIn,
     tokenOut,
     ctxUsed,

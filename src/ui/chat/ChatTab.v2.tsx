@@ -20,6 +20,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { useCanvasBridge } from '../../hooks/useCanvasBridge';
 import { useCanvas } from '../../contexts/CanvasContext';
+import { workbenchBus } from '../../workbench/WorkbenchBus';
 // playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
 import { extractAssistantCotAndMain } from '../../utils/cotExtract';
@@ -298,33 +299,27 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     onStatusChange,
   });
 
+  // ── Workbench → Chat 桥接：监听面板内的发送请求 ─────────────────
+  // 当 DocumentAppendBar / 其他面板内 UI 通过 workbenchBus.requestSendMessage 发起请求时，
+  // 这里转成实际的 sendMessage 调用，并按 intent 注入 roundtrip 上下文。
+  useEffect(() => {
+    const unsubscribe = workbenchBus.subscribeSendRequest((request) => {
+      const intent = request.intent ?? 'continue';
+      const context = workbenchBus.getContext(intent);
+      msgs.sendMessage(request.text, null, undefined, context);
+    });
+    return unsubscribe;
+  }, [msgs]);
+
   const showWelcome = messages.length === 0 && !onboardingDismissed;
 
-  const handleWelcomeCardClick = useCallback(
-    (prompt: string, capabilityId: string) => {
+  const handleWelcomeSend = useCallback(
+    (prompt: string) => {
       setOnboardingDismissed(true);
-      try {
-        localStorage.setItem('oct.onboarding.dismissed', '1');
-      } catch {
-        /* ignore */
-      }
-
-      if (capabilityId === 'image_gen') {
-        // 直接打开 Image Studio 面板并预填 prompt，不走 AI 聊天
-        setImageStudioOpen(true);
-        // imagePromptInjectorRef 在 ImageStudio mount 后注册，用 rAF 等一帧确保面板已渲染
-        requestAnimationFrame(() => {
-          imagePromptInjectorRef.current?.(prompt);
-        });
-        return;
-      }
-
-      if (capabilityId === 'canvas') {
-        canvasBridge.openPanel();
-      }
+      try { localStorage.setItem('oct.onboarding.dismissed', '1'); } catch { /* ignore */ }
       void msgs.sendMessage(prompt, null);
     },
-    [msgs.sendMessage, canvasBridge.openPanel],
+    [msgs.sendMessage],
   );
 
   const handleSkipOnboarding = useCallback(() => {
@@ -657,6 +652,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               {msgs.wsConnected && <span className="status-dot" />}
               {msgs.wsConnected ? 'CONNECTED' : msgs.wsReconnecting ? '重连..' : msgs.wsError || 'DISCONNECTED'}
             </span>
+            {msgs.wsConnected && (msgs.gatewayCapabilities?.toolsSupport ?? (msgs.gatewayCapabilities?.supportsTools ? 'supported' : 'unknown')) !== 'supported' ? (
+              <span
+                className="ws-status disconnected"
+                style={{ fontSize: '11px' }}
+                title={`工具能力：${msgs.gatewayCapabilities?.toolsSupport || 'unknown'} 来源：${msgs.gatewayCapabilities?.capabilitySource || 'unknown'}`}
+              >
+                {msgs.gatewayCapabilities?.toolsSupport === 'unknown' ? 'TOOL UNKNOWN' : 'NO TOOL EXEC'}
+              </span>
+            ) : null}
           </>,
           document.getElementById('chat-header-portal')!
         )}
@@ -688,6 +692,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           pendingPills={msgs.pendingPills}
           messagesContainerRef={scroll.messagesContainerRef}
           activeTools={msgs.activeTools}
+          activityTimeline={msgs.activityTimeline}
           getToolDisplayName={getToolDisplayName}
           streamingDomRef={msgs.streamingDomRef}
           markdownComponents={mdComponents}
@@ -695,7 +700,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           emptyConversationPlaceholder={
             showWelcome ? (
               <div className="chat-empty">
-                <WelcomeHero onCardClick={handleWelcomeCardClick} onSkip={handleSkipOnboarding} />
+                <WelcomeHero onSend={handleWelcomeSend} onSkip={handleSkipOnboarding} />
               </div>
             ) : (
               <div className="chat-empty">
@@ -758,6 +763,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           injectInputText={injectInputText}
           onInjectConsumed={() => setInjectInputText(null)}
           onClearHistory={handleClearHistory}
+          onRestartGateway={gateway.restartGateway}
           isEmptyConversation={messages.length === 0}
           extraControls={(
             <>

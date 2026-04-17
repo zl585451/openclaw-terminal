@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-15（P0-5：`TabBar` 主导航中文化 + Beta 徽标）  
+> **最后更新**：2026-04-16（Kimi 风格伪工具调用：前端剥离 + 网关解析）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -160,6 +160,16 @@
 
 ### 2026-04-15 欢迎卡画布能力
 - **ChatTab.v2**：`capabilityId === 'canvas'` 时打开画布面板；发送文案 **仅为卡片 prompt**（见 `docs/05_changelog/2026-04-15-welcome-canvas-capability.md`）。
+
+### 2026-04-16 能力系统核心（Phase P1 · Task P1-1～7）
+- **core**：`src/core/capabilities/`（`types`、`providers`、`resolver`）；`src/hooks/useCapabilities.ts`（`oct.capabilities.userKeys` / `oct.capabilities.secrets`、自定义事件 `oct:capabilities-updated`）
+- **onboarding**：`CapabilitySetupDrawer.tsx`、`CapabilityStatusBar.tsx`；`CapabilityCards` / `WelcomeHero` 按能力状态分支；`onboarding.css` 抽屉与状态条
+- **ChatTab.v2**：首屏 `handleWelcomeSend` 仅 `sendMessage(prompt, null)` 并 dismiss onboarding（与此前欢迎卡「生图 / 画布」专用分支解耦；详见 `docs/05_changelog/2026-04-16-p1-capability-core.md`）
+
+### 2026-04-16 聊天区 Kimi 风格伪工具调用（正文泄漏）
+- **现象**：模型把 `<|…tool_calls_section_begin|>…JSON…<|…tool_calls_section_end|>` 写进 `delta.content`，原网关 `extractPseudoToolCalls` 只认 Ruby 风格，前端也未剥离，导致气泡内「代码外露」。
+- **前端**：`cotExtract.stripLeakedToolCallSections` / `getAssistantVisibleMain`；`useMessages` 流式与 finalize；`MessageList` assistant 分流前剥离（见 `docs/05_changelog/2026-04-16-chat-kimi-tool-syntax-leak.md`）。
+- **网关**：`oct-gateway/ai.js` 在 Ruby 无匹配时增加 `extractKimiStylePseudoToolCalls`，从 section 内解析 `{"name","arguments"}` 以触发既有 `toolLoop`（含 `canvas`）。
 
 ### 2026-03-24 网络稳定性、OpenClaw Skills、http_request/image_gen、VaultPanel 抽屉
 - **网络稳定性**：ai.js 代理绕过（getDirectFetchOptions）、fetchWithRetry（90s 超时 + 重试）、流中断截断提示、工具调用 30s 超时隔离；config.js NO_PROXY 直连 DashScope

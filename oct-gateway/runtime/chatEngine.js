@@ -25,6 +25,7 @@ class ChatEngine {
     await this.streamChat({
       messages: request.messages,
       toolChoice: request.toolChoice || 'auto',
+      turnId: request.turnId,
       onDelta: smoother.feed,
       onToolEvent: (evt) => emitter.onToolEvent(evt),
       onDone: (_text, usage, responseModel) => {
@@ -49,11 +50,13 @@ class ChatEngine {
           reply: sanitizedReply,
           usage,
           model: responseModel,
+          turnId: request.turnId,
         });
-        this.log.info('stream done', { len: sanitizedReply.length });
+        this.log.info('stream done', { len: sanitizedReply.length, turnId: request.turnId || null });
       },
       onError: (err) => {
         if (streamCtrl.isCancelled()) return;
+        this.log.error('stream error', { turnId: request.turnId || null, error: err?.message || String(err) });
         emitter.onError(err);
       },
     });

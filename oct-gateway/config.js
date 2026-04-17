@@ -3,6 +3,11 @@ const fs = require('fs');
 const os = require('os');
 const { PROVIDERS } = require('./providers');
 
+const CAPABILITY_PROBE_CACHE_FILE = 'capability-probe-cache.json';
+const PROBE_TTL_SUPPORTED_MS = 7 * 24 * 60 * 60 * 1000;
+const PROBE_TTL_UNSUPPORTED_MS = 7 * 24 * 60 * 60 * 1000;
+const PROBE_TTL_UNKNOWN_MS = 24 * 60 * 60 * 1000;
+
 const envLocalPath = path.join(__dirname, '..', '.env.local');
 if (fs.existsSync(envLocalPath)) {
   require('dotenv').config({ path: envLocalPath });
@@ -373,24 +378,54 @@ const MODEL_REGISTRY = {
   },
 };
 
-// 查询模型能力，未注册的模型返回安全默认值
-function getModelCaps(modelId) {
-  // 精确匹配
-  if (MODEL_REGISTRY[modelId]) return MODEL_REGISTRY[modelId];
-  // 前缀模糊匹配（处理带日期后缀的模型名如 qwen3-max-2026-01-23）
-  for (const [key, caps] of Object.entries(MODEL_REGISTRY)) {
-    if (modelId.startsWith(key)) return { ...caps, label: modelId };
-  }
-  // 未知模型 → 保守默认（不发 tools，避免报错）
+function normalizeModelCaps(caps, source, modelId) {
+  const toolsSupport = caps?.toolsSupport
+    || (caps?.supportsTools === true ? 'supported'
+      : caps?.supportsTools === false ? 'unsupported'
+        : 'unknown');
   return {
+    ...caps,
+    label: caps?.label || modelId,
+    normalizedModelId: normalizeModelId(modelId),
+    family: caps?.family || detectModelFamily(modelId),
+    toolsSupport,
+    supportsTools: toolsSupport === 'supported',
+    capabilitySource: source,
+  };
+}
+
+function isRegistryPrefixMatch(modelId, key) {
+  if (modelId === key) return true;
+  return modelId.startsWith(`${key}-`) || modelId.startsWith(`${key}/`);
+}
+
+// 查询模型能力，未注册的模型返回安全默认值（三态：supported / unknown / unsupported）
+function getModelCaps(modelId) {
+  const candidates = buildModelIdCandidates(modelId);
+  for (const c of candidates) {
+    if (MODEL_REGISTRY[c]) return normalizeModelCaps(MODEL_REGISTRY[c], 'registry_exact', modelId);
+  }
+  // 精确匹配
+  if (MODEL_REGISTRY[modelId]) return normalizeModelCaps(MODEL_REGISTRY[modelId], 'registry_exact', modelId);
+  // 前缀匹配（处理带日期后缀的模型名如 qwen3-max-2026-01-23）
+  for (const [key, caps] of Object.entries(MODEL_REGISTRY)) {
+    for (const c of candidates) {
+      if (isRegistryPrefixMatch(c, key)) {
+        return normalizeModelCaps({ ...caps, label: modelId }, 'registry_prefix', modelId);
+      }
+    }
+  }
+  // 未知模型 → unknown（运行时默认不发 tools，但会暴露为 unknown 便于探测/降级）
+  return normalizeModelCaps({
     provider: 'unknown',
     label: modelId,
+    toolsSupport: 'unknown',
     supportsTools: false,
     supportsStreamOptions: false,
     supportsThinking: false,
     thinkingFormat: null,
     maxTokens: 4096,
-  };
+  }, 'fallback_unknown', modelId);
 }
 
 function loadAvailableModels() {
@@ -451,6 +486,125 @@ for (const f of _configSources) {
   if (fs.existsSync(f)) { _configPath = f; break; }
 }
 const legacyConfig = loadOpenClawLegacyConfig();
+
+function getProbeCachePath() {
+  const baseDir = _configPath ? path.dirname(_configPath) : path.join(os.homedir(), '.openclaw');
+  return path.join(baseDir, CAPABILITY_PROBE_CACHE_FILE);
+}
+
+function normalizeModelId(modelId) {
+  const raw = String(modelId || '').trim();
+  if (!raw) return '';
+  const slashParts = raw.split('/').map((item) => item.trim()).filter(Boolean);
+  const tail = slashParts.length > 0 ? slashParts[slashParts.length - 1] : raw;
+  return tail
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/_/g, '-')
+    .replace(/^pro\//, '')
+    .replace(/-online$/g, '')
+    .replace(/:free$/g, '');
+}
+
+function detectModelFamily(modelId) {
+  const s = normalizeModelId(modelId);
+  if (!s) return 'unknown';
+  if (s.includes('qwen')) return 'qwen';
+  if (s.includes('glm')) return 'glm';
+  if (s.includes('deepseek')) return 'deepseek';
+  if (s.includes('gemini')) return 'gemini';
+  if (s.includes('minimax')) return 'minimax';
+  if (s.includes('kimi') || s.includes('moonshot')) return 'kimi';
+  if (s.includes('gpt') || s.includes('o1') || s.includes('o3')) return 'openai';
+  return 'unknown';
+}
+
+function buildModelIdCandidates(modelId) {
+  const raw = String(modelId || '').trim();
+  if (!raw) return [];
+  const out = new Set();
+  out.add(raw);
+  out.add(raw.toLowerCase());
+  out.add(normalizeModelId(raw));
+  const slashParts = raw.split('/').map((item) => item.trim()).filter(Boolean);
+  if (slashParts.length > 0) {
+    const tail = slashParts[slashParts.length - 1];
+    out.add(tail);
+    out.add(tail.toLowerCase());
+    out.add(normalizeModelId(tail));
+  }
+  return Array.from(out).filter(Boolean);
+}
+
+let _probeCache = null;
+let _probeCacheLoaded = false;
+
+function loadProbeCache() {
+  if (_probeCacheLoaded) return _probeCache || {};
+  _probeCacheLoaded = true;
+  const p = getProbeCachePath();
+  try {
+    if (fs.existsSync(p)) {
+      const parsed = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      _probeCache = parsed && typeof parsed === 'object' ? parsed : {};
+      return _probeCache;
+    }
+  } catch {}
+  _probeCache = {};
+  return _probeCache;
+}
+
+function saveProbeCache() {
+  const p = getProbeCachePath();
+  const dir = path.dirname(p);
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(_probeCache || {}, null, 2), 'utf-8');
+  } catch {}
+}
+
+function buildProbeCacheKey(providerId, baseUrl, modelId) {
+  const p = String(providerId || '').trim().toLowerCase();
+  const b = String(baseUrl || '').trim().toLowerCase().replace(/\/$/, '');
+  const m = normalizeModelId(modelId);
+  return `${p}::${b}::${m}`;
+}
+
+function getProbeCacheEntry({ providerId, baseUrl, modelId }) {
+  const key = buildProbeCacheKey(providerId, baseUrl, modelId);
+  const cache = loadProbeCache();
+  const item = cache[key];
+  if (!item) return null;
+  if (item.expiresAt && Date.now() > item.expiresAt) {
+    delete cache[key];
+    saveProbeCache();
+    return null;
+  }
+  return item;
+}
+
+function setProbeCacheEntry({ providerId, baseUrl, modelId, toolsSupport, capabilitySource = 'runtime_probe' }) {
+  const key = buildProbeCacheKey(providerId, baseUrl, modelId);
+  const cache = loadProbeCache();
+  const ttl = toolsSupport === 'supported'
+    ? PROBE_TTL_SUPPORTED_MS
+    : toolsSupport === 'unsupported'
+      ? PROBE_TTL_UNSUPPORTED_MS
+      : PROBE_TTL_UNKNOWN_MS;
+  cache[key] = {
+    providerId,
+    baseUrl: String(baseUrl || '').trim(),
+    modelId: String(modelId || '').trim(),
+    normalizedModelId: normalizeModelId(modelId),
+    toolsSupport: toolsSupport || 'unknown',
+    capabilitySource,
+    updatedAt: Date.now(),
+    expiresAt: Date.now() + ttl,
+  };
+  _probeCache = cache;
+  saveProbeCache();
+  return cache[key];
+}
 
 function validKey(v) {
   return v && typeof v === 'string' && !v.includes('_here') && !v.includes('your_') && v.length > 10;
@@ -517,7 +671,16 @@ let _currentModel = _fileConfig.OCT_MODEL || process.env.OCT_MODEL || legacyConf
 
 // 优先级：用户设置(_fileConfig) > 系统环境变量(process.env) > 旧配置
 function getEnvOrConfig(key) {
-  return _fileConfig[key] || process.env[key] || legacyConfig[key] || '';
+  if (Object.prototype.hasOwnProperty.call(_fileConfig, key)) return _fileConfig[key];
+  if (Object.prototype.hasOwnProperty.call(process.env, key)) return process.env[key];
+  if (Object.prototype.hasOwnProperty.call(legacyConfig, key)) return legacyConfig[key];
+  return '';
+}
+
+function readBoolConfig(key, fallback = false) {
+  const raw = getEnvOrConfig(key);
+  if (raw === '' || raw === null || raw === undefined) return fallback;
+  return /^(1|true|yes|on)$/i.test(String(raw).trim());
 }
 
 function getProviderConfig() {
@@ -531,6 +694,36 @@ function getProviderConfig() {
   let apiKey = '';
   if (preset.fixedApiKey) {
     apiKey = preset.fixedApiKey;
+  } else if (preset.id === 'siliconflow') {
+    // 硅基与百炼共用 DASHSCOPE_API_KEY 字段时，易把 sk-sp-（Coding Plan）误带到硅基导致 401。
+    // 优先 SILICONFLOW_API_KEY；否则仅当 DASHSCOPE 不像百炼 Coding 前缀时才采用。
+    const sfKey = pickKey(
+      process.env.SILICONFLOW_API_KEY,
+      _fileConfig.SILICONFLOW_API_KEY,
+    );
+    const dashKey = pickKey(
+      _fileConfig.DASHSCOPE_API_KEY,
+      process.env.DASHSCOPE_API_KEY,
+      legacyConfig.DASHSCOPE_API_KEY,
+    );
+    const dashLooksCodingPlan = dashKey && String(dashKey).trim().toLowerCase().startsWith('sk-sp-');
+    if (sfKey) {
+      apiKey = sfKey;
+    } else if (dashKey && !dashLooksCodingPlan) {
+      apiKey = dashKey;
+    } else {
+      apiKey = '';
+      if (dashLooksCodingPlan) {
+        try {
+          const { createLogger } = require('./logger');
+          createLogger('config').warn(
+            'OCT_PROVIDER=siliconflow：DASHSCOPE_API_KEY 为百炼 Coding(sk-sp-)，不能用于硅基。请填写硅基 API Key（设置保存会写入 SILICONFLOW_API_KEY），或编辑 config.json。',
+          );
+        } catch (_) {
+          console.warn('[config] siliconflow: sk-sp- in DASHSCOPE is not valid for api.siliconflow.cn');
+        }
+      }
+    }
   } else if (preset.keyEnvVars && preset.keyEnvVars.length > 0) {
     const sources = preset.keyEnvVars.flatMap(k => [
       process.env[k],
@@ -565,12 +758,18 @@ function getProviderConfig() {
   if (isGoogle && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
     effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
   }
+  const customModelSupportsTools = readBoolConfig('CUSTOM_MODEL_SUPPORTS_TOOLS', false);
 
   let models = preset.models || [];
   if (isCustom && effectiveModel && effectiveModel !== '__custom__') {
     // 如果用户设置了自定义模型，添加到模型列表
     models = [
-      { id: effectiveModel, label: `${effectiveModel} (自定义)`, tools: true, thinking: false },
+      {
+        id: effectiveModel,
+        label: `${effectiveModel} (自定义${customModelSupportsTools ? '，工具开启' : '，工具关闭'})`,
+        tools: customModelSupportsTools,
+        thinking: false,
+      },
       ...models.filter(m => m.id !== effectiveModel)
     ];
   }
@@ -581,7 +780,13 @@ function getProviderConfig() {
     ];
   }
   if (models.length === 0 && preset.defaultModel) {
-    models = [{ id: preset.defaultModel, label: preset.defaultModel, tools: true, thinking: false }];
+    const defaultCaps = getModelCaps(preset.defaultModel);
+    models = [{
+      id: preset.defaultModel,
+      label: preset.defaultModel,
+      tools: !!defaultCaps.supportsTools,
+      thinking: !!defaultCaps.supportsThinking,
+    }];
   }
   if (models.length === 0) {
     models = loadAvailableModels().map(m => {
@@ -596,6 +801,7 @@ function getProviderConfig() {
     baseUrl,
     models,
     customModel: isCustom ? effectiveModel : undefined,
+    customModelSupportsTools: isCustom ? customModelSupportsTools : undefined,
   };
 }
 
@@ -716,15 +922,24 @@ config.PROVIDERS = PROVIDERS;
 try {
   const { createLogger } = require('./logger');
   const log = createLogger('config');
-  log.info('API Key', { prefix: config.DASHSCOPE_API_KEY ? config.DASHSCOPE_API_KEY.slice(0, 8) + '***' : 'EMPTY' });
-  log.info('Base URL', { url: config.DASHSCOPE_BASE_URL });
+  const pc = getProviderConfig();
+  log.info('Active provider', { id: pc.id, name: pc.name });
+  log.info('API Key (resolved for chat)', { prefix: pc.apiKey ? pc.apiKey.slice(0, 8) + '***' : 'EMPTY' });
+  log.info('Base URL (resolved for chat)', { url: pc.baseUrl });
   log.info('Model', { model: config.DASHSCOPE_MODEL });
+  log.debug('DASHSCOPE_API_KEY file prefix', {
+    prefix: config.DASHSCOPE_API_KEY ? config.DASHSCOPE_API_KEY.slice(0, 8) + '***' : 'EMPTY',
+  });
   log.debug('Available models', { models: config.availableModels.map(m => m.id) });
 } catch {}
 
 config.MODEL_REGISTRY = MODEL_REGISTRY;
 config.getModelCaps = getModelCaps;
 config.getEnvOrConfig = getEnvOrConfig;
+config.normalizeModelId = normalizeModelId;
+config.detectModelFamily = detectModelFamily;
+config.getProbeCacheEntry = getProbeCacheEntry;
+config.setProbeCacheEntry = setProbeCacheEntry;
 
 // 向外暴露原始配置对象和路径（供 mcp/manager.js 使用）
 config.__fileConfig = _fileConfig;

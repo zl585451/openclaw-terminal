@@ -4,19 +4,19 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
-import { extractAssistantCotAndMain, hasAssistantCotMarkers } from '../../utils/cotExtract';
-import { summarizeCotForDisplay } from '../../utils/cotSummary';
+import { extractAssistantCotAndMain, hasAssistantCotMarkers, stripLeakedToolCallSections, stripTextToolAnnotations } from '../../utils/cotExtract';
 import { blockRouter } from '../../core/blockRouter';
 import { blocksToSegments } from '../../core/blockAdapter';
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
 import QuestionCards from '../../components/QuestionCards';
 import CoTBlock from '../../components/CoTBlock';
+import ActivityPanel from '../../components/ActivityPanel';
 import AmyAvatar from '../../components/AmyAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown, normalizeCustomEchartBlocks } from '../../utils/markdownPreprocess';
 import type { ChatMessage } from './ChatTab.v2';
-import ToolCard from './ToolCard';
+import type { ActivityEntry } from '../../hooks/useMessages';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
 
@@ -36,6 +36,54 @@ const formatFullTime = (timestamp: string | number | undefined): string => {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
 };
+
+function buildFinalizedTimeline(
+  msg: ChatMessage,
+  cotContent: string | null | undefined,
+): ActivityEntry[] {
+  const entries: ActivityEntry[] = [];
+
+  if (cotContent) {
+    entries.push({
+      id: `final_cot_${msg.id}`,
+      type: 'cot',
+      timestamp: Number(msg.timestamp || 0),
+      content: cotContent,
+    });
+  }
+
+  if (msg.toolEvents && msg.toolEvents.length > 0) {
+    for (const event of msg.toolEvents) {
+      entries.push({
+        id: `final_tc_${event.callId}`,
+        type: 'tool_call',
+        timestamp: event.startedAt || Number(msg.timestamp || 0),
+        toolName: event.tool,
+        callId: event.callId,
+        argsPreview: event.args
+          ? Object.entries(event.args)
+              .map(([key, value]) =>
+                `${key}: ${typeof value === 'string' ? value.slice(0, 60) : JSON.stringify(value).slice(0, 60)}`
+              )
+              .join(', ')
+              .slice(0, 120)
+          : '',
+      });
+      entries.push({
+        id: `final_tr_${event.callId}`,
+        type: 'tool_result',
+        timestamp: (event.startedAt || 0) + (event.elapsedMs || 0),
+        toolName: event.tool,
+        callId: event.callId,
+        elapsedMs: event.elapsedMs,
+        isError: event.state === 'error',
+        resultPreview: event.resultPreview,
+      });
+    }
+  }
+
+  return entries;
+}
 
 // ── 原子组件 ─────────────────────────────────────────────────────────────
 
@@ -256,6 +304,10 @@ export interface ChatMessageItemProps {
   thinkingElapsed?: number;
   /** 是否为最后一条 assistant 消息（是则不渲染 pills，因已在 ResponseTray 显示） */
   isLastAssistant?: boolean;
+  /** 当前流式轮次的活动时间线（Step 2 ActivityPanel） */
+  activityTimeline?: ActivityEntry[];
+  /** 工具名称格式化 */
+  getToolDisplayName?: (tool: string) => string;
   /** 打字机 DOM ref，供 AssistantMessageBody 直接写 textContent */
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   /** 流式阶段跳过 markdown/block 解析，直接渲染纯文本，降低重排抖动 */
@@ -275,7 +327,6 @@ export interface ChatMessageItemProps {
    * 退回：删此 prop 及相关分支，恢复 ChatMessageList 内独立的 thinking CoT 块（仅改回 TSX 即可）。
    */
   inlineThinkingPlaceholder?: boolean;
-  isMobileViewport?: boolean;
 }
 
 const MessageMeta = memo(function MessageMeta({ timestamp }: { timestamp: string | number | undefined }) {
@@ -635,14 +686,6 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
           )}
         </>
       )}
-      {/* 工具调用内联卡片：持久显示，不随流式结束消失 */}
-      {msg.toolEvents && msg.toolEvents.length > 0 && (
-        <div style={{ margin: '4px 0' }}>
-          {msg.toolEvents.map((evt) => (
-            <ToolCard key={evt.callId} event={evt} />
-          ))}
-        </div>
-      )}
       {isStreamingMsg && <TypewriterCursor show />}
     </div>
   );
@@ -705,6 +748,8 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     onQuoteQuestion,
     segments,
     isLastAssistant,
+    activityTimeline = [],
+    getToolDisplayName = (tool) => tool,
     streamingDomRef,
     usePlainStreamingText = false,
     markdownComponents,
@@ -712,23 +757,27 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     cotStarted = false,
     cotStreaming,
     inlineThinkingPlaceholder = false,
-    isMobileViewport = false,
   } = props;
 
-  // showCotInline: finalized CoT (not streaming) — show full summarized content
   const showCotInline = msg.role === 'assistant' && !isStreamingMsg && (cotContent != null || cotStarted);
-  // showCotStreaming: CoT is actively being streamed right now
   const showCotStreaming = msg.role === 'assistant' && isStreamingMsg && (!!cotStreaming || cotStarted);
-  const displayCotContent = showCotInline
-    ? summarizeCotForDisplay(cotContent, textToShow || raw || '', { compact: isMobileViewport })
-    : null;
   const showLightweightThinkingBadge =
     msg.role === 'assistant' &&
     isStreamingMsg &&
     !inlineThinkingPlaceholder &&
-    !showCotStreaming &&  // suppress badge when real CoT is streaming
+    !showCotStreaming &&
     agentPhase === 'thinking';
-  const showHeaderBand = showCotInline || showCotStreaming || inlineThinkingPlaceholder || showLightweightThinkingBadge;
+
+  const shouldShowActivityPanel = msg.role === 'assistant' && !!isLastAssistant;
+  const finalizedTimeline = shouldShowActivityPanel && !isStreamingMsg
+    ? buildFinalizedTimeline(msg, showCotInline ? (cotContent ?? '') : null)
+    : [];
+  const streamingTimeline = shouldShowActivityPanel && isStreamingMsg
+    ? activityTimeline
+    : [];
+  const panelStreamingFlag = shouldShowActivityPanel
+    ? (isStreamingMsg && (showCotStreaming || showLightweightThinkingBadge || inlineThinkingPlaceholder || agentPhase !== 'idle'))
+    : false;
 
   return (
     <MessageRow
@@ -738,38 +787,13 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
       isStreamingMsg={isStreamingMsg}
       onContextMenu={onContextMenu}
     >
-      {showHeaderBand ? (
-        <div className="assistant-header-band assistant-header-band--stable">
-          <MessageHeader
-            msg={msg}
-            isStreamingMsg={isStreamingMsg}
-            agentPhase={agentPhase}
-            suppressPhaseBadge
-            assistantName={assistantName}
-          />
-          <div className="cot-stream-wrapper cot-stream-wrapper--header-inline">
-              <CoTBlock
-                content={
-                  showCotInline    ? (displayCotContent ?? cotContent ?? '')
-                  : showCotStreaming ? (cotContent ?? '')
-                  : ''
-                }
-                isStreaming={inlineThinkingPlaceholder || showLightweightThinkingBadge || showCotStreaming}
-                isPlaceholder={inlineThinkingPlaceholder}
-                compactStreaming={showLightweightThinkingBadge || (showCotStreaming && !(cotContent ?? '').trim())}
-                labelOverride={showLightweightThinkingBadge || showCotStreaming ? '思考中' : undefined}
-                placeholderHint={
-                  showLightweightThinkingBadge
-                    ? '思维链将在回复完成后显示。'
-                    : showCotStreaming && !(cotContent ?? '').trim()
-                      ? 'AI 已开始思考，正在输出思维链…'
-                      : undefined
-                }
-              />
-            </div>
-          </div>
-      ) : (
-        <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} assistantName={assistantName} />
+      <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} assistantName={assistantName} />
+      {shouldShowActivityPanel && (
+        <ActivityPanel
+          timeline={isStreamingMsg ? streamingTimeline : finalizedTimeline}
+          isStreaming={panelStreamingFlag}
+          getToolDisplayName={getToolDisplayName}
+        />
       )}
       <div className="msg-body">
         {msg.role === 'assistant' ? (
@@ -841,6 +865,7 @@ export interface ChatMessageListProps {
     state: 'executing' | 'done' | 'error';
     resultPreview?: string;
   }>;
+  activityTimeline?: ActivityEntry[];
   getToolDisplayName?: (tool: string) => string;
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   usePlainStreamingText?: boolean;
@@ -868,7 +893,8 @@ export const ChatMessageList = function ChatMessageList({
   onQuoteQuestion,
   pendingPills,
   messagesContainerRef,
-  activeTools = [],
+  activeTools: _activeTools = [],
+  activityTimeline = [],
   getToolDisplayName = (t) => t,
   streamingDomRef,
   usePlainStreamingText = false,
@@ -879,9 +905,6 @@ export const ChatMessageList = function ChatMessageList({
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
-  const [isMobileViewport, setIsMobileViewport] = useState(() => (
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 720px)').matches : false
-  ));
   const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
   const finalizedParseCacheRef = useRef<
     Map<number, { input: string; output: ReturnType<typeof parseOptionBox> }>
@@ -889,15 +912,6 @@ export const ChatMessageList = function ChatMessageList({
 
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const media = window.matchMedia('(max-width: 720px)');
-    const apply = () => setIsMobileViewport(media.matches);
-    apply();
-    media.addEventListener('change', apply);
-    return () => media.removeEventListener('change', apply);
   }, []);
 
   // 检查任何来源的思维链标记：streamingContent 或 最后一条 assistant 消息的 content
@@ -985,14 +999,17 @@ export const ChatMessageList = function ChatMessageList({
                   : (streamingContent || raw)
               )
             : raw;
+        /** 与 useMessages 流式正文一致：先去掉泄漏的工具段，再走 CoT / Markdown */
+        const fullForCot =
+          msg.role === 'assistant' && fullContent ? stripLeakedToolCallSections(fullContent) : fullContent;
         const displayedLength = displayedText.length;
 
         // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
         const { cotContent: streamingCotContent, cotStarted: streamingCotStarted, mainContent: mainTextFull } =
-          allowCotDisplay && msg.role === 'assistant' && fullContent
-            ? !hasAssistantCotMarkers(fullContent)
-              ? { cotContent: null, cotStarted: false, mainContent: fullContent }
-              : extractAssistantCotAndMain(fullContent)
+          allowCotDisplay && msg.role === 'assistant' && fullForCot
+            ? !hasAssistantCotMarkers(fullForCot)
+              ? { cotContent: null, cotStarted: false, mainContent: stripTextToolAnnotations(fullForCot) }
+              : extractAssistantCotAndMain(fullForCot)
             : { cotContent: null, cotStarted: false, mainContent: fullContent };
         const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
         const shouldBypassStreamingParse =
@@ -1102,36 +1119,13 @@ export const ChatMessageList = function ChatMessageList({
             streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
             usePlainStreamingText={usePlainStreamingText}
               markdownComponents={markdownComponents}
-            cotContent={msg.role === 'assistant' && streamingCotContent != null ? streamingCotContent : undefined}
+              cotContent={msg.role === 'assistant' && streamingCotContent != null ? streamingCotContent : undefined}
               cotStarted={msg.role === 'assistant' && streamingCotStarted}
               cotStreaming={isStreamingMsg && (streamingCotStarted || !!streamingCotContent)}
               inlineThinkingPlaceholder={inlineThinkingPlaceholder}
-              isMobileViewport={isMobileViewport}
+              activityTimeline={msg.id === lastAssistantId ? activityTimeline : []}
+              getToolDisplayName={getToolDisplayName}
             />
-            {/* 工具调用卡片：紧跟当前 streaming assistant 消息之后 */}
-            {isStreamingMsg && msg.id === lastAssistantId && activeTools.length > 0 && (
-              <div className="tool-calls-container">
-                {activeTools.map((tool) => (
-                  <div
-                    key={tool.callId}
-                    className={`tool-call-card tool-call-card--${tool.state}`}
-                  >
-                    <div className="tool-call-card__icon">
-                      {tool.state === 'executing' && <span className="tool-call-card__spinner" />}
-                      {tool.state === 'done' && <span>✅</span>}
-                      {tool.state === 'error' && <span>❌</span>}
-                    </div>
-                    <div className="tool-call-card__content">
-                      <span className="tool-call-card__text">
-                        {tool.state === 'executing' && <>🔧 正在调用 {getToolDisplayName(tool.tool)}...</>}
-                        {tool.state === 'done' && <>✅ {getToolDisplayName(tool.tool)} 完成</>}
-                        {tool.state === 'error' && <>❌ {getToolDisplayName(tool.tool)} 失败</>}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </React.Fragment>
         );
         })}

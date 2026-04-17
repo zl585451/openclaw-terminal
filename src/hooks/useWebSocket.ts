@@ -10,6 +10,17 @@ interface UseWebSocketOptions {
   onChatDone: (content: string, isSystemReply: boolean) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: any) => void;
+  onKeepalive?: (payload: { phase: string; elapsedMs: number; toolName?: string | null }) => void;
+  onGatewayCapabilities?: (capabilities: {
+    model?: string;
+    toolsSupport?: 'supported' | 'unknown' | 'unsupported';
+    capabilitySource?: string;
+    supportsTools?: boolean;
+    supportsStreamOptions?: boolean;
+    mcpReady?: boolean;
+    mcpServers?: number;
+    mcpConnectedServers?: number;
+  } | null) => void;
   onWorkbenchEvent: (event: CanvasEvent | WorkbenchEvent) => void;
   onCanvasEvent?: (event: CanvasEvent | WorkbenchEvent) => void;
   onUsage: (usage: any, isSnapshot: boolean) => void;
@@ -97,6 +108,20 @@ export function useWebSocket(options: UseWebSocketOptions) {
         return;
       }
 
+      if (data.type === 'keepalive' || data.event === 'keepalive') {
+        const payload = (data.payload || data.data || data) as {
+          phase?: string;
+          elapsedMs?: number;
+          toolName?: string | null;
+        };
+        opt.onKeepalive?.({
+          phase: String(payload?.phase || ''),
+          elapsedMs: Number(payload?.elapsedMs || 0),
+          toolName: payload?.toolName ?? null,
+        });
+        return;
+      }
+
       if (data.type === 'canvas' || data.event === 'canvas') {
         const payload = data.payload || data.data || data;
         const action = data.action || payload?.action;
@@ -171,13 +196,48 @@ export function useWebSocket(options: UseWebSocketOptions) {
       }
     };
 
-    ipcRenderer.invoke('openclaw-status').then((r: { connected?: boolean; sessionKey?: string }) => {
+    ipcRenderer.invoke('openclaw-status').then((r: {
+      connected?: boolean;
+      sessionKey?: string;
+      model?: string;
+      capabilities?: {
+        model?: string;
+        toolsSupport?: 'supported' | 'unknown' | 'unsupported';
+        capabilitySource?: string;
+        supportsTools?: boolean;
+        supportsStreamOptions?: boolean;
+        mcpReady?: boolean;
+        mcpServers?: number;
+        mcpConnectedServers?: number;
+      };
+    }) => {
       if (r?.connected === true) {
         setWsConnected(true);
       }
+      if (r?.model) {
+        optionsRef.current.onModelName(String(r.model));
+      }
+      if (r?.capabilities) {
+        optionsRef.current.onGatewayCapabilities?.(r.capabilities);
+      }
     });
 
-    const handleStatus = (_: any, status: { connected?: boolean; reconnecting?: boolean; error?: string }) => {
+    const handleStatus = (_: any, status: {
+      connected?: boolean;
+      reconnecting?: boolean;
+      error?: string;
+      model?: string;
+      capabilities?: {
+        model?: string;
+        toolsSupport?: 'supported' | 'unknown' | 'unsupported';
+        capabilitySource?: string;
+        supportsTools?: boolean;
+        supportsStreamOptions?: boolean;
+        mcpReady?: boolean;
+        mcpServers?: number;
+        mcpConnectedServers?: number;
+      };
+    }) => {
       if (status.connected !== undefined) {
         setWsConnected(status.connected);
         setWsReconnecting(false);
@@ -189,6 +249,12 @@ export function useWebSocket(options: UseWebSocketOptions) {
       if (status.error !== undefined) {
         setWsError(status.error);
         setWsReconnecting(false);
+      }
+      if (status.model != null) {
+        optionsRef.current.onModelName(String(status.model));
+      }
+      if (status.capabilities) {
+        optionsRef.current.onGatewayCapabilities?.(status.capabilities);
       }
     };
 

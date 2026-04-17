@@ -48,11 +48,35 @@ class SlashHandler {
       const estimatedTokens = Math.round(historyChars / 2);
       const systemPromptTokens = Math.round(sp.length / 2);
       const totalEstimated = estimatedTokens + systemPromptTokens;
+      const provider = this.config.getProviderConfig();
+      const modelDef = provider.models.find((model) => model.id === this.config.DASHSCOPE_MODEL);
+      const registryCaps = this.config.getModelCaps(this.config.DASHSCOPE_MODEL);
+      const probeCaps = this.config.getProbeCacheEntry
+        ? this.config.getProbeCacheEntry({
+            providerId: provider.id,
+            baseUrl: provider.baseUrl,
+            modelId: this.config.DASHSCOPE_MODEL,
+          })
+        : null;
+      const toolsSupport = modelDef && modelDef.tools !== undefined
+        ? (modelDef.tools ? 'supported' : 'unsupported')
+        : (probeCaps?.toolsSupport || registryCaps.toolsSupport || (registryCaps.supportsTools ? 'supported' : 'unknown'));
+      const capabilitySource = modelDef ? 'provider_model_def' : (registryCaps.capabilitySource || 'fallback_unknown');
+      const effectiveCapabilitySource = modelDef
+        ? 'provider_model_def'
+        : (probeCaps?.capabilitySource || capabilitySource);
+      const toolSupportLabel = toolsSupport === 'supported'
+        ? '✅ supported'
+        : toolsSupport === 'unsupported'
+          ? '❌ unsupported'
+          : '⚠️ unknown（默认禁用执行）';
 
       this.replyEvent(connection, [
         '🦞 **OCT Gateway**',
         '',
         `📡 Model: \`${this.config.DASHSCOPE_MODEL}\``,
+        `🔧 Tool 执行: ${toolSupportLabel}`,
+        `🧩 能力来源: \`${effectiveCapabilitySource}\``,
         `🧠 Nocturne: ${nocturneAlive ? '✅ 在线' : '❌ 离线'}`,
         `📚 AI.library：${aiLibraryAlive ? '✅ 在线' : '⚫ 未启动'}`,
         `💬 当前会话：${currentHistory.length} 条消息`,
@@ -89,11 +113,20 @@ class SlashHandler {
       this.config.DASHSCOPE_MODEL = modelName;
       const modelDef = provider.models.find((model) => model.id === modelName);
       const caps = modelDef
-        ? { supportsTools: modelDef.tools, supportsThinking: modelDef.thinking, label: modelDef.label }
+        ? {
+            supportsTools: modelDef.tools,
+            toolsSupport: modelDef.tools ? 'supported' : 'unsupported',
+            capabilitySource: 'provider_model_def',
+            supportsThinking: modelDef.thinking,
+            label: modelDef.label,
+          }
         : this.config.getModelCaps(modelName);
       const warnings = [];
-      if (!caps.supportsTools) {
+      if (caps.toolsSupport !== 'supported') {
         warnings.push('⚠️ 该模型不支持工具调用（天气/搜索/文件操作等功能将暂时不可用）');
+      }
+      if (caps.toolsSupport === 'unknown') {
+        warnings.push(`🧩 该模型能力来源：${caps.capabilitySource || 'fallback_unknown'}（默认按禁用工具处理）`);
       }
       if (caps.supportsThinking) {
         warnings.push('💡 该模型支持深度思考（reasoning），回复可能较慢但质量更高');
