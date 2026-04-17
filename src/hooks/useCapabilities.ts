@@ -19,16 +19,60 @@ function removeSecret(providerId: string) {
   const raw = localStorage.getItem(STORAGE_KEY_SECRETS); const s = raw ? JSON.parse(raw) as Record<string,string> : {}; delete s[providerId]; localStorage.setItem(STORAGE_KEY_SECRETS, JSON.stringify(s))
 }
 
+function hasValue(input: unknown): boolean {
+  return typeof input === 'string' && input.trim().length > 0
+}
+
+function computeImageGenReadyFromApiKeys(data: Record<string, unknown>): boolean {
+  // 生图链路采用严格判定：只有显式配置 IMAGE_API_KEY 才视为可用。
+  // 避免聊天 key 兜底导致欢迎卡片放行，但进入面板后才报错的“假可用”体验。
+  return hasValue(data.IMAGE_API_KEY)
+}
+
 export function useCapabilities() {
   const [userKeys, setUserKeys] = useState<UserKeyRecord[]>(() => loadUserKeys())
+  const [imageGenReady, setImageGenReady] = useState<boolean | null>(null)
+
+  const refreshImageCapability = useCallback(async () => {
+    try {
+      const result = await (window as any).electronAPI?.getApiKeys?.()
+      const data = (result?.data || {}) as Record<string, unknown>
+      setImageGenReady(computeImageGenReadyFromApiKeys(data))
+    } catch {
+      setImageGenReady(null)
+    }
+  }, [])
+
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => { if (e.key === STORAGE_KEY_METADATA) setUserKeys(loadUserKeys()) }
-    const handleCustom = () => setUserKeys(loadUserKeys())
+    const handleCustom = () => {
+      setUserKeys(loadUserKeys())
+      void refreshImageCapability()
+    }
     window.addEventListener('storage', handleStorage)
     window.addEventListener('oct:capabilities-updated', handleCustom as EventListener)
+    void refreshImageCapability()
     return () => { window.removeEventListener('storage', handleStorage); window.removeEventListener('oct:capabilities-updated', handleCustom as EventListener) }
-  }, [])
-  const capabilities = useMemo(() => resolveCapabilities(userKeys), [userKeys])
+  }, [refreshImageCapability])
+  const capabilities = useMemo(() => {
+    const resolved = resolveCapabilities(userKeys)
+    if (imageGenReady === null) return resolved
+
+    if (imageGenReady) {
+      resolved.set('image_gen', {
+        id: 'image_gen',
+        status: 'available',
+        activeProvider: 'panel_config',
+      })
+    } else {
+      resolved.set('image_gen', {
+        id: 'image_gen',
+        status: 'missing_key',
+        reason: '需先在设置中完成生图配置',
+      })
+    }
+    return resolved
+  }, [imageGenReady, userKeys])
   const getCapability = useCallback((id: CapabilityId): Capability => capabilities.get(id) || { id, status: 'missing_key' }, [capabilities])
   const addUserKey = useCallback((providerId: string, key: string, maskedKey: string) => {
     const record: UserKeyRecord = { providerId, maskedKey, addedAt: Date.now() }

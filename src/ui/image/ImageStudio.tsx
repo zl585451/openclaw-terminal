@@ -11,6 +11,7 @@ interface ImageStudioProps {
   registerPromptInjector: (fn: (prompt: string) => void) => void;
   onInsertImageToChat: (imageUrl: string, prompt: string) => void;
   onClose: () => void;
+  initialPrompt?: string;
 }
 
 const ASPECT_OPTIONS = [
@@ -36,6 +37,7 @@ export default function ImageStudio({
   registerPromptInjector,
   onInsertImageToChat,
   onClose,
+  initialPrompt,
 }: ImageStudioProps) {
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
@@ -65,6 +67,12 @@ export default function ImageStudio({
       setStatusMsg('已应用 AMY 优化后的提示词');
     });
   }, [registerPromptInjector]);
+
+  useEffect(() => {
+    const next = (initialPrompt || '').trim();
+    if (!next) return;
+    setPrompt(next);
+  }, [initialPrompt]);
 
   const normalizedDimensions = useMemo(() => {
     const width = Number(customWidth);

@@ -30,7 +30,9 @@ import ChatInputArea from './ChatInput';
 import { ChatMessageList } from './MessageList';
 import ChatTabRightPanel from './ChatTabRightPanel';
 import { WelcomeHero } from '../onboarding/WelcomeHero';
+import { CardDef } from '../onboarding/CapabilityCards';
 import ImageStudio from '../image/ImageStudio';
+import { CapabilityStatus } from '../../core/capabilities/types';
 
 /** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
 // const OCT_V2_DISABLE_TYPEWRITER = false; // 已不再需要
@@ -222,6 +224,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [imageStudioOpen, setImageStudioOpen] = useState(false);
+  const [imageStudioInitialPrompt, setImageStudioInitialPrompt] = useState('');
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     try {
       return localStorage.getItem('oct.onboarding.dismissed') === '1';
@@ -313,23 +316,73 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   const showWelcome = messages.length === 0 && !onboardingDismissed;
 
-  const handleWelcomeSend = useCallback(
-    (prompt: string) => {
-      setOnboardingDismissed(true);
-      try { localStorage.setItem('oct.onboarding.dismissed', '1'); } catch { /* ignore */ }
-      void msgs.sendMessage(prompt, null);
+  const dismissOnboarding = useCallback(() => {
+    setOnboardingDismissed(true);
+    try { localStorage.setItem('oct.onboarding.dismissed', '1'); } catch { /* ignore */ }
+  }, []);
+
+  const openImageStudioWithPrefill = useCallback((prefill?: string) => {
+    const next = (prefill || '').trim();
+    setImageStudioInitialPrompt(next);
+    setImageStudioOpen(true);
+  }, []);
+
+  const buildPromptOptimizeRequest = useCallback((prompt: string) => (
+    `请帮我优化以下生图提示词。只输出优化后的英文 prompt，不要解释，不要加引号，不要使用 markdown：\n\n生图提示词：${prompt}`
+  ), []);
+
+  const appendImageCapabilityGuideMessage = useCallback(() => {
+    setMessages((prev) => ([
+      ...prev,
+      {
+        id: getNextMessageId(),
+        role: 'assistant',
+        content: [
+          '我这边检测到你还没有配置生图 Key。',
+          '',
+          '你可以按以下步继续：',
+          '',
+          '点击右上方 [⚙️SETTINGS]→[生图配置]→填入可用作生图的key与对应模型名称',
+          '',
+          '[应用]→点击[SEND]旁边的🎨→输入提示词→[让AMY优化提示词]→[开始生成]',
+          '',
+          '如果你愿意，我也可以先帮你写一版生图提示词，等你填好 Key 之后直接生成。',
+        ].join('\n'),
+        timestamp: Date.now(),
+      },
+    ]));
+  }, [getNextMessageId, setMessages]);
+
+  const handleWelcomeAction = useCallback(
+    (card: CardDef, capabilityStatus: CapabilityStatus) => {
+      if (card.action.type === 'send_prompt') {
+        dismissOnboarding();
+        void msgs.sendMessage(card.action.prompt, null);
+        return;
+      }
+
+      if (card.action.type === 'open_panel' && card.action.panelId === 'image_studio') {
+        if (capabilityStatus !== 'available') {
+          dismissOnboarding();
+          appendImageCapabilityGuideMessage();
+          return;
+        }
+
+        dismissOnboarding();
+        openImageStudioWithPrefill(card.action.prefill);
+        const prefill = (card.action.prefill || '').trim();
+        if (prefill) {
+          pendingImagePromptRef.current = true;
+          msgs.quickSend(buildPromptOptimizeRequest(prefill));
+        }
+      }
     },
-    [msgs.sendMessage],
+    [appendImageCapabilityGuideMessage, buildPromptOptimizeRequest, dismissOnboarding, msgs, openImageStudioWithPrefill],
   );
 
   const handleSkipOnboarding = useCallback(() => {
-    setOnboardingDismissed(true);
-    try {
-      localStorage.setItem('oct.onboarding.dismissed', '1');
-    } catch {
-      /* ignore */
-    }
-  }, []);
+    dismissOnboarding();
+  }, [dismissOnboarding]);
 
   // Register the chat's quickSend as the node-inspect handler so Canvas
   // renderers can trigger "explain this node" queries without prop drilling.
@@ -700,7 +753,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           emptyConversationPlaceholder={
             showWelcome ? (
               <div className="chat-empty">
-                <WelcomeHero onSend={handleWelcomeSend} onSkip={handleSkipOnboarding} />
+                <WelcomeHero onCardAction={handleWelcomeAction} onSkip={handleSkipOnboarding} />
               </div>
             ) : (
               <div className="chat-empty">
@@ -843,6 +896,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             pendingImagePromptRef.current = true;
             msgs.quickSend(text);
           }}
+          initialPrompt={imageStudioInitialPrompt}
           registerPromptInjector={(fn) => {
             imagePromptInjectorRef.current = fn;
           }}
