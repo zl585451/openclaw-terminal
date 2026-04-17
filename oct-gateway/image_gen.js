@@ -10,6 +10,21 @@ const { URL } = require('url');
 /** 生图 HTTP 超时（硅基 / 部分模型可能超过 60s），可通过环境变量覆盖 */
 const DEFAULT_IMAGE_HTTP_TIMEOUT_MS = Number(process.env.OCT_IMAGE_HTTP_TIMEOUT_MS || 180000);
 
+function normalizeBaseUrl(rawBaseUrl, fallback) {
+  const base = String(rawBaseUrl || '').trim() || String(fallback || '').trim();
+  return base.replace(/\/+$/, '');
+}
+
+function joinUrl(baseUrl, path) {
+  const base = normalizeBaseUrl(baseUrl, '');
+  const suffix = String(path || '').startsWith('/') ? String(path || '') : `/${path || ''}`;
+  return `${base}${suffix}`;
+}
+
+function stripTrailingV1(baseUrl) {
+  return normalizeBaseUrl(baseUrl, '').replace(/\/v1$/i, '');
+}
+
 function sizeToAspectRatio(sizeStr) {
   const map = {
     '1024x1024': '1:1',
@@ -116,11 +131,11 @@ function httpPost(urlStr, headers, body, timeoutMs = DEFAULT_IMAGE_HTTP_TIMEOUT_
         try {
           parsedData = data ? JSON.parse(data) : {};
         } catch {
-          reject(new Error(`JSON parse error: ${String(data).slice(0, 200)}`));
+          reject(new Error(`HTTP ${res.statusCode || '???'} @ ${urlStr} — JSON parse error: ${String(data).slice(0, 200)}`));
           return;
         }
         if ((res.statusCode || 500) >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}: ${JSON.stringify(parsedData).slice(0, 300)}`));
+          reject(new Error(`HTTP ${res.statusCode} @ ${urlStr}: ${JSON.stringify(parsedData).slice(0, 300)}`));
           return;
         }
         resolve(parsedData);
@@ -149,8 +164,9 @@ function resolveProviderError(result) {
 }
 
 async function minimaxAdapter(payload, config) {
-  const baseUrl = String(config.IMAGE_BASE_URL || 'https://api.minimax.chat').trim().replace(/\/$/, '');
-  const url = `${baseUrl}/v1/image_generation`;
+  const rawBaseUrl = normalizeBaseUrl(config.IMAGE_BASE_URL, 'https://api.minimax.chat');
+  const baseUrl = stripTrailingV1(rawBaseUrl);
+  const url = joinUrl(baseUrl, '/v1/image_generation');
   const dimensions = resolveCustomDimensions(payload);
   const body = {
     model: config.IMAGE_MODEL || 'image-01',
@@ -195,8 +211,9 @@ async function minimaxAdapter(payload, config) {
 }
 
 async function openaiAdapter(payload, config) {
-  const baseUrl = String(config.IMAGE_BASE_URL || 'https://api.openai.com').trim().replace(/\/$/, '');
-  const url = `${baseUrl}/v1/images/generations`;
+  const rawBaseUrl = normalizeBaseUrl(config.IMAGE_BASE_URL, 'https://api.openai.com');
+  const baseUrl = stripTrailingV1(rawBaseUrl);
+  const url = joinUrl(baseUrl, '/v1/images/generations');
   const body = {
     model: config.IMAGE_MODEL || 'dall-e-3',
     prompt: buildPrompt(payload),
