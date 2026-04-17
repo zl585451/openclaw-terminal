@@ -659,6 +659,13 @@ function sanitizeGoogleOpenAiBaseUrl(url) {
   }
 }
 
+/** 去掉首尾空白并移除 URL 内误粘贴的空白（如 https://host /v1），避免 fetch 报 Failed to parse URL */
+function normalizeHttpBaseUrl(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  return s.replace(/\s+/g, '');
+}
+
 // 从 baseUrl 推断 provider id
 function inferProviderFromBaseUrl(baseUrl) {
   if (!baseUrl || typeof baseUrl !== 'string') return 'bailian-coding';
@@ -697,6 +704,16 @@ function readBoolConfig(key, fallback = false) {
   const raw = getEnvOrConfig(key);
   if (raw === '' || raw === null || raw === undefined) return fallback;
   return /^(1|true|yes|on)$/i.test(String(raw).trim());
+}
+
+function readOptionalBoolConfig(key) {
+  const raw = getEnvOrConfig(key);
+  if (raw === '' || raw === null || raw === undefined) return null;
+  const value = String(raw).trim().toLowerCase();
+  if (!value || value === 'auto' || value === 'default') return null;
+  if (/^(1|true|yes|on)$/i.test(value)) return true;
+  if (/^(0|false|no|off)$/i.test(value)) return false;
+  return null;
 }
 
 function getProviderConfig() {
@@ -774,19 +791,30 @@ function getProviderConfig() {
   if (isGoogle && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
     effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
   }
-  const customModelSupportsTools = readBoolConfig('CUSTOM_MODEL_SUPPORTS_TOOLS', false);
+  const customModelSupportsTools = readOptionalBoolConfig('CUSTOM_MODEL_SUPPORTS_TOOLS');
 
   let models = preset.models || [];
   if (isCustom && effectiveModel && effectiveModel !== '__custom__') {
+    const customModelToolMode = customModelSupportsTools === true
+      ? 'enabled'
+      : customModelSupportsTools === false
+        ? 'disabled'
+        : 'auto_probe';
+    const customModelEntry = {
+      id: effectiveModel,
+      label: `${effectiveModel} (自定义，工具${customModelToolMode === 'auto_probe' ? '自动探测' : customModelToolMode === 'enabled' ? '开启' : '关闭'})`,
+      thinking: false,
+    };
+    if (customModelToolMode === 'enabled') {
+      customModelEntry.tools = true;
+      customModelEntry.toolReliability = 'loose';
+    } else if (customModelToolMode === 'disabled') {
+      customModelEntry.tools = false;
+      customModelEntry.toolReliability = 'none';
+    }
     // 如果用户设置了自定义模型，添加到模型列表
     models = [
-      {
-        id: effectiveModel,
-        label: `${effectiveModel} (自定义${customModelSupportsTools ? '，工具开启' : '，工具关闭'})`,
-        tools: customModelSupportsTools,
-        toolReliability: customModelSupportsTools ? 'loose' : 'none',
-        thinking: false,
-      },
+      customModelEntry,
       ...models.filter(m => m.id !== effectiveModel)
     ];
   }
@@ -817,6 +845,8 @@ function getProviderConfig() {
       };
     });
   }
+
+  baseUrl = normalizeHttpBaseUrl(baseUrl);
 
   return {
     ...preset,

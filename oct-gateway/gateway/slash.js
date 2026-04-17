@@ -2,6 +2,102 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+function buildChatHeaders(baseUrl, apiKey) {
+  const target = String(baseUrl || '');
+  if (target.includes('aiplatform.googleapis.com')) {
+    return {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    };
+  }
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+  };
+}
+
+function classifyProbeFailure(message) {
+  const m = String(message || '').toLowerCase();
+  const hints = [
+    'tool',
+    'function calling',
+    'function_call',
+    'tool_calls',
+    'tool_choice',
+    'unrecognized request argument',
+    'unknown field',
+    'does not support',
+    'not supported',
+    'invalid parameter',
+  ];
+  return hints.some((token) => m.includes(token)) ? 'unsupported' : 'unknown';
+}
+
+async function probeModelToolsSupport({ provider, model, apiKey, baseUrl, config }) {
+  if (!apiKey || !baseUrl) {
+    return { toolsSupport: 'unknown', capabilitySource: 'runtime_probe_skipped' };
+  }
+  const probeToolName = 'oct_capability_probe_noop';
+  const endpoint = `${String(baseUrl || '').replace(/\/$/, '')}/chat/completions`;
+  const body = {
+    model,
+    stream: false,
+    max_tokens: 1,
+    temperature: 0,
+    messages: [
+      { role: 'system', content: 'You are running a capability probe.' },
+      { role: 'user', content: 'Call the probe function now.' },
+    ],
+    tools: [
+      {
+        type: 'function',
+        function: {
+          name: probeToolName,
+          description: 'Capability probe noop tool.',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+    ],
+    tool_choice: {
+      type: 'function',
+      function: { name: probeToolName },
+    },
+  };
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: buildChatHeaders(baseUrl, apiKey),
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    const choice = json?.choices?.[0] || {};
+    const finishReason = String(choice?.finish_reason || '');
+    const toolCalls = choice?.message?.tool_calls;
+    const toolsSupport = (Array.isArray(toolCalls) && toolCalls.length > 0) || finishReason === 'tool_calls'
+      ? 'supported'
+      : 'unknown';
+    const entry = config.setProbeCacheEntry?.({
+      providerId: provider.id,
+      baseUrl,
+      modelId: model,
+      toolsSupport,
+      capabilitySource: 'runtime_probe',
+    });
+    return entry || { toolsSupport, capabilitySource: 'runtime_probe' };
+  } catch (e) {
+    const toolsSupport = classifyProbeFailure(e?.message || String(e));
+    const entry = config.setProbeCacheEntry?.({
+      providerId: provider.id,
+      baseUrl,
+      modelId: model,
+      toolsSupport,
+      capabilitySource: 'runtime_probe',
+    });
+    return entry || { toolsSupport, capabilitySource: 'runtime_probe' };
+  }
+}
+
 class SlashHandler {
   constructor({
     session,
@@ -51,20 +147,35 @@ class SlashHandler {
       const provider = this.config.getProviderConfig();
       const modelDef = provider.models.find((model) => model.id === this.config.DASHSCOPE_MODEL);
       const registryCaps = this.config.getModelCaps(this.config.DASHSCOPE_MODEL);
-      const probeCaps = this.config.getProbeCacheEntry
+      let probeCaps = this.config.getProbeCacheEntry
         ? this.config.getProbeCacheEntry({
             providerId: provider.id,
             baseUrl: provider.baseUrl,
             modelId: this.config.DASHSCOPE_MODEL,
           })
         : null;
-      const toolsSupport = modelDef && modelDef.tools !== undefined
+      let toolsSupport = modelDef && modelDef.tools !== undefined
         ? (modelDef.tools ? 'supported' : 'unsupported')
         : (probeCaps?.toolsSupport || registryCaps.toolsSupport || (registryCaps.supportsTools ? 'supported' : 'unknown'));
-      const capabilitySource = modelDef ? 'provider_model_def' : (registryCaps.capabilitySource || 'fallback_unknown');
-      const effectiveCapabilitySource = modelDef
+      if (toolsSupport === 'unknown' && provider.apiKey && provider.baseUrl) {
+        probeCaps = await probeModelToolsSupport({
+          provider,
+          model: this.config.DASHSCOPE_MODEL,
+          apiKey: provider.apiKey,
+          baseUrl: provider.baseUrl,
+          config: this.config,
+        }).catch((err) => {
+          this.log.warn('status probe failed', { error: err?.message || String(err) });
+          return null;
+        });
+        if (probeCaps?.toolsSupport) toolsSupport = probeCaps.toolsSupport;
+      }
+
+      const hasExplicitModelTools = modelDef && modelDef.tools !== undefined;
+      const capabilitySource = hasExplicitModelTools
         ? 'provider_model_def'
-        : (probeCaps?.capabilitySource || capabilitySource);
+        : (probeCaps?.capabilitySource || registryCaps.capabilitySource || 'fallback_unknown');
+      const effectiveCapabilitySource = capabilitySource;
       const toolSupportLabel = toolsSupport === 'supported'
         ? '✅ supported'
         : toolsSupport === 'unsupported'

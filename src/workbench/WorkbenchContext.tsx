@@ -144,7 +144,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
 
     dispatchDocument(command);
 
-    if (command.type === 'create' || command.type === 'focus') {
+    if (command.type === 'create' || command.type === 'focus' || command.type === 'update' || command.type === 'explain') {
       setUiState((prev) => ({ ...prev, isOpen: true }));
       return;
     }

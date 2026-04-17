@@ -227,7 +227,7 @@ class ContextBuilder {
         + '② 每个节点必须有 group 字段，同类节点放同一 group。\n'
         + '③ 有判断/条件时，节点加 "shape":"diamond"，并为每条出边加 label（如"是"/"否"）。\n'
         + '④ edges 必须用 "source"/"target"（不是 from/to），ID 与 nodes 里的 id 完全一致。\n'
-        + '⑤ 调用 canvas(action="create", artifactType="react-flow", content=<JSON字符串>)。\n'
+        + '⑤ 使用 canvas 工具创建 react-flow 类型成果物，content 填入 JSON 字符串。\n'
         + 'JSON 格式：{"title":"...","direction":"TB","nodes":[{"id":"a","label":"...","group":"分组","shape":"rect"}],"edges":[{"source":"a","target":"b","label":"可选"}]}';
       return isComplex
         ? `\n\n[系统] 执行【结构图输出协议】。复杂场景：10-12 节点、3-5 group。同组同类 >3 必须合并。先一句话说明，再输出结构图。\n${baseRules}`
@@ -244,12 +244,12 @@ class ContextBuilder {
     if (artifactType === 'diagram') {
       return '\n\n[系统] 流程图/示意图输出规则：'
         + '简单图（≤6节点，TD方向）直接用 ```json 代码块输出图谱 JSON，格式：{"diagramType":"flowchart","title":"...","direction":"TD","nodes":[{"id":"a","label":"..."},...],"edges":[{"from":"a","to":"b"},...]}。'
-        + '复杂图（>6节点或有分组）调用 canvas(action="create", artifactType="diagram", content=<mermaid DSL>)。'
+        + '复杂图（>6节点或有分组）使用 canvas 工具创建 diagram 类型成果物，content 填入 mermaid DSL。'
         + '禁止直接输出 Mermaid DSL 到正文，禁止使用 ```mermaid 代码块，禁止在正文暴露 JSON。';
     }
 
     const suggestedType = artifactType || 'document';
-    return `\n\n[系统] 这条请求适合使用 Canvas 表达。调用 canvas 创建 ${suggestedType} artifact。${reason || '这条请求适合结构化表达'}`;
+    return `\n\n[系统] 这条请求适合使用 Canvas 表达。使用 canvas 工具创建 ${suggestedType} 类型成果物。${reason || '这条请求适合结构化表达'}`;
   }
 
   _buildCanvasRoundtrip(canvasContext) {
@@ -272,8 +272,8 @@ class ContextBuilder {
     };
     return '\n\n[Canvas Context] 以下是当前 Canvas 工作区上下文。'
       + ' 你正在基于这份 artifact 协作，请优先围绕 activeDocument 继续工作。'
-      + ' 如果当前任务是 Continue、Explain 或 Rewrite，且你要修改现有成果物，请优先调用 canvas(action="update", documentId=activeDocumentId, ...) 更新当前文档。'
-      + ' 只有在确实需要新增并行成果物时，才使用 create。\n'
+      + ' 如果当前任务是 Continue、Explain 或 Rewrite，且你要修改现有成果物，请优先使用 canvas 工具的 update action，指定 documentId 为当前活跃文档 ID。'
+      + ' 只有在确实需要新增并行成果物时，才使用 create action。\n'
       + `${JSON.stringify(summary, null, 2)}`;
   }
 

@@ -1,4 +1,4 @@
-const { normalizeDiagramContent } = require('../diagram_schema');
+const { normalizeDiagramContent, parseDiagramSpec } = require('../diagram_schema');
 
 function normalizeMode(mode, artifactType) {
   if (mode === 'markdown' || mode === 'code' || mode === 'html') return mode;
@@ -42,6 +42,21 @@ function extractMermaidContent(content) {
 
 function normalizeDiagramPayload(content) {
   return extractMermaidContent(normalizeDiagramContent(content));
+}
+
+function looksLikeMermaidDsl(content) {
+  const raw = String(content || '').trim();
+  if (!raw) return false;
+  return /^(%%\{init:[\s\S]*?\}%%\s*)?(flowchart|graph|sequencediagram|classdiagram|erdiagram|statediagram(?:-v2)?|gantt|pie|mindmap|journey|timeline|quadrantchart|requirementdiagram|gitgraph)\b/i
+    .test(raw);
+}
+
+function isDiagramLikeContent(content) {
+  const raw = String(content || '').trim();
+  if (!raw) return false;
+  if (parseDiagramSpec(raw)) return true;
+  if (/```mermaid\s*[\s\S]*?```/i.test(raw)) return true;
+  return looksLikeMermaidDsl(raw);
 }
 
 module.exports = {
@@ -110,12 +125,15 @@ module.exports = {
       }
 
       const mode = normalizeMode(args.mode, args.artifactType);
-      const artifactType = normalizeArtifactType(args.artifactType, mode);
+      let artifactType = normalizeArtifactType(args.artifactType, mode);
       // Normalize content to string — some models (MiniMax) pass `content` as a
       // parsed JS object rather than a JSON string when the value is structured JSON.
       const rawContent = (args.content !== null && args.content !== undefined && typeof args.content === 'object')
         ? JSON.stringify(args.content)
         : String(args.content || '');
+      if (!args.artifactType && isDiagramLikeContent(rawContent)) {
+        artifactType = 'diagram';
+      }
       // react-flow content is JSON — never run it through the Mermaid extractor
       const normalizedContent = artifactType === 'diagram'
         ? normalizeDiagramPayload(rawContent)
@@ -127,7 +145,7 @@ module.exports = {
           artifactType,
           mode,
           content: normalizedContent,
-          language: args.language || (mode === 'code' ? 'text' : 'text'),
+          language: args.language || (artifactType === 'diagram' ? 'mermaid' : mode === 'code' ? 'text' : 'text'),
           origin: 'ai',
           explanation: args.explanation || '',
           status: 'draft',
@@ -160,8 +178,14 @@ module.exports = {
         const rawUpdateContent = typeof args.content === 'object'
           ? JSON.stringify(args.content)
           : String(args.content);
-        const artifactType = typeof args.artifactType === 'string' ? args.artifactType : undefined;
-        patch.content = artifactType === 'diagram' ? normalizeDiagramPayload(rawUpdateContent) : rawUpdateContent;
+        const explicitArtifactType = typeof args.artifactType === 'string' ? args.artifactType : undefined;
+        const inferredIsDiagram = !explicitArtifactType && isDiagramLikeContent(rawUpdateContent);
+        const effectiveArtifactType = explicitArtifactType || (inferredIsDiagram ? 'diagram' : undefined);
+        patch.content = effectiveArtifactType === 'diagram' ? normalizeDiagramPayload(rawUpdateContent) : rawUpdateContent;
+        if (inferredIsDiagram) {
+          patch.artifactType = 'diagram';
+          if (typeof args.language !== 'string') patch.language = 'mermaid';
+        }
       }
       if (typeof args.language === 'string') patch.language = args.language;
       if (typeof args.explanation === 'string') patch.explanation = args.explanation;

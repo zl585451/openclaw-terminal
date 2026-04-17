@@ -401,8 +401,8 @@ URI 路径：core://my_user/[分类]/[具体节点]
 ## 🔧 工具（AI 可以使用）
 
   **搜索工具**：
-  - web_search(query) — 搜索互联网（遇到需要最新信息时使用）
-  - web_fetch(url) — 读取指定网页
+  - web_search 工具 — 搜索互联网（遇到需要最新信息时使用）
+  - web_fetch 工具 — 读取指定网页
   
   搜索使用原则：
   - 需要最新信息、网页资料、产品/新闻/文档时，优先使用 web_search
@@ -411,9 +411,9 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - 不要只拿到 1 次搜索的短摘要就结束；当问题明显需要更完整资料时，应继续补抓网页内容
 
   **文件工具**（谨慎使用，执行前说明意图）：
-  - read_file(path) — 读取文件
-  - write_file(path, content) — 写入文件
-- exec_command(command) — 执行命令
+  - read_file 工具 — 读取文件
+  - write_file 工具 — 写入文件
+- exec_command 工具 — 执行命令
 
   文件/命令使用规则：
   - 当前运行环境以 Windows 为主，优先使用项目相对路径，例如 oct-gateway/index.js、src/ui/chat/MessageList.tsx
@@ -424,9 +424,9 @@ URI 路径：core://my_user/[分类]/[具体节点]
   - 当命令执行失败时，不要反复换壳层或路径风格盲试超过 2 次；应改用 read_file 或直接基于已知文件回答
 
 **Canvas 工具**：
-- canvas(action, ...) — 在 Canvas 工作区创建或更新结构化成果物
+- canvas 工具 — 在 Canvas 工作区创建或更新结构化成果物
 - 适合场景：方案/提纲/PRD、流程图/架构图/时序图、页面草图、代码草稿
-- 使用原则：先 chat 一句话说明，再调用 canvas；更新已有文档用 update 不用 create；简单问答不滥用 canvas
+- 使用原则：先 chat 一句话说明，再使用 canvas 工具；更新已有文档用 update 不用 create；简单问答不滥用 canvas
 
 【图表输出规范】
 
@@ -736,49 +736,88 @@ function extractXmlPseudoToolCalls(text) {
   if (!source || !/<tool_call>/i.test(source)) {
     return [];
   }
+  const KNOWN_TOOL_NAMES = new Set([
+    'canvas', 'web_search', 'web_fetch',
+    'read_file', 'read_document', 'write_file',
+    'memory_write', 'memory_search', 'memory_read',
+    'exec_command',
+  ]);
 
   const callRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
   const calls = [];
   let match;
   while ((match = callRe.exec(source)) !== null) {
-    const block = String(match[1] || '');
+    const block = String(match[1] || '').trim();
+
+    // 分支 A：原有 <function=xxx><parameter-yyy> 格式
     const fnMatch = block.match(/<function=([a-zA-Z0-9_.-]+)>/i);
-    const toolName = fnMatch?.[1] ? String(fnMatch[1]).trim() : '';
-    if (!toolName) continue;
+    if (fnMatch?.[1]) {
+      const toolName = String(fnMatch[1]).trim();
+      const args = {};
+      const paramRe = /<parameter-([a-zA-Z0-9_-]+)>\s*([\s\S]*?)\s*<\/parameter>/gi;
+      let pm;
+      while ((pm = paramRe.exec(block)) !== null) {
+        const key = String(pm[1] || '').trim();
+        const rawVal = String(pm[2] || '').trim();
+        if (!key) continue;
+        args[key] = rawVal;
+      }
 
-    const args = {};
-    const paramRe = /<parameter-([a-zA-Z0-9_-]+)>\s*([\s\S]*?)\s*<\/parameter>/gi;
-    let pm;
-    while ((pm = paramRe.exec(block)) !== null) {
-      const key = String(pm[1] || '').trim();
-      const rawVal = String(pm[2] || '').trim();
-      if (!key) continue;
-      args[key] = rawVal;
+      if (args.type && !args.artifactType) {
+        args.artifactType = args.type;
+        delete args.type;
+      }
+      if (
+        toolName === 'canvas' &&
+        String(args.action || '').toLowerCase() === 'update' &&
+        !args.documentId
+      ) {
+        args.action = 'create';
+      }
+
+      calls.push({
+        id: `pseudo-xml-${Date.now()}-${calls.length}`,
+        type: 'function',
+        function: {
+          name: toolName,
+          arguments: JSON.stringify(args),
+        },
+      });
+      continue;
     }
 
-    // 常见别名纠正：parameter-type -> artifactType
-    if (args.type && !args.artifactType) {
-      args.artifactType = args.type;
-      delete args.type;
-    }
+    // 分支 B：JSON-in-tag
+    // <tool_call> {"name":"web_search","arguments":{"query":"..."}} </tool_call>
+    const jsonHit = findBalancedJsonObjectSlice(block, 0);
+    if (jsonHit) {
+      let obj;
+      try { obj = JSON.parse(jsonHit.jsonStr); } catch { continue; }
+      const toolName = obj.name || obj.function?.name;
+      if (!toolName || !KNOWN_TOOL_NAMES.has(String(toolName))) continue;
 
-    // 对 canvas 的常见模型误用做兼容：无 documentId 的 update 退化为 create
-    if (
-      toolName === 'canvas' &&
-      String(args.action || '').toLowerCase() === 'update' &&
-      !args.documentId
-    ) {
-      args.action = 'create';
-    }
+      let args = obj.arguments ?? obj.args ?? obj.parameters ?? {};
+      if (typeof args === 'string') {
+        try { args = JSON.parse(args); } catch {}
+      }
 
-    calls.push({
-      id: `pseudo-xml-${Date.now()}-${calls.length}`,
-      type: 'function',
-      function: {
-        name: toolName,
-        arguments: JSON.stringify(args),
-      },
-    });
+      if (
+        toolName === 'canvas' &&
+        typeof args === 'object' && args !== null &&
+        String(args.action || '').toLowerCase() === 'update' &&
+        !args.documentId
+      ) {
+        args.action = 'create';
+      }
+
+      calls.push({
+        id: `pseudo-xml-json-${Date.now()}-${calls.length}`,
+        type: 'function',
+        function: {
+          name: String(toolName),
+          arguments: typeof args === 'string' ? args : JSON.stringify(args || {}),
+        },
+      });
+    }
   }
 
   return calls;
@@ -1518,7 +1557,25 @@ async function streamChat({
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
     const shouldDetectPseudo = effectiveSupportsTools && caps.toolReliability === 'loose';
-    const pseudoToolCalls = shouldDetectPseudo ? extractAllPseudoToolCalls(fullText || assistantResponseContent) : [];
+    let pseudoToolCalls = shouldDetectPseudo ? extractAllPseudoToolCalls(fullText || assistantResponseContent) : [];
+
+    // strict 模型安全网：若正文出现明显伪工具调用残留，降级走伪调用解析
+    // 正常情况下 strict 模型应走标准 tool_calls 通道
+    if (pseudoToolCalls.length === 0 && effectiveSupportsTools && caps.toolReliability === 'strict') {
+      const textToCheck = fullText || assistantResponseContent || '';
+      const hasToolCallResidue =
+        /<tool_call>/i.test(textToCheck)
+        || /<function=\w+>/i.test(textToCheck)
+        || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
+        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read)"/i.test(textToCheck);
+      if (hasToolCallResidue) {
+        log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
+          model: responseModel || model,
+          toolReliability: caps.toolReliability,
+        });
+        pseudoToolCalls = extractAllPseudoToolCalls(textToCheck);
+      }
+    }
     if (pseudoToolCalls.length > 0) {
       hasToolEvidence = true;
       log.warn('pseudo tool call detected, coercing to structured tool execution', {

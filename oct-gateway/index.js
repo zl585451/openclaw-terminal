@@ -54,6 +54,7 @@ const { sendCanvasTransportEvent } = require('./transport/helpers');
 const ChatEngine = require('./runtime/chatEngine');
 const StreamController = require('./runtime/streamController');
 const ContextBuilder = require('./runtime/contextBuilder');
+const ProviderRouter = require('./runtime/providerRouter');
 const { createStreamSmoother } = require('./runtime/streamUtils');
 const {
   extractMemorySearchTerms,
@@ -150,6 +151,7 @@ const contextBuilder = new ContextBuilder({
     getCompletedTasksContext: (sessionKey) => orchestrator.getCompletedTasksContext(sessionKey),
   },
 });
+const providerRouter = new ProviderRouter({ config });
 
 const PORT = config.PORT;
 let SYSTEM_PROMPT = '';
