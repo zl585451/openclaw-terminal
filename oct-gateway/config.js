@@ -378,6 +378,18 @@ const MODEL_REGISTRY = {
   },
 };
 
+function normalizeToolReliability(raw, { toolsSupport, provider } = {}) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'strict' || value === 'loose' || value === 'none') {
+    return value;
+  }
+  if (toolsSupport !== 'supported') {
+    return 'none';
+  }
+  const strictProviders = new Set(['bailian', 'deepseek', 'minimax']);
+  return strictProviders.has(String(provider || '').toLowerCase()) ? 'strict' : 'loose';
+}
+
 function normalizeModelCaps(caps, source, modelId) {
   const toolsSupport = caps?.toolsSupport
     || (caps?.supportsTools === true ? 'supported'
@@ -390,6 +402,10 @@ function normalizeModelCaps(caps, source, modelId) {
     family: caps?.family || detectModelFamily(modelId),
     toolsSupport,
     supportsTools: toolsSupport === 'supported',
+    toolReliability: normalizeToolReliability(caps?.toolReliability, {
+      toolsSupport,
+      provider: caps?.provider,
+    }),
     capabilitySource: source,
   };
 }
@@ -768,6 +784,7 @@ function getProviderConfig() {
         id: effectiveModel,
         label: `${effectiveModel} (自定义${customModelSupportsTools ? '，工具开启' : '，工具关闭'})`,
         tools: customModelSupportsTools,
+        toolReliability: customModelSupportsTools ? 'loose' : 'none',
         thinking: false,
       },
       ...models.filter(m => m.id !== effectiveModel)
@@ -791,7 +808,13 @@ function getProviderConfig() {
   if (models.length === 0) {
     models = loadAvailableModels().map(m => {
       const caps = getModelCaps(m.id);
-      return { id: m.id, label: caps.label, tools: caps.supportsTools, thinking: caps.supportsThinking };
+      return {
+        id: m.id,
+        label: caps.label,
+        tools: caps.supportsTools,
+        toolReliability: caps.toolReliability,
+        thinking: caps.supportsThinking,
+      };
     });
   }
 

@@ -3,6 +3,33 @@
  * 每个服务商声明：baseUrl、模型列表、能力（tools/thinking/stream_options）
  */
 
+const TOOL_RELIABILITY_BY_PROVIDER = {
+  bailian: 'strict',
+  'bailian-coding': 'strict',
+  deepseek: 'strict',
+  moonshot: 'strict',
+  openai: 'strict',
+  minimax: 'strict',
+  siliconflow: 'loose',
+  groq: 'loose',
+  custom: 'loose',
+  ollama: 'none',
+};
+
+function resolveDefaultToolReliability(providerId) {
+  return TOOL_RELIABILITY_BY_PROVIDER[providerId] || 'loose';
+}
+
+function withToolReliability(providerId, models) {
+  return (models || []).map((model) => {
+    if (!model || model.tools !== true) return model;
+    return {
+      ...model,
+      toolReliability: model.toolReliability || resolveDefaultToolReliability(providerId),
+    };
+  });
+}
+
 const PROVIDERS = {
   bailian: {
     id: 'bailian',
@@ -213,5 +240,9 @@ const PROVIDERS = {
     allowCustomModel: true, // 允许自定义模型名称
   },
 };
+
+for (const [providerId, provider] of Object.entries(PROVIDERS)) {
+  provider.models = withToolReliability(providerId, provider.models);
+}
 
 module.exports = { PROVIDERS };

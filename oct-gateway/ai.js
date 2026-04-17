@@ -722,10 +722,206 @@ function extractKimiStylePseudoToolCalls(text) {
   return calls;
 }
 
+/**
+ * 部分模型会把工具调用以 XML-like 文本吐在正文里，例如：
+ * <tool_call>
+ *   <function=canvas>
+ *   <parameter-action>create</parameter>
+ *   <parameter-content>...</parameter>
+ * </function>
+ * </tool_call>
+ */
+function extractXmlPseudoToolCalls(text) {
+  const source = String(text || '');
+  if (!source || !/<tool_call>/i.test(source)) {
+    return [];
+  }
+
+  const callRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+  const calls = [];
+  let match;
+  while ((match = callRe.exec(source)) !== null) {
+    const block = String(match[1] || '');
+    const fnMatch = block.match(/<function=([a-zA-Z0-9_.-]+)>/i);
+    const toolName = fnMatch?.[1] ? String(fnMatch[1]).trim() : '';
+    if (!toolName) continue;
+
+    const args = {};
+    const paramRe = /<parameter-([a-zA-Z0-9_-]+)>\s*([\s\S]*?)\s*<\/parameter>/gi;
+    let pm;
+    while ((pm = paramRe.exec(block)) !== null) {
+      const key = String(pm[1] || '').trim();
+      const rawVal = String(pm[2] || '').trim();
+      if (!key) continue;
+      args[key] = rawVal;
+    }
+
+    // 常见别名纠正：parameter-type -> artifactType
+    if (args.type && !args.artifactType) {
+      args.artifactType = args.type;
+      delete args.type;
+    }
+
+    // 对 canvas 的常见模型误用做兼容：无 documentId 的 update 退化为 create
+    if (
+      toolName === 'canvas' &&
+      String(args.action || '').toLowerCase() === 'update' &&
+      !args.documentId
+    ) {
+      args.action = 'create';
+    }
+
+    calls.push({
+      id: `pseudo-xml-${Date.now()}-${calls.length}`,
+      type: 'function',
+      function: {
+        name: toolName,
+        arguments: JSON.stringify(args),
+      },
+    });
+  }
+
+  return calls;
+}
+
 function extractPseudoToolCalls(text) {
   const ruby = extractRubyPseudoToolCalls(text);
   if (ruby.length > 0) return ruby;
-  return extractKimiStylePseudoToolCalls(text);
+  const kimi = extractKimiStylePseudoToolCalls(text);
+  if (kimi.length > 0) return kimi;
+  return extractXmlPseudoToolCalls(text);
+}
+
+function tryParseJsonWithSingleQuotes(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    try {
+      return JSON.parse(String(raw).replace(/'/g, '"'));
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * 检测函数调用风格的伪工具调用：
+ * - canvas("create", "title", "diagram", {...})
+ * - read_file({"path":"..."})
+ */
+function extractFunctionStyleToolCalls(text) {
+  const source = String(text || '');
+  if (!source) return [];
+
+  const knownTools = [
+    'canvas',
+    'read_file',
+    'read_document',
+    'write_file',
+    'web_search',
+    'web_fetch',
+    'memory_write',
+    'memory_search',
+    'memory_read',
+    'exec_command',
+  ];
+  const toolPattern = new RegExp(`(?:^|\\n|\\s)(${knownTools.join('|')})\\s*\\(`, 'g');
+  const calls = [];
+  let match;
+
+  while ((match = toolPattern.exec(source)) !== null) {
+    const toolName = match[1];
+    const openParenPos = source.indexOf('(', match.index + toolName.length);
+    if (openParenPos < 0) continue;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let quoteChar = '"';
+    let closeParenPos = -1;
+    for (let i = openParenPos; i < source.length; i++) {
+      const ch = source[i];
+      if (inString) {
+        if (escaped) { escaped = false; continue; }
+        if (ch === '\\') { escaped = true; continue; }
+        if (ch === quoteChar) inString = false;
+        continue;
+      }
+      if (ch === '"' || ch === "'") { inString = true; quoteChar = ch; continue; }
+      if (ch === '(') { depth += 1; continue; }
+      if (ch === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          closeParenPos = i;
+          break;
+        }
+      }
+    }
+    if (closeParenPos < 0) continue;
+
+    const argsStr = source.slice(openParenPos + 1, closeParenPos).trim();
+    const lastBraceStart = argsStr.lastIndexOf('{');
+    if (lastBraceStart < 0) continue;
+
+    let braceDepth = 0;
+    let inObjString = false;
+    let escapedObj = false;
+    let objQuoteChar = '"';
+    let braceEnd = -1;
+    for (let i = lastBraceStart; i < argsStr.length; i++) {
+      const ch = argsStr[i];
+      if (inObjString) {
+        if (escapedObj) { escapedObj = false; continue; }
+        if (ch === '\\') { escapedObj = true; continue; }
+        if (ch === objQuoteChar) inObjString = false;
+        continue;
+      }
+      if (ch === '"' || ch === "'") { inObjString = true; objQuoteChar = ch; continue; }
+      if (ch === '{') { braceDepth += 1; continue; }
+      if (ch === '}') {
+        braceDepth -= 1;
+        if (braceDepth === 0) {
+          braceEnd = i;
+          break;
+        }
+      }
+    }
+    if (braceEnd < 0) continue;
+
+    const jsonStr = argsStr.slice(lastBraceStart, braceEnd + 1);
+    const parsedArgs = tryParseJsonWithSingleQuotes(jsonStr);
+    if (!parsedArgs || typeof parsedArgs !== 'object') continue;
+
+    const prefix = argsStr.slice(0, lastBraceStart);
+    const positionalArgs = prefix
+      .split(',')
+      .map((s) => String(s || '').trim().replace(/^["']|["']$/g, ''))
+      .filter((s) => s.length > 0);
+
+    if (toolName === 'canvas' && positionalArgs.length > 0) {
+      if (!parsedArgs.action && positionalArgs[0]) parsedArgs.action = positionalArgs[0];
+      if (!parsedArgs.title && positionalArgs[1]) parsedArgs.title = positionalArgs[1];
+      if (!parsedArgs.artifactType && positionalArgs[2]) parsedArgs.artifactType = positionalArgs[2];
+    }
+
+    calls.push({
+      id: `pseudo-fn-${Date.now()}-${calls.length}`,
+      type: 'function',
+      function: {
+        name: toolName,
+        arguments: JSON.stringify(parsedArgs),
+      },
+    });
+  }
+
+  return calls;
+}
+
+function extractAllPseudoToolCalls(text) {
+  const legacy = extractPseudoToolCalls(text);
+  if (legacy.length > 0) return legacy;
+  return extractFunctionStyleToolCalls(text);
 }
 
 function buildChatHeaders(baseUrl, apiKey) {
@@ -942,6 +1138,9 @@ async function streamChat({
         caps.capabilitySource = probeResult.capabilitySource || 'runtime_probe';
       }
     }
+    if (!caps.toolReliability) {
+      caps.toolReliability = caps.supportsTools ? 'loose' : 'none';
+    }
 
     log.info('model caps', {
       turnId: turnId || null,
@@ -949,6 +1148,7 @@ async function streamChat({
       toolsSupport: caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown'),
       capabilitySource: caps.capabilitySource || 'unknown',
       supportsTools: caps.supportsTools,
+      toolReliability: caps.toolReliability,
       supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions,
     });
 
@@ -1153,7 +1353,9 @@ async function streamChat({
     if (provider.supportsStreamOptions) {
       requestBody.stream_options = { include_usage: true };
     }
-    if (caps.supportsTools) {
+    const effectiveSupportsTools = caps.supportsTools && caps.toolReliability !== 'none';
+    const shouldInjectTools = effectiveSupportsTools && !hasImage;
+    if (shouldInjectTools) {
       requestBody.tools = toolLoader.getDefinitions();
       // 部分 OpenAI 兼容服务商（如硅基流动）不支持 tool_choice 指定具体函数名，
       // 只允许 'auto' / 'none'。仅在 provider 明确声明支持时才发对象形式。
@@ -1315,7 +1517,8 @@ async function streamChat({
     }
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
-    const pseudoToolCalls = caps.supportsTools ? extractPseudoToolCalls(fullText || assistantResponseContent) : [];
+    const shouldDetectPseudo = effectiveSupportsTools && caps.toolReliability === 'loose';
+    const pseudoToolCalls = shouldDetectPseudo ? extractAllPseudoToolCalls(fullText || assistantResponseContent) : [];
     if (pseudoToolCalls.length > 0) {
       hasToolEvidence = true;
       log.warn('pseudo tool call detected, coercing to structured tool execution', {
@@ -1348,7 +1551,7 @@ async function streamChat({
     if (_thinkTagMode) _flushThinkState();
     const safeReply = enforceExecutionContract({
       text: fullText,
-      supportsTools: !!caps.supportsTools,
+      supportsTools: !!effectiveSupportsTools,
       hasToolEvidence,
     });
     onDone(safeReply, totalUsage, responseModel);

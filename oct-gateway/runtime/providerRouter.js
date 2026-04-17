@@ -35,11 +35,18 @@ class ProviderRouter {
         capabilitySource = probe.capabilitySource || 'runtime_probe_cache';
       }
     }
+    const resolvedToolReliability = (() => {
+      if (modelDef?.toolReliability) return modelDef.toolReliability;
+      if (registryCaps?.toolReliability) return registryCaps.toolReliability;
+      if (resolvedToolsSupport !== 'supported') return 'none';
+      return 'loose';
+    })();
     const caps = modelDef
       ? {
           toolsSupport: resolvedToolsSupport,
           capabilitySource,
           supportsTools: resolvedToolsSupport === 'supported',
+          toolReliability: resolvedToolReliability,
           supportsStreamOptions: provider.supportsStreamOptions,
           supportsThinking: registryCaps.supportsThinking ?? false,
           thinkingFormat: registryCaps.thinkingFormat ?? null,
@@ -50,6 +57,7 @@ class ProviderRouter {
           toolsSupport: resolvedToolsSupport,
           capabilitySource,
           supportsTools: resolvedToolsSupport === 'supported',
+          toolReliability: resolvedToolReliability,
         };
 
     return {
