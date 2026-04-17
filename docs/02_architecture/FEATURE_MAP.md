@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-16（Kimi 风格伪工具调用：前端剥离 + 网关解析）  
+> **最后更新**：2026-04-18（Agent 基类与执行引擎初版：`agents/base_agent.js` + `agents/agent_runner.js`）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -47,6 +47,7 @@
 - **Runtime 分层**：`runtime/chatEngine.js` / `contextBuilder.js` / `streamController.js` / `providerRouter.js` / `toolLoop.js`
 - **Service 分层**：`services/postProcessor.js` / `imageService.js`
 - **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由
+- **Agent 层**（新）：`agents/base_agent.js`（基类）/ `agents/agent_runner.js`（执行引擎）；独立会话、非流式工具循环、工具白名单隔离
 - **后台任务队列**：task_queue + worker，持久化、60s 超时
 - **AI 对话引擎**：Provider 抽象，支持百炼/DeepSeek/硅基/Groq/OpenAI/Ollama 等
 - **Provider 系统**：服务商预设、按模型能力动态组装、Settings 服务商选择器

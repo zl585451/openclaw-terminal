@@ -264,9 +264,59 @@ async function handleChatRequest(request, connection) {
     if (evt.type === 'tool_result') {
       connection.send({ type: 'event', event: 'agent-phase', phase: 'thinking' });
     }
+    // Agent 状态事件 → 单独推送 agent_status phase
+    if (evt.type === 'agent_status') {
+      connection.send({
+        type: 'event',
+        event: 'agent-phase',
+        phase: evt.status === 'running' ? 'agent_running' : evt.status === 'done' ? 'thinking' : 'idle',
+        agent: evt.agent,
+      });
+    }
   };
 
   const orchResult = await orchestrator.dispatch(userMessage, sessionKey, sendToolEvent);
+
+  // ── Agent 短路：专职 Agent 执行完成，直接发结果给用户，跳过 AMY streamChat ──
+  if (orchResult.agentResult && orchResult.agentResult.result) {
+    const agentReply = orchResult.agentResult.result;
+    const agentName = orchResult.agent || 'Agent';
+    log.info('agent_result_shortcut', {
+      agent: agentName,
+      turnsUsed: orchResult.agentResult.turnsUsed,
+      tokensUsed: orchResult.agentResult.tokensUsed,
+      replyLen: agentReply.length,
+    });
+
+    // 把结果存入 session history（让后续对话能感知到）
+    try { session.addMessage(sessionKey, 'user', userMessage); } catch {}
+    try { session.addMessage(sessionKey, 'assistant', agentReply); } catch {}
+
+    // 通知前端：agent 阶段结束
+    connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
+    // 推送 agent_status done 事件
+    connection.send({
+      type: 'event',
+      event: 'tool',
+      payload: { type: 'agent_status', agent: agentName, status: 'done', taskId: `orch_${turnId}` }
+    });
+    // 推送最终回复
+    connection.send({
+      type: 'event',
+      event: 'chat',
+      payload: {
+        text: agentReply,
+        state: 'done',
+        done: true,
+        turnId,
+        agentName,
+        tokensUsed: orchResult.agentResult.tokensUsed,
+      },
+    });
+
+    stopKeepalive?.();
+    return;
+  }
 
   const systemPrompt = await systemPromptReady;
   const { messages, history } = await contextBuilder.build({
