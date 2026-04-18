@@ -9,6 +9,7 @@ const { createLogger } = require('./logger');
 const log = createLogger('ai');
 const ProviderRouter = require('./runtime/providerRouter');
 const ToolLoop = require('./runtime/toolLoop');
+const { ProxyAgent } = require('undici');
 
 // ═══════════════════════════════════════════════════════════════
 // AI 上下文截断优化
@@ -26,6 +27,46 @@ const toolLoop = new ToolLoop({
   maxToolRounds: MAX_TOOL_ROUNDS,
   maxIdenticalToolSignatures: MAX_IDENTICAL_TOOL_SIGNATURES,
 });
+const googleProxyAgentCache = new Map();
+
+function injectGoogleDiagramGuard(messages) {
+  const list = Array.isArray(messages) ? [...messages] : [];
+  if (list.length === 0) return list;
+  const guard = [
+    '【Google 专用图表护栏】',
+    '当你需要调用 canvas 生成图（artifactType=diagram）时：',
+    '1) 优先输出 JSON diagram spec（diagramType/nodes/edges/direction），不要直接输出 Mermaid DSL。',
+    '2) 若必须输出 Mermaid，边标签必须用 A -->|标签| B，禁止 A — 标签 —> B 这种写法。',
+    '3) 禁止在 Mermaid 里使用全角箭头/Unicode 箭头（如 →、—>）。',
+    '4) subgraph 块必须严格成对闭合：subgraph ... / end。',
+  ].join('\n');
+
+  const idx = list.findIndex((m) => m && m.role === 'system' && typeof m.content === 'string');
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], content: `${String(list[idx].content || '').trim()}\n\n${guard}` };
+    return list;
+  }
+  return [{ role: 'system', content: guard }, ...list];
+}
+
+function createGoogleScopedDispatcher(url) {
+  try {
+    const proxyUrl = String(config.GOOGLE_HTTPS_PROXY || '').trim();
+    if (!proxyUrl) return null;
+    const host = String(new URL(url).hostname || '').toLowerCase();
+    const isGoogleHost = host.includes('aiplatform.googleapis.com') || host.includes('generativelanguage.googleapis.com');
+    if (!isGoogleHost) return null;
+    if (!googleProxyAgentCache.has(proxyUrl)) {
+      googleProxyAgentCache.set(proxyUrl, new ProxyAgent(proxyUrl));
+      log.info('google scoped proxy enabled', {
+        proxy: proxyUrl.includes('@') ? proxyUrl.replace(/:\/\/[^@]+@/, '://*****@') : proxyUrl,
+      });
+    }
+    return googleProxyAgentCache.get(proxyUrl);
+  } catch {
+    return null;
+  }
+}
 
 function truncateHistory(messages) {
   if (!messages || messages.length === 0) return messages;
@@ -279,6 +320,7 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
       const resp = await fetch(url, {
         ...options,
         signal: controller.signal,
+        dispatcher: options?.dispatcher || createGoogleScopedDispatcher(url) || undefined,
       });
 
       clearTimeout(timeoutId);
@@ -1130,7 +1172,10 @@ async function streamChat({
 
   // 上下文截断优化：防止消息过长
   const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages);
-  getContextUsageRatio(truncatedMessages, model);
+  const effectiveMessages = provider.id === 'google'
+    ? injectGoogleDiagramGuard(truncatedMessages)
+    : truncatedMessages;
+  getContextUsageRatio(effectiveMessages, model);
 
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
   const canFallbackToDeepseek = fallback.canFallbackToDeepseek;
@@ -1144,7 +1189,7 @@ async function streamChat({
     providerId: provider.id,
     baseUrl: String(baseUrl || '').replace(/\/$/, ''),
     model,
-    messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0,
+    messages: Array.isArray(effectiveMessages) ? effectiveMessages.length : 0,
   });
 
   if (!apiKey) {
@@ -1186,7 +1231,7 @@ async function streamChat({
   };
 
   try {
-    const hasImage = truncatedMessages.some(m =>
+    const hasImage = effectiveMessages.some(m =>
       Array.isArray(m.content) &&
       m.content.some(c => c.type === 'image_url')
     );
@@ -1406,7 +1451,7 @@ async function streamChat({
 
     const requestBody = {
       model,
-      messages: truncatedMessages,
+      messages: effectiveMessages,
       stream: true,
       max_tokens: caps.maxTokens || 4096,
     };
@@ -1529,7 +1574,7 @@ async function streamChat({
               content: assistantResponseContent || '',
               tool_calls: toolCalls.filter(Boolean),
             },
-            truncatedMessages,
+            truncatedMessages: effectiveMessages,
             onDelta,
             onDone,
             onError,
@@ -1619,7 +1664,7 @@ async function streamChat({
           content: '',
           tool_calls: pseudoToolCalls,
         },
-        truncatedMessages,
+        truncatedMessages: effectiveMessages,
         onDelta,
         onDone,
         onError,

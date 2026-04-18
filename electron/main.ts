@@ -2167,6 +2167,15 @@ function getOctGatewayEntry(): string | null {
   return null;
 }
 
+function resolveGatewayConfigFileForSpawn(entry: string): string {
+  if (app.isPackaged) return CONFIG_FILE;
+  const projectConfig = path.join(path.dirname(entry), 'config.json');
+  const devFlag = String(process.env.OCT_DEV_USE_PROJECT_CONFIG || '1').trim().toLowerCase();
+  const devEnabled = !['0', 'false', 'off', 'no'].includes(devFlag);
+  if (devEnabled && fs.existsSync(projectConfig)) return projectConfig;
+  return CONFIG_FILE;
+}
+
 let octGatewayProcess: ReturnType<typeof spawn> | null = null;
 
 async function startOctGateway(): Promise<{ success: boolean; error?: string }> {
@@ -2187,6 +2196,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   const vaultPath = path.join(app.getPath('userData'), 'vault.enc');
   const runtimeCommand = app.isPackaged ? process.execPath : 'node';
   const runtimeArgs = [entry];
+  const gatewayConfigFile = resolveGatewayConfigFileForSpawn(entry);
 
   try {
     octGatewayProcess = spawn(runtimeCommand, runtimeArgs, {
@@ -2198,7 +2208,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
         OCT_GATEWAY_PORT: String(GATEWAY_PORT),
         OCT_PROMPTS_DIR: promptsDir,
-        OCT_CONFIG_FILE: CONFIG_FILE,
+        OCT_CONFIG_FILE: gatewayConfigFile,
         OPENCLAW_TASKS_PATH: tasksPath,
         OCT_VAULT_PATH: vaultPath,
         ...(resolvedAiLibraryUrlForGateway && !(process.env.AI_LIBRARY_URL || '').trim()
@@ -2239,6 +2249,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
     });
 
     console.log('[OCT Gateway] 已启动，PID:', octGatewayProcess.pid);
+    console.log('[OCT Gateway] 配置文件:', gatewayConfigFile);
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e?.message };

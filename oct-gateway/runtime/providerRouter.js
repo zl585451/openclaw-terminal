@@ -24,6 +24,20 @@ class ProviderRouter {
       ? 'provider_model_def'
       : (registryCaps.capabilitySource || 'fallback_unknown');
     let resolvedToolsSupport = toolsSupport;
+    const googleToolsMode = String(this.config.GOOGLE_TOOLS_MODE || 'auto').toLowerCase();
+    if (provider.id === 'google') {
+      if (googleToolsMode === 'on') {
+        resolvedToolsSupport = 'supported';
+        capabilitySource = 'google_tools_mode_forced_on';
+      } else if (googleToolsMode === 'off') {
+        resolvedToolsSupport = 'unsupported';
+        capabilitySource = 'google_tools_mode_forced_off';
+      } else if (resolvedToolsSupport === 'unsupported') {
+        // Google 默认改为可探测，避免 provider 模型静态声明阻断工具调用。
+        resolvedToolsSupport = 'unknown';
+        capabilitySource = 'google_tools_mode_auto_probe';
+      }
+    }
     if (!modelDef && resolvedToolsSupport === 'unknown' && this.config.getProbeCacheEntry) {
       const probe = this.config.getProbeCacheEntry({
         providerId: provider.id,
@@ -36,9 +50,12 @@ class ProviderRouter {
       }
     }
     const resolvedToolReliability = (() => {
+      if (provider.id === 'google' && (googleToolsMode === 'on' || (googleToolsMode === 'auto' && resolvedToolsSupport === 'unknown'))) {
+        return 'loose';
+      }
       if (modelDef?.toolReliability) return modelDef.toolReliability;
       if (registryCaps?.toolReliability) return registryCaps.toolReliability;
-      if (resolvedToolsSupport !== 'supported') return 'none';
+      if (resolvedToolsSupport === 'unsupported') return 'none';
       return 'loose';
     })();
     const caps = modelDef

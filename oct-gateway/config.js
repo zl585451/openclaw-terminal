@@ -68,6 +68,39 @@ function loadConfigFile() {
   return {};
 }
 
+const GOOGLE_SCOPED_KEYS = new Set([
+  'GOOGLE_AI_API_KEY',
+  'GOOGLE_AI_BASE_URL',
+  'GOOGLE_HTTPS_PROXY',
+  'GOOGLE_TOOLS_MODE',
+]);
+
+function loadGoogleScopedConfig() {
+  const customPath = (process.env.OCT_GOOGLE_CONFIG_FILE || '').trim();
+  const defaultPath = path.join(__dirname, 'google.profile.json');
+  const candidates = [customPath, defaultPath].filter(Boolean);
+  for (const cfgPath of candidates) {
+    if (!fs.existsSync(cfgPath)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+      if (!parsed || typeof parsed !== 'object') continue;
+      const picked = {};
+      for (const key of GOOGLE_SCOPED_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+          picked[key] = parsed[key];
+        }
+      }
+      if (Object.keys(picked).length > 0) {
+        console.log(`[Config] Loaded google scoped config from: ${cfgPath}`);
+        return picked;
+      }
+    } catch (err) {
+      console.warn(`[Config] Failed to parse google scoped config ${cfgPath}:`, err.message);
+    }
+  }
+  return {};
+}
+
 const openclawJsonPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
 let openclawJson = null;
 
@@ -473,9 +506,11 @@ function loadAvailableModels() {
   return models;
 }
 
-const _fileConfig = loadConfigFile();
+const _baseFileConfig = loadConfigFile();
+const _googleScopedConfig = loadGoogleScopedConfig();
+const _fileConfig = { ..._baseFileConfig, ..._googleScopedConfig };
 
-// 出站代理：写入用户 config.json（OCT_CONFIG_FILE）即可，打包版与开发版一致；不设置则行为与从前相同
+// 出站代理：设置面板（用户 config.json）优先于 .env/系统环境，避免旧环境变量覆盖用户最新设置
 (function applyProxyFromRuntimeConfig() {
   const pairs = [
     ['HTTPS_PROXY', _fileConfig.HTTPS_PROXY],
@@ -484,7 +519,15 @@ const _fileConfig = loadConfigFile();
   for (const [key, cfgVal] of pairs) {
     const fromCfg = cfgVal != null ? String(cfgVal).trim() : '';
     const fromEnv = String(process.env[key] || '').trim();
-    if (!fromEnv && fromCfg) process.env[key] = fromCfg;
+    if (fromCfg) {
+      process.env[key] = fromCfg;
+      process.env[key.toLowerCase()] = fromCfg;
+      continue;
+    }
+    if (fromEnv) {
+      process.env[key] = fromEnv;
+      process.env[key.toLowerCase()] = fromEnv;
+    }
   }
 })();
 
@@ -956,6 +999,14 @@ const config = {
   VISION_API_KEY: getEnvOrConfig('VISION_API_KEY') || '',
   VISION_BASE_URL: getEnvOrConfig('VISION_BASE_URL') || '',
   VISION_MODEL: getEnvOrConfig('VISION_MODEL') || '',
+
+  // Google 专用运行时开关（不影响其他 provider）
+  GOOGLE_HTTPS_PROXY: getEnvOrConfig('GOOGLE_HTTPS_PROXY') || '',
+  GOOGLE_TOOLS_MODE: (() => {
+    const raw = String(getEnvOrConfig('GOOGLE_TOOLS_MODE') || '').trim().toLowerCase();
+    if (raw === 'on' || raw === 'off' || raw === 'auto') return raw;
+    return 'auto';
+  })(),
 };
 
 Object.defineProperty(config, 'DASHSCOPE_MODEL', {
