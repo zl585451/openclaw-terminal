@@ -1,7 +1,7 @@
 # Chat Stream Entry
 
 > Status: CURRENT  
-> Last Updated: 2026-04-17  
+> Last Updated: 2026-04-18  
 > Scope: 聊天发送、Gateway 回复、前端流式显示、状态切换、打字动画主链路
 
 ---
@@ -85,6 +85,7 @@ flowchart TD
 - 如果“界面在打字，但某个依赖旧打字机的功能没生效”，优先怀疑职责迁移不完整
 - 从 2026-04-17 起，连接成功后 `hello-ok.capabilities` 会透传到前端（用于工具能力提示）
 - 从 2026-04-17 起，`useMessages` 增加整轮超时兜底（默认 10 分钟），防止无限 awaitingResponse
+- 从 2026-04-18 起，Gateway 对 `custom` provider 的 `kimi` 家族模型默认不强制发送 `temperature`，减少 OpenAI 兼容端点 `invalid temperature` 400
 
 ---
 

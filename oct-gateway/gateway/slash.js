@@ -43,7 +43,6 @@ async function probeModelToolsSupport({ provider, model, apiKey, baseUrl, config
     model,
     stream: false,
     max_tokens: 1,
-    temperature: 0,
     messages: [
       { role: 'system', content: 'You are running a capability probe.' },
       { role: 'user', content: 'Call the probe function now.' },

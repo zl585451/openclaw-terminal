@@ -99,6 +99,29 @@ function getMiniMaxTemperature() {
   return value;
 }
 
+function parseCustomTemperature() {
+  const rawValue = config.getEnvOrConfig('CUSTOM_TEMPERATURE');
+  if (rawValue === '' || rawValue === null || rawValue === undefined) return null;
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value < 0 || value > 2) {
+    log.warn('Invalid CUSTOM_TEMPERATURE, ignored', { rawValue });
+    return null;
+  }
+  return value;
+}
+
+function resolveTemperatureForRequest({ provider, model }) {
+  if (provider?.id === 'minimax') return getMiniMaxTemperature();
+  if (provider?.id === 'custom') {
+    const customTemperature = parseCustomTemperature();
+    if (customTemperature !== null) return customTemperature;
+    const family = config.detectModelFamily(model);
+    if (family === 'kimi') return null;
+    return 0.7;
+  }
+  return 0.7;
+}
+
 async function loadSystemPrompt(promptsDir) {
   const nocturneAlive = await memory.isAlive();
 
@@ -1009,7 +1032,6 @@ async function probeModelToolsSupport({ provider, baseUrl, apiKey, model }) {
     model,
     stream: false,
     max_tokens: 1,
-    temperature: 0,
     messages: [
       { role: 'system', content: 'You are running a capability probe.' },
       { role: 'user', content: 'Call the probe function now.' },
@@ -1387,8 +1409,11 @@ async function streamChat({
       messages: truncatedMessages,
       stream: true,
       max_tokens: caps.maxTokens || 4096,
-      temperature: provider.id === 'minimax' ? getMiniMaxTemperature() : 0.7,
     };
+    const requestTemperature = resolveTemperatureForRequest({ provider, model });
+    if (requestTemperature !== null) {
+      requestBody.temperature = requestTemperature;
+    }
     if (provider.supportsStreamOptions) {
       requestBody.stream_options = { include_usage: true };
     }
