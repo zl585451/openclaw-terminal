@@ -5,7 +5,8 @@ export type WorkbenchArtifactType =
   | 'code'
   | 'ui-draft'
   | 'react-flow'
-  | 'echart';
+  | 'echart'
+  | 'script';  // 剧本/有声书格式
 export type WorkbenchDocumentStatus = 'draft' | 'refining' | 'final';
 
 export interface WorkbenchDocument {
@@ -16,6 +17,8 @@ export interface WorkbenchDocument {
   content: string;
   language: string;
   origin: 'ai' | 'user';
+  sourcePath?: string;
+  draftCachePath?: string;
   sourceMessageId?: string;
   explanation?: string;
   status: WorkbenchDocumentStatus;

@@ -653,7 +653,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         onDelete={(msgId) => setMessages((prev) => prev.filter((m) => m.id !== msgId))}
       />
     <div
-      className="chat-tab"
+      className={`chat-tab${canvasBridge.isOpen ? ' chat-tab--canvas-open' : ''}`}
       onPaste={files.handlePaste}
       onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types?.includes('Files')) files.setDragging(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) files.setDragging(false); }}

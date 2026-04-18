@@ -2,13 +2,20 @@ import { useCallback, useState } from 'react';
 import { useWorkbench } from '../../workbench/WorkbenchContext';
 import { resolveWorkbenchPlugin } from '../../workbench/plugins';
 import DocumentAppendBar from './DocumentAppendBar';
+import { parseScript } from '../../utils/scriptParser';
 import '../CanvasPanel.css';
+
+const ipcRenderer =
+  typeof window !== 'undefined' && typeof (window as any).require === 'function'
+    ? (window as any).require('electron').ipcRenderer
+    : null;
 
 export default function WorkbenchPanel() {
   const workbench = useWorkbench();
   const activeDocument = workbench.activeDocument;
   const hasMultipleDocuments = workbench.documents.length > 1;
   const [showDetails, setShowDetails] = useState(false);
+  const [importing, setImporting] = useState(false);
   const lineCount = activeDocument?.content ? activeDocument.content.split(/\r?\n/).length : 0;
   const charCount = activeDocument?.content?.length || 0;
   const updatedAtLabel = activeDocument
@@ -42,13 +49,14 @@ export default function WorkbenchPanel() {
 
   const handleExport = useCallback(() => {
     if (!activeDocument) return;
+    const plugin = resolveWorkbenchPlugin(activeDocument);
+    const exportContent = plugin?.getExportContent?.(activeDocument) ?? activeDocument.content;
 
-    const blob = new Blob([activeDocument.content], { type: 'text/plain' });
+    const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
 
-    const plugin = resolveWorkbenchPlugin(activeDocument);
     const filename = plugin?.getExportFilename?.(activeDocument) || 'workbench.txt';
 
     a.download = filename;
@@ -63,6 +71,37 @@ export default function WorkbenchPanel() {
     workbench.deleteDocument(activeDocument.id);
   }, [activeDocument, workbench]);
 
+  // 上传剧本文件（.txt / .docx）
+  const handleImportScript = useCallback(async () => {
+    if (!ipcRenderer || importing) return;
+    setImporting(true);
+    try {
+      const result: {
+        success: boolean;
+        text?: string;
+        fileName?: string;
+        sourcePath?: string;
+        draftCachePath?: string;
+        error?: string;
+      } =
+        await ipcRenderer.invoke('parse-script-file');
+      if (!result.success || !result.text) return;
+
+      // 预解析，验证能识别出章节/角色
+      const parsed = parseScript(result.text);
+      const title = parsed.title || result.fileName?.replace(/\.(docx|txt)$/i, '') || '剧本';
+
+      workbench.openCanvas(result.text, 'markdown', title, 'text', 'script', {
+        sourcePath: result.sourcePath,
+        draftCachePath: result.draftCachePath,
+      });
+    } catch (err) {
+      console.error('[ScriptImport] 解析失败:', err);
+    } finally {
+      setImporting(false);
+    }
+  }, [importing, workbench]);
+
   const renderPreview = () => {
     if (!activeDocument) return null;
     const plugin = resolveWorkbenchPlugin(activeDocument);
@@ -75,6 +114,14 @@ export default function WorkbenchPanel() {
       <div className="canvas-empty-copy">
         Open a code block or send a structured result here to start building artifacts.
       </div>
+      <button
+        className="canvas-action-btn"
+        style={{ marginTop: '16px' }}
+        onClick={handleImportScript}
+        disabled={importing}
+      >
+        {importing ? '解析中…' : '📄 上传剧本'}
+      </button>
     </div>
   );
 
@@ -110,6 +157,15 @@ export default function WorkbenchPanel() {
           </div>
         )}
         <div className="canvas-toolbar-actions">
+          {/* 剧本上传按钮（始终显示在工具栏） */}
+          <button
+            className="canvas-action-btn"
+            onClick={handleImportScript}
+            disabled={importing}
+            title="上传 .txt 或 .docx 剧本文件"
+          >
+            {importing ? '解析中…' : '📄 剧本'}
+          </button>
           <button
             className="canvas-action-btn"
             onClick={() => setShowDetails((prev) => !prev)}

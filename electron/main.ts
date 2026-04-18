@@ -1,5 +1,7 @@
 // Load .env file
 import * as dotenv from 'dotenv';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const mammoth = require('mammoth');
 import * as path from 'path';
 const envPath = path.join(__dirname, '..', '.env');
 dotenv.config({ path: envPath });
@@ -1633,6 +1635,96 @@ ipcMain.handle('open-file-dialog', async (_, options?: { allowMultiple?: boolean
     }));
 
     return { success: true, files };
+  } catch (e: any) {
+    return { success: false, error: e?.message };
+  }
+});
+
+// 剧本文件解析：.txt 直接读取，.docx 用 mammoth 转纯文本
+function ensureScriptDraftDir(): string {
+  const dir = path.join(app.getPath('userData'), 'script-drafts');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function safeDraftName(input: string): string {
+  const base = String(input || 'script')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+  return base || 'script';
+}
+
+function createScriptDraftPath(fileName: string): string {
+  const draftDir = ensureScriptDraftDir();
+  const stem = safeDraftName(path.basename(fileName, path.extname(fileName)));
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  return path.join(draftDir, `${stem}-${ts}.txt`);
+}
+
+ipcMain.handle('save-script-draft-cache', async (_, payload: {
+  content?: string;
+  draftCachePath?: string;
+  sourcePath?: string;
+  title?: string;
+}) => {
+  try {
+    const content = String(payload?.content || '');
+    if (!content.trim()) {
+      return { success: false, error: 'content is empty' };
+    }
+
+    const draftPath = payload?.draftCachePath
+      ? String(payload.draftCachePath)
+      : createScriptDraftPath(payload?.title || payload?.sourcePath || 'script-draft');
+    const resolved = path.resolve(draftPath);
+    const draftRoot = path.resolve(ensureScriptDraftDir());
+    if (!resolved.startsWith(draftRoot)) {
+      return { success: false, error: 'invalid draft cache path' };
+    }
+
+    fs.writeFileSync(resolved, content, 'utf-8');
+    return { success: true, draftCachePath: resolved };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('parse-script-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: '选择剧本文件',
+    filters: [
+      { name: '剧本文件', extensions: ['txt', 'docx'] },
+    ],
+    properties: ['openFile'],
+  });
+  if (result.canceled || !result.filePaths.length) return { success: false };
+
+  const filePath = result.filePaths[0];
+  const ext = path.extname(filePath).toLowerCase();
+  const fileName = path.basename(filePath);
+
+  try {
+    let text = '';
+    if (ext === '.docx') {
+      const { value } = await mammoth.extractRawText({ path: filePath });
+      text = value;
+    } else {
+      // .txt 自动检测编码，优先 utf-8，GB18030 兜底
+      const buf = fs.readFileSync(filePath);
+      // 简单探测：utf-8 BOM 或纯 ASCII → utf8，否则用 latin1 再转
+      text = buf.toString('utf-8');
+      // 如果含乱码替换符说明编码不对，改用 GB18030（Windows 中文 txt 常见）
+      if (text.includes('\uFFFD')) {
+        const { TextDecoder } = require('util');
+        text = new TextDecoder('gbk').decode(buf);
+      }
+    }
+    const draftCachePath = createScriptDraftPath(fileName);
+    fs.writeFileSync(draftCachePath, text, 'utf-8');
+    return { success: true, text, fileName, sourcePath: filePath, draftCachePath };
   } catch (e: any) {
     return { success: false, error: e?.message };
   }

@@ -36,6 +36,7 @@ interface WorkbenchContextValue extends WorkbenchState {
     title?: string,
     language?: string,
     artifactType?: WorkbenchArtifactType,
+    overrides?: Partial<WorkbenchDocument>,
   ) => void;
   closeCanvas: () => void;
   updateContent: (content: string) => void;
@@ -113,9 +114,11 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
     title = '',
     language = 'text',
     artifactType?: WorkbenchArtifactType,
+    overrides: Partial<WorkbenchDocument> = {},
   ) => {
     const nextDocument = createWorkbenchDocument(content, mode, title, language, {
       artifactType,
+      ...overrides,
     });
     dispatchDocument({ type: 'create', payload: { document: nextDocument } });
     setUiState((prev) => ({ ...prev, isOpen: true }));

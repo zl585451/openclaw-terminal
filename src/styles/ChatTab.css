@@ -53,7 +53,6 @@
   height: 100%;
   gap: 10px;
   overflow: hidden;  /* 防止内容溢出 */
-  transition: padding-right 0.25s ease;
 }
 
 /* 聊天区域 */
@@ -67,8 +66,12 @@
   min-width: 0;
   min-height: 0;  /* 防止 flex 子项撑破容器 */
   overflow: visible;
-  transition: margin-right 0.25s ease;
-  margin-right: 0;
+  transition: max-width 0.18s ease;
+}
+
+/* Canvas 打开时只收缩聊天区，右边栏原位不动被 Canvas 自然压住 */
+.chat-tab--canvas-open .chat-section {
+  max-width: calc(100% - min(62vw, 960px));
 }
 
 /* 日志区域 */

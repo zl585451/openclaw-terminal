@@ -31,6 +31,22 @@ const electronAPI = {
   // 文件上传
   openFileDialog: (options?: { allowMultiple?: boolean; filters?: { name: string; extensions: string[] }[] }) =>
     ipcRenderer.invoke('open-file-dialog', options),
+  // 剧本文件解析（.txt / .docx → 纯文本）
+  parseScriptFile: (): Promise<{
+    success: boolean;
+    text?: string;
+    fileName?: string;
+    sourcePath?: string;
+    draftCachePath?: string;
+    error?: string;
+  }> =>
+    ipcRenderer.invoke('parse-script-file'),
+  saveScriptDraftCache: (payload: {
+    content: string;
+    draftCachePath?: string;
+    sourcePath?: string;
+    title?: string;
+  }) => ipcRenderer.invoke('save-script-draft-cache', payload),
   // API Key 配置
   getApiKeys: () => ipcRenderer.invoke('get-api-keys'),
   saveApiKeys: (keys: {
