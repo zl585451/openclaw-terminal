@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-18（Agent 基类与执行引擎初版：`agents/base_agent.js` + `agents/agent_runner.js`）  
+> **最后更新**：2026-04-19（移除录音转文字 ASR 链路，保留 TTS）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -94,6 +94,16 @@
 ---
 
 ## 最近修复
+
+### 2026-04-19 移除录音转文字（ASR）链路
+- **目标**：删除低使用率且易受密钥配置影响的录音输入能力，简化输入链路。
+- **实现**：
+  - 删除输入区录音按钮与录音编码逻辑（`src/ui/chat/ChatInput.tsx`）。
+  - 删除 Electron `asr-transcribe` IPC handler 与 preload 暴露（`electron/main.ts`、`electron/preload.ts`）。
+  - 清理能力系统中的 `asr` capability 映射（`src/core/capabilities/types.ts`、`src/core/capabilities/providers.ts`）。
+- **结果**：
+  - Chat 输入区仅保留文本、快捷命令、附件发送。
+  - 架构与排错文档统一收敛到打字音效与 TTS 两条音频链。
 
 ### 2026-04-06 人格配置产品化
 - **目标**：让 OCT 作为可发布产品时不再绑定开发者私人设定

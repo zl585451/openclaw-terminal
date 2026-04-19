@@ -1467,8 +1467,9 @@ function sendChatMessage(
     params.canvasContext = workbenchContext;
   }
 
-  // OpenClaw chat.send attachments: Gateway normalizeRpcAttachmentsToChatAttachments 期望 { type, mimeType, content }
-  const attachments: Array<{ type: string; mimeType: string; fileName?: string; content: string }> = [];
+  // OpenClaw chat.send attachments: Gateway 期望 { type, mimeType, content }
+  // 目前支持：image（图片）、audio（音频）
+  const attachments: Array<{ type: 'image' | 'audio'; mimeType: string; fileName?: string; content: string }> = [];
 
   // 1. 粘贴/截图图片 (imageDataUrl)
   if (imageDataUrl) {
@@ -1479,14 +1480,28 @@ function sendChatMessage(
     }
   }
 
-  // 2. 附件中的图片转为 base64 后加入（Gateway 仅处理 image/*，非图片暂不传）
+  // 2. 附件中的图片/音频转为 base64 后加入（音频用于 Gemini input_audio 多模态）
   if (files && files.length > 0) {
     for (const f of files) {
-      const base64Data = f.base64;
       const mimeType = f.mimeType || 'application/octet-stream';
+      const isImage = mimeType.startsWith('image/');
+      const isAudio = mimeType.startsWith('audio/');
+      if (!isImage && !isAudio) continue;
+
+      let base64Data = f.base64;
+      if (!base64Data && f.path) {
+        try {
+          base64Data = fs.readFileSync(f.path).toString('base64');
+        } catch (e) {
+          console.warn('[OCT] 读取附件失败，已跳过', { name: f.name, path: f.path, error: (e as any)?.message || String(e) });
+          continue;
+        }
+      }
       if (!base64Data) continue;
-      if (mimeType.startsWith('image/')) {
+      if (isImage) {
         attachments.push({ type: 'image', mimeType, fileName: f.name, content: base64Data });
+      } else if (isAudio) {
+        attachments.push({ type: 'audio', mimeType, fileName: f.name, content: base64Data });
       }
     }
   }
@@ -1608,7 +1623,7 @@ ipcMain.handle('open-file-dialog', async (_, options?: { allowMultiple?: boolean
       const mimeType = mimeMap[ext] || 'application/octet-stream';
       const isImage = mimeType.startsWith('image/');
 
-      // 只传元数据，不读文件内容。图片需 base64 供 vision 使用，其余由 AMY 用 read_file 按需读取
+      // 默认只传元数据；图片保留 base64（视觉直传），音频在发送时按需读取为 base64（Gemini input_audio）
       if (isImage) {
         const buf = fs.readFileSync(filePath);
         return {
@@ -2170,7 +2185,7 @@ function getOctGatewayEntry(): string | null {
 function resolveGatewayConfigFileForSpawn(entry: string): string {
   if (app.isPackaged) return CONFIG_FILE;
   const projectConfig = path.join(path.dirname(entry), 'config.json');
-  const devFlag = String(process.env.OCT_DEV_USE_PROJECT_CONFIG || '1').trim().toLowerCase();
+  const devFlag = String(process.env.OCT_DEV_USE_PROJECT_CONFIG || '0').trim().toLowerCase();
   const devEnabled = !['0', 'false', 'off', 'no'].includes(devFlag);
   if (devEnabled && fs.existsSync(projectConfig)) return projectConfig;
   return CONFIG_FILE;
@@ -3886,71 +3901,6 @@ ipcMain.handle('lyrics-generate', async (_, payload: {
   } catch (e: any) {
     pushUiLog(`[MiniMax Lyrics][ERR] ${e?.message || String(e)}`);
     return { success: false, error: e?.message || 'MiniMax Lyrics 请求失败' };
-  }
-});
-
-ipcMain.handle('asr-transcribe', async (_, payload: { audioDataUrl: string; language?: string }) => {
-  const audioDataUrl = typeof payload?.audioDataUrl === 'string' ? payload.audioDataUrl.trim() : '';
-  const language = typeof payload?.language === 'string' ? payload.language.trim() : 'zh';
-  if (!audioDataUrl.startsWith('data:audio/')) {
-    return { success: false, error: 'Invalid audio payload' };
-  }
-
-  const cfg = readAppConfig();
-  const apiKey = String(cfg.DASHSCOPE_API_KEY || process.env.DASHSCOPE_API_KEY || '').trim();
-  if (!apiKey) {
-    return { success: false, error: 'DASHSCOPE_API_KEY not configured for ASR' };
-  }
-
-  const configuredBase = String(cfg.DASHSCOPE_BASE_URL || '').trim();
-  const baseUrl = configuredBase.includes('dashscope-intl')
-    ? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
-    : 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-
-  try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'qwen3-asr-flash',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_audio',
-                input_audio: {
-                  data: audioDataUrl,
-                },
-              },
-            ],
-          },
-        ],
-        stream: false,
-        asr_options: {
-          language,
-          enable_itn: false,
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      return { success: false, error: `ASR API error ${res.status}: ${errText}` };
-    }
-
-    const data = await res.json();
-    const text = data?.choices?.[0]?.message?.content;
-    if (!text || typeof text !== 'string') {
-      return { success: false, error: 'ASR returned no transcript text' };
-    }
-
-    return { success: true, text: text.trim() };
-  } catch (e: any) {
-    return { success: false, error: e?.message || 'ASR request failed' };
   }
 });
 

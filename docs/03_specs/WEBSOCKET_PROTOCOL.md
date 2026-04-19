@@ -55,14 +55,17 @@
     "sessionKey": "main",
     "message": "用户输入的文本",
     "attachments": [
-      { "type": "image", "mimeType": "image/png", "content": "base64..." }
+      { "type": "image", "mimeType": "image/png", "content": "base64..." },
+      { "type": "audio", "mimeType": "audio/mpeg", "content": "base64..." }
     ]
   }
 }
 ```
 
 - `message`：必填（可为空字符串，图片时可用 `[文件/图片]`）
-- `attachments`：图片等，Gateway 会转成多模态 content 格式给模型
+- `attachments`：支持 `image` / `audio`
+- 图片附件会转成 `image_url`
+- 音频附件在 Gemini（Google provider）下会转成 `input_audio` 多模态输入
 - `id` 同时作为本轮 `turnId` 的归属键；Gateway 在 `chat delta/done` 事件里会回传同值，前端应按该键过滤非当前回合事件
 
 ### image.generate

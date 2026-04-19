@@ -1,7 +1,7 @@
 # Chat Stream Entry
 
 > Status: CURRENT  
-> Last Updated: 2026-04-18  
+> Last Updated: 2026-04-19  
 > Scope: 聊天发送、Gateway 回复、前端流式显示、状态切换、打字动画主链路
 
 ---
@@ -74,7 +74,7 @@ flowchart TD
 
 ### `oct-gateway/index.js`
 - `chat.send` 路由入口
-- 拼装上下文、记忆注入、图片分支、调用 `streamChat`
+- 拼装上下文、记忆注入、图片/音频多模态分支、调用 `streamChat`
 
 ---
 

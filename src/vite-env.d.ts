@@ -87,7 +87,6 @@ interface ElectronAPI {
     lyrics?: string;
     error?: string;
   }>;
-  asrTranscribe?: (payload: { audioDataUrl: string; language?: string }) => Promise<{ success: boolean; text?: string; error?: string }>;
   getLocalVisionStatus?: () => Promise<{
     success: boolean;
     status?: 'ready' | 'not_downloaded' | 'downloading' | 'error';

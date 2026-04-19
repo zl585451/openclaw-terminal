@@ -1000,47 +1000,6 @@
   padding: 10px 24px;
 }
 
-.mic-btn-icon {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: 1px solid var(--border-light);
-  color: var(--text-secondary);
-  font-size: var(--text-base);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
-
-.mic-btn-icon:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  background: var(--accent-primary-muted);
-}
-
-.mic-btn-icon.recording {
-  border-color: var(--status-error);
-  color: var(--status-error);
-  font-size: var(--text-sm);
-  animation: rec-blink 1s ease-in-out infinite;
-}
-
-.mic-btn-icon:disabled,
-.mic-btn-icon.mic-btn-disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  border-color: var(--border-subtle) !important;
-  color: var(--text-tertiary) !important;
-}
-
-.mic-btn-icon.mic-btn-disabled:hover {
-  border-color: var(--border-subtle) !important;
-  background: transparent !important;
-}
-
 .chat-section.drag-over {
   border: 2px dashed var(--accent-primary);
   background: var(--accent-primary-muted);
@@ -1212,11 +1171,6 @@
 .attach-btn:hover {
   border-color: var(--accent-primary);
   background: var(--accent-primary-muted);
-}
-
-@keyframes rec-blink {
-  0%, 100% { box-shadow: 0 0 4px var(--status-error); }
-  50% { box-shadow: 0 0 12px var(--status-error); }
 }
 
 .quick-menu-btn {
@@ -2105,11 +2059,6 @@
   .file-menu-btn {
     padding: 4px 7px;
     font-size: 15px;
-  }
-
-  .mic-btn-icon {
-    width: 30px;
-    height: 30px;
   }
 
   .send-btn {

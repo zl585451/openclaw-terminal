@@ -5,7 +5,25 @@ class ProviderRouter {
 
   resolve(modelId = this.config.DASHSCOPE_MODEL) {
     const provider = this.config.getProviderConfig();
-    const model = modelId || this.config.DASHSCOPE_MODEL;
+    const requestedModel = modelId || this.config.DASHSCOPE_MODEL;
+    // Vertex OpenAI 兼容层的 Gemini 模型通常使用 google/gemini-...。
+    // 兼容历史配置：若用户存的是 gemini-...（无前缀），自动补上 google/。
+    const model = (() => {
+      if (provider.id !== 'google') return requestedModel;
+      const raw = String(requestedModel || '').trim();
+      if (!raw) return raw;
+      if (raw.startsWith('__')) return raw;
+      const canonical = raw.toLowerCase().startsWith('google/')
+        ? raw
+        : raw.includes('/')
+          ? raw
+          : `google/${raw}`;
+      const aliasMap = {
+        'google/gemini-2.5-pro-preview-03-25': 'google/gemini-2.5-pro',
+        'google/gemini-2.5-flash-preview-04-17': 'google/gemini-2.5-flash',
+      };
+      return aliasMap[canonical] || canonical;
+    })();
     const apiKey = provider.apiKey;
     const baseUrl = provider.baseUrl;
     const normalized = this.config.normalizeModelId ? this.config.normalizeModelId(model) : String(model || '').toLowerCase();

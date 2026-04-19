@@ -125,8 +125,6 @@ const electronAPI = {
     prompt?: string;
     title?: string;
   }) => ipcRenderer.invoke('lyrics-generate', payload),
-  asrTranscribe: (payload: { audioDataUrl: string; language?: string }) =>
-    ipcRenderer.invoke('asr-transcribe', payload),
   getProviderList: () => ipcRenderer.invoke('get-provider-list'),
   testAIConnection: (formConfig?: Record<string, string>) => ipcRenderer.invoke('test-ai-connection', formConfig),
   getLocalVisionStatus: () => ipcRenderer.invoke('get-local-vision-status'),

@@ -1167,6 +1167,11 @@ async function streamChat({
   toolChoice = 'auto',
   turnId = null,
 }) {
+  const hasMultimodalParts = (msgs) => Array.isArray(msgs) && msgs.some((m) =>
+    Array.isArray(m?.content) && m.content.some((part) =>
+      part && typeof part === 'object' && part.type && part.type !== 'text'
+    )
+  );
   const resolved = providerRouter.resolve();
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 
@@ -1731,6 +1736,11 @@ async function streamChat({
         config.DASHSCOPE_MODEL = prevModel;
       }
     } else if (canFallbackToDeepseek) {
+      if (hasMultimodalParts(truncatedMessages)) {
+        log.warn('skip deepseek fallback for multimodal request', { error: e?.message || String(e) });
+        onError(e);
+        return;
+      }
       log.warn('primary provider failed, fallback to deepseek', { error: e?.message || String(e) });
       const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;

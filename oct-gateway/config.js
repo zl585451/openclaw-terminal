@@ -87,7 +87,14 @@ function loadGoogleScopedConfig() {
       const picked = {};
       for (const key of GOOGLE_SCOPED_KEYS) {
         if (Object.prototype.hasOwnProperty.call(parsed, key)) {
-          picked[key] = parsed[key];
+          const value = parsed[key];
+          // 空字符串不覆盖主配置（避免 google.profile.json 里的占位空值把 userData/config.json 的真实 Key 覆盖掉）
+          if (typeof value === 'string') {
+            if (!value.trim()) continue;
+            picked[key] = value;
+            continue;
+          }
+          if (value !== null && value !== undefined) picked[key] = value;
         }
       }
       if (Object.keys(picked).length > 0) {
