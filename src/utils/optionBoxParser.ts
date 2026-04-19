@@ -654,7 +654,7 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
 
   // 清理所有 text segment 中残留的孤立标签文字（如未闭合的 [pills]）
   // 标签名两侧允许可选空白，与 PAIRED_TAG_RX 一致；不匹配 // 注释
-  const TAG_STRIP_RX = /\[\s*\/?\s*(pills|checkbox|question|tasklist|cot)\s*\]\s*/gi;
+  const TAG_STRIP_RX = /\[\s*\/?\s*(pills|checkbox|question|tasklist|cot|clarify_card)\s*\]\s*/gi;
   for (const seg of segments) {
     if (seg.type === 'text' && seg.content) {
       seg.content = seg.content.replace(TAG_STRIP_RX, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -687,6 +687,19 @@ function getCacheKey(content: string): string {
 function _parseOptionBox(content: string): ParsedContent {
   if (!content || typeof content !== 'string') return { text: filterExpectedEffect(content || ''), options: [] };
 
+  // ⓪ 剥离 clarify_card 标签（由浮层单独处理，不参与消息流渲染）
+  //    沿用既有的代码块保护：代码块内的 [clarify_card] 示例保持原样
+  {
+    const codeRangesForClarify = getCodeBlockRanges(content);
+    content = content.replace(
+      /\[clarify_card(?:\s+[^\]]*)?\]([\s\S]*?)\[\/clarify_card\]/gi,
+      (match, _inner, offset) => {
+        if (codeRangesForClarify.some(([s, e]) => offset >= s && offset < e)) return match;
+        return '';
+      }
+    ).replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   // ① 成对标签 [pills]...[/pills] 等——最高优先级
   const { segments, found: hasTaggedContent } = parseTaggedContent(content);
   if (hasTaggedContent) {
@@ -699,7 +712,7 @@ function _parseOptionBox(content: string): ParsedContent {
   //     不提前 return——让后续的 ②③④ 自动检测正常处理 ■ 选项
   const codeRangesForClean = getCodeBlockRanges(content);
   content = content.replace(
-    /\[\s*\/?\s*(pills|checkbox|question|tasklist)\s*\]\s*/gi,
+    /\[\s*\/?\s*(pills|checkbox|question|tasklist|clarify_card)\s*\]\s*/gi,
     (match, _g1, offset) => {
       if (codeRangesForClean.some(([s, e]) => offset >= s && offset < e)) return match;
       return '';

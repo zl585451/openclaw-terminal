@@ -564,3 +564,44 @@ describe('长内容 + 表格 + 交互标签', () => {
     expect(pillsSeg!.options).toHaveLength(2);
   });
 });
+
+// ============================================================
+// 10. [clarify_card] 标签剥离
+// ============================================================
+describe('[clarify_card] 标签剥离', () => {
+  it('标签外的 clarify_card 应被完全剥离', () => {
+    const input = `好的我帮你写。
+
+[clarify_card]
+{"title":"测试","fields":[{"id":"x","label":"x","type":"single","options":["a","b"]}]}
+[/clarify_card]
+
+继续正文。`;
+    const result = parseOptionBox(input);
+    expect(result.text).not.toContain('clarify_card');
+    expect(result.text).toContain('好的我帮你写');
+    expect(result.text).toContain('继续正文');
+  });
+
+  it('代码块内的 clarify_card 示例应被保留', () => {
+    const input = `下面是用法示例：
+
+\`\`\`
+[clarify_card]
+{"title":"示例","fields":[]}
+[/clarify_card]
+\`\`\`
+
+看懂了吗？`;
+    const result = parseOptionBox(input);
+    expect(result.text).toContain('[clarify_card]');
+    expect(result.text).toContain('"title":"示例"');
+  });
+
+  it('孤立的 [clarify_card] 或 [/clarify_card] 单标签应被清理', () => {
+    const input = `正文前 [clarify_card] 没有闭合也不能原样显示`;
+    const result = parseOptionBox(input);
+    expect(result.text).not.toContain('[clarify_card]');
+    expect(result.text).toContain('正文前');
+  });
+});

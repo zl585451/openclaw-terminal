@@ -252,12 +252,12 @@ const ChatInputArea = memo(function ChatInputArea({
     setUploadedFiles([]);
   }, [inputValue, imagePreview, uploadedFiles, wsConnected, onSend, setImagePreview, setUploadedFiles]);
 
-  const handlePickFiles = async () => {
+  const handlePickFiles = useCallback(async () => {
     const r = await ipcRenderer.invoke('open-file-dialog', { allowMultiple: true });
     if (r?.success && r.files) {
       setUploadedFiles((prev) => [...prev, ...r.files]);
     }
-  };
+  }, [setUploadedFiles]);
 
   const removeFile = (index: number) => {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
@@ -468,7 +468,14 @@ const ChatInputArea = memo(function ChatInputArea({
             {micError}
           </div>
         ) : null}
-        <button type="button" className="attach-btn" title="添加附件（或拖拽文件到此处）" onClick={handlePickFiles}>📎</button>
+        <button
+          type="button"
+          className="attach-btn"
+          title="添加附件（或拖拽文件到此处）"
+          onClick={handlePickFiles}
+        >
+          📎
+        </button>
         {extraControls}
         <button
           className="send-btn"

@@ -33,6 +33,8 @@ import { WelcomeHero } from '../onboarding/WelcomeHero';
 import { CardDef } from '../onboarding/CapabilityCards';
 import ImageStudio from '../image/ImageStudio';
 import { CapabilityStatus } from '../../core/capabilities/types';
+import { InlineInquiry } from '../../components/inlineInquiry/InlineInquiry';
+import { useInlineInquiry } from '../../hooks/useInlineInquiry';
 
 /** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
 // const OCT_V2_DISABLE_TYPEWRITER = false; // 已不再需要
@@ -442,12 +444,35 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const isStreamingUiPause = msgs.isStreaming;
   suspendGatewayLogRef.current = isStreamingUiPause;
   const gateway = useGateway(suspendGatewayLogRef);
+  const inquiry = useInlineInquiry({
+    onReply: (text) => {
+      if (msgs.wsConnected) {
+        msgs.sendMessage(text, null);
+      }
+    },
+  });
 
   useEffect(() => {
     if (!isStreamingUiPause) {
       gateway.flushPendingLogLines();
     }
   }, [isStreamingUiPause, gateway.flushPendingLogLines]);
+
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    if (last.isStreaming === true) return;
+    const content = typeof last.content === 'string' ? last.content : '';
+    if (!content) return;
+    inquiry.maybeTrigger(last.id, content);
+  }, [messages, inquiry.maybeTrigger]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      inquiry.reset();
+    }
+  }, [messages.length, inquiry.reset]);
 
 
   useEffect(() => {
@@ -593,9 +618,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const handleClearHistory = useCallback(() => {
     if (!window.confirm('确认清空所有聊天记录？')) return;
     clearProcessedMarkdownCache();
+    inquiry.reset();
     setMessages([]);
     (window as any).electronAPI?.chatHistorySave?.([]);
-  }, []);
+  }, [inquiry, setMessages]);
 
   /** TEMP：仅开发模式。输入框旁「欢迎页」按钮：重置首屏引导；有消息时会先问是否清空。产品化前删除。 */
   const handleDevShowWelcomeAgain = useCallback(() => {
@@ -603,6 +629,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     if (messages.length > 0) {
       if (!window.confirm('要先清空聊天才能显示欢迎页。确定清空全部记录吗？')) return;
       clearProcessedMarkdownCache();
+      inquiry.reset();
       setMessages([]);
       void (window as any).electronAPI?.chatHistorySave?.([]);
     }
@@ -612,7 +639,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       /* ignore */
     }
     setOnboardingDismissed(false);
-  }, [messages.length, setMessages]);
+  }, [inquiry, messages.length, setMessages]);
 
   const insertImageToChat = useCallback((imageUrl: string, prompt: string) => {
     setMessages((prev) => ([
@@ -834,47 +861,97 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             ))}
           </div>
         )}
-        <ChatInputArea
-          imagePreview={files.imagePreview}
-          setImagePreview={files.setImagePreview}
-          uploadedFiles={files.uploadedFiles}
-          setUploadedFiles={files.setUploadedFiles}
-          onSend={msgs.sendMessage}
-          wsConnected={msgs.wsConnected}
-          isStreaming={msgs.isStreaming}
-          inputRef={inputRef}
-          injectInputText={injectInputText}
-          onInjectConsumed={() => setInjectInputText(null)}
-          onClearHistory={handleClearHistory}
-          onRestartGateway={gateway.restartGateway}
-          isEmptyConversation={messages.length === 0}
-          extraControls={(
-            <>
-              {import.meta.env.DEV ? (
+        {inquiry.hasActive && inquiry.currentField && inquiry.currentDraft ? (
+          <InlineInquiry
+            field={inquiry.currentField}
+            draft={inquiry.currentDraft}
+            currentPage={inquiry.currentPage}
+            totalPages={inquiry.totalPages}
+            onUpdate={(next) => inquiry.updateDraft(inquiry.currentField!.id, next)}
+            onNext={inquiry.goNext}
+            onPrev={inquiry.goPrev}
+            onSkip={inquiry.skipCurrentField}
+            onDismiss={inquiry.dismiss}
+          />
+        ) : (
+          <ChatInputArea
+            imagePreview={files.imagePreview}
+            setImagePreview={files.setImagePreview}
+            uploadedFiles={files.uploadedFiles}
+            setUploadedFiles={files.setUploadedFiles}
+            onSend={msgs.sendMessage}
+            wsConnected={msgs.wsConnected}
+            isStreaming={msgs.isStreaming}
+            inputRef={inputRef}
+            injectInputText={injectInputText}
+            onInjectConsumed={() => setInjectInputText(null)}
+            onClearHistory={handleClearHistory}
+            onRestartGateway={gateway.restartGateway}
+            isEmptyConversation={messages.length === 0}
+            extraControls={(
+              <>
+                {import.meta.env.DEV ? (
+                  <button
+                    type="button"
+                    className="attach-btn"
+                    title="开发用：重新显示首屏欢迎"
+                    onClick={handleDevShowWelcomeAgain}
+                  >
+                    欢迎页
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="attach-btn"
-                  title="开发用：重新显示首屏欢迎"
-                  onClick={handleDevShowWelcomeAgain}
+                  title="打开生图工作台"
+                  onClick={() => setImageStudioOpen((v) => !v)}
+                  style={{
+                    background: imageStudioOpen ? 'var(--accent-primary)' : undefined,
+                    color: imageStudioOpen ? 'var(--bg-base)' : undefined,
+                  }}
                 >
-                  欢迎页
+                  🎨
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="attach-btn"
-                title="打开生图工作台"
-                onClick={() => setImageStudioOpen((v) => !v)}
-                style={{
-                  background: imageStudioOpen ? 'var(--accent-primary)' : undefined,
-                  color: imageStudioOpen ? 'var(--bg-base)' : undefined,
-                }}
-              >
-                🎨
-              </button>
-            </>
-          )}
-        />
+                {import.meta.env.DEV ? (
+                  <button
+                    type="button"
+                    className="attach-btn"
+                    title="开发用：触发询问器"
+                    onClick={() => {
+                      inquiry.openSpec({
+                        fields: [
+                          {
+                            id: 'style',
+                            label: '想写什么风格？',
+                            type: 'single',
+                            options: ['生活分享', '干货教程', '种草安利'],
+                            allow_custom: true,
+                            custom_label: '自己说',
+                          },
+                          {
+                            id: 'length',
+                            label: '多长合适？',
+                            type: 'single',
+                            options: ['100字', '200字', '300字'],
+                          },
+                          {
+                            id: 'topic',
+                            label: '主题是什么？',
+                            type: 'text',
+                            inspirations: ['我养猫的心得', '第一次租房', '健身30天变化'],
+                            placeholder: '一句话说主题',
+                          },
+                        ],
+                      });
+                    }}
+                  >
+                    测试询问器
+                  </button>
+                ) : null}
+              </>
+            )}
+          />
+        )}
       </div>
 
       <ChatTabRightPanel
