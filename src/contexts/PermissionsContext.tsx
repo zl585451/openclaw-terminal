@@ -26,6 +26,22 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     localStorage.setItem(PERMISSION_STORAGE_KEY, JSON.stringify(permissions));
   }, [permissions]);
 
+  useEffect(() => {
+    const api = (window as any)?.electronAPI;
+    if (!api?.getAgentPermissions) return;
+    let mounted = true;
+    api.getAgentPermissions()
+      .then((res: any) => {
+        if (!mounted || !res?.success || !res?.data) return;
+        setPermissions((prev) => ({
+          ...prev,
+          ...res.data,
+        }));
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
   return (
     <PermissionsContext.Provider value={{ permissions, setPermissions }}>
       {children}

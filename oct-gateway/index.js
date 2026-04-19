@@ -422,6 +422,7 @@ async function handleTransportMessage(msg, connection) {
     }
     const imageConfig = {
       IMAGE_PROVIDER: imgProvider || 'minimax',
+      IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: config.getEnvOrConfig('IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY') || 'false',
       IMAGE_API_KEY: config.getEnvOrConfig('IMAGE_API_KEY') || '',
       IMAGE_BASE_URL: imageBaseUrl,
       IMAGE_MODEL: config.getEnvOrConfig('IMAGE_MODEL') || (
@@ -429,6 +430,15 @@ async function handleTransportMessage(msg, connection) {
           : imgProvider === 'openai' ? 'dall-e-3'
             : 'image-01'
       ),
+      IMAGE_MINIMAX_API_KEY: config.getEnvOrConfig('IMAGE_MINIMAX_API_KEY') || '',
+      IMAGE_MINIMAX_BASE_URL: config.getEnvOrConfig('IMAGE_MINIMAX_BASE_URL') || '',
+      IMAGE_MINIMAX_MODEL: config.getEnvOrConfig('IMAGE_MINIMAX_MODEL') || '',
+      IMAGE_SILICONFLOW_API_KEY: config.getEnvOrConfig('IMAGE_SILICONFLOW_API_KEY') || '',
+      IMAGE_SILICONFLOW_BASE_URL: config.getEnvOrConfig('IMAGE_SILICONFLOW_BASE_URL') || '',
+      IMAGE_SILICONFLOW_MODEL: config.getEnvOrConfig('IMAGE_SILICONFLOW_MODEL') || '',
+      IMAGE_OPENAI_API_KEY: config.getEnvOrConfig('IMAGE_OPENAI_API_KEY') || '',
+      IMAGE_OPENAI_BASE_URL: config.getEnvOrConfig('IMAGE_OPENAI_BASE_URL') || '',
+      IMAGE_OPENAI_MODEL: config.getEnvOrConfig('IMAGE_OPENAI_MODEL') || '',
       IMAGE_SIZE: config.getEnvOrConfig('IMAGE_SIZE') || '1024x1024',
       DASHSCOPE_API_KEY: config.getEnvOrConfig('DASHSCOPE_API_KEY') || '',
       DEEPSEEK_API_KEY: config.getEnvOrConfig('DEEPSEEK_API_KEY') || '',

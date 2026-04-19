@@ -60,6 +60,7 @@ tasks_runtime.json
 启动.bat
 .cursorignore
 scripts/clear-cursor-cache.bat
+.vscode/
 
 # 项目特定
 docs/06_release/

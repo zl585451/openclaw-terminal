@@ -17,6 +17,7 @@ export interface McpTabViewProps {
   newServer: { name: string; command: string; args: string; envText: string };
   setNewServer: (v: { name: string; command: string; args: string; envText: string }) => void;
   onAddServer: () => void;
+  onUpdateServer: (name: string, cfg: { command: string; args: string[]; env: Record<string, string> }) => void;
   onRemoveServer: (name: string) => void;
   onRefresh: () => void;
 }
@@ -32,6 +33,7 @@ export function McpTabView({
   newServer,
   setNewServer,
   onAddServer,
+  onUpdateServer,
   onRemoveServer,
   onRefresh,
 }: McpTabViewProps) {
@@ -110,6 +112,47 @@ export function McpTabView({
                 <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
                   命令：{info.config?.command} {(info.config?.args || []).join(' ')}
                 </div>
+                {name === 'file_ops' && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: '8px 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border-secondary)',
+                      background: 'var(--bg-base)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>
+                          全盘访问（高风险）
+                        </div>
+                        <div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                          关闭时仅白名单目录可操作；开启后可操作任意目录。
+                        </div>
+                      </div>
+                      <label className="toggle-wrap" title="切换 file_ops 的全盘访问开关">
+                        <input
+                          type="checkbox"
+                          checked={String(info.config?.env?.OCT_FILE_OPS_UNSAFE_ALLOW_ALL || '').trim() === '1'}
+                          disabled={mcpLoading}
+                          onChange={(e) => {
+                            const nextEnv = {
+                              ...(info.config?.env || {}),
+                              OCT_FILE_OPS_UNSAFE_ALLOW_ALL: e.target.checked ? '1' : '0',
+                            };
+                            onUpdateServer(name, {
+                              command: info.config?.command || 'node',
+                              args: info.config?.args || [],
+                              env: nextEnv,
+                            });
+                          }}
+                        />
+                        <span className="toggle-slider" />
+                      </label>
+                    </div>
+                  </div>
+                )}
                 {info.tools?.length > 0 && (
                   <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>
                     可用工具：{info.tools.map((t) => t.name).join('、')}

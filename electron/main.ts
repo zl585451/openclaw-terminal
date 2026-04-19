@@ -273,6 +273,51 @@ let gatewayProcess: ReturnType<typeof spawn> | null = null;
 let OPENCLAW_WS_URL = 'ws://127.0.0.1:18789';
 let OPENCLAW_TOKEN = '';
 
+function isUsableGatewayToken(token: string): boolean {
+  const t = String(token || '').trim();
+  return t.length >= 16;
+}
+
+function generateGatewayToken(): string {
+  // 32 hex chars + compact uuid,足够随机且便于日志排查（不输出明文）
+  const hex = crypto.randomBytes(16).toString('hex');
+  const uuid = crypto.randomUUID().replace(/-/g, '');
+  return `${hex}${uuid}`;
+}
+
+function ensureGatewayTokenPersisted(existingConfig?: Record<string, any>): string {
+  ensureConfigFile();
+  let cfg: Record<string, any> = existingConfig && typeof existingConfig === 'object'
+    ? { ...existingConfig }
+    : {};
+
+  if (!existingConfig) {
+    try {
+      if (fs.existsSync(CONFIG_FILE)) {
+        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      }
+    } catch {}
+  }
+
+  const current = String(cfg.OPENCLAW_TOKEN || '').trim();
+  if (isUsableGatewayToken(current)) return current;
+
+  const nextToken = generateGatewayToken();
+  cfg.OPENCLAW_TOKEN = nextToken;
+  if (!cfg.OPENCLAW_WS_URL || !String(cfg.OPENCLAW_WS_URL).trim()) {
+    cfg.OPENCLAW_WS_URL = DEFAULT_CONFIG.OPENCLAW_WS_URL;
+  }
+
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    console.log('[Security] Auto-generated gateway token and saved to config.json');
+  } catch (e) {
+    console.warn('[Security] Failed to persist auto-generated gateway token:', e);
+  }
+
+  return nextToken;
+}
+
 function ensureConfigFile(): void {
   if (fs.existsSync(CONFIG_FILE)) return;
   try {
@@ -289,18 +334,23 @@ function loadOpenClawConfig(): void {
     try {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
       OPENCLAW_WS_URL = (data.OPENCLAW_WS_URL || '').trim() || DEFAULT_CONFIG.OPENCLAW_WS_URL;
-      OPENCLAW_TOKEN = typeof data.OPENCLAW_TOKEN === 'string' ? (data.OPENCLAW_TOKEN || '').trim() : '';
+      OPENCLAW_TOKEN = ensureGatewayTokenPersisted(data);
     } catch (e) {
       console.warn('[Config] Failed to load config.json:', e);
+      OPENCLAW_TOKEN = ensureGatewayTokenPersisted();
     }
   } else if (fs.existsSync(envPath)) {
     OPENCLAW_WS_URL = (process.env.OPENCLAW_WS_URL || '').trim() || DEFAULT_CONFIG.OPENCLAW_WS_URL;
-    OPENCLAW_TOKEN = (process.env.OPENCLAW_TOKEN || '').trim();
+    const envToken = (process.env.OPENCLAW_TOKEN || process.env.OCT_GATEWAY_TOKEN || '').trim();
+    OPENCLAW_TOKEN = isUsableGatewayToken(envToken) ? envToken : ensureGatewayTokenPersisted();
   } else {
     ensureConfigFile();
     OPENCLAW_WS_URL = DEFAULT_CONFIG.OPENCLAW_WS_URL;
-    OPENCLAW_TOKEN = DEFAULT_CONFIG.OPENCLAW_TOKEN;
+    OPENCLAW_TOKEN = ensureGatewayTokenPersisted();
   }
+  // 统一主进程与 Gateway 子进程使用同一 token，避免“配置有 token 但连接未携带”
+  process.env.OPENCLAW_TOKEN = OPENCLAW_TOKEN;
+  process.env.OCT_GATEWAY_TOKEN = OPENCLAW_TOKEN;
   syncAiLibraryPluginConfigFromDisk();
 }
 
@@ -1389,7 +1439,7 @@ function handleMessage(msg: any) {
 }
 
 function sendOctConnectRequest() {
-  const token = process.env.OCT_GATEWAY_TOKEN || '';
+  const token = (process.env.OCT_GATEWAY_TOKEN || OPENCLAW_TOKEN || '').trim();
   const connectMsg = {
     type: 'req',
     id: generateId(),
@@ -2224,6 +2274,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         OCT_GATEWAY_PORT: String(GATEWAY_PORT),
         OCT_PROMPTS_DIR: promptsDir,
         OCT_CONFIG_FILE: gatewayConfigFile,
+        OCT_GATEWAY_TOKEN: (process.env.OCT_GATEWAY_TOKEN || OPENCLAW_TOKEN || '').trim(),
         OPENCLAW_TASKS_PATH: tasksPath,
         OCT_VAULT_PATH: vaultPath,
         ...(resolvedAiLibraryUrlForGateway && !(process.env.AI_LIBRARY_URL || '').trim()
@@ -2930,6 +2981,67 @@ ipcMain.handle('invoke-gateway-tool', async (_, toolName: string, args: any) => 
   }
 });
 
+const DEFAULT_AGENT_PERMISSIONS = {
+  shellCommands: false,
+  fileWrite: false,
+  networkRequests: true,
+  softwareInstall: false,
+  systemConfig: false,
+};
+
+function normalizeAgentPermissions(input: any) {
+  const src = input && typeof input === 'object' ? input : {};
+  return {
+    shellCommands: src.shellCommands === true,
+    fileWrite: src.fileWrite === true,
+    networkRequests: src.networkRequests !== false,
+    softwareInstall: src.softwareInstall === true,
+    systemConfig: src.systemConfig === true,
+  };
+}
+
+ipcMain.handle('get-agent-permissions', async () => {
+  try {
+    ensureConfigFile();
+    let cfg: Record<string, any> = {};
+    if (fs.existsSync(CONFIG_FILE)) {
+      try {
+        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      } catch {}
+    }
+    const permissions = normalizeAgentPermissions(cfg.AGENT_PERMISSIONS || DEFAULT_AGENT_PERMISSIONS);
+    return { success: true, data: permissions };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('save-agent-permissions', async (_, permissions: {
+  shellCommands?: boolean;
+  fileWrite?: boolean;
+  networkRequests?: boolean;
+  softwareInstall?: boolean;
+  systemConfig?: boolean;
+}) => {
+  try {
+    ensureConfigFile();
+    let cfg: Record<string, any> = {};
+    if (fs.existsSync(CONFIG_FILE)) {
+      try {
+        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      } catch {}
+    }
+    cfg.AGENT_PERMISSIONS = normalizeAgentPermissions({
+      ...(cfg.AGENT_PERMISSIONS || DEFAULT_AGENT_PERMISSIONS),
+      ...(permissions || {}),
+    });
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    return { success: true, data: cfg.AGENT_PERMISSIONS };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
 // API Key 配置管理：config.json 优先（与 save-api-keys 写入一致，保证回填）
 ipcMain.handle('get-api-keys', async () => {
   try {
@@ -2962,9 +3074,30 @@ ipcMain.handle('get-api-keys', async () => {
     keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
     keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
     keys.IMAGE_PROVIDER = pick('IMAGE_PROVIDER', cfg.IMAGE_PROVIDER, 'minimax');
-    keys.IMAGE_API_KEY = pick('IMAGE_API_KEY', cfg.IMAGE_API_KEY);
-    keys.IMAGE_BASE_URL = pick('IMAGE_BASE_URL', cfg.IMAGE_BASE_URL);
-    keys.IMAGE_MODEL = pick('IMAGE_MODEL', cfg.IMAGE_MODEL);
+    keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY = pick('IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY', cfg.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY, 'false');
+    keys.IMAGE_MINIMAX_API_KEY = pick('IMAGE_MINIMAX_API_KEY', cfg.IMAGE_MINIMAX_API_KEY);
+    keys.IMAGE_MINIMAX_BASE_URL = pick('IMAGE_MINIMAX_BASE_URL', cfg.IMAGE_MINIMAX_BASE_URL);
+    keys.IMAGE_MINIMAX_MODEL = pick('IMAGE_MINIMAX_MODEL', cfg.IMAGE_MINIMAX_MODEL);
+    keys.IMAGE_SILICONFLOW_API_KEY = pick('IMAGE_SILICONFLOW_API_KEY', cfg.IMAGE_SILICONFLOW_API_KEY);
+    keys.IMAGE_SILICONFLOW_BASE_URL = pick('IMAGE_SILICONFLOW_BASE_URL', cfg.IMAGE_SILICONFLOW_BASE_URL);
+    keys.IMAGE_SILICONFLOW_MODEL = pick('IMAGE_SILICONFLOW_MODEL', cfg.IMAGE_SILICONFLOW_MODEL);
+    keys.IMAGE_OPENAI_API_KEY = pick('IMAGE_OPENAI_API_KEY', cfg.IMAGE_OPENAI_API_KEY);
+    keys.IMAGE_OPENAI_BASE_URL = pick('IMAGE_OPENAI_BASE_URL', cfg.IMAGE_OPENAI_BASE_URL);
+    keys.IMAGE_OPENAI_MODEL = pick('IMAGE_OPENAI_MODEL', cfg.IMAGE_OPENAI_MODEL);
+    const imgProvider = (keys.IMAGE_PROVIDER || 'minimax').toLowerCase();
+    const providerPrefix = imgProvider === 'siliconflow' ? 'SILICONFLOW' : imgProvider === 'openai' ? 'OPENAI' : 'MINIMAX';
+    keys.IMAGE_API_KEY = (
+      keys[`IMAGE_${providerPrefix}_API_KEY`]
+      || pick('IMAGE_API_KEY', cfg.IMAGE_API_KEY)
+    );
+    keys.IMAGE_BASE_URL = (
+      keys[`IMAGE_${providerPrefix}_BASE_URL`]
+      || pick('IMAGE_BASE_URL', cfg.IMAGE_BASE_URL)
+    );
+    keys.IMAGE_MODEL = (
+      keys[`IMAGE_${providerPrefix}_MODEL`]
+      || pick('IMAGE_MODEL', cfg.IMAGE_MODEL)
+    );
     keys.IMAGE_SIZE = pick('IMAGE_SIZE', cfg.IMAGE_SIZE, '1024x1024');
     keys.TTS_MINIMAX_VOICE_ID = pick('TTS_MINIMAX_VOICE_ID', cfg.TTS_MINIMAX_VOICE_ID, DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID);
     keys.CUSTOM_API_KEY = pick('CUSTOM_API_KEY', cfg.CUSTOM_API_KEY);
@@ -2989,9 +3122,19 @@ ipcMain.handle('get-api-keys', async () => {
         DEEPSEEK_API_KEY: keys.DEEPSEEK_API_KEY || '',
         MINIMAX_API_KEY: keys.MINIMAX_API_KEY || '',
         IMAGE_PROVIDER: keys.IMAGE_PROVIDER || 'minimax',
+        IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: (keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY || 'false').toLowerCase() === 'true',
         IMAGE_API_KEY: keys.IMAGE_API_KEY || '',
         IMAGE_BASE_URL: keys.IMAGE_BASE_URL || '',
         IMAGE_MODEL: keys.IMAGE_MODEL || '',
+        IMAGE_MINIMAX_API_KEY: keys.IMAGE_MINIMAX_API_KEY || '',
+        IMAGE_MINIMAX_BASE_URL: keys.IMAGE_MINIMAX_BASE_URL || '',
+        IMAGE_MINIMAX_MODEL: keys.IMAGE_MINIMAX_MODEL || '',
+        IMAGE_SILICONFLOW_API_KEY: keys.IMAGE_SILICONFLOW_API_KEY || '',
+        IMAGE_SILICONFLOW_BASE_URL: keys.IMAGE_SILICONFLOW_BASE_URL || '',
+        IMAGE_SILICONFLOW_MODEL: keys.IMAGE_SILICONFLOW_MODEL || '',
+        IMAGE_OPENAI_API_KEY: keys.IMAGE_OPENAI_API_KEY || '',
+        IMAGE_OPENAI_BASE_URL: keys.IMAGE_OPENAI_BASE_URL || '',
+        IMAGE_OPENAI_MODEL: keys.IMAGE_OPENAI_MODEL || '',
         IMAGE_SIZE: keys.IMAGE_SIZE || '1024x1024',
         TTS_MINIMAX_VOICE_ID: keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
         CUSTOM_API_KEY: keys.CUSTOM_API_KEY || '',
@@ -3026,9 +3169,19 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     DEEPSEEK_API_KEY?: string;
     MINIMAX_API_KEY?: string;
     IMAGE_PROVIDER?: string;
+    IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY?: boolean | string;
     IMAGE_API_KEY?: string;
     IMAGE_BASE_URL?: string;
     IMAGE_MODEL?: string;
+    IMAGE_MINIMAX_API_KEY?: string;
+    IMAGE_MINIMAX_BASE_URL?: string;
+    IMAGE_MINIMAX_MODEL?: string;
+    IMAGE_SILICONFLOW_API_KEY?: string;
+    IMAGE_SILICONFLOW_BASE_URL?: string;
+    IMAGE_SILICONFLOW_MODEL?: string;
+    IMAGE_OPENAI_API_KEY?: string;
+    IMAGE_OPENAI_BASE_URL?: string;
+    IMAGE_OPENAI_MODEL?: string;
     IMAGE_SIZE?: string;
     TTS_MINIMAX_VOICE_ID?: string;
     CUSTOM_API_KEY?: string;
@@ -3067,9 +3220,22 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
     if (keys.MINIMAX_API_KEY !== undefined) cfg.MINIMAX_API_KEY = keys.MINIMAX_API_KEY || '';
     if (keys.IMAGE_PROVIDER !== undefined) cfg.IMAGE_PROVIDER = keys.IMAGE_PROVIDER || 'minimax';
+    if (keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY !== undefined) {
+      cfg.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY =
+        String(keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY).toLowerCase() === 'true' ? 'true' : 'false';
+    }
     if (keys.IMAGE_API_KEY !== undefined) cfg.IMAGE_API_KEY = keys.IMAGE_API_KEY || '';
     if (keys.IMAGE_BASE_URL !== undefined) cfg.IMAGE_BASE_URL = keys.IMAGE_BASE_URL || '';
     if (keys.IMAGE_MODEL !== undefined) cfg.IMAGE_MODEL = keys.IMAGE_MODEL || '';
+    if (keys.IMAGE_MINIMAX_API_KEY !== undefined) cfg.IMAGE_MINIMAX_API_KEY = keys.IMAGE_MINIMAX_API_KEY || '';
+    if (keys.IMAGE_MINIMAX_BASE_URL !== undefined) cfg.IMAGE_MINIMAX_BASE_URL = keys.IMAGE_MINIMAX_BASE_URL || '';
+    if (keys.IMAGE_MINIMAX_MODEL !== undefined) cfg.IMAGE_MINIMAX_MODEL = keys.IMAGE_MINIMAX_MODEL || '';
+    if (keys.IMAGE_SILICONFLOW_API_KEY !== undefined) cfg.IMAGE_SILICONFLOW_API_KEY = keys.IMAGE_SILICONFLOW_API_KEY || '';
+    if (keys.IMAGE_SILICONFLOW_BASE_URL !== undefined) cfg.IMAGE_SILICONFLOW_BASE_URL = keys.IMAGE_SILICONFLOW_BASE_URL || '';
+    if (keys.IMAGE_SILICONFLOW_MODEL !== undefined) cfg.IMAGE_SILICONFLOW_MODEL = keys.IMAGE_SILICONFLOW_MODEL || '';
+    if (keys.IMAGE_OPENAI_API_KEY !== undefined) cfg.IMAGE_OPENAI_API_KEY = keys.IMAGE_OPENAI_API_KEY || '';
+    if (keys.IMAGE_OPENAI_BASE_URL !== undefined) cfg.IMAGE_OPENAI_BASE_URL = keys.IMAGE_OPENAI_BASE_URL || '';
+    if (keys.IMAGE_OPENAI_MODEL !== undefined) cfg.IMAGE_OPENAI_MODEL = keys.IMAGE_OPENAI_MODEL || '';
     if (keys.IMAGE_SIZE !== undefined) cfg.IMAGE_SIZE = keys.IMAGE_SIZE || '1024x1024';
     if (keys.TTS_MINIMAX_VOICE_ID !== undefined) cfg.TTS_MINIMAX_VOICE_ID = keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID;
     if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
@@ -3121,11 +3287,15 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
     // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
     const aiConfigChanged = keys.OCT_PROVIDER !== undefined || keys.OCT_MODEL !== undefined
+      || keys.OPENCLAW_TOKEN !== undefined
       || keys.CUSTOM_MODEL !== undefined
       || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
       || keys.MINIMAX_BASE_URL !== undefined
-      || keys.IMAGE_PROVIDER !== undefined || keys.IMAGE_API_KEY !== undefined
-      || keys.IMAGE_BASE_URL !== undefined || keys.IMAGE_MODEL !== undefined
+      || keys.IMAGE_PROVIDER !== undefined || keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY !== undefined
+      || keys.IMAGE_API_KEY !== undefined || keys.IMAGE_BASE_URL !== undefined || keys.IMAGE_MODEL !== undefined
+      || keys.IMAGE_MINIMAX_API_KEY !== undefined || keys.IMAGE_MINIMAX_BASE_URL !== undefined || keys.IMAGE_MINIMAX_MODEL !== undefined
+      || keys.IMAGE_SILICONFLOW_API_KEY !== undefined || keys.IMAGE_SILICONFLOW_BASE_URL !== undefined || keys.IMAGE_SILICONFLOW_MODEL !== undefined
+      || keys.IMAGE_OPENAI_API_KEY !== undefined || keys.IMAGE_OPENAI_BASE_URL !== undefined || keys.IMAGE_OPENAI_MODEL !== undefined
       || keys.IMAGE_SIZE !== undefined
       || keys.CUSTOM_BASE_URL !== undefined
       || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined

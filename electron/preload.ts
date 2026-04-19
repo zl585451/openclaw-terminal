@@ -54,9 +54,19 @@ const electronAPI = {
         DEEPSEEK_API_KEY?: string;
         MINIMAX_API_KEY?: string;
         IMAGE_PROVIDER?: string;
+        IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY?: boolean | string;
         IMAGE_API_KEY?: string;
         IMAGE_BASE_URL?: string;
         IMAGE_MODEL?: string;
+        IMAGE_MINIMAX_API_KEY?: string;
+        IMAGE_MINIMAX_BASE_URL?: string;
+        IMAGE_MINIMAX_MODEL?: string;
+        IMAGE_SILICONFLOW_API_KEY?: string;
+        IMAGE_SILICONFLOW_BASE_URL?: string;
+        IMAGE_SILICONFLOW_MODEL?: string;
+        IMAGE_OPENAI_API_KEY?: string;
+        IMAGE_OPENAI_BASE_URL?: string;
+        IMAGE_OPENAI_MODEL?: string;
         IMAGE_SIZE?: string;
         TTS_MINIMAX_VOICE_ID?: string;
         CUSTOM_API_KEY?: string;
@@ -80,6 +90,14 @@ const electronAPI = {
         VISION_MODEL?: string;
         SILICONFLOW_API_KEY?: string;
       }) => ipcRenderer.invoke('save-api-keys', keys),
+  getAgentPermissions: () => ipcRenderer.invoke('get-agent-permissions'),
+  saveAgentPermissions: (permissions: {
+    shellCommands?: boolean;
+    fileWrite?: boolean;
+    networkRequests?: boolean;
+    softwareInstall?: boolean;
+    systemConfig?: boolean;
+  }) => ipcRenderer.invoke('save-agent-permissions', permissions),
   imageGenerate: (payload: {
     requestId: string;
     prompt: string;
@@ -170,6 +188,15 @@ const electronAPI = {
     ipcRenderer.invoke('nocturne-set-intention', { intention }),
   invokeGatewayTool: (toolName: string, args: any) =>
     ipcRenderer.invoke('invoke-gateway-tool', toolName, args),
+  // Agent 权限（系统级硬开关）
+  getAgentPermissions: () => ipcRenderer.invoke('get-agent-permissions'),
+  saveAgentPermissions: (permissions: {
+    shellCommands?: boolean;
+    fileWrite?: boolean;
+    networkRequests?: boolean;
+    softwareInstall?: boolean;
+    systemConfig?: boolean;
+  }) => ipcRenderer.invoke('save-agent-permissions', permissions),
   // MCP Server 管理
   mcpGetStatus: () => ipcRenderer.invoke('mcp-get-status'),
   mcpAddServer: (name: string, cfg: any) => ipcRenderer.invoke('mcp-add-server', name, cfg),

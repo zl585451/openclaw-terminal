@@ -43,6 +43,26 @@
     "timeout_ms": 3000,
     "default_top_k": 3
   },
+  "AGENT_PERMISSIONS": {
+    "shellCommands": false,
+    "fileWrite": false,
+    "networkRequests": true,
+    "softwareInstall": false,
+    "systemConfig": false
+  },
+  "AGENT_PERMISSIONS_STRICT_UNKNOWN_MCP_DENY": true,
+  "mcpServers": {
+    "file_ops": {
+      "command": "node",
+      "args": [
+        "mcp-servers/oct-file-ops/src/index.js"
+      ],
+      "env": {
+        "OCT_FILE_OPS_UNSAFE_ALLOW_ALL": "0",
+        "OCT_FILE_OPS_ALLOWED_ROOTS": ""
+      }
+    }
+  },
   "minimax": {
     "api_key": ""
   }

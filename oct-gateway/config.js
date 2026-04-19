@@ -924,6 +924,25 @@ const memoryConfig = _fileConfig.memory && typeof _fileConfig.memory === 'object
   ? { ...defaultMemoryConfig, ..._fileConfig.memory }
   : defaultMemoryConfig;
 
+const defaultAgentPermissions = {
+  shellCommands: false,
+  fileWrite: false,
+  networkRequests: true,
+  softwareInstall: false,
+  systemConfig: false,
+};
+
+function normalizeAgentPermissions(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  return {
+    shellCommands: source.shellCommands === true,
+    fileWrite: source.fileWrite === true,
+    networkRequests: source.networkRequests !== false,
+    softwareInstall: source.softwareInstall === true,
+    systemConfig: source.systemConfig === true,
+  };
+}
+
 const config = {
   PORT: parseInt(process.env.OCT_GATEWAY_PORT || '18789', 10),
   ENABLE_BACKGROUND_TASK_DISPATCH: readBoolConfig('ENABLE_BACKGROUND_TASK_DISPATCH', false),
@@ -1001,6 +1020,7 @@ const config = {
 
   // MCP Server 配置（由前端设置面板写入 config.json）
   MCP_SERVERS: _fileConfig.mcpServers || {},
+  AGENT_PERMISSIONS: normalizeAgentPermissions(_fileConfig.AGENT_PERMISSIONS || defaultAgentPermissions),
 
   // 视觉 API（独立于主 provider，用于非视觉模型的图片理解）
   VISION_API_KEY: getEnvOrConfig('VISION_API_KEY') || '',
@@ -1052,6 +1072,16 @@ config.normalizeModelId = normalizeModelId;
 config.detectModelFamily = detectModelFamily;
 config.getProbeCacheEntry = getProbeCacheEntry;
 config.setProbeCacheEntry = setProbeCacheEntry;
+config.normalizeAgentPermissions = normalizeAgentPermissions;
+config.DEFAULT_AGENT_PERMISSIONS = defaultAgentPermissions;
+config.setAgentPermissions = (nextPermissions) => {
+  const normalized = normalizeAgentPermissions(nextPermissions);
+  config.AGENT_PERMISSIONS = normalized;
+  if (config.__fileConfig && typeof config.__fileConfig === 'object') {
+    config.__fileConfig.AGENT_PERMISSIONS = normalized;
+  }
+  return normalized;
+};
 
 // 向外暴露原始配置对象和路径（供 mcp/manager.js 使用）
 config.__fileConfig = _fileConfig;
