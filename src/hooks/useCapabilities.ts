@@ -23,10 +23,26 @@ function hasValue(input: unknown): boolean {
   return typeof input === 'string' && input.trim().length > 0
 }
 
+function asBool(input: unknown): boolean {
+  if (typeof input === 'boolean') return input
+  if (typeof input !== 'string') return false
+  const normalized = input.trim().toLowerCase()
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on'
+}
+
 function computeImageGenReadyFromApiKeys(data: Record<string, unknown>): boolean {
-  // 生图链路采用严格判定：只有显式配置 IMAGE_API_KEY 才视为可用。
-  // 避免聊天 key 兜底导致欢迎卡片放行，但进入面板后才报错的“假可用”体验。
-  return hasValue(data.IMAGE_API_KEY)
+  const provider = String(data.IMAGE_PROVIDER || 'minimax').trim().toLowerCase()
+  const providerScopedKey =
+    provider === 'openai'
+      ? data.IMAGE_OPENAI_API_KEY
+      : provider === 'siliconflow'
+        ? data.IMAGE_SILICONFLOW_API_KEY
+        : data.IMAGE_MINIMAX_API_KEY
+  if (hasValue(providerScopedKey)) return true
+  if (hasValue(data.IMAGE_API_KEY)) return true
+  if (!asBool(data.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY)) return false
+  if (provider === 'minimax') return hasValue(data.MINIMAX_API_KEY) || hasValue(data.DASHSCOPE_API_KEY)
+  return hasValue(data.CUSTOM_API_KEY) || hasValue(data.DASHSCOPE_API_KEY) || hasValue(data.DEEPSEEK_API_KEY) || hasValue(data.MINIMAX_API_KEY)
 }
 
 function computeMusicGenReadyFromApiKeys(data: Record<string, unknown>): boolean {

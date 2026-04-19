@@ -1,18 +1,17 @@
 # Audio Entry
 
 > Status: CURRENT  
-> Last Updated: 2026-04-08  
-> Scope: 打字音效、TTS、ASR 三条声音相关链路
+> Last Updated: 2026-04-19  
+> Scope: 打字音效、TTS 两条声音相关链路
 
 ---
 
-## 先分清三条链
+## 先分清两条链
 
 1. 打字音效：聊天流式显示时的短提示音
 2. TTS：AI 回复结束后整段朗读
-3. ASR：录音转文字
 
-不要把这三条链混在一起查。
+不要把这两条链混在一起查。
 
 ---
 
@@ -71,19 +70,8 @@ flowchart TD
 
 ---
 
-## ASR 链路
-
-### 优先阅读文件
-
-1. `src/ui/chat/ChatInput.tsx`
-2. `electron/main.ts`
-3. `electron/preload.ts`
-
----
-
 ## 日志关键词
 
 - 打字音效：前端无专门日志，先看设置值和实际流式显示链
 - TTS：`TTS`、`MiniMax TTS`、`audio play`
-- ASR：`asr-transcribe`
 

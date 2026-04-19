@@ -56,13 +56,12 @@
 
 ---
 
-## 7.6 语音输入与语音输出
+## 7.6 语音输出（TTS）
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | 为桌面版提供基础语音助手能力：语音输入转文字、回复朗读、云端/本地双链路回退 |
-| 文件 | `electron/main.ts`、`electron/preload.ts`、`src/ui/chat/ChatInput.tsx`、`src/ui/chat/ChatTab.v2.tsx`、`src/components/SettingsPanel.tsx`、`src/ui/settings/tabs/InterfaceTabView.tsx` |
-| 输入侧 | Renderer 录音 → `asr-transcribe` IPC → DashScope ASR → 文本回填输入框 |
+| 做什么 | 为桌面版提供回复朗读能力，支持云端/本地双链路回退 |
+| 文件 | `electron/main.ts`、`electron/preload.ts`、`src/ui/chat/ChatTab.v2.tsx`、`src/components/SettingsPanel.tsx`、`src/ui/settings/tabs/InterfaceTabView.tsx` |
 | 输出侧 | `tts-speak` IPC → 当前 Provider 对应云端 TTS；无能力或失败时可回退到浏览器本地朗读 |
 | MiniMax | 使用 `speech-2.8-hd` WebSocket TTS，默认中国区 `api.minimaxi.com` |
 | 日志 | `LogPanel` 新增 `TTS` 分类，仅保留用量、成功、失败、警报，不展示逐分片 WS 噪声 |
@@ -84,6 +83,7 @@
 - 语音能力属于产品级 capability routing，不是某家模型的定制分支
 - 没有能力时应静默降级，不应增加后台探测和额外系统负担
 - 音色设置只在存在对应云端能力时展示
+- 语音输入（ASR）链路已移除，不再提供录音转文字入口
 
 ---
 

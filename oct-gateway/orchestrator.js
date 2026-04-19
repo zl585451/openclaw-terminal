@@ -2,6 +2,37 @@ const config = require('./config');
 const taskQueue = require('./task_queue');
 const worker = require('./worker');
 
+// ── Agent 注册表（懒加载，避免循环 require） ──────────────────────────
+let _agentRegistry = null;
+
+function getAgentRegistry() {
+  if (_agentRegistry) return _agentRegistry;
+  try {
+    _agentRegistry = {
+      Coder:      require('./agents/coder'),
+      Writer:     require('./agents/writer'),
+      Researcher: require('./agents/researcher'),
+    };
+  } catch (e) {
+    console.warn('[Orchestrator] Agent 注册表加载失败（agents/ 目录可能不完整）:', e.message);
+    _agentRegistry = {};
+  }
+  return _agentRegistry;
+}
+
+let _agentRunner = null;
+
+function getAgentRunner() {
+  if (_agentRunner) return _agentRunner;
+  try {
+    _agentRunner = require('./agents/agent_runner');
+  } catch (e) {
+    console.warn('[Orchestrator] agent_runner 加载失败:', e.message);
+    _agentRunner = null;
+  }
+  return _agentRunner;
+}
+
 // 后台任务触发词 → 工具映射（邮件规则放前面，优先于泛化的「查一下」）
 const TASK_TOOL_MAP = {
   '查验证码': {
@@ -222,15 +253,56 @@ function analyzeCanvasIntent(userMessage) {
 }
 
 /**
+ * 将专职 Agent 的执行结果作为 agentResult 附加到 dispatch 返回值。
+ * 由调用方（index.js / ai.js）决定如何把结果呈现给用户。
+ *
+ * @param {string} agentName  - 'Coder' | 'Writer' | 'Researcher'
+ * @param {object} task       - { taskId, instruction, userContext, sessionKey }
+ * @param {Function} onEvent  - WebSocket 事件推送回调
+ * @returns {Promise<{ result: string, turnsUsed: number, tokensUsed: number } | null>}
+ */
+async function runDelegatedAgent(agentName, task, onEvent) {
+  const registry = getAgentRegistry();
+  const runner = getAgentRunner();
+
+  if (!runner) {
+    console.warn('[Orchestrator] agent_runner 不可用，跳过 Agent 执行');
+    return null;
+  }
+
+  const agent = registry[agentName];
+  if (!agent) {
+    console.warn(`[Orchestrator] Agent “${agentName}” 未在注册表中，跳过`);
+    return null;
+  }
+
+  console.log(`[Orchestrator] → 路由到 ${agentName} Agent 执行`);
+  try {
+    const agentResult = await runner.runAgent({
+      agent,
+      task,
+      onAgentEvent: onEvent,
+    });
+    console.log(`[Orchestrator] ${agentName} 完成，用了 ${agentResult.turnsUsed} 轮`);
+    return agentResult;
+  } catch (err) {
+    console.error(`[Orchestrator] ${agentName} 执行失败:`, err.message);
+    return null;
+  }
+}
+
+/**
  * 主入口：处理一条用户消息
- * 现阶段：只分析和记录，不实际切换 Agent
- * 未来：shouldDelegate=true 时路由到对应 Agent
+ *
+ * 返回值中 agentResult 字段：
+ *   - null：未派发给专职 Agent（AMY 直接处理）
+ *   - { result, turnsUsed, tokensUsed }：Agent 执行完成，调用方应将 result 作为回复内容注入
  */
 async function dispatch(userMessage, sessionKey, onToolEvent) {
   const analysis = analyzeIntent(userMessage);
   const canvasIntent = analyzeCanvasIntent(userMessage);
 
-  // 默认禁用“后台派子任务”链路，避免主会话出现“已派出但无下文”。
+  // 默认禁用”后台派子任务”链路，避免主会话出现”已派出但无下文”。
   // 如需恢复，请显式开启 ENABLE_BACKGROUND_TASK_DISPATCH=true。
   const taskId = tryDispatchAsTask(userMessage, sessionKey, onToolEvent);
 
@@ -240,19 +312,42 @@ async function dispatch(userMessage, sessionKey, onToolEvent) {
     analysis.hasBackgroundTask = true;
   }
 
-  if (analysis.shouldDelegate) {
-    console.log(`[Orchestrator] 专业任务 → 建议派给 ${analysis.agent}`);
+  // ── Agent 路由：shouldDelegate=true 时真正执行 ─────────────────────
+  let agentResult = null;
+
+  if (analysis.shouldDelegate && config.ENABLE_AGENT_DISPATCH !== false) {
+    const delegateTaskId = `agent_${Date.now()}`;
+    agentResult = await runDelegatedAgent(
+      analysis.agent,
+      {
+        taskId:      delegateTaskId,
+        instruction: userMessage,
+        userContext: userMessage,
+        sessionKey,
+      },
+      onToolEvent || (() => {})
+    );
+
+    if (agentResult) {
+      console.log(`[Orchestrator] ${analysis.agent} 执行完毕，结果长度: ${agentResult.result?.length || 0}`);
+    } else {
+      console.log(`[Orchestrator] ${analysis.agent} 执行失败，回退到 AMY 直接处理`);
+      analysis.shouldDelegate = false; // 降级
+    }
+  } else if (analysis.shouldDelegate) {
+    console.log(`[Orchestrator] 专业任务 → 建议派给 ${analysis.agent}（ENABLE_AGENT_DISPATCH=false，仅记录）`);
   } else {
     console.log(`[Orchestrator] 常规消息 → AMY 直接处理 (intent: ${analysis.intent})`);
   }
 
   if (canvasIntent.shouldUseCanvas) {
-    console.log(`[Orchestrator] Canvas 建议触发 (${canvasIntent.artifactType}) via "${canvasIntent.matchedKeyword}"`);
+    console.log(`[Orchestrator] Canvas 建议触发 (${canvasIntent.artifactType}) via “${canvasIntent.matchedKeyword}”`);
   }
 
   return {
     ...analysis,
     canvasIntent,
+    agentResult,  // null 或 { result, turnsUsed, tokensUsed }
     userMessage,
     sessionKey,
     timestamp: Date.now()

@@ -87,7 +87,6 @@ interface ElectronAPI {
     lyrics?: string;
     error?: string;
   }>;
-  asrTranscribe?: (payload: { audioDataUrl: string; language?: string }) => Promise<{ success: boolean; text?: string; error?: string }>;
   getLocalVisionStatus?: () => Promise<{
     success: boolean;
     status?: 'ready' | 'not_downloaded' | 'downloading' | 'error';
@@ -114,9 +113,19 @@ interface ElectronAPI {
     DEEPSEEK_API_KEY?: string;
     MINIMAX_API_KEY?: string;
     IMAGE_PROVIDER?: string;
+    IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY?: boolean | string;
     IMAGE_API_KEY?: string;
     IMAGE_BASE_URL?: string;
     IMAGE_MODEL?: string;
+    IMAGE_MINIMAX_API_KEY?: string;
+    IMAGE_MINIMAX_BASE_URL?: string;
+    IMAGE_MINIMAX_MODEL?: string;
+    IMAGE_SILICONFLOW_API_KEY?: string;
+    IMAGE_SILICONFLOW_BASE_URL?: string;
+    IMAGE_SILICONFLOW_MODEL?: string;
+    IMAGE_OPENAI_API_KEY?: string;
+    IMAGE_OPENAI_BASE_URL?: string;
+    IMAGE_OPENAI_MODEL?: string;
     IMAGE_SIZE?: string;
     TTS_MINIMAX_VOICE_ID?: string;
     CUSTOM_API_KEY?: string;
@@ -140,6 +149,24 @@ interface ElectronAPI {
     VISION_MODEL?: string;
     SILICONFLOW_API_KEY?: string;
   }) => Promise<{ success: boolean; error?: string }>;
+  getAgentPermissions?: () => Promise<{
+    success: boolean;
+    data?: {
+      shellCommands: boolean;
+      fileWrite: boolean;
+      networkRequests: boolean;
+      softwareInstall: boolean;
+      systemConfig: boolean;
+    };
+    error?: string;
+  }>;
+  saveAgentPermissions?: (permissions: {
+    shellCommands?: boolean;
+    fileWrite?: boolean;
+    networkRequests?: boolean;
+    softwareInstall?: boolean;
+    systemConfig?: boolean;
+  }) => Promise<{ success: boolean; data?: any; error?: string }>;
   [key: string]: unknown;
 }
 

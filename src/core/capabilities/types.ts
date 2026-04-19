@@ -8,7 +8,6 @@ export type CapabilityId =
   | 'web_search'
   | 'tool_exec'
   | 'tts'
-  | 'asr'
   | 'memory'
 
 export type CapabilityStatus =

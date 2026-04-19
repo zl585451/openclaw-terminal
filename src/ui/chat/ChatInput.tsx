@@ -64,178 +64,6 @@ const ChatInputArea = memo(function ChatInputArea({
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
   const quickMenuAnchorRef = useRef<HTMLButtonElement>(null);
   const [inputFlash, setInputFlash] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [micAvailable, setMicAvailable] = useState(false);
-  const [micError, setMicError] = useState('');
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
-  const audioBuffersRef = useRef<Float32Array[]>([]);
-  const inputSampleRateRef = useRef<number>(44100);
-
-  useEffect(() => {
-    setMicAvailable(Boolean(navigator.mediaDevices?.getUserMedia));
-    return () => {
-      try { processorNodeRef.current?.disconnect(); } catch {}
-      try { sourceNodeRef.current?.disconnect(); } catch {}
-      try { audioContextRef.current?.close(); } catch {}
-      try { mediaStreamRef.current?.getTracks().forEach((track) => track.stop()); } catch {}
-      processorNodeRef.current = null;
-      sourceNodeRef.current = null;
-      audioContextRef.current = null;
-      mediaStreamRef.current = null;
-    };
-  }, []);
-
-  const downsampleBuffer = (buffer: Float32Array, inputSampleRate: number, outputSampleRate: number) => {
-    if (outputSampleRate === inputSampleRate) return buffer;
-    const ratio = inputSampleRate / outputSampleRate;
-    const newLength = Math.round(buffer.length / ratio);
-    const result = new Float32Array(newLength);
-    let offsetResult = 0;
-    let offsetBuffer = 0;
-    while (offsetResult < result.length) {
-      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
-      let accum = 0;
-      let count = 0;
-      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-        accum += buffer[i];
-        count++;
-      }
-      result[offsetResult] = count > 0 ? accum / count : 0;
-      offsetResult++;
-      offsetBuffer = nextOffsetBuffer;
-    }
-    return result;
-  };
-
-  const encodeWav = (samples: Float32Array, sampleRate: number) => {
-    const buffer = new ArrayBuffer(44 + samples.length * 2);
-    const view = new DataView(buffer);
-    const writeString = (offset: number, value: string) => {
-      for (let i = 0; i < value.length; i++) {
-        view.setUint8(offset + i, value.charCodeAt(i));
-      }
-    };
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + samples.length * 2, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeString(36, 'data');
-    view.setUint32(40, samples.length * 2, true);
-    let offset = 44;
-    for (let i = 0; i < samples.length; i++, offset += 2) {
-      const s = Math.max(-1, Math.min(1, samples[i]));
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    }
-    return new Blob([view], { type: 'audio/wav' });
-  };
-
-  const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('音频编码失败'));
-    reader.readAsDataURL(blob);
-  });
-
-  const stopCloudRecording = useCallback(async () => {
-    try { processorNodeRef.current?.disconnect(); } catch {}
-    try { sourceNodeRef.current?.disconnect(); } catch {}
-    try { mediaStreamRef.current?.getTracks().forEach((track) => track.stop()); } catch {}
-    try { await audioContextRef.current?.close(); } catch {}
-
-    processorNodeRef.current = null;
-    sourceNodeRef.current = null;
-    audioContextRef.current = null;
-    mediaStreamRef.current = null;
-
-    const chunks = audioBuffersRef.current;
-    audioBuffersRef.current = [];
-    if (chunks.length === 0) {
-      setMicError('没有录到声音，请靠近麦克风再试一次');
-      return;
-    }
-
-    const mergedLength = chunks.reduce((sum, arr) => sum + arr.length, 0);
-    const merged = new Float32Array(mergedLength);
-    let offset = 0;
-    for (const arr of chunks) {
-      merged.set(arr, offset);
-      offset += arr.length;
-    }
-
-    const targetRate = 16000;
-    const downsampled = downsampleBuffer(merged, inputSampleRateRef.current, targetRate);
-    const wavBlob = encodeWav(downsampled, targetRate);
-    const audioDataUrl = await blobToDataUrl(wavBlob);
-    const api = (window as any).electronAPI;
-    const result = api?.asrTranscribe
-      ? await api.asrTranscribe({ audioDataUrl, language: 'zh' })
-      : await ipcRenderer.invoke('asr-transcribe', { audioDataUrl, language: 'zh' });
-
-    if (!result?.success || !result?.text) {
-      setMicError(result?.error || '云端语音识别失败');
-      return;
-    }
-
-    const transcript = String(result.text).trim();
-    if (!transcript) {
-      setMicError('没有识别到有效内容');
-      return;
-    }
-    setInputValue((v) => (v ? `${v} ${transcript}` : transcript));
-  }, []);
-
-  const startCloudRecording = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setMicError('当前环境不支持麦克风录音');
-      return;
-    }
-    setMicError('');
-    audioBuffersRef.current = [];
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioContext = new AudioCtx();
-      const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      inputSampleRateRef.current = audioContext.sampleRate;
-      processor.onaudioprocess = (event) => {
-        const input = event.inputBuffer.getChannelData(0);
-        audioBuffersRef.current.push(new Float32Array(input));
-      };
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-      mediaStreamRef.current = stream;
-      audioContextRef.current = audioContext;
-      sourceNodeRef.current = source;
-      processorNodeRef.current = processor;
-      setIsRecording(true);
-    } catch (err: any) {
-      const message = /NotAllowed|Permission/i.test(String(err?.name || err?.message || ''))
-        ? '无法启动语音输入：没有麦克风权限，请在系统里允许应用访问麦克风。'
-        : (err?.message || '无法启动语音输入');
-      setMicError(message);
-      setIsRecording(false);
-    }
-  }, []);
-
-  const toggleRecording = useCallback(async () => {
-    if (isRecording) {
-      setIsRecording(false);
-      await stopCloudRecording();
-      return;
-    }
-    await startCloudRecording();
-  }, [isRecording, startCloudRecording, stopCloudRecording]);
 
   const handleSend = useCallback(() => {
     const text = inputValue.trim();
@@ -252,12 +80,12 @@ const ChatInputArea = memo(function ChatInputArea({
     setUploadedFiles([]);
   }, [inputValue, imagePreview, uploadedFiles, wsConnected, onSend, setImagePreview, setUploadedFiles]);
 
-  const handlePickFiles = useCallback(async () => {
+  const handlePickFiles = async () => {
     const r = await ipcRenderer.invoke('open-file-dialog', { allowMultiple: true });
     if (r?.success && r.files) {
       setUploadedFiles((prev) => [...prev, ...r.files]);
     }
-  }, [setUploadedFiles]);
+  };
 
   const removeFile = (index: number) => {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
@@ -374,15 +202,6 @@ const ChatInputArea = memo(function ChatInputArea({
       )}
       <div className="chat-input-area">
         <button
-          type="button"
-          className={`mic-btn-icon ${!micAvailable ? 'mic-btn-disabled' : ''} ${isRecording ? 'recording' : ''}`}
-          disabled={!micAvailable || isStreaming}
-          onClick={toggleRecording}
-          title={!micAvailable ? '当前环境不支持语音输入' : (isRecording ? '停止语音输入' : '开始语音输入')}
-        >
-          {isRecording ? '⏹' : '🎤'}
-        </button>
-        <button
           ref={quickMenuAnchorRef}
           type="button"
           className="quick-menu-btn"
@@ -455,27 +274,7 @@ const ChatInputArea = memo(function ChatInputArea({
           placeholder={hasPendingPills ? '或者自己输入...' : conversationPlaceholder}
           rows={1}
         />
-        {micError ? (
-          <div style={{
-            position: 'absolute',
-            left: 56,
-            bottom: 54,
-            fontSize: '12px',
-            color: 'var(--status-error)',
-            pointerEvents: 'none',
-            maxWidth: 520,
-          }}>
-            {micError}
-          </div>
-        ) : null}
-        <button
-          type="button"
-          className="attach-btn"
-          title="添加附件（或拖拽文件到此处）"
-          onClick={handlePickFiles}
-        >
-          📎
-        </button>
+        <button type="button" className="attach-btn" title="添加附件（或拖拽文件到此处）" onClick={handlePickFiles}>📎</button>
         {extraControls}
         <button
           className="send-btn"

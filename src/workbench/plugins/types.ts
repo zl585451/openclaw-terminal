@@ -6,4 +6,5 @@ export interface WorkbenchRendererPlugin {
   canRender: (document: WorkbenchDocument) => boolean;
   render: (document: WorkbenchDocument) => ReactNode;
   getExportFilename?: (document: WorkbenchDocument) => string;
+  getExportContent?: (document: WorkbenchDocument) => string;
 }

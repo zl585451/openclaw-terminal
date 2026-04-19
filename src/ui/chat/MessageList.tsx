@@ -625,6 +625,10 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
             const cleanedText = filterExpectedEffect(textToShow, isLastAssistant);
             const hasInlinePlaceholder = cleanedText.includes('<!--OPTIONS_HERE-->');
             const showInlineOptions = hasInlinePlaceholder && optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions;
+            const textWithoutInlinePlaceholder = cleanedText
+              .replace(/<!--OPTIONS_HERE-->/g, '')
+              .replace(/\n{3,}/g, '\n\n')
+              .trim();
 
             if (showInlineOptions) {
               const parts = cleanedText.split('<!--OPTIONS_HERE-->');
@@ -661,7 +665,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
                 <FinalizedMarkdownContent
                   messageId={msg.id}
                   segmentKey="main"
-                  content={cleanedText}
+                  content={textWithoutInlinePlaceholder}
                   markdownComponents={markdownComponents}
                 />
                 {optionsToShow.length > 0 && !isTaskList && !isReflectiveQuestions && (

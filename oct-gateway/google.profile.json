@@ -1,0 +1,6 @@
+{
+  "GOOGLE_AI_API_KEY": "",
+  "GOOGLE_AI_BASE_URL": "https://aiplatform.googleapis.com/v1beta1/projects/gemini-key-493216/locations/us-central1/endpoints/openapi",
+  "GOOGLE_HTTPS_PROXY": "http://127.0.0.1:10808",
+  "GOOGLE_TOOLS_MODE": "on"
+}

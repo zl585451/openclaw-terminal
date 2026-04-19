@@ -77,9 +77,31 @@ const result = await searcher.search({ query: '关键词' });
 || 文件 | `src/utils/permissionCheck.ts` |
 || 状态 | ✅ 正常 |
 
+### Agent 硬权限（2026-04-19）
+
+- 新增网关侧强制权限拦截：`oct-gateway/tool_loader.js` 在每次 `executeTool` 前执行 `enforceAgentPermission`。
+- 权限来源：`config.json` 的 `AGENT_PERMISSIONS`（由设置面板“高级 → Agent 权限”写入）。
+- 作用范围：内置工具与 MCP 动态工具统一生效（不再仅是前端文本层提示）。
+- `exec_command` 额外做命令级判定：安装类、系统配置类、网络访问类、文件写入类分别受对应开关控制。
+- 新增“未知 MCP 工具严格拒绝”策略（默认开启）：当任一权限开关为关闭状态时，无法识别风险能力的 MCP 工具默认拒绝，防止改名/伪装工具绕过。
+
 ### 工具超时策略（2026-04-17）
 
 - `tool_loader` 支持每个工具声明 `timeoutMs` 元数据。
 - `toolLoop` 执行时优先读取工具级超时；未声明时默认 30 秒。
 - 已示例配置：`web_search` / `web_fetch`（45s）、`exec_command`（60s）。
 - 目的：避免“大仓库检索/慢网络请求”被固定 30s 误判失败。
+
+---
+
+## 9.3 MCP 外部工具（file_ops）
+
+|| 项目 | 内容 |
+||------|------|
+|| 服务名 | `file_ops` |
+|| 配置位置 | `oct-gateway/config.json` → `mcpServers.file_ops` |
+|| 进程入口 | `oct-gateway/mcp-servers/oct-file-ops/src/index.js` |
+|| 工具前缀 | `mcp_file_ops_*` |
+|| 已暴露工具 | `mcp_file_ops_file_list`、`mcp_file_ops_file_move`、`mcp_file_ops_file_rename`、`mcp_file_ops_file_delete` |
+|| 说明 | 该工具组由独立 MCP 进程提供，通过 `mcp/manager.js` 动态注册到 `tool_loader`，不占用 `tools/*.js` 内置工具目录 |
+|| 权限开关 | `mcpServers.file_ops.env.OCT_FILE_OPS_UNSAFE_ALLOW_ALL`：`0` 白名单模式（默认），`1` 全盘访问（高风险） |

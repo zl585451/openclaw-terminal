@@ -1,5 +1,9 @@
 {
   "OCT_MODEL": "MiniMax-M2.7",
+  "GOOGLE_AI_API_KEY": "",
+  "GOOGLE_AI_BASE_URL": "https://aiplatform.googleapis.com/v1beta1/projects/gemini-key-493216/locations/us-central1/endpoints/openapi",
+  "GOOGLE_HTTPS_PROXY": "http://127.0.0.1:10808",
+  "GOOGLE_TOOLS_MODE": "on",
   "CUSTOM_MODEL_SUPPORTS_TOOLS": true,
   "MINIMAX_TEMPERATURE": 0.7,
   "memory": {
@@ -38,6 +42,26 @@
     "url": "http://127.0.0.1:8001",
     "timeout_ms": 3000,
     "default_top_k": 3
+  },
+  "AGENT_PERMISSIONS": {
+    "shellCommands": false,
+    "fileWrite": false,
+    "networkRequests": true,
+    "softwareInstall": false,
+    "systemConfig": false
+  },
+  "AGENT_PERMISSIONS_STRICT_UNKNOWN_MCP_DENY": true,
+  "mcpServers": {
+    "file_ops": {
+      "command": "node",
+      "args": [
+        "mcp-servers/oct-file-ops/src/index.js"
+      ],
+      "env": {
+        "OCT_FILE_OPS_UNSAFE_ALLOW_ALL": "0",
+        "OCT_FILE_OPS_ALLOWED_ROOTS": ""
+      }
+    }
   },
   "minimax": {
     "api_key": ""

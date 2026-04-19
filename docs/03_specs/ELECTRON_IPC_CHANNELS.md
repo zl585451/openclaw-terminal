@@ -1,6 +1,6 @@
 # Electron IPC 通道清单
 
-> **最后更新时间**：2026-04-17  
+> **最后更新时间**：2026-04-19  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：修改/调试时快速查找前端与主进程的通信通道
 
@@ -67,9 +67,17 @@
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
 | `get-api-keys` | 获取 API Key 配置 | - | 配置对象 |
-| `save-api-keys` | 保存 API Key | `keys: Record<string, string>` | - |
+| `save-api-keys` | 保存 API Key | `keys: Record<string, string \| boolean>` | - |
 | `get-provider-list` | 获取 Provider 列表 | - | 服务商列表 |
 | `test-ai-connection` | 测试 AI 连接 | `formConfig?: Record<string, string>` | 测试结果 |
+| `get-agent-permissions` | 读取 Agent 硬权限配置 | - | `{ success, data: { shellCommands, fileWrite, networkRequests, softwareInstall, systemConfig } }` |
+| `save-agent-permissions` | 保存 Agent 硬权限配置 | `{ shellCommands?, fileWrite?, networkRequests?, softwareInstall?, systemConfig? }` | `{ success, data? }` |
+
+生图配置字段说明（`get-api-keys` / `save-api-keys`）：
+- 基础字段：`IMAGE_PROVIDER`、`IMAGE_API_KEY`、`IMAGE_BASE_URL`、`IMAGE_MODEL`、`IMAGE_SIZE`
+- 强隔离字段：`IMAGE_MINIMAX_*`、`IMAGE_SILICONFLOW_*`、`IMAGE_OPENAI_*`
+- 回退开关：`IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY`（布尔，默认 `false`）
+- 兼容策略：仍保留 `IMAGE_API_KEY/BASE_URL/MODEL` 作为旧配置兼容与 UI 当前值镜像
 
 ---
 

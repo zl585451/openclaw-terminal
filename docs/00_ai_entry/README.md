@@ -24,7 +24,7 @@
 |---|---|
 | 聊天流式、消息显示、状态错乱 | `chat-stream-entry.md` |
 | 图片发送、识图、图片导致请求失败 | `image-flow-entry.md` |
-| 打字音效、TTS、ASR、音频播放 | `audio-entry.md` |
+| 打字音效、TTS、音频播放 | `audio-entry.md` |
 | 不确定属于哪条链路、需要统一排查顺序 | `bug-triage.md` |
 
 ---
