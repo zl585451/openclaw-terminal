@@ -9,6 +9,7 @@ const { createLogger } = require('./logger');
 const log = createLogger('ai');
 const ProviderRouter = require('./runtime/providerRouter');
 const ToolLoop = require('./runtime/toolLoop');
+const { ProxyAgent } = require('undici');
 
 // ═══════════════════════════════════════════════════════════════
 // AI 上下文截断优化
@@ -26,6 +27,46 @@ const toolLoop = new ToolLoop({
   maxToolRounds: MAX_TOOL_ROUNDS,
   maxIdenticalToolSignatures: MAX_IDENTICAL_TOOL_SIGNATURES,
 });
+const googleProxyAgentCache = new Map();
+
+function injectGoogleDiagramGuard(messages) {
+  const list = Array.isArray(messages) ? [...messages] : [];
+  if (list.length === 0) return list;
+  const guard = [
+    '【Google 专用图表护栏】',
+    '当你需要调用 canvas 生成图（artifactType=diagram）时：',
+    '1) 优先输出 JSON diagram spec（diagramType/nodes/edges/direction），不要直接输出 Mermaid DSL。',
+    '2) 若必须输出 Mermaid，边标签必须用 A -->|标签| B，禁止 A — 标签 —> B 这种写法。',
+    '3) 禁止在 Mermaid 里使用全角箭头/Unicode 箭头（如 →、—>）。',
+    '4) subgraph 块必须严格成对闭合：subgraph ... / end。',
+  ].join('\n');
+
+  const idx = list.findIndex((m) => m && m.role === 'system' && typeof m.content === 'string');
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], content: `${String(list[idx].content || '').trim()}\n\n${guard}` };
+    return list;
+  }
+  return [{ role: 'system', content: guard }, ...list];
+}
+
+function createGoogleScopedDispatcher(url) {
+  try {
+    const proxyUrl = String(config.GOOGLE_HTTPS_PROXY || '').trim();
+    if (!proxyUrl) return null;
+    const host = String(new URL(url).hostname || '').toLowerCase();
+    const isGoogleHost = host.includes('aiplatform.googleapis.com') || host.includes('generativelanguage.googleapis.com');
+    if (!isGoogleHost) return null;
+    if (!googleProxyAgentCache.has(proxyUrl)) {
+      googleProxyAgentCache.set(proxyUrl, new ProxyAgent(proxyUrl));
+      log.info('google scoped proxy enabled', {
+        proxy: proxyUrl.includes('@') ? proxyUrl.replace(/:\/\/[^@]+@/, '://*****@') : proxyUrl,
+      });
+    }
+    return googleProxyAgentCache.get(proxyUrl);
+  } catch {
+    return null;
+  }
+}
 
 function truncateHistory(messages) {
   if (!messages || messages.length === 0) return messages;
@@ -97,6 +138,29 @@ function getMiniMaxTemperature() {
     return 0.7;
   }
   return value;
+}
+
+function parseCustomTemperature() {
+  const rawValue = config.getEnvOrConfig('CUSTOM_TEMPERATURE');
+  if (rawValue === '' || rawValue === null || rawValue === undefined) return null;
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value < 0 || value > 2) {
+    log.warn('Invalid CUSTOM_TEMPERATURE, ignored', { rawValue });
+    return null;
+  }
+  return value;
+}
+
+function resolveTemperatureForRequest({ provider, model }) {
+  if (provider?.id === 'minimax') return getMiniMaxTemperature();
+  if (provider?.id === 'custom') {
+    const customTemperature = parseCustomTemperature();
+    if (customTemperature !== null) return customTemperature;
+    const family = config.detectModelFamily(model);
+    if (family === 'kimi') return null;
+    return 0.7;
+  }
+  return 0.7;
 }
 
 async function loadSystemPrompt(promptsDir) {
@@ -256,6 +320,7 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
       const resp = await fetch(url, {
         ...options,
         signal: controller.signal,
+        dispatcher: options?.dispatcher || createGoogleScopedDispatcher(url) || undefined,
       });
 
       clearTimeout(timeoutId);
@@ -736,12 +801,11 @@ function extractXmlPseudoToolCalls(text) {
   if (!source || !/<tool_call>/i.test(source)) {
     return [];
   }
-  const KNOWN_TOOL_NAMES = new Set([
-    'canvas', 'web_search', 'web_fetch',
-    'read_file', 'read_document', 'write_file',
-    'memory_write', 'memory_search', 'memory_read',
-    'exec_command',
-  ]);
+  const KNOWN_TOOL_NAMES = new Set(
+    (toolLoader.getDefinitions?.() || [])
+      .map((def) => String(def?.function?.name || '').trim())
+      .filter(Boolean)
+  );
 
   const callRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
   const calls = [];
@@ -1009,7 +1073,6 @@ async function probeModelToolsSupport({ provider, baseUrl, apiKey, model }) {
     model,
     stream: false,
     max_tokens: 1,
-    temperature: 0,
     messages: [
       { role: 'system', content: 'You are running a capability probe.' },
       { role: 'user', content: 'Call the probe function now.' },
@@ -1103,12 +1166,20 @@ async function streamChat({
   toolChoice = 'auto',
   turnId = null,
 }) {
+  const hasMultimodalParts = (msgs) => Array.isArray(msgs) && msgs.some((m) =>
+    Array.isArray(m?.content) && m.content.some((part) =>
+      part && typeof part === 'object' && part.type && part.type !== 'text'
+    )
+  );
   const resolved = providerRouter.resolve();
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 
   // 上下文截断优化：防止消息过长
   const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages);
-  getContextUsageRatio(truncatedMessages, model);
+  const effectiveMessages = provider.id === 'google'
+    ? injectGoogleDiagramGuard(truncatedMessages)
+    : truncatedMessages;
+  getContextUsageRatio(effectiveMessages, model);
 
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
   const canFallbackToDeepseek = fallback.canFallbackToDeepseek;
@@ -1122,7 +1193,7 @@ async function streamChat({
     providerId: provider.id,
     baseUrl: String(baseUrl || '').replace(/\/$/, ''),
     model,
-    messages: Array.isArray(truncatedMessages) ? truncatedMessages.length : 0,
+    messages: Array.isArray(effectiveMessages) ? effectiveMessages.length : 0,
   });
 
   if (!apiKey) {
@@ -1164,7 +1235,7 @@ async function streamChat({
   };
 
   try {
-    const hasImage = truncatedMessages.some(m =>
+    const hasImage = effectiveMessages.some(m =>
       Array.isArray(m.content) &&
       m.content.some(c => c.type === 'image_url')
     );
@@ -1384,11 +1455,14 @@ async function streamChat({
 
     const requestBody = {
       model,
-      messages: truncatedMessages,
+      messages: effectiveMessages,
       stream: true,
       max_tokens: caps.maxTokens || 4096,
-      temperature: provider.id === 'minimax' ? getMiniMaxTemperature() : 0.7,
     };
+    const requestTemperature = resolveTemperatureForRequest({ provider, model });
+    if (requestTemperature !== null) {
+      requestBody.temperature = requestTemperature;
+    }
     if (provider.supportsStreamOptions) {
       requestBody.stream_options = { include_usage: true };
     }
@@ -1504,7 +1578,7 @@ async function streamChat({
               content: assistantResponseContent || '',
               tool_calls: toolCalls.filter(Boolean),
             },
-            truncatedMessages,
+            truncatedMessages: effectiveMessages,
             onDelta,
             onDone,
             onError,
@@ -1567,7 +1641,7 @@ async function streamChat({
         /<tool_call>/i.test(textToCheck)
         || /<function=\w+>/i.test(textToCheck)
         || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
-        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read)"/i.test(textToCheck);
+        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
       if (hasToolCallResidue) {
         log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
           model: responseModel || model,
@@ -1594,7 +1668,7 @@ async function streamChat({
           content: '',
           tool_calls: pseudoToolCalls,
         },
-        truncatedMessages,
+        truncatedMessages: effectiveMessages,
         onDelta,
         onDone,
         onError,
@@ -1661,6 +1735,11 @@ async function streamChat({
         config.DASHSCOPE_MODEL = prevModel;
       }
     } else if (canFallbackToDeepseek) {
+      if (hasMultimodalParts(truncatedMessages)) {
+        log.warn('skip deepseek fallback for multimodal request', { error: e?.message || String(e) });
+        onError(e);
+        return;
+      }
       log.warn('primary provider failed, fallback to deepseek', { error: e?.message || String(e) });
       const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;

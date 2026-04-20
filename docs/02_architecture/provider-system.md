@@ -26,14 +26,17 @@
 | openai | OpenAI | api.openai.com |
 | ollama | Ollama 本地 | localhost:11434 |
 | custom | 自定义 | 用户填写 |
-| google | Google Gemini（Vertex AI Studio API 密钥） | generativelanguage.googleapis.com/v1beta/openai |
+| google | Google Gemini（Vertex AI API 密钥） | aiplatform.googleapis.com/.../endpoints/openapi（可改） |
 
 ### Google：`google` 与 Vertex 文档里的「推理 API」
 
-- **OCT 使用**：`https://generativelanguage.googleapis.com/v1beta/openai`，请求头 **`x-goog-api-key: <API Key>`**（避免与部分环境下自动注入的 `Authorization: Bearer` 叠用导致 400 *Multiple authentication credentials*；官方 REST 示例亦常用 API Key 头）。模型名如 `gemini-2.5-flash`。说明见 [Gemini API OpenAI compatibility](https://ai.google.dev/gemini-api/docs/openai)；密钥可在 Vertex AI Studio 的 API 密钥页创建。
-- **不是**：Cloud 文档 [Vertex AI Generative AI inference](https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference) 里常见的 `aiplatform.googleapis.com` 项目/区域路径、`generateContent` 原生 REST，或 Vertex 上 OpenAI 库的 **另一套 base URL**（常含区域与项目 ID）。
-- 若在网页/控制台里能通而网关失败，先确认 **代理与计费** 已就绪，再对照网关日志中的 HTTP 状态与错误体；若你实际走的是 Vertex 专用端点，需在 OCT 中选「自定义」并填写对应 base URL（当前预设 `google` 不覆盖该路径）。
+- **OCT 使用**：支持 `aiplatform.googleapis.com` 与 `generativelanguage.googleapis.com` 两类 OpenAI 兼容入口，统一使用 **`x-goog-api-key`** 请求头。
+- 预设 `google` 默认是 Vertex 风格路径（含项目 ID 与 location），可用 `GOOGLE_AI_BASE_URL` 覆盖。
+- 若在网页/控制台里能通而网关失败，先确认 **代理与计费** 已就绪，再对照网关日志中的 HTTP 状态与错误体。
 - 若日志为 **400 *Multiple authentication credentials***：勿在 Base URL 上带 `?key=`；网关对 Google 仅发 **`x-goog-api-key`**；启用 `HTTPS_PROXY` 时勿再依赖 **`NODE_USE_ENV_PROXY`**（网关在启用 undici 代理时会清除该变量）。
+- 若希望“Google 独立网络配置、不影响其他 Provider”，可使用：
+  - `GOOGLE_HTTPS_PROXY`：仅 Google 请求生效（其他 Provider 不受影响）
+  - `GOOGLE_TOOLS_MODE=off|auto|on`：仅 Google 工具能力策略（默认 `auto`，会做 runtime probe）
 
 ## 数据流
 ```
@@ -117,6 +120,7 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 | 2026-04-14 | 文档：`google` 出现 400 *Multiple authentication credentials* 时的排查（Base URL 勿带 `?key=`、`NODE_USE_ENV_PROXY` 与 undici 代理勿叠用）；网关侧已做 URL 净化与代理启动时清理 `NODE_USE_ENV_PROXY` |
 | 2026-04-13 | 扩充 `google` 预设模型（2.5 / 3.x 预览），默认 `gemini-2.5-flash`；文档区分 Generative Language OpenAI 兼容层与 Vertex 原生推理 API |
 | 2026-04-13 | 新增 `google` Provider（Vertex AI Studio API 密钥 + Gemini OpenAI 兼容端点）；配置键 `GOOGLE_AI_API_KEY` / `GOOGLE_AI_BASE_URL` |
+| 2026-04-19 | 新增 `GOOGLE_HTTPS_PROXY`（Google 独立代理）与 `GOOGLE_TOOLS_MODE`（`off/auto/on`）；默认 `auto` 下 Google 工具能力走 runtime probe，不影响其他 Provider |
 | 2026-04-12 | MiniMax 文本对话新增 `MINIMAX_TEMPERATURE` 可配置项，默认保持 `0.7` |
 | 2026-03-20 | Phase 1 后端抽象、Phase 2 Settings UI |
 | 2026-04-06 | 新增云端语音 capability routing：`auto` 跟随当前主 Provider，不再因残留 Key 乱触发 |

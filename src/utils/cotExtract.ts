@@ -56,7 +56,7 @@ export function stripLeakedToolCallSections(input: string): string {
   const beginRe = /<\|[^|]*tool_calls_section_begin[^|]*\|>/gi;
   const endRe = /<\|[^|]*tool_calls_section_end[^|]*\|>/gi;
 
-  let out = text;
+  let out = text.replace(/<tool_call>\s*[\s\S]*?\s*<\/tool_call>/gi, ' ');
   let guard = 0;
   while (guard++ < 80) {
     beginRe.lastIndex = 0;

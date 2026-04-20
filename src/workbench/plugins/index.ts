@@ -6,6 +6,7 @@ import { echartsPlugin } from './echartsPlugin';
 import { htmlPlugin } from './htmlPlugin';
 import { markdownPlugin } from './markdownPlugin';
 import { reactFlowPlugin } from './reactFlowPlugin';
+import { scriptPlugin } from './scriptPlugin';
 
 export { codePlugin } from './codePlugin';
 export { diagramPlugin } from './diagramPlugin';
@@ -13,9 +14,11 @@ export { echartsPlugin } from './echartsPlugin';
 export { htmlPlugin } from './htmlPlugin';
 export { markdownPlugin } from './markdownPlugin';
 export { reactFlowPlugin } from './reactFlowPlugin';
+export { scriptPlugin } from './scriptPlugin';
 export type { WorkbenchRendererPlugin } from './types';
 
 export const WORKBENCH_PLUGINS: WorkbenchRendererPlugin[] = [
+  scriptPlugin,   // 剧本插件优先（artifactType === 'script' 精确匹配，不会误触）
   echartsPlugin,
   reactFlowPlugin,
   diagramPlugin,

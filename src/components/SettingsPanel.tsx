@@ -161,6 +161,22 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   }, [permissions]);
 
   useEffect(() => {
+    const api = (window as any).electronAPI;
+    const load = api?.getAgentPermissions
+      ? api.getAgentPermissions()
+      : ipcRenderer
+      ? ipcRenderer.invoke('get-agent-permissions')
+      : Promise.resolve(null);
+    load
+      .then((res: any) => {
+        if (!res?.success || !res?.data) return;
+        setLocalPerm(res.data);
+        setPermissions(res.data);
+      })
+      .catch(() => {});
+  }, [setPermissions]);
+
+  useEffect(() => {
     setLocal(settings);
     setAiName(settings.aiName || 'OpenClaw');
     setUserName(settings.userName || '用户');
@@ -196,6 +212,16 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     setApplyStatus('saving');
     setApplyError('');
     setSettings({ ...local, aiName, userName, personaStyle: personaStyle as 'neutral' | 'warm' | 'companion' });
+    const permissionResult = api?.saveAgentPermissions
+      ? await api.saveAgentPermissions(localPerm)
+      : ipcRenderer
+      ? await ipcRenderer.invoke('save-agent-permissions', localPerm)
+      : null;
+    if (!permissionResult?.success) {
+      setApplyStatus('error');
+      setApplyError(permissionResult?.error || '权限设置保存失败（IPC 不可用）');
+      return;
+    }
     setPermissions(localPerm);
     saveShortcut();
     saveAdvancedSettings();
@@ -445,6 +471,14 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   env,
                 });
                 setNewServer({ name: '', command: '', args: '', envText: '' });
+                loadMcpStatus();
+              }}
+              onUpdateServer={async (name, cfg) => {
+                await (window as any).electronAPI?.mcpAddServer?.(name, {
+                  command: cfg.command,
+                  args: cfg.args || [],
+                  env: cfg.env || {},
+                });
                 loadMcpStatus();
               }}
               onRemoveServer={async (name) => {

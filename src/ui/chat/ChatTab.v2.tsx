@@ -30,9 +30,14 @@ import ChatInputArea from './ChatInput';
 import { ChatMessageList } from './MessageList';
 import ChatTabRightPanel from './ChatTabRightPanel';
 import { WelcomeHero } from '../onboarding/WelcomeHero';
-import { CardDef } from '../onboarding/CapabilityCards';
+import type { CardDef } from '../onboarding/CapabilityCards';
 import ImageStudio from '../image/ImageStudio';
-import { CapabilityStatus } from '../../core/capabilities/types';
+import type { CapabilityId, CapabilityStatus } from '../../core/capabilities/types';
+import { InlineInquiry } from '../../components/inlineInquiry/InlineInquiry';
+import { useInlineInquiry } from '../../hooks/useInlineInquiry';
+import { parseClarifyCard } from '../../core/clarifyCard/parser';
+import { CapabilityBar } from '../../components/capabilityBar/CapabilityBar';
+import { CapabilitySetupDrawer } from '../onboarding/CapabilitySetupDrawer';
 
 /** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
 // const OCT_V2_DISABLE_TYPEWRITER = false; // 已不再需要
@@ -224,6 +229,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [, setLogPath] = useState('');
   const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
+  const [capBarSetupTarget, setCapBarSetupTarget] = useState<CapabilityId | null>(null);
   const [imageStudioOpen, setImageStudioOpen] = useState(false);
   const [imageStudioInitialPrompt, setImageStudioInitialPrompt] = useState('');
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
@@ -414,6 +420,33 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     dismissOnboarding();
   }, [dismissOnboarding]);
 
+  const handleCapabilityBarClick = useCallback((card: CardDef, capabilityStatus: CapabilityStatus) => {
+    if (card.action.type === 'send_prompt') {
+      setInjectInputText(card.action.prompt);
+      return;
+    }
+    if (card.action.type === 'open_panel' && card.action.panelId === 'image_studio') {
+      if (capabilityStatus !== 'available') {
+        appendImageCapabilityGuideMessage();
+        setCapBarSetupTarget('image_gen');
+        return;
+      }
+      openImageStudioWithPrefill(card.action.prefill);
+      return;
+    }
+    if (card.action.type === 'open_tab' && card.action.tabId === 'sound') {
+      if (capabilityStatus !== 'available') {
+        appendMusicCapabilityGuideMessage();
+        setCapBarSetupTarget('music_gen');
+      }
+      onSwitchTab?.('sound');
+    }
+  }, [appendImageCapabilityGuideMessage, appendMusicCapabilityGuideMessage, onSwitchTab, openImageStudioWithPrefill]);
+
+  const handleCapabilityBarSetup = useCallback((capId: CapabilityId) => {
+    setCapBarSetupTarget(capId);
+  }, []);
+
   // Register the chat's quickSend as the node-inspect handler so Canvas
   // renderers can trigger "explain this node" queries without prop drilling.
   // useEffect keeps registration in sync if quickSend identity changes.
@@ -442,12 +475,41 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const isStreamingUiPause = msgs.isStreaming;
   suspendGatewayLogRef.current = isStreamingUiPause;
   const gateway = useGateway(suspendGatewayLogRef);
+  const inquiry = useInlineInquiry({
+    onReply: (text) => {
+      if (msgs.wsConnected) {
+        msgs.sendMessage(text, null);
+      }
+    },
+  });
 
   useEffect(() => {
     if (!isStreamingUiPause) {
       gateway.flushPendingLogLines();
     }
   }, [isStreamingUiPause, gateway.flushPendingLogLines]);
+
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    if (last.isStreaming === true) return;
+    const content = typeof last.content === 'string' ? last.content : '';
+    if (!content) return;
+    const parsed = parseClarifyCard(content);
+    if (parsed.range && parsed.stripped !== content) {
+      setMessages((prev) => prev.map((m) => (
+        m.id === last.id ? { ...m, content: parsed.stripped } : m
+      )));
+    }
+    inquiry.maybeTrigger(last.id, content);
+  }, [messages, inquiry.maybeTrigger, setMessages]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      inquiry.reset();
+    }
+  }, [messages.length, inquiry.reset]);
 
 
   useEffect(() => {
@@ -593,9 +655,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const handleClearHistory = useCallback(() => {
     if (!window.confirm('确认清空所有聊天记录？')) return;
     clearProcessedMarkdownCache();
+    inquiry.reset();
     setMessages([]);
     (window as any).electronAPI?.chatHistorySave?.([]);
-  }, []);
+  }, [inquiry, setMessages]);
 
   /** TEMP：仅开发模式。输入框旁「欢迎页」按钮：重置首屏引导；有消息时会先问是否清空。产品化前删除。 */
   const handleDevShowWelcomeAgain = useCallback(() => {
@@ -603,6 +666,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     if (messages.length > 0) {
       if (!window.confirm('要先清空聊天才能显示欢迎页。确定清空全部记录吗？')) return;
       clearProcessedMarkdownCache();
+      inquiry.reset();
       setMessages([]);
       void (window as any).electronAPI?.chatHistorySave?.([]);
     }
@@ -612,7 +676,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       /* ignore */
     }
     setOnboardingDismissed(false);
-  }, [messages.length, setMessages]);
+  }, [inquiry, messages.length, setMessages]);
 
   const insertImageToChat = useCallback((imageUrl: string, prompt: string) => {
     setMessages((prev) => ([
@@ -653,7 +717,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         onDelete={(msgId) => setMessages((prev) => prev.filter((m) => m.id !== msgId))}
       />
     <div
-      className="chat-tab"
+      className={`chat-tab${canvasBridge.isOpen ? ' chat-tab--canvas-open' : ''}`}
       onPaste={files.handlePaste}
       onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types?.includes('Files')) files.setDragging(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) files.setDragging(false); }}
@@ -834,47 +898,67 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             ))}
           </div>
         )}
-        <ChatInputArea
-          imagePreview={files.imagePreview}
-          setImagePreview={files.setImagePreview}
-          uploadedFiles={files.uploadedFiles}
-          setUploadedFiles={files.setUploadedFiles}
-          onSend={msgs.sendMessage}
-          wsConnected={msgs.wsConnected}
-          isStreaming={msgs.isStreaming}
-          inputRef={inputRef}
-          injectInputText={injectInputText}
-          onInjectConsumed={() => setInjectInputText(null)}
-          onClearHistory={handleClearHistory}
-          onRestartGateway={gateway.restartGateway}
-          isEmptyConversation={messages.length === 0}
-          extraControls={(
-            <>
-              {import.meta.env.DEV ? (
+        {!inquiry.hasActive && (
+          <CapabilityBar
+            onCapabilityClick={handleCapabilityBarClick}
+            onRequestSetup={handleCapabilityBarSetup}
+          />
+        )}
+        {inquiry.hasActive && inquiry.currentField && inquiry.currentDraft ? (
+          <InlineInquiry
+            field={inquiry.currentField}
+            draft={inquiry.currentDraft}
+            currentPage={inquiry.currentPage}
+            totalPages={inquiry.totalPages}
+            onUpdate={(next) => inquiry.updateDraft(inquiry.currentField!.id, next)}
+            onNext={inquiry.goNext}
+            onPrev={inquiry.goPrev}
+            onSkip={inquiry.skipCurrentField}
+            onDismiss={inquiry.dismiss}
+          />
+        ) : (
+          <ChatInputArea
+            imagePreview={files.imagePreview}
+            setImagePreview={files.setImagePreview}
+            uploadedFiles={files.uploadedFiles}
+            setUploadedFiles={files.setUploadedFiles}
+            onSend={msgs.sendMessage}
+            wsConnected={msgs.wsConnected}
+            isStreaming={msgs.isStreaming}
+            inputRef={inputRef}
+            injectInputText={injectInputText}
+            onInjectConsumed={() => setInjectInputText(null)}
+            onClearHistory={handleClearHistory}
+            onRestartGateway={gateway.restartGateway}
+            isEmptyConversation={messages.length === 0}
+            extraControls={(
+              <>
+                {import.meta.env.DEV ? (
+                  <button
+                    type="button"
+                    className="attach-btn"
+                    title="开发用：重新显示首屏欢迎"
+                    onClick={handleDevShowWelcomeAgain}
+                  >
+                    欢迎页
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="attach-btn"
-                  title="开发用：重新显示首屏欢迎"
-                  onClick={handleDevShowWelcomeAgain}
+                  title="打开生图工作台"
+                  onClick={() => setImageStudioOpen((v) => !v)}
+                  style={{
+                    background: imageStudioOpen ? 'var(--accent-primary)' : undefined,
+                    color: imageStudioOpen ? 'var(--bg-base)' : undefined,
+                  }}
                 >
-                  欢迎页
+                  🎨
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="attach-btn"
-                title="打开生图工作台"
-                onClick={() => setImageStudioOpen((v) => !v)}
-                style={{
-                  background: imageStudioOpen ? 'var(--accent-primary)' : undefined,
-                  color: imageStudioOpen ? 'var(--bg-base)' : undefined,
-                }}
-              >
-                🎨
-              </button>
-            </>
-          )}
-        />
+              </>
+            )}
+          />
+        )}
       </div>
 
       <ChatTabRightPanel
@@ -934,6 +1018,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           onClose={() => setImageStudioOpen(false)}
         />
       </div>
+      <CapabilitySetupDrawer
+        capabilityId={capBarSetupTarget}
+        onClose={() => setCapBarSetupTarget(null)}
+      />
     {/* chat-tab 结束 */}
     </div>
 

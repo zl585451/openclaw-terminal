@@ -1,6 +1,6 @@
 # OCT MAS 架构设计文档
-> Multi-Agent System · 版本 1.0 · 2026-03-24  
-> 作者：Claude × Zilong  
+> Multi-Agent System · 版本 2.0 · 最近更新 2026-04-18
+> 作者：Claude × Zilong
 > 定位：OCT Gateway 的下一个形态，完全自主，不依赖任何第三方生态链
 
 ---
@@ -254,13 +254,17 @@ Agent 之间不直接通信，都通过 Orchestrator 中转。消息格式：
 - [x] 后台任务派发（task_queue + worker）
 - [x] 验证：说「帮我搜索一下今天的AI新闻」，日志能看到派发记录
 
-### 阶段 3：第一个专职 Agent（约 2 天）
-**目标**：Coder Agent 上线
+### 阶段 3：专职 Agent 团队（已完成）✅ 2026-04-18
+**目标**：真正的 Agent 路由执行，不再只是"记录意图"
 
-- [ ] 写 `agents/coder.js`
-- [ ] 配置独立的 system prompt
-- [ ] 接入工具权限控制
-- [ ] 验证：Cursor 提示词生成任务能正确路由到 Coder
+- [x] 写 `agents/base_agent.js`（BaseAgent 抽象基类）
+- [x] 写 `agents/agent_runner.js`（非流式执行引擎 + 工具循环）
+- [x] 写 `agents/coder.js`（代码专家）
+- [x] 写 `agents/writer.js`（内容创作）
+- [x] 写 `agents/researcher.js`（信息研究）
+- [x] 升级 `orchestrator.js`：`shouldDelegate=true` 时真正路由到 Agent 执行
+- [x] 升级 `index.js`：Agent 短路逻辑（结果直接推给前端，跳过 AMY streamChat）
+- [x] `agent_status` 事件推送到前端
 
 ### 阶段 4：Writer Agent + Media Agent（视需求）
 - [ ] `agents/writer.js` — 内容创作专家
@@ -287,7 +291,14 @@ Agent 之间不直接通信，都通过 Orchestrator 中转。消息格式：
 | `hypothesis.js` | AMY 的前置思考 | 保留，作为 Orchestrator 的一部分 |
 | `self_eval.js` | AMY 的自我评估 | 保留，未来也给 Agent 用 |
 
-**新增文件**：
+**新增文件（阶段 3）**：
+- `agents/base_agent.js` — BaseAgent 抽象基类
+- `agents/agent_runner.js` — 非流式执行引擎（工具循环 + 超时保护）
+- `agents/coder.js` — 代码专家 Agent
+- `agents/writer.js` — 内容创作 Agent
+- `agents/researcher.js` — 信息研究 Agent
+
+**新增文件（历史）**：
 - `orchestrator.js` — Orchestrator 核心（意图分类、后台任务派发）
 - `tool_loader.js` — 工具目录加载器
 - `task_queue.js` — 后台任务持久化

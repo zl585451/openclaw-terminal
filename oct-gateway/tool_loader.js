@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const shared = require('./tools/shared');
+const { enforceAgentPermission } = require('./security/agent_permissions_policy');
 
 const TOOLS_DIR = path.join(__dirname, 'tools');
 
@@ -97,7 +98,24 @@ function getDefinitions() {
   return [..._definitions, ...providerDefs];
 }
 
+function resolveDefinitionByName(name) {
+  const defs = getDefinitions();
+  return defs.find((d) => d?.function?.name === name) || null;
+}
+
+function resolveToolContext(name, args) {
+  const toolName = String(name || '');
+  return {
+    toolName,
+    args: args || {},
+    meta: _metaByToolName[toolName] || null,
+    definition: resolveDefinitionByName(toolName),
+    isMcpTool: toolName.startsWith('mcp_'),
+  };
+}
+
 async function executeTool(name, args) {
+  enforceAgentPermission(resolveToolContext(name, args));
   // 优先查静态工具
   if (_executors[name]) return await _executors[name](args);
   // 再查动态提供者

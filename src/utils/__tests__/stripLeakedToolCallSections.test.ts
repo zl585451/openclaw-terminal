@@ -21,4 +21,11 @@ describe('stripLeakedToolCallSections', () => {
     const t = '可见正文<|tool_calls_section_begin|>garbage';
     expect(getAssistantVisibleMain(t)).toBe('可见正文');
   });
+
+  it('removes xml tool_call blocks from visible text', () => {
+    const input =
+      '先把这个事情放到任务看板\n' +
+      '<tool_call>{"name":"task_add","arguments":{"title":"搭建多AGENT并行系统","priority":"medium"}}</tool_call>';
+    expect(getAssistantVisibleMain(input)).toBe('先把这个事情放到任务看板');
+  });
 });

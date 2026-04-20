@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const ProviderRouter = require('../runtime/providerRouter');
 
 function buildChatHeaders(baseUrl, apiKey) {
   const target = String(baseUrl || '');
@@ -43,7 +44,6 @@ async function probeModelToolsSupport({ provider, model, apiKey, baseUrl, config
     model,
     stream: false,
     max_tokens: 1,
-    temperature: 0,
     messages: [
       { role: 'system', content: 'You are running a capability probe.' },
       { role: 'user', content: 'Call the probe function now.' },
@@ -117,6 +117,7 @@ class SlashHandler {
     this.tools = tools;
     this.systemPromptReady = systemPromptReady;
     this.log = logger;
+    this.providerRouter = new ProviderRouter({ config: this.config });
   }
 
   async handle(command, request, connection) {
@@ -144,7 +145,8 @@ class SlashHandler {
       const estimatedTokens = Math.round(historyChars / 2);
       const systemPromptTokens = Math.round(sp.length / 2);
       const totalEstimated = estimatedTokens + systemPromptTokens;
-      const provider = this.config.getProviderConfig();
+      const resolved = this.providerRouter.resolve(this.config.DASHSCOPE_MODEL);
+      const provider = resolved.provider;
       const modelDef = provider.models.find((model) => model.id === this.config.DASHSCOPE_MODEL);
       const registryCaps = this.config.getModelCaps(this.config.DASHSCOPE_MODEL);
       let probeCaps = this.config.getProbeCacheEntry
@@ -154,9 +156,8 @@ class SlashHandler {
             modelId: this.config.DASHSCOPE_MODEL,
           })
         : null;
-      let toolsSupport = modelDef && modelDef.tools !== undefined
-        ? (modelDef.tools ? 'supported' : 'unsupported')
-        : (probeCaps?.toolsSupport || registryCaps.toolsSupport || (registryCaps.supportsTools ? 'supported' : 'unknown'));
+      let toolsSupport = resolved.caps?.toolsSupport
+        || (probeCaps?.toolsSupport || registryCaps.toolsSupport || (registryCaps.supportsTools ? 'supported' : 'unknown'));
       if (toolsSupport === 'unknown' && provider.apiKey && provider.baseUrl) {
         probeCaps = await probeModelToolsSupport({
           provider,
@@ -171,10 +172,10 @@ class SlashHandler {
         if (probeCaps?.toolsSupport) toolsSupport = probeCaps.toolsSupport;
       }
 
-      const hasExplicitModelTools = modelDef && modelDef.tools !== undefined;
-      const capabilitySource = hasExplicitModelTools
-        ? 'provider_model_def'
-        : (probeCaps?.capabilitySource || registryCaps.capabilitySource || 'fallback_unknown');
+      const capabilitySource = probeCaps?.capabilitySource
+        || resolved.caps?.capabilitySource
+        || registryCaps.capabilitySource
+        || 'fallback_unknown';
       const effectiveCapabilitySource = capabilitySource;
       const toolSupportLabel = toolsSupport === 'supported'
         ? '✅ supported'
@@ -223,15 +224,14 @@ class SlashHandler {
 
       this.config.DASHSCOPE_MODEL = modelName;
       const modelDef = provider.models.find((model) => model.id === modelName);
-      const caps = modelDef
-        ? {
-            supportsTools: modelDef.tools,
-            toolsSupport: modelDef.tools ? 'supported' : 'unsupported',
-            capabilitySource: 'provider_model_def',
-            supportsThinking: modelDef.thinking,
-            label: modelDef.label,
-          }
-        : this.config.getModelCaps(modelName);
+      const resolved = this.providerRouter.resolve(modelName);
+      const caps = {
+        supportsTools: !!resolved?.caps?.supportsTools,
+        toolsSupport: resolved?.caps?.toolsSupport || 'unknown',
+        capabilitySource: resolved?.caps?.capabilitySource || 'fallback_unknown',
+        supportsThinking: resolved?.caps?.supportsThinking || modelDef?.thinking || false,
+        label: modelDef?.label || resolved?.caps?.label || modelName,
+      };
       const warnings = [];
       if (caps.toolsSupport !== 'supported') {
         warnings.push('⚠️ 该模型不支持工具调用（天气/搜索/文件操作等功能将暂时不可用）');

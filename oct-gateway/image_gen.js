@@ -103,6 +103,19 @@ function isSiliconFlowBaseUrl(urlStr) {
   return /siliconflow\.(cn|com)/i.test(String(urlStr || ''));
 }
 
+function asBool(input) {
+  if (typeof input === 'boolean') return input;
+  if (typeof input !== 'string') return false;
+  return /^(true|1|yes|on)$/i.test(input.trim());
+}
+
+function normalizeProvider(rawProvider) {
+  const provider = String(rawProvider || '').trim().toLowerCase();
+  if (provider === 'siliconflow') return 'siliconflow';
+  if (provider === 'openai') return 'openai';
+  return 'minimax';
+}
+
 function httpPost(urlStr, headers, body, timeoutMs = DEFAULT_IMAGE_HTTP_TIMEOUT_MS) {
   const ms = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_IMAGE_HTTP_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
@@ -282,35 +295,87 @@ async function siliconflowAdapter(payload, config) {
   return imageUrls;
 }
 
-function resolveApiKey(rawConfig) {
-  const direct = String(rawConfig.IMAGE_API_KEY || '').trim();
-  if (direct) return direct;
+function resolveImageRuntimeConfig(rawConfig) {
+  const provider = normalizeProvider(rawConfig.IMAGE_PROVIDER);
+  const allowFallbackToChat = asBool(rawConfig.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY);
 
-  const provider = String(rawConfig.IMAGE_PROVIDER || 'minimax').trim().toLowerCase();
-  if (provider === 'minimax') {
-    return String(rawConfig.MINIMAX_API_KEY || rawConfig.DASHSCOPE_API_KEY || '').trim();
+  const scopedApiKeySource = provider === 'openai'
+    ? rawConfig.IMAGE_OPENAI_API_KEY
+    : provider === 'siliconflow'
+      ? rawConfig.IMAGE_SILICONFLOW_API_KEY
+      : rawConfig.IMAGE_MINIMAX_API_KEY;
+  const scopedBaseUrlSource = provider === 'openai'
+    ? rawConfig.IMAGE_OPENAI_BASE_URL
+    : provider === 'siliconflow'
+      ? rawConfig.IMAGE_SILICONFLOW_BASE_URL
+      : rawConfig.IMAGE_MINIMAX_BASE_URL;
+  const scopedModelSource = provider === 'openai'
+    ? rawConfig.IMAGE_OPENAI_MODEL
+    : provider === 'siliconflow'
+      ? rawConfig.IMAGE_SILICONFLOW_MODEL
+      : rawConfig.IMAGE_MINIMAX_MODEL;
+
+  const scopedApiKey = String(scopedApiKeySource || '').trim();
+  const scopedBaseUrl = String(scopedBaseUrlSource || '').trim();
+  const scopedModel = String(scopedModelSource || '').trim();
+
+  const legacyApiKey = String(rawConfig.IMAGE_API_KEY || '').trim();
+  const legacyBaseUrl = String(rawConfig.IMAGE_BASE_URL || '').trim();
+  const legacyModel = String(rawConfig.IMAGE_MODEL || '').trim();
+
+  let fallbackChatKey = '';
+  if (allowFallbackToChat) {
+    if (provider === 'minimax') {
+      fallbackChatKey = String(rawConfig.MINIMAX_API_KEY || rawConfig.DASHSCOPE_API_KEY || '').trim();
+    } else {
+      fallbackChatKey = String(
+        rawConfig.CUSTOM_API_KEY
+        || rawConfig.DASHSCOPE_API_KEY
+        || rawConfig.DEEPSEEK_API_KEY
+        || rawConfig.MINIMAX_API_KEY
+        || '',
+      ).trim();
+    }
   }
-  // OpenAI 兼容 / 硅基：聊天 Key 在 DASHSCOPE（硅基官方入口）、CUSTOM（自定义兼容）等字段
-  return String(
-    rawConfig.CUSTOM_API_KEY
-      || rawConfig.DASHSCOPE_API_KEY
-      || rawConfig.DEEPSEEK_API_KEY
-      || rawConfig.MINIMAX_API_KEY
-      || '',
-  ).trim();
+
+  const baseDefaults = {
+    minimax: 'https://api.minimax.chat',
+    siliconflow: 'https://api.siliconflow.cn/v1',
+    openai: 'https://api.openai.com',
+  };
+  const modelDefaults = {
+    minimax: 'image-01',
+    siliconflow: 'Kwai-Kolors/Kolors',
+    openai: 'dall-e-3',
+  };
+
+  return {
+    ...rawConfig,
+    IMAGE_PROVIDER: provider,
+    IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: allowFallbackToChat,
+    IMAGE_BASE_URL: scopedBaseUrl || legacyBaseUrl || baseDefaults[provider],
+    IMAGE_MODEL: scopedModel || legacyModel || modelDefaults[provider],
+    resolvedApiKey: scopedApiKey || legacyApiKey || fallbackChatKey,
+  };
 }
 
 async function handleImageGenerate(payload, rawConfig, sendToClient) {
   const requestId = payload?.requestId || `img_${Date.now()}`;
   const prompt = String(payload?.prompt || '').trim();
-  const resolvedApiKey = resolveApiKey(rawConfig);
+  const config = resolveImageRuntimeConfig(rawConfig || {});
+  const resolvedApiKey = String(config.resolvedApiKey || '').trim();
 
   if (!resolvedApiKey) {
     sendToClient({
       type: 'res',
       method: 'image.generate',
       ok: false,
-      payload: { requestId, error: '未配置生图 API Key，请先在设置中填写。' },
+      payload: {
+        requestId,
+        error: config.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY
+          ? '未配置可用的生图 API Key，请检查生图服务商独立 Key 或聊天 Key。'
+          : '未配置生图 API Key（当前未启用回退聊天 Key），请先在设置中填写生图服务商独立 Key。',
+      },
     });
     return;
   }
@@ -325,7 +390,7 @@ async function handleImageGenerate(payload, rawConfig, sendToClient) {
     return;
   }
 
-  const config = { ...rawConfig, resolvedApiKey };
+  const requestConfig = { ...config, resolvedApiKey };
   sendToClient({
     type: 'res',
     method: 'image.generate',
@@ -334,22 +399,22 @@ async function handleImageGenerate(payload, rawConfig, sendToClient) {
   });
 
   try {
-    const provider = String(rawConfig.IMAGE_PROVIDER || 'minimax').trim().toLowerCase();
-    const baseHint = String(config.IMAGE_BASE_URL || '').trim();
+    const provider = normalizeProvider(config.IMAGE_PROVIDER);
+    const baseHint = String(requestConfig.IMAGE_BASE_URL || '').trim();
     const useSiliconflow = provider === 'siliconflow'
       || (provider === 'openai' && isSiliconFlowBaseUrl(baseHint));
 
     let imageUrls;
     if (provider === 'minimax') {
-      imageUrls = await minimaxAdapter({ ...payload, prompt }, config);
+      imageUrls = await minimaxAdapter({ ...payload, prompt }, requestConfig);
     } else if (useSiliconflow) {
       const merged = {
-        ...config,
-        IMAGE_BASE_URL: baseHint || config.IMAGE_BASE_URL || 'https://api.siliconflow.cn/v1',
+        ...requestConfig,
+        IMAGE_BASE_URL: baseHint || requestConfig.IMAGE_BASE_URL || 'https://api.siliconflow.cn/v1',
       };
       imageUrls = await siliconflowAdapter({ ...payload, prompt }, merged);
     } else {
-      imageUrls = await openaiAdapter({ ...payload, prompt }, config);
+      imageUrls = await openaiAdapter({ ...payload, prompt }, requestConfig);
     }
 
     sendToClient({
@@ -364,7 +429,7 @@ async function handleImageGenerate(payload, rawConfig, sendToClient) {
         prompt,
         negativePrompt: String(payload?.negativePrompt || ''),
         numImages: imageUrls.length,
-        aspectRatio: resolveRequestedAspectRatio(payload, rawConfig),
+        aspectRatio: resolveRequestedAspectRatio(payload, requestConfig),
       },
     });
   } catch (err) {

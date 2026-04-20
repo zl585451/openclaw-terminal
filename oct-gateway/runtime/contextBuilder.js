@@ -36,11 +36,12 @@ class ContextBuilder {
     systemPrompt,
   }) {
     const imageAttachments = (attachments || []).filter((attachment) => attachment.type === 'image');
+    const audioAttachments = (attachments || []).filter((attachment) => attachment.type === 'audio');
+    const providerConfig = this.config.getProviderConfig();
+    const currentModel = this.config.DASHSCOPE_MODEL;
     let messageContent;
 
     if (imageAttachments.length > 0) {
-      const providerConfig = this.config.getProviderConfig();
-      const currentModel = this.config.DASHSCOPE_MODEL;
       const imageResult = await this.imageService.processImageAttachments(
         userMessage,
         imageAttachments,
@@ -50,6 +51,33 @@ class ContextBuilder {
       messageContent = imageResult.content;
     } else {
       messageContent = userMessage;
+    }
+
+    if (audioAttachments.length > 0) {
+      const supportsInlineAudio = this._supportsInlineAudio(providerConfig, currentModel);
+      if (supportsInlineAudio) {
+        const baseParts = Array.isArray(messageContent)
+          ? [...messageContent]
+          : [{ type: 'text', text: String(messageContent || userMessage || '请分析这段音频') }];
+        for (const attachment of audioAttachments) {
+          const audioPart = this._toInputAudioPart(attachment);
+          if (audioPart) baseParts.push(audioPart);
+        }
+        messageContent = baseParts;
+        this.log.info('audio attachments routed inline', {
+          providerId: providerConfig?.id,
+          model: currentModel,
+          audioCount: audioAttachments.length,
+        });
+      } else {
+        const list = audioAttachments.map((item) => item.fileName || 'audio').join(', ');
+        messageContent = `${String(messageContent || userMessage || '')}\n\n[音频附件] ${list}\n当前模型/路由未启用音频直传，请切换到 Google Gemini（Vertex OpenAI）后再试。`.trim();
+        this.log.info('audio attachments fallback to text', {
+          providerId: providerConfig?.id,
+          model: currentModel,
+          audioCount: audioAttachments.length,
+        });
+      }
     }
 
     const contextMemory = await this._buildContextMemory({ sessionKey, userMessage });
@@ -91,6 +119,39 @@ class ContextBuilder {
       messages: this._injectTaskContext(messages, sessionKey),
       history,
       imageAttachments,
+      audioAttachments,
+    };
+  }
+
+  _supportsInlineAudio(providerConfig, modelId) {
+    const providerId = String(providerConfig?.id || '').toLowerCase();
+    const model = String(modelId || '').toLowerCase();
+    return providerId === 'google' || model.includes('gemini');
+  }
+
+  _toInputAudioPart(attachment) {
+    if (!attachment?.content) return null;
+    const mimeType = String(attachment.mimeType || 'audio/mpeg').toLowerCase();
+    const payload = String(attachment.content || '');
+    const data = (() => {
+      // Vertex OpenAI 兼容层在 input_audio.data 字段里需要纯 base64 或 URI；
+      // data URL 会被当作 base64 解析并报 INVALID_ARGUMENT。
+      const m = payload.match(/^data:[^;]+;base64,(.+)$/i);
+      return (m?.[1] || payload).trim();
+    })();
+
+    const format = (() => {
+      if (mimeType === 'audio/mpeg' || mimeType === 'audio/mp3') return 'audio/mp3';
+      if (mimeType === 'audio/wav' || mimeType === 'audio/x-wav') return 'audio/wav';
+      return mimeType;
+    })();
+
+    return {
+      type: 'input_audio',
+      input_audio: {
+        data,
+        format,
+      },
     };
   }
 
