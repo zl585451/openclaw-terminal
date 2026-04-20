@@ -257,6 +257,14 @@ async function handleChatRequest(request, connection) {
       sendCanvasTransportEvent(connection, evt.action, evt.payload || {}, evt.type === 'workbench' ? 'workbench' : 'canvas');
       return;
     }
+    if (evt?.type === 'clarify_open' && evt?.payload?.spec) {
+      connection.send({
+        type: 'event',
+        event: 'clarify',
+        payload: { spec: evt.payload.spec },
+      });
+      return;
+    }
     connection.send({ type: 'event', event: 'tool', payload: evt });
     if (evt.type === 'tool_call') {
       connection.send({ type: 'event', event: 'agent-phase', phase: 'tool_executing', tool: evt.tool });

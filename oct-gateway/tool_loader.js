@@ -114,16 +114,16 @@ function resolveToolContext(name, args) {
   };
 }
 
-async function executeTool(name, args) {
+async function executeTool(name, args, context) {
   enforceAgentPermission(resolveToolContext(name, args));
   // 优先查静态工具
-  if (_executors[name]) return await _executors[name](args);
+  if (_executors[name]) return await _executors[name](args, context);
   // 再查动态提供者
   for (const p of _providers) {
     try {
       const defs = p.getDefinitions();
       if (defs.some(d => d.function?.name === name)) {
-        return await p.executeTool(name, args);
+        return await p.executeTool(name, args, context);
       }
     } catch (e) {
       const msg = e?.message || String(e);
@@ -138,7 +138,7 @@ async function executeTool(name, args) {
   if (typeof name === 'string' && name.startsWith('mcp_')) {
     for (const p of _providers) {
       try {
-        return await p.executeTool(name, args);
+        return await p.executeTool(name, args, context);
       } catch (e) {
         const msg = e?.message || String(e);
         if (

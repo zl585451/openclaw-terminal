@@ -36,6 +36,7 @@ import type { CapabilityId, CapabilityStatus } from '../../core/capabilities/typ
 import { InlineInquiry } from '../../components/inlineInquiry/InlineInquiry';
 import { useInlineInquiry } from '../../hooks/useInlineInquiry';
 import { parseClarifyCard } from '../../core/clarifyCard/parser';
+import type { ClarifyCardSpec } from '../../core/clarifyCard/types';
 import { CapabilityBar } from '../../components/capabilityBar/CapabilityBar';
 import { CapabilitySetupDrawer } from '../onboarding/CapabilitySetupDrawer';
 
@@ -283,6 +284,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const imagePromptInjectorRef = useRef<((prompt: string) => void) | null>(null);
   const pendingImagePromptRef = useRef(false);
   const lastImagePromptAssistantIdRef = useRef<number | null>(null);
+  const sendClarifyReplyRef = useRef<(text: string) => void>(() => {});
 
   // ── scrollBridgeRef：打破 useMessages↔useScrollManager 的循环依赖 ───────
   // useMessages 通过此 ref 桥接调用 scroll.reconcile / scrollAfterUserSend，
@@ -290,6 +292,11 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const scrollBridgeRef = useRef({
     reconcile: () => {},
     scrollAfterUserSend: () => {},
+  });
+  const inquiry = useInlineInquiry({
+    onReply: (text) => {
+      sendClarifyReplyRef.current(text);
+    },
   });
 
   const msgs = useMessages({
@@ -307,7 +314,20 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     typingSound: settings.typingSound,
     typingSoundVolume: settings.typingSoundVolume,
     onStatusChange,
+    onClarifyOpen: (spec: ClarifyCardSpec) => {
+      const opened = inquiry.openSpec(spec);
+      if (!opened && import.meta.env.DEV) {
+        console.warn('[clarify] openSpec rejected: another inquiry already active');
+      }
+    },
   });
+
+  useEffect(() => {
+    sendClarifyReplyRef.current = (text: string) => {
+      if (!msgs.wsConnected) return;
+      void msgs.sendMessage(text, null);
+    };
+  }, [msgs.sendMessage, msgs.wsConnected]);
 
   // ── Workbench → Chat 桥接：监听面板内的发送请求 ─────────────────
   // 当 DocumentAppendBar / 其他面板内 UI 通过 workbenchBus.requestSendMessage 发起请求时，
@@ -475,13 +495,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const isStreamingUiPause = msgs.isStreaming;
   suspendGatewayLogRef.current = isStreamingUiPause;
   const gateway = useGateway(suspendGatewayLogRef);
-  const inquiry = useInlineInquiry({
-    onReply: (text) => {
-      if (msgs.wsConnected) {
-        msgs.sendMessage(text, null);
-      }
-    },
-  });
 
   useEffect(() => {
     if (!isStreamingUiPause) {

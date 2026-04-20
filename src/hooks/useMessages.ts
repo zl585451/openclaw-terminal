@@ -11,6 +11,7 @@ import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/ChatTab.v2';
+import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
@@ -134,6 +135,7 @@ export interface UseMessagesOptions {
     ctxUsed?: number | null,
     ctxMax?: number | null,
   ) => void;
+  onClarifyOpen?: (spec: ClarifyCardSpec) => void;
 }
 
 export interface UseMessagesReturn {
@@ -175,6 +177,7 @@ export function useMessages({
   typingSound,
   typingSoundVolume,
   onStatusChange,
+  onClarifyOpen,
 }: UseMessagesOptions): UseMessagesReturn {
   const transportPacingMs = 4;
   const scrollRef = useRef(scroll);
@@ -814,6 +817,10 @@ export function useMessages({
           },
         ]);
       }
+    },
+
+    onClarifyOpen: (spec) => {
+      onClarifyOpen?.(spec);
     },
 
     onKeepalive: (payload) => {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { WorkbenchRoundtripContext, CanvasEvent, WorkbenchEvent } from '../workbench/types';
+import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 
 const ipcRenderer = typeof window !== 'undefined' && typeof (window as any).require === 'function'
   ? (window as any).require('electron').ipcRenderer
@@ -10,6 +11,7 @@ interface UseWebSocketOptions {
   onChatDone: (content: string, isSystemReply: boolean, turnId?: string) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: any) => void;
+  onClarifyOpen?: (spec: ClarifyCardSpec) => void;
   onKeepalive?: (payload: { phase: string; elapsedMs: number; toolName?: string | null }) => void;
   onGatewayCapabilities?: (capabilities: {
     model?: string;
@@ -105,6 +107,14 @@ export function useWebSocket(options: UseWebSocketOptions) {
       if (data.type === 'tool' || data.event === 'tool') {
         const payload = data.payload || data.data || data;
         opt.onToolEvent(payload);
+        return;
+      }
+
+      if (data.type === 'clarify' || data.event === 'clarify') {
+        const payload = data.payload || data.data || data;
+        if (payload?.spec) {
+          opt.onClarifyOpen?.(payload.spec as ClarifyCardSpec);
+        }
         return;
       }
 

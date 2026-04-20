@@ -1154,6 +1154,44 @@ function enforceExecutionContract({ text, supportsTools, hasToolEvidence }) {
   return `本轮未触发可验证的工具调用，先基于现有信息继续回答。\n\n${source}`;
 }
 
+function buildClarifyCapabilityRule(toolsSupport) {
+  if (toolsSupport === 'supported') {
+    return `## 澄清询问器（工具路径）
+
+当你需要一次性收集用户多个维度的结构化信息时，优先调用 \`request_clarify\` 工具，不要输出 [clarify_card] 文本标签。
+
+调用规则：
+- 字段最多 4 个，field.label 必须是完整问句
+- 工具返回 waiting_user_reply 后立即停止输出，等待下一轮用户消息（通常以 [澄清回执] 开头）
+- 一次对话只调用一次该工具，不要连续追问
+- 收到 [澄清回执] 后继续执行任务；用户跳过字段可用合理默认值并在开头说明假设`;
+  }
+
+  return `## 澄清询问器（文本路径）
+
+当你需要一次性收集用户多个维度的结构化信息时，用 [clarify_card]...[/clarify_card] 输出 JSON。
+
+格式规则：
+- 字段最多 4 个，field.label 必须是完整问句
+- 结构：{ "fields": [{ "id", "label", "type", "options?", "allow_custom?", "placeholder?" }] }
+- type 仅可用：single / multi / text / confirm
+- 一次对话只输出一张卡片，不连续追问
+- 收到 [澄清回执] 后继续执行任务；用户跳过字段可用合理默认值并在开头说明假设`;
+}
+
+function injectClarifyCapabilityMessage(messages, toolsSupport) {
+  const list = Array.isArray(messages) ? messages : [];
+  const exists = list.some((msg) => {
+    if (!msg || msg.role !== 'system' || typeof msg.content !== 'string') return false;
+    return msg.content.includes('## 澄清询问器（工具路径）') || msg.content.includes('## 澄清询问器（文本路径）');
+  });
+  if (exists) return list;
+  return [
+    ...list,
+    { role: 'system', content: buildClarifyCapabilityRule(toolsSupport) },
+  ];
+}
+
 async function streamChat({
   messages,
   onDelta,
@@ -1176,7 +1214,7 @@ async function streamChat({
 
   // 上下文截断优化：防止消息过长
   const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages);
-  const effectiveMessages = provider.id === 'google'
+  let effectiveMessages = provider.id === 'google'
     ? injectGoogleDiagramGuard(truncatedMessages)
     : truncatedMessages;
   getContextUsageRatio(effectiveMessages, model);
@@ -1235,11 +1273,6 @@ async function streamChat({
   };
 
   try {
-    const hasImage = effectiveMessages.some(m =>
-      Array.isArray(m.content) &&
-      m.content.some(c => c.type === 'image_url')
-    );
-
     if (caps.toolsSupport === 'unknown') {
       const probeResult = await probeModelToolsSupport({ provider, baseUrl, apiKey, model });
       if (probeResult?.toolsSupport) {
@@ -1251,11 +1284,18 @@ async function streamChat({
     if (!caps.toolReliability) {
       caps.toolReliability = caps.supportsTools ? 'loose' : 'none';
     }
+    const effectiveToolsSupport = caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown');
+    effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveToolsSupport);
+
+    const hasImage = effectiveMessages.some(m =>
+      Array.isArray(m.content) &&
+      m.content.some(c => c.type === 'image_url')
+    );
 
     log.info('model caps', {
       turnId: turnId || null,
       model,
-      toolsSupport: caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown'),
+      toolsSupport: effectiveToolsSupport,
       capabilitySource: caps.capabilitySource || 'unknown',
       supportsTools: caps.supportsTools,
       toolReliability: caps.toolReliability,

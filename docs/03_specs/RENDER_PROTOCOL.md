@@ -122,6 +122,23 @@ OCT 前端支持 **6 种成对标签**，AMY 可在一条消息中使用多个�
 - `allow_custom: true` 时追加“自己说”自填入口
 - 一条消息最多 1 张 `clarify_card`
 
+### 2.6.1 双通道触发（工具路径 + 文本路径）
+
+**工具路径（优先）**：
+
+当 gateway 侧 `toolsSupport === 'supported'` 时，{{AI_NAME}} 通过调用 `request_clarify` 工具触发 InlineInquiry，而不是输出 `[clarify_card]` 文本标签。
+
+- gateway 在 `oct-gateway/tools/request_clarify.js` 注册该工具
+- 工具 execute 立即 `onToolEvent({ type: 'clarify_open', payload: { spec } })` 并返回 `waiting_user_reply` 占位
+- `index.js` 的 `sendToolEvent` 把 `clarify_open` 转为 WS 事件 `{ type: 'event', event: 'clarify', payload: { spec } }`
+- 前端 `useWebSocket.ts` 路由该事件到 `onClarifyOpen` 回调，最终调用 `inquiry.openSpec(spec)`
+
+**文本路径（兜底）**：
+
+当 `toolsSupport !== 'supported'` 时，{{AI_NAME}} 输出 `[clarify_card]...[/clarify_card]` 文本标签，前端 `parseClarifyCard` 解析后由既有 effect 调用 `inquiry.maybeTrigger`。
+
+两条路径汇聚到同一前端入口 `useInlineInquiry.openSpec(spec)`。
+
 ---
 
 ## 三、混合使用

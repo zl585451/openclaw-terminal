@@ -73,7 +73,7 @@ class ToolLoop {
       const _toolStart = Date.now();
       let toolFailed = false;
       const result = await Promise.race([
-        this.toolLoader.executeTool(toolName, args),
+        this.toolLoader.executeTool(toolName, args, { onToolEvent }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error(`工具 ${toolName} 超时（${Math.round(toolTimeoutMs / 1000)}秒）`)), toolTimeoutMs)
         ),
