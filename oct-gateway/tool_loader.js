@@ -80,7 +80,7 @@ function loadTools() {
 /**
  * 注册一个动态工具提供者。提供者需实现：
  *   getDefinitions() → OpenAI tool 格式数组
- *   executeTool(name, args) → Promise<result>
+ *   executeTool(name, args, context?) → Promise<result>
  */
 function registerProvider(provider) {
   if (typeof provider.getDefinitions !== 'function' || typeof provider.executeTool !== 'function') {
