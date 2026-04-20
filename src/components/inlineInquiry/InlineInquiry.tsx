@@ -96,11 +96,6 @@ export const InlineInquiry: React.FC<Props> = ({
     onUpdate({ value: v.slice(0, TEXT_MAX_LEN) });
   }, [onUpdate]);
 
-  const handleInspirationClick = useCallback((text: string) => {
-    onUpdate({ value: text });
-    textInputRef.current?.focus();
-  }, [onUpdate]);
-
   const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (field.type === 'text') return;
     if (draft.isCustomMode) return;
@@ -221,21 +216,6 @@ export const InlineInquiry: React.FC<Props> = ({
       <div className="oct-inq-body">
         {field.type === 'text' && (
           <div className="oct-inq-text-wrap">
-            {field.inspirations && field.inspirations.length > 0 && (
-              <div className="oct-inq-inspirations">
-                <span className="oct-inq-insp-hint">参考</span>
-                {field.inspirations.map((insp) => (
-                  <button
-                    key={insp}
-                    type="button"
-                    className="oct-inq-insp-chip"
-                    onClick={() => handleInspirationClick(insp)}
-                  >
-                    {insp}
-                  </button>
-                ))}
-              </div>
-            )}
             <input
               ref={textInputRef}
               type="text"

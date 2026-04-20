@@ -188,15 +188,6 @@ const electronAPI = {
     ipcRenderer.invoke('nocturne-set-intention', { intention }),
   invokeGatewayTool: (toolName: string, args: any) =>
     ipcRenderer.invoke('invoke-gateway-tool', toolName, args),
-  // Agent 权限（系统级硬开关）
-  getAgentPermissions: () => ipcRenderer.invoke('get-agent-permissions'),
-  saveAgentPermissions: (permissions: {
-    shellCommands?: boolean;
-    fileWrite?: boolean;
-    networkRequests?: boolean;
-    softwareInstall?: boolean;
-    systemConfig?: boolean;
-  }) => ipcRenderer.invoke('save-agent-permissions', permissions),
   // MCP Server 管理
   mcpGetStatus: () => ipcRenderer.invoke('mcp-get-status'),
   mcpAddServer: (name: string, cfg: any) => ipcRenderer.invoke('mcp-add-server', name, cfg),

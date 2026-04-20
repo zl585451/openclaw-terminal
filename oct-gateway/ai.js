@@ -801,12 +801,11 @@ function extractXmlPseudoToolCalls(text) {
   if (!source || !/<tool_call>/i.test(source)) {
     return [];
   }
-  const KNOWN_TOOL_NAMES = new Set([
-    'canvas', 'web_search', 'web_fetch',
-    'read_file', 'read_document', 'write_file',
-    'memory_write', 'memory_search', 'memory_read',
-    'exec_command',
-  ]);
+  const KNOWN_TOOL_NAMES = new Set(
+    (toolLoader.getDefinitions?.() || [])
+      .map((def) => String(def?.function?.name || '').trim())
+      .filter(Boolean)
+  );
 
   const callRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
   const calls = [];
@@ -1642,7 +1641,7 @@ async function streamChat({
         /<tool_call>/i.test(textToCheck)
         || /<function=\w+>/i.test(textToCheck)
         || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
-        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read)"/i.test(textToCheck);
+        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
       if (hasToolCallResidue) {
         log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
           model: responseModel || model,

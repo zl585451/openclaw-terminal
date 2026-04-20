@@ -77,4 +77,28 @@ describe('parseClarifyCard', () => {
     expect(spec).toBeNull();
     expect(stripped).toBe(input);
   });
+
+  it('开标签写成 ) 时也可解析', () => {
+    const input = `[clarify_card)
+{
+  "fields": [
+    { "id": "x", "label": "选 A 还是 B？", "type": "single", "options": ["A", "B"] }
+  ]
+}
+[/clarify_card]`;
+    const { spec } = parseClarifyCard(input);
+    expect(spec).not.toBeNull();
+    expect(spec!.fields).toHaveLength(1);
+  });
+
+  it('只有开标签无闭合时剥离尾部污染内容', () => {
+    const input = `前导正文
+[clarify_card)
+{
+  "fields": [{ "id": "x", "label": "x", "type": "single", "options": ["A", "B"] }]
+}`;
+    const { spec, stripped } = parseClarifyCard(input);
+    expect(spec).toBeNull();
+    expect(stripped).toBe('前导正文');
+  });
 });

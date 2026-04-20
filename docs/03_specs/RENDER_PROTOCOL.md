@@ -2,12 +2,18 @@
 
 > 定义 AMY 输出中的成对渲染标签，前端解析后映射到对应交互组件。  
 > **版本**: v1.0.0 | **更新日期**: 2026-03-14
+> **2026-04-20**：澄清“单一格式 vs 多标签”历史口径冲突，明确三种模式；补充 `[clarify_card]` 协议口径。
 
 ---
 
 ## 一、协议概述
 
-OCT 前端支持 **5 种成对标签**，AMY 可在一条消息中使用多个标签，每个标签内的内容会被解析为独立的交互组件，标签外的内容作为正文保留。
+OCT 前端支持 **6 种成对标签**，AMY 可在一条消息中使用多个标签，每个标签内的内容会被解析为独立的交互组件，标签外的内容作为正文保留。
+
+> **模式区分**：
+> - 成对标签模式下支持多段标签混排（本文档描述的协议）
+> - 自动检测模式下建议单一格式（避免解析冲突）
+> - `clarify_card` 渲染为输入框位置的内联询问器，一条消息最多 1 张，不与其他标签并列
 
 **优先级**：成对标签 > `[RENDER:xxx]` > `[选项框开始]` > 自动检测
 
@@ -90,6 +96,31 @@ OCT 前端支持 **5 种成对标签**，AMY 可在一条消息中使用多个�
 这段内容包含 ■ 符号和 - [ ] 格式，但不应触发任何交互。
 [/text]
 ```
+
+### 2.6 `[clarify_card]...[/clarify_card]` — 澄清询问器（内联）
+
+- **组件**: `InlineInquiry`（位于输入框位置，活跃时替换 `ChatInputArea`）
+- **解析**: `src/core/clarifyCard/parser.ts` → `parseClarifyCard()`
+- **Hook**: `src/hooks/useInlineInquiry.ts`
+- **交互**: 用户在询问器内分页填写，完成后以 `[澄清回执]` 作为用户消息回发；取消则聊天流零痕迹
+- **内容格式**: 标签内为 JSON，包含 `fields[]`（`title` 可选）
+- **代码块保护**: 代码块内的 `[clarify_card]` 示例保持原样，不会触发询问器
+
+**字段类型**：
+
+| type | 用途 | 必填字段 |
+|---|---|---|
+| `single` | 单选 | `options`（至少 2 项） |
+| `multi` | 多选 | `options`（至少 2 项） |
+| `text` | 自由文本 | 可选 `placeholder` |
+| `confirm` | 确认型选项 | `options`（至少 2 项） |
+
+**字段规则**：
+
+- `label` 必须写成完整问句（例如“想写什么风格？”）
+- `title` 可选；省略时前端按 `field.label` 展示每页标题
+- `allow_custom: true` 时追加“自己说”自填入口
+- 一条消息最多 1 张 `clarify_card`
 
 ---
 
@@ -190,6 +221,7 @@ console.log('hello');
 | `[question]` | `parseNumberedOptions` → `parseLineOptions` | `QuestionCards` | `src/components/QuestionCards.tsx` |
 | `[tasklist]` | `parseCheckboxOptions` → `parsePlainLines` | `TaskList` | `src/components/TaskList.tsx` |
 | `[text]` | 无 | `MarkdownContent` | `src/components/ChatTab.tsx` |
+| `[clarify_card]` | `parseClarifyCard` | `InlineInquiry` | `src/components/inlineInquiry/InlineInquiry.tsx` |
 
 **解析入口**: `src/utils/optionBoxParser.ts` → `parseTaggedContent()`
 
@@ -201,3 +233,4 @@ console.log('hello');
 |------|------|------|
 | 1.0.0 | 2026-03-14 | 初始版本：定义 5 种成对标签协议 |
 | 1.0.1 | 2026-03-30 | 补充与 Markdown 表格/代码块共存的输出建议（避免误解析与内容丢失） |
+| 1.1.0 | 2026-04-20 | 新增 `[clarify_card]`（InlineInquiry）并补充模式区分口径 |

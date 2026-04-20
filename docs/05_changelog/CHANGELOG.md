@@ -1,6 +1,7 @@
 # FEATURE_MAP 变更日志
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
+| 2026-04-20 | 修正 ClarifyCard 触发策略：从“偏边界确认”统一为“多字段精准澄清 / 边界确认双用途”，并消除“只能追问一次”的提示词歧义 | `docs/01_system_prompts/*.md`, `resources/system_prompts/*.md` | 详见 `docs/05_changelog/2026-04-20-clarify-card-trigger-strategy-fix.md` |
 |------|----------|----------|------|
 | 2026-04-16 | 网关：硅基流动解析 API Key 时跳过百炼 Coding `sk-sp-`，优先 `SILICONFLOW_API_KEY`；启动日志改为输出解析后的 provider/Key/BaseURL | `oct-gateway/config.js` | 详见 `docs/05_changelog/2026-04-16-siliconflow-skip-sk-sp-dashscope.md` |
 | 2026-04-16 | 设置：修复「应用」时连接配置快照与当前表单不一致导致跳过保存；先落盘 Gateway 再保存人格；硅基流动同步 `SILICONFLOW_API_KEY` 并规范化 Base URL | `src/hooks/settings/useApiKeys.ts`, `src/components/SettingsPanel.tsx`, `electron/main.ts`, `electron/preload.ts`, `src/vite-env.d.ts` | 详见 `docs/05_changelog/2026-04-16-settings-apply-gateway-baseline.md` |

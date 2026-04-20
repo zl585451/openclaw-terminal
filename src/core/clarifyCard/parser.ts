@@ -2,7 +2,7 @@ import type { ClarifyCardSpec } from './types';
 
 /** 匹配 [clarify_card ...]{...JSON...}[/clarify_card] */
 const CLARIFY_CARD_RX =
-  /\[clarify_card(?:\s+[^\]]*)?\]([\s\S]*?)\[\/clarify_card\]/gi;
+  /\[clarify_card(?:\s+[^\]\)]*)?[\]\)]([\s\S]*?)\[\/clarify_card\]/gi;
 
 /** 解析结果 */
 export interface ParseClarifyResult {
@@ -26,6 +26,15 @@ export function parseClarifyCard(content: string): ParseClarifyResult {
   CLARIFY_CARD_RX.lastIndex = 0;
   const match = CLARIFY_CARD_RX.exec(content);
   if (!match) {
+    // 容错：只出现了开标签（常见模型输出中断/拼写轻微错误），也要剥离避免污染聊天区
+    const looseOpen = content.search(/\[clarify_card(?:\s+[^\]\)]*)?[\]\)]/i);
+    if (looseOpen >= 0) {
+      return {
+        spec: null,
+        range: [looseOpen, content.length],
+        stripped: stripRange(content, looseOpen, content.length),
+      };
+    }
     return { spec: null, range: null, stripped: content };
   }
 
@@ -118,10 +127,6 @@ function normalizeField(raw: unknown) {
     return null;
   }
 
-  const inspirations = Array.isArray(obj.inspirations)
-    ? obj.inspirations.filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
-    : undefined;
-
   return {
     id,
     label,
@@ -130,7 +135,6 @@ function normalizeField(raw: unknown) {
     allow_custom: obj.allow_custom === true,
     custom_label: typeof obj.custom_label === 'string' ? obj.custom_label : undefined,
     custom_placeholder: typeof obj.custom_placeholder === 'string' ? obj.custom_placeholder : undefined,
-    inspirations,
     placeholder: typeof obj.placeholder === 'string' ? obj.placeholder : undefined,
     required: obj.required === true,
   };

@@ -2,7 +2,7 @@
  * ClarifyCard 澄清卡片系统 - 类型定义
  *
  * AMY 需要向用户收集结构化信息时，输出 [clarify_card] 标签；
- * 前端解析后弹出浮层，收集完信息后以 [澄清回执] 格式回发给 AMY。
+ * 前端解析后以内联询问器渲染，收集完信息后以 [澄清回执] 格式回发给 AMY。
  */
 
 /** 字段类型 */
@@ -28,8 +28,6 @@ export interface ClarifyField {
   custom_label?: string;
   /** 自填输入框占位符 */
   custom_placeholder?: string;
-  /** 灵感提示（Type C：点击可一键填入文本框） */
-  inspirations?: string[];
   /** text 类型的占位符 */
   placeholder?: string;
   /** 是否必填（默认 false，所有字段都可跳过） */
