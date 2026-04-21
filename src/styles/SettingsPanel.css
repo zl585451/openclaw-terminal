@@ -997,6 +997,32 @@
   height: 40px;
 }
 
+.settings-panel select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: var(--text-md);
+  height: 40px;
+  line-height: 40px;
+  border-radius: 6px;
+  box-sizing: border-box;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: border-color 0.2s;
+}
+
+.settings-panel select:hover {
+  border-color: var(--accent-primary);
+}
+
+.settings-panel select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-primary-muted);
+}
+
 .settings-panel select.settings-input {
   padding-top: 0;
   padding-bottom: 0;
@@ -1006,13 +1032,7 @@
 }
 
 .settings-select {
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  color: var(--text-primary);
-  padding: 8px 12px;
-  font-family: inherit;
-  border-radius: 6px;
-  cursor: pointer;
+  padding: 0 12px;
 }
 
 .settings-select:hover {
