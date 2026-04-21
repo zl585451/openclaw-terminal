@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-19（移除录音转文字 ASR 链路，保留 TTS）  
+> **最后更新**：2026-04-21（补齐 runtime / transport 分层，清理 `main_utf8.ts` 与 ASR 残影）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -43,6 +43,7 @@
 ### 基础设施（第一层）
 - **Gateway WebSocket**：前端 ↔ AI 的桥梁，OCT 自有 token 认证（无 ECDSA）
 - **Transport 分层**：`transport/ws.js` / `transport/http.js` / `transport/protocol.js` 已接管网络生命周期，仍保留 legacy fallback 便于联调
+- **Transport 辅助**：`transport/helpers.js` 负责 workbench/canvas 事件发送辅助
 - **Gateway 分层**：`gateway/router.js` / `gateway/slash.js` 承接请求路由与稳定 Slash 命令
 - **Runtime 分层**：`runtime/chatEngine.js` / `contextBuilder.js` / `streamController.js` / `providerRouter.js` / `toolLoop.js`
 - **Service 分层**：`services/postProcessor.js` / `imageService.js`
@@ -130,14 +131,13 @@
 - **思考模式展示修复**：`/think off` 会关闭本地 CoT 面板渲染，正文与思考块不再交织。
 - **图片识别降级增强**：`image_analyzer` 云端失败时会继续尝试本地降级，并在最终回复中明确说明视觉分析状态。
 - **任务看板体验修复**：任务面板前端快速添加、Electron 本地任务写入、gateway `task_add/tasks_add` 均新增去重保护；任务与停车场项支持 hover 查看完整内容。
-- **右栏 TOK/CTX**：`electron/main.ts` 和 `main_utf8.ts` 对多 provider usage 做统一抽取；右栏在厂商未返回显式上下文占用时，会基于模型窗口显示近似 `CTX`。
+- **右栏 TOK/CTX**：`electron/main.ts` 对多 provider usage 做统一抽取；右栏在厂商未返回显式上下文占用时，会基于模型窗口显示近似 `CTX`。
 
 ### 2026-04-06 语音助手与能力路由产品化
 - **目标**：把语音能力做成产品级 capability routing，而不是 MiniMax 私有定制链
 - **实现**：
   - 接入 MiniMax `speech-2.8-hd` WebSocket TTS
   - 保留浏览器本地朗读兜底
-  - 语音输入改为录音 → IPC → 云端 ASR → 文本回填
   - `LogPanel` 新增 `TTS` 分类，只显示用量、成功与错误
   - 设置面板新增云端音色选择，但只有检测到可用 MiniMax TTS 能力时才展示
   - `auto` 朗读改为跟随当前 `OCT_PROVIDER`，不再因残留 Key 误触发别家云端语音
@@ -145,6 +145,7 @@
   - MiniMax Token Plan 用户可直接启用云端朗读
   - 非 MiniMax 用户不会平白承担额外系统负担
   - 后续生图/多模态套餐能力可沿用同一套路由思路
+  - 录音转文字（ASR）链路已在 2026-04-19 移除，当前音频侧只保留打字音效与 TTS
 
 ### 2026-04-15 首屏引导组件（Phase P0 · Task P0-1）
 - **新增**：`src/ui/onboarding/WelcomeHero.tsx`、`CapabilityCards.tsx`、`onboarding.css`（`oct-` 类名前缀；卡片点击带调试日志）
