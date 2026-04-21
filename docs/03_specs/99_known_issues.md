@@ -12,7 +12,7 @@
 | 2 | 🔴 致命 | `clarification_memory.js` 不存在 | 追问偏好学习完全没有 | ✅ 已修复 (2026-03-26，文件已创建并接入 onDone + boot load) |
 | 3 | — | 自评系统 + 模式提炼 | 评分不准确，规则质量不可控 | 🔇 已停用 (2026-03-20，index.js 注释调用，SOUL.md 自动规则已删除) |
 | 4 | — | SOUL.md 自动学习规则 | 由模式提炼写入，质量不可控 | 🔇 已删除 (2026-03-20，不再写入) |
-| 5 | 🟡 中等 | 所有异步调用 `.catch(() => {})` 静默吞错 | 出了问题完全看不到 | 🚧 待修复 |
+| 5 | 🟡 中等 | 所有异步调用 `.catch(() => {})` 静默吞错 | 出了问题完全看不到 | 🟢 前端侧已完成，Electron 主进程待评估 |
 | 6 | 🟡 中等 | Nocturne 偶尔掉线 | 所有记忆功能全部静默失效 | 🟡 已优化待运行验证（重试/限流已加） |
 | 7 | 🟡 中等 | `cleanupOldHistory` 只打日志不真删 | 历史数据无限增长 | 🚧 待完善 |
 | 8 | 🔵 低 | `hypothesis.js` 已接入但主链未触发 | 可能误判能力现状，且保留无效 sidecar 成本认知 | ⚠️ 已接入但未真实触发 (2026-04-21，见 `docs/07_research/hypothesis-call-trace-2026-04-21.md`) |
@@ -90,6 +90,20 @@
 - src/hooks/useFileAttachment.ts:103
 - src/ui/chat/MessageList.tsx:97
 - src/utils/clickSound.ts:6（建议加 /* intentional */ 注释）
+
+### 2026-04-21 阶段 3A:前端吞错补全
+
+完成以下位点的 UI 反馈补全：
+- ✅ src/components/SettingsPanel.tsx:176, :207
+- ✅ src/ui/settings/tabs/MemoryTabView.tsx:235, :254, :333
+
+并为 4 处合理的静默 catch 加 `/* intentional */` 注释：
+- src/hooks/useContextMenu.ts:24
+- src/hooks/useFileAttachment.ts:103
+- src/ui/chat/MessageList.tsx:97
+- src/utils/clickSound.ts:6
+
+主表 #5 状态：从 🚧 改为 🟢 前端侧已完成，Electron 主进程待评估
 
 ---
 
