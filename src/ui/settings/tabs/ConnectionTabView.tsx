@@ -341,30 +341,17 @@ export function ConnectionTabView({
               </div>
             </div>
             <details className="settings-details">
-              <summary>如何获取 Token？</summary>
+              <summary>Token 什么时候需要填写？</summary>
               <div className="settings-details-content">
-                <p className="settings-guide-copy"><strong>方法：在终端运行命令</strong></p>
-                <div className="settings-code-block">
-                  <span>openclaw dashboard --no-open</span>
-                  <button
-                    type="button"
-                    className="settings-copy-btn"
-                    onClick={() => {
-                      navigator.clipboard.writeText('openclaw dashboard --no-open');
-                      const btn = document.activeElement as HTMLButtonElement;
-                      const orig = btn.textContent;
-                      btn.textContent = '已复制 ✓';
-                      setTimeout(() => { btn.textContent = orig; }, 1500);
-                    }}
-                  >
-                    复制
-                  </button>
-                </div>
-                <p className="settings-guide-copy">命令执行后会输出类似这样的网址：</p>
-                <div className="settings-code-url">
-                  http://127.0.0.1:18789/dashboard#token=<span className="settings-code-highlight">xxxxx-xxxxx-xxxxx</span>&amp;...
-                </div>
-                <p><strong>复制黄色高亮部分的 token 值</strong>（#token= 后面到 &amp; 之前的内容），粘贴到上方输入框即可。</p>
+                <p className="settings-guide-copy">
+                  桌面应用会在首次启动时自动生成 Gateway Token，并同步给内置 Gateway 与前端连接。通常保持默认值即可，不需要手动获取。
+                </p>
+                <p>
+                  只有在你手动连接外部 Gateway，或自己通过环境变量 / 配置文件设置了 <strong>OCT_GATEWAY_TOKEN</strong> 时，才需要在这里填入同一个 Token。
+                </p>
+                <p>
+                  如果不确定是否需要填写，请保留当前值或留空，然后点击「保存并重新连接」。连接成功后右上角会显示 CONNECTED。
+                </p>
               </div>
             </details>
             <button
