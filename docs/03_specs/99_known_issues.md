@@ -1,6 +1,8 @@
 # 已知问题汇总
 
-> 最后更新：2026-04-17
+> 最后更新：2026-04-21
+
+当前测试基线：7 个测试文件，79 个用例（截至 2026-04-21）
 
 ---
 
@@ -19,6 +21,8 @@
 | 11 | 🟡 中等 | Windows 中文路径编码导致工具失败 | 找不到文件错误 | ✅ 已修复 (2026-03-22) |
 | 12 | 🔴 致命 | 多表格（含 `|---|`）在最终渲染阶段丢失 | 聊天内容缺行/整表消失 | ✅ 已修复 (2026-03-30，`optionBoxParser`：逐行处理 + 跳过表格行 + 修复双转义) |
 | 13 | 🟡 中等 | 无语言标记的 fenced code block 被当成行内代码 | “代码框消失”（无 header/Copy/背景） | ✅ 已修复 (2026-03-30，`ChatTab.v2`：`code` 组件恢复 `inline` 判断) |
+| 14 | 🟡 中等 | 设置页样式体系分裂（inline style + CSS 文件并存）| 维护成本增加，主题变量难统一 | 🚧 阶段 3 处理 |
+| 15 | 🟡 中等 | Electron 28 → 41、Vite 5 → 8 大版本滞后 | 安全性与生态兼容风险 | 🚧 清理完成后单独 sprint |
 
 ---
 
@@ -54,6 +58,27 @@
 - **问题 2**：无语言标记的代码块被渲染成行内代码（代码框消失）
 - **原因**：仅依赖 `className`（`language-`）与 `children.includes('\n')` 判定块级，在部分情况下不可靠
 - **修复**：`ChatTab.v2.tsx` 的 `code` 组件使用 `!inline && (...)` 作为块级判定前置条件
+
+### 2026-04-21 #5 静默吞错受影响范围补充
+
+经全仓扫描（tech-debt-scan-2026-04-21.md），实际受影响文件清单扩大：
+
+**Gateway 侧（已在阶段 1 修复）**：
+- ✅ oct-gateway/transport/ws.js:120, :128
+- ✅ oct-gateway/memory_feedback.js:245, :269, :292
+
+**前端侧（待阶段 3 修复）**：
+- ❌ src/components/SettingsPanel.tsx:176, :207
+- ❌ src/ui/settings/tabs/MemoryTabView.tsx:235, :254, :333
+
+**Electron 主进程（待后续评估）**：
+- ❌ electron/main.ts:2149, :2919
+
+**低优先级（可保留）**：
+- src/hooks/useContextMenu.ts:24
+- src/hooks/useFileAttachment.ts:103
+- src/ui/chat/MessageList.tsx:97
+- src/utils/clickSound.ts:6（建议加 /* intentional */ 注释）
 
 ---
 
