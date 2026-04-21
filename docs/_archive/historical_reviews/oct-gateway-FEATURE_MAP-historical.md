@@ -1,3 +1,15 @@
+# FEATURE_MAP.md (HISTORICAL / ARCHIVED)
+
+> ⚠️ **此文件已归档，不代表当前实现**
+> - 归档日期: 2026-04-21
+> - 归档原因: BUG 编号体系过时（2025 年），与当前 `docs/03_specs/99_known_issues.md` 不兼容
+> - 当前真相: 请参考 `docs/03_specs/99_known_issues.md` 和 `docs/02_architecture/FEATURE_MAP.md`
+> - 本文件保留仅供历史追溯
+
+---
+
+（原内容保留在下方）
+
 # OpenClaw Terminal - Feature Map
 
 > 最后更新：2026-03-22 by AMY  

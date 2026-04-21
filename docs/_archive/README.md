@@ -30,3 +30,7 @@
 - 归档内容属于 `HISTORICAL` / `REFERENCE`
 - 不可直接当作当前实现真相
 
+## 新增索引
+
+- `historical_reviews/oct-gateway-FEATURE_MAP-historical.md` - 旧 Gateway BUG 编号体系，2026-04-21 归档
+
