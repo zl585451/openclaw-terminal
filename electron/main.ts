@@ -82,25 +82,6 @@ function guessImageExtension(url: string): string {
   return 'jpg';
 }
 
-/** 与 oct-gateway/config.js 一致：Gemini OpenAI 兼容层仅 Bearer；URL 勿带 ?key= 以免 400 重复鉴权 */
-function sanitizeGoogleOpenAiBaseUrlForMain(url: string): string {
-  const s = String(url || '').trim();
-  if (!s) return s;
-  try {
-    const u = new URL(s);
-    if (!u.hostname.toLowerCase().includes('generativelanguage.googleapis.com')) {
-      return s.replace(/\/$/, '');
-    }
-    u.search = '';
-    u.hash = '';
-    let out = u.toString();
-    if (out.endsWith('/')) out = out.slice(0, -1);
-    return out;
-  } catch {
-    return s.split('?')[0].split('#')[0].trim().replace(/\/$/, '');
-  }
-}
-
 function buildOctChildEnv(extraEnv: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
   // oct-gateway 在 index.js 内对 HTTPS_PROXY 使用 undici ProxyAgent。
@@ -367,6 +348,23 @@ function readAppConfig(): Record<string, any> {
 function getGatewayDirForHelpers(): string {
   const octEntry = getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js');
   return path.dirname(octEntry);
+}
+
+type GoogleBaseUrlHelperModule = {
+  sanitizeGoogleOpenAiBaseUrl: (url: string) => string;
+};
+
+let _googleBaseUrlHelper: GoogleBaseUrlHelperModule | undefined;
+function getGoogleBaseUrlHelper(): GoogleBaseUrlHelperModule {
+  if (!_googleBaseUrlHelper) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    _googleBaseUrlHelper = require(path.join(
+      getGatewayDirForHelpers(),
+      'shared',
+      'googleBaseUrl.js',
+    )) as GoogleBaseUrlHelperModule;
+  }
+  return _googleBaseUrlHelper;
 }
 
 function getLocalVisionConfig() {
@@ -3222,27 +3220,25 @@ ipcMain.handle('invoke-gateway-tool', async (_, toolName: string, args: any) => 
   }
 });
 
-const DEFAULT_AGENT_PERMISSIONS = {
-  shellCommands: false,
-  fileWrite: false,
-  networkRequests: true,
-  softwareInstall: false,
-  systemConfig: false,
+type OctGatewayConfigAgentPerms = {
+  normalizeAgentPermissions: (input: unknown) => Record<string, boolean>;
+  DEFAULT_AGENT_PERMISSIONS: Record<string, boolean>;
 };
-
-function normalizeAgentPermissions(input: any) {
-  const src = input && typeof input === 'object' ? input : {};
-  return {
-    shellCommands: src.shellCommands === true,
-    fileWrite: src.fileWrite === true,
-    networkRequests: src.networkRequests !== false,
-    softwareInstall: src.softwareInstall === true,
-    systemConfig: src.systemConfig === true,
-  };
+let _octGatewayConfigAgentPerms: OctGatewayConfigAgentPerms | undefined;
+function getOctGatewayConfigAgentPerms(): OctGatewayConfigAgentPerms {
+  if (!_octGatewayConfigAgentPerms) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    _octGatewayConfigAgentPerms = require(path.join(
+      getGatewayDirForHelpers(),
+      'config.js',
+    )) as OctGatewayConfigAgentPerms;
+  }
+  return _octGatewayConfigAgentPerms;
 }
 
 ipcMain.handle('get-agent-permissions', async () => {
   try {
+    const { normalizeAgentPermissions, DEFAULT_AGENT_PERMISSIONS } = getOctGatewayConfigAgentPerms();
     ensureConfigFile();
     let cfg: Record<string, any> = {};
     if (fs.existsSync(CONFIG_FILE)) {
@@ -3265,6 +3261,7 @@ ipcMain.handle('save-agent-permissions', async (_, permissions: {
   systemConfig?: boolean;
 }) => {
   try {
+    const { normalizeAgentPermissions, DEFAULT_AGENT_PERMISSIONS } = getOctGatewayConfigAgentPerms();
     ensureConfigFile();
     let cfg: Record<string, any> = {};
     if (fs.existsSync(CONFIG_FILE)) {
@@ -3710,7 +3707,7 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
       return { success: false, error: '请先填写 API Key 并选择服务商' };
     }
     const fetchBaseUrl =
-      providerId === 'google' ? sanitizeGoogleOpenAiBaseUrlForMain(baseUrl) : baseUrl;
+      providerId === 'google' ? getGoogleBaseUrlHelper().sanitizeGoogleOpenAiBaseUrl(baseUrl) : baseUrl;
     if (providerId === 'minimax' && !String(apiKey).trim().startsWith('sk-cp-')) {
       return {
         success: false,

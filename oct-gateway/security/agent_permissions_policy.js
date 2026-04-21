@@ -18,17 +18,6 @@ let _permissionCache = {
   value: { ...DEFAULT_AGENT_PERMISSIONS },
 };
 
-function normalizeAgentPermissions(raw) {
-  const source = raw && typeof raw === 'object' ? raw : {};
-  return {
-    shellCommands: source.shellCommands === true,
-    fileWrite: source.fileWrite === true,
-    networkRequests: source.networkRequests !== false,
-    softwareInstall: source.softwareInstall === true,
-    systemConfig: source.systemConfig === true,
-  };
-}
-
 function getPolicyOptions() {
   const strictFromConfig = config.getEnvOrConfig?.('AGENT_PERMISSIONS_STRICT_UNKNOWN_MCP_DENY');
   const strictUnknownMcpDeny = strictFromConfig === '' || strictFromConfig === null || strictFromConfig === undefined
@@ -41,14 +30,14 @@ function getRuntimeAgentPermissions() {
   const now = Date.now();
   if (_permissionCache.expiresAt > now) return _permissionCache.value;
 
-  const fallback = normalizeAgentPermissions(config.AGENT_PERMISSIONS || config.__fileConfig?.AGENT_PERMISSIONS);
+  const fallback = config.normalizeAgentPermissions(config.AGENT_PERMISSIONS || config.__fileConfig?.AGENT_PERMISSIONS);
   let finalPermissions = fallback;
   const configPath = config._configPath;
 
   if (configPath && fs.existsSync(configPath)) {
     try {
       const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      finalPermissions = normalizeAgentPermissions(parsed?.AGENT_PERMISSIONS);
+      finalPermissions = config.normalizeAgentPermissions(parsed?.AGENT_PERMISSIONS);
       if (config.__fileConfig && typeof config.__fileConfig === 'object') {
         config.__fileConfig.AGENT_PERMISSIONS = finalPermissions;
       }
@@ -186,5 +175,5 @@ function enforceAgentPermission({ toolName, args, meta, definition, isMcpTool })
 module.exports = {
   enforceAgentPermission,
   getRuntimeAgentPermissions,
-  normalizeAgentPermissions,
+  normalizeAgentPermissions: (raw) => config.normalizeAgentPermissions(raw),
 };

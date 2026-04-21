@@ -81,6 +81,7 @@ const result = await searcher.search({ query: '关键词' });
 
 - 新增网关侧强制权限拦截：`oct-gateway/tool_loader.js` 在每次 `executeTool` 前执行 `enforceAgentPermission`。
 - 权限来源：`config.json` 的 `AGENT_PERMISSIONS`（由设置面板“高级 → Agent 权限”写入）。
+- 布尔归一化：`oct-gateway/config.js` 的 `normalizeAgentPermissions` 为唯一实现；`oct-gateway/security/agent_permissions_policy.js` 与 Electron `get/save-agent-permissions` IPC 复用该实现，避免多处漂移。
 - 作用范围：内置工具与 MCP 动态工具统一生效（不再仅是前端文本层提示）。
 - `exec_command` 额外做命令级判定：安装类、系统配置类、网络访问类、文件写入类分别受对应开关控制。
 - 新增“未知 MCP 工具严格拒绝”策略（默认开启）：当任一权限开关为关闭状态时，无法识别风险能力的 MCP 工具默认拒绝，防止改名/伪装工具绕过。

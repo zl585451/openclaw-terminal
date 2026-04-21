@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { PROVIDERS } = require('./providers');
+const { sanitizeGoogleOpenAiBaseUrl } = require('./shared/googleBaseUrl.js');
 
 const CAPABILITY_PROBE_CACHE_FILE = 'capability-probe-cache.json';
 const PROBE_TTL_SUPPORTED_MS = 7 * 24 * 60 * 60 * 1000;
@@ -690,32 +691,6 @@ function pickKey(...sources) {
     if (validKey(v)) return v;
   }
   return '';
-}
-
-/**
- * Gemini OpenAI 兼容层：网关请求使用 `x-goog-api-key`（见 ai.js）；Base URL 若带 ?key= 会与头里 API Key 重复，触发 400。
- */
-function sanitizeGoogleOpenAiBaseUrl(url) {
-  const s = String(url || '').trim();
-  if (!s) return s;
-  try {
-    const u = new URL(s);
-    const host = u.hostname.toLowerCase();
-    // 对所有 Google 端点（AI Studio 和 Vertex AI）统一去掉 ?key= 防止双凭证 400
-    const isGoogleEndpoint =
-      host.includes('generativelanguage.googleapis.com') ||
-      host.includes('aiplatform.googleapis.com');
-    if (!isGoogleEndpoint) {
-      return s.replace(/\/$/, '');
-    }
-    u.search = '';
-    u.hash = '';
-    let out = u.toString();
-    if (out.endsWith('/')) out = out.slice(0, -1);
-    return out;
-  } catch {
-    return s.split('?')[0].split('#')[0].trim().replace(/\/$/, '');
-  }
 }
 
 /** 去掉首尾空白并移除 URL 内误粘贴的空白（如 https://host /v1），避免 fetch 报 Failed to parse URL */

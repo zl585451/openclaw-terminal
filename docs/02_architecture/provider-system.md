@@ -1,6 +1,6 @@
 # Provider 系统 — AI 服务商市场化
 
-> **最后更新**：2026-04-17（能力三态 + 动态探测缓存） | **状态**：✅ 正常
+> **最后更新**：2026-04-22（含 Google Base URL 清洗 `oct-gateway/shared/googleBaseUrl.js`） | **状态**：✅ 正常
 
 ---
 
@@ -8,6 +8,10 @@
 抽象 AI 服务商为统一的 Provider 概念，让用户在 GUI 中选择服务商、填 Key、选模型，无需编辑 .env。
 
 ## 文件
+- `src/ui/settings/providerViewHelpers.ts` — beginner/advanced 共用的主对话 API Key 字段映射与展示用取值（不含保存）
+- `src/hooks/settings/recommendedModels.ts` — 新手模式推荐模型列表、`BEGINNER_PROVIDER_IDS`、卡片副标题文案映射、`getFirstRecommendedModel` 等（单一来源）
+- `src/ui/settings/providerTypes.ts` — 前端设置与 `useApiKeys` 共用的 `ProviderEntry` / `ProvidersState` / `ProviderModelOption` 类型定义（单一来源）
+- `oct-gateway/shared/googleBaseUrl.js` — `sanitizeGoogleOpenAiBaseUrl`（网关 `config.js` 与 Electron `main` 共用，避免 `?key=` 与头重复）
 - `oct-gateway/providers.js` — 服务商预设注册表
 - `oct-gateway/config.js` — getProviderConfig、currentProvider
 - `oct-gateway/ai.js` — 按 provider 能力组装请求
