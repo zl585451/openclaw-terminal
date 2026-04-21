@@ -68,33 +68,20 @@ export function McpTabView({
         </p>
 
         {Object.keys(mcpStatus).length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <h4 style={{ margin: '0 0 8px 0', fontSize: 14, color: 'var(--text-primary)' }}>已连接的服务器</h4>
+          <div className="settings-list-section">
+            <h4 className="settings-subtitle">已连接的服务器</h4>
             {Object.entries(mcpStatus).map(([name, info]) => (
               <div
                 key={name}
-                style={{
-                  background: 'var(--bg-surface)',
-                  borderRadius: 8,
-                  padding: '12px 16px',
-                  marginBottom: 8,
-                  border: info.status === 'connected' ? '1px solid var(--status-success)' : '1px solid var(--border-primary)',
-                }}
+                className={`settings-server-card ${info.status === 'connected' ? 'settings-server-card-connected' : ''}`}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <span style={{ fontSize: 16, marginRight: 8 }}>{getServerIcon(name)}</span>
+                <div className="settings-server-head">
+                  <div className="settings-server-identity">
+                    <span className="settings-server-icon">{getServerIcon(name)}</span>
                     <div>
-                      <span className="settings-label" style={{ fontWeight: 500 }}>{name}</span>
+                      <span className="settings-label settings-label-strong">{name}</span>
                       <span
-                        style={{
-                          marginLeft: 8,
-                          fontSize: 12,
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: info.status === 'connected' ? 'var(--status-success)' : 'var(--status-error)',
-                          color: 'white',
-                        }}
+                        className={`settings-status-pill ${info.status === 'connected' ? 'settings-status-pill-connected' : 'settings-status-pill-error'}`}
                       >
                         {info.status === 'connected' ? '已连接' : info.status}
                       </span>
@@ -102,32 +89,23 @@ export function McpTabView({
                   </div>
                   <button
                     type="button"
-                    className="settings-btn"
-                    style={{ padding: '4px 12px', fontSize: 12 }}
+                    className="settings-btn settings-small-btn-wide"
                     onClick={() => onRemoveServer(name)}
                   >
                     删除
                   </button>
                 </div>
-                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                <div className="settings-command-line">
                   命令：{info.config?.command} {(info.config?.args || []).join(' ')}
                 </div>
                 {name === 'file_ops' && (
-                  <div
-                    style={{
-                      marginTop: 8,
-                      padding: '8px 10px',
-                      borderRadius: 6,
-                      border: '1px solid var(--border-subtle)',
-                      background: 'var(--bg-base)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div className="settings-risk-card">
+                    <div className="settings-inline-row-between">
                       <div>
-                        <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>
+                        <div className="settings-risk-title">
                           全盘访问（高风险）
                         </div>
-                        <div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                        <div className="settings-risk-desc">
                           关闭时仅白名单目录可操作；开启后可操作任意目录。
                         </div>
                       </div>
@@ -154,21 +132,12 @@ export function McpTabView({
                   </div>
                 )}
                 {info.tools?.length > 0 && (
-                  <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                  <div className="settings-tool-list">
                     可用工具：{info.tools.map((t) => t.name).join('、')}
                   </div>
                 )}
                 {info.errorMessage && (
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: 'var(--status-error)',
-                      padding: '4px 8px',
-                      background: 'var(--status-error-bg)',
-                      borderRadius: 4,
-                    }}
-                  >
+                  <div className="settings-inline-error-card">
                     ❌ {info.errorMessage}
                   </div>
                 )}
@@ -178,28 +147,18 @@ export function McpTabView({
         )}
 
         {Object.keys(mcpStatus).length === 0 && !mcpLoading && (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '24px',
-              background: 'var(--bg-surface)',
-              borderRadius: 8,
-              marginBottom: 16,
-              border: '2px dashed var(--border-subtle)',
-            }}
-          >
-            <div style={{ fontSize: 24, marginBottom: 8 }}>🔧</div>
-            <p style={{ color: 'var(--text-tertiary)', margin: 0 }}>还没有连接任何 MCP 服务器</p>
+          <div className="settings-empty-state">
+            <div className="settings-empty-icon">🔧</div>
+            <p className="settings-empty-text">还没有连接任何 MCP 服务器</p>
           </div>
         )}
 
-        <div style={{ background: 'var(--bg-surface)', borderRadius: 8, padding: 16, marginTop: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h4 style={{ margin: 0, fontSize: 14, color: 'var(--text-primary)' }}>手动添加 MCP 服务器</h4>
+        <div className="settings-form-card">
+          <div className="settings-form-card-head">
+            <h4 className="settings-subtitle settings-heading-inline">手动添加 MCP 服务器</h4>
             <button
               type="button"
-              className="settings-btn"
-              style={{ padding: '4px 8px', fontSize: 12 }}
+              className="settings-btn settings-small-btn-narrow"
               onClick={() => setShowInstallHint((v) => !v)}
             >
               {showInstallHint ? '隐藏提示' : '显示提示'}
@@ -239,21 +198,16 @@ export function McpTabView({
           <div className="settings-field">
             <label>环境变量</label>
             <textarea
-              className="settings-input settings-input-focusable"
+              className={`settings-input settings-input-focusable settings-textarea-mono ${envErrors.length > 0 ? 'settings-textarea-error' : ''}`}
               value={newServer.envText}
               onChange={(e) => setNewServer({ ...newServer, envText: e.target.value })}
               rows={4}
               placeholder="每行一个环境变量，格式：KEY=VALUE"
-              style={{
-                fontFamily: 'monospace',
-                fontSize: 12,
-                border: envErrors.length > 0 ? '1px solid var(--status-error)' : undefined,
-              }}
             />
             {envErrors.length > 0 && (
-              <div style={{ marginTop: 4 }}>
+              <div className="settings-validation-list">
                 {envErrors.map((error, i) => (
-                  <div key={i} style={{ fontSize: 11, color: 'var(--status-error)' }}>
+                  <div key={i} className="settings-validation-error">
                     ⚠️ {error}
                   </div>
                 ))}
@@ -261,7 +215,7 @@ export function McpTabView({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <div className="settings-actions-row settings-stack-lg">
             <button
               type="button"
               className="settings-btn settings-btn-primary"
@@ -283,22 +237,13 @@ export function McpTabView({
           </div>
 
           {showInstallHint && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: 8,
-                background: 'var(--status-info-bg)',
-                borderRadius: 4,
-                fontSize: 11,
-                color: 'var(--text-secondary)',
-              }}
-            >
+            <div className="settings-info-card">
               <strong>常用示例：</strong> `uvx minimax-coding-plan-mcp -y`（需先安装 uv/uvx，并配置 `MINIMAX_API_KEY`）。
             </div>
           )}
         </div>
 
-        <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+        <div className="settings-actions-row settings-stack-lg">
           <button type="button" className="settings-btn" onClick={onRefresh}>
             ↻ 刷新状态
           </button>
