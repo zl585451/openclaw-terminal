@@ -170,7 +170,7 @@ function VisionApiSection({ apiKeys, setApiKeys, showApiKey, setShowApiKey }: {
         </div>
       </div>
 
-      <div className="settings-field" style={{ marginBottom: 10 }}>
+      <div className="settings-field settings-field-compact">
         <label>服务商预设</label>
         <select
           className="settings-input settings-input-focusable"
@@ -182,16 +182,16 @@ function VisionApiSection({ apiKeys, setApiKeys, showApiKey, setShowApiKey }: {
           ))}
         </select>
         {activePreset.keyLink && (
-          <p className="settings-desc" style={{ fontSize: 12, marginTop: 4 }}>
-            <a href={activePreset.keyLink} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>
+          <p className="settings-desc settings-desc-compact">
+            <a href={activePreset.keyLink} target="_blank" rel="noreferrer" className="settings-link">
               获取 API Key →
             </a>
-            {activePreset.modelHint && <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{activePreset.modelHint}</span>}
+            {activePreset.modelHint && <span className="settings-hint-inline">{activePreset.modelHint}</span>}
           </p>
         )}
       </div>
 
-      <div className="settings-field" style={{ marginBottom: 10 }}>
+      <div className="settings-field settings-field-compact">
         <label>API Key</label>
         <div className="settings-input-row">
           <input
@@ -212,7 +212,7 @@ function VisionApiSection({ apiKeys, setApiKeys, showApiKey, setShowApiKey }: {
         </div>
       </div>
 
-      <div className="settings-field" style={{ marginBottom: 10 }}>
+      <div className="settings-field settings-field-compact">
         <label>Base URL</label>
         <input
           type="text"
@@ -234,7 +234,7 @@ function VisionApiSection({ apiKeys, setApiKeys, showApiKey, setShowApiKey }: {
           className="settings-input settings-input-focusable"
           autoComplete="off"
         />
-        <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+        <p className="settings-desc settings-desc-compact">
           留空则不启用视觉 API。三个字段（Key / URL / 模型）都填写后生效。
         </p>
       </div>
