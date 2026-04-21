@@ -1,7 +1,7 @@
 # Image Flow Entry
 
 > Status: CURRENT  
-> Last Updated: 2026-04-08  
+> Last Updated: 2026-04-21  
 > Scope: 截图/图片附件发送、gateway 路由、视觉直传与图片描述降级
 
 ---
@@ -11,7 +11,7 @@
 当前图片链路不是单一路径，而是：
 
 - 视觉模型：直接 `image_url` 直传
-- 非视觉模型：先 `imageAnalyzer` 生成图片描述，再按文本链路发送
+- 非视觉模型：先经 `ImageService` 路由，再由 `imageAnalyzer` 生成图片描述并按文本链路发送
 
 ---
 
@@ -24,12 +24,14 @@ flowchart TD
   C --> D[electron/main.ts openclaw-send]
   D --> E[attachments image base64]
   E --> F[oct-gateway/index.js chat.send]
-  F --> G{当前模型支持视觉直传?}
-  G -->|是| H[inline_vision]
-  G -->|否| I[imageAnalyzer.analyzeImages]
-  I --> J[图片描述文本]
-  H --> K[streamChat 多模态请求]
-  J --> L[streamChat 文本请求]
+  F --> G[ContextBuilder.build]
+  G --> H[ImageService.processImageAttachments]
+  H --> I{当前模型支持视觉直传?}
+  I -->|是| J[inline_vision]
+  I -->|否| K[imageAnalyzer.analyzeImages]
+  K --> L[图片描述文本]
+  J --> M[chatEngine.execute -> streamChat 多模态请求]
+  L --> N[chatEngine.execute -> streamChat 文本请求]
 ```
 
 ---
@@ -40,8 +42,10 @@ flowchart TD
 2. `src/ui/chat/ChatInput.tsx`
 3. `electron/main.ts`
 4. `oct-gateway/index.js`
-5. `oct-gateway/image_analyzer.js`
-6. `oct-gateway/ai.js`
+5. `oct-gateway/runtime/contextBuilder.js`
+6. `oct-gateway/services/imageService.js`
+7. `oct-gateway/image_analyzer.js`
+8. `oct-gateway/runtime/chatEngine.js`
 
 ---
 
@@ -57,19 +61,27 @@ flowchart TD
   - `{ type: 'image', mimeType, content: base64 }`
 
 ### `oct-gateway/index.js`
-- `chat.send` 中检测 `imageAttachments`
+- 创建 `ImageService`，并把它注入 `ContextBuilder`
+- `chat.send` 进入 `contextBuilder.build()`，不再直接手写图片分支
+
+### `oct-gateway/runtime/contextBuilder.js`
+- 在 `build()` 中收集 `imageAttachments`
+- 统一调用 `imageService.processImageAttachments(...)`
+- 把返回结果并入最终 `messageContent`
+
+### `oct-gateway/services/imageService.js`
+- 当前图片路由服务层
 - 记录 `image request routing` 日志
-- 根据当前模型决定：
-  - `inline_vision`
-  - `image_analyzer_fallback`
+- 判断视觉直传 vs 描述降级
+- 非视觉模型时再调用 `imageAnalyzer.analyzeImages(...)`
 
 ### `oct-gateway/image_analyzer.js`
-- 云端/本地图片描述降级链路
-- 当前已补充分段日志
+- 图片描述能力实现层
+- 只在 `ImageService` 选择降级路径时触发
 
-### `oct-gateway/ai.js`
-- 最终统一走 `streamChat`
-- 如果是视觉模型直传，消息内容里会带 `image_url`
+### `oct-gateway/runtime/chatEngine.js`
+- 最终统一执行聊天请求
+- 无论是视觉直传还是文字降级，最后都从这里进入 `streamChat`
 
 ---
 
@@ -92,7 +104,8 @@ flowchart TD
 - 直接把 `image_url` 传给模型
 
 ### 非视觉模型
-- 先 `imageAnalyzer.analyzeImages()`
+- 先进入 `ImageService`
+- 再由 `ImageService` 调 `imageAnalyzer.analyzeImages()`
 - 把结果拼进文本上下文
 - 避免图片直传把主文本模型流式回复打断
 
