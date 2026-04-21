@@ -1,5 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { useSettings } from '../../../contexts/SettingsContext';
+import type { NocturneMemoryItem, NocturneReadResult } from '../../../types/electronAPI';
 
 export type NocturneStatusBrief = { available: boolean; path: string } | null;
 
@@ -18,6 +19,39 @@ export type AiLibStatusState = {
   portInUse: boolean;
   resolvedGatewayUrl: string;
 } | null;
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function isMemoryItem(value: unknown): value is NocturneMemoryItem {
+  return !!value && typeof value === 'object';
+}
+
+function getMemoryItemContent(item: NocturneMemoryItem): string {
+  return item.node?.content ?? item.content ?? '';
+}
+
+function formatSingleMemoryContent(uri: string, result: NocturneReadResult): string {
+  const data = result.data;
+  if (typeof data === 'string') return `[${uri}]\n\n${data || '（空）'}`;
+  if (isMemoryItem(data)) {
+    const node = data.node || data;
+    const content = node.content ?? JSON.stringify(data);
+    return `[${uri}]\n\n${content || '（空）'}`;
+  }
+  return `[${uri}]\n\n${data ? JSON.stringify(data) : '（空）'}`;
+}
+
+function formatBootMemoryContent(data: NocturneReadResult['data']): string {
+  if (!Array.isArray(data)) return JSON.stringify(data);
+  const parts = data.map((item) => {
+    const u = item.uri || '';
+    const c = getMemoryItemContent(item);
+    return `[${u}]\n${c}`;
+  });
+  return parts.join('\n\n---\n\n') || '（无内容）';
+}
 
 export interface MemoryTabViewProps {
   nocturneStatus: NocturneStatusBrief;
@@ -167,8 +201,8 @@ export function MemoryTabView({
             className="settings-btn settings-btn-primary"
             disabled={aiLibSaving}
             onClick={async () => {
-              const api = (window as any).electronAPI;
-              if (!api?.saveAiLibraryPlugin) return;
+              const api = window.electronAPI;
+              if (!api?.saveAiLibraryPlugin || !api.getAiLibraryPlugin) return;
               setAiLibSaving(true);
               try {
                 const r = await api.saveAiLibraryPlugin({
@@ -233,20 +267,22 @@ export function MemoryTabView({
               type="button"
               className={`settings-btn ${nocturneDashboardStatus?.backendRunning ? 'settings-btn-danger' : 'settings-btn-primary'}`}
               onClick={async () => {
-                const api = (window as any).electronAPI;
+                const api = window.electronAPI;
                 if (!api) return;
                 if (nocturneDashboardStatus?.backendRunning) {
+                  if (!api.stopNocturneDashboard) return;
                   await api.stopNocturneDashboard();
                   setNocturneDashboardStatus({ backendRunning: false, frontendRunning: false });
                   setNocturneDetail((d) => d ? { ...d, backendAlive: false, frontendAlive: false } : null);
                 } else {
+                  if (!api.startNocturneDashboard) return;
                   setNocturneStarting(true);
                   const r = await api.startNocturneDashboard();
                   setNocturneStarting(false);
                   if (r.success) {
                     setNocturneDashboardStatus({ backendRunning: true, frontendRunning: true });
-                    api.getNocturneStatus().then((r2: any) => setNocturneDetail(r2)).catch((err: unknown) => {
-                      const msg = err instanceof Error ? err.message : String(err);
+                    api.getNocturneStatus?.().then((r2) => setNocturneDetail(r2)).catch((err: unknown) => {
+                      const msg = getErrorMessage(err);
                       console.warn('[MemoryTabView] Dashboard 启动后状态刷新失败', msg);
                       setRefreshWarning(`Dashboard 启动后状态刷新失败：${msg}`);
                     });
@@ -263,13 +299,13 @@ export function MemoryTabView({
               type="button"
               className="settings-btn"
               onClick={async () => {
-                const api = (window as any).electronAPI;
+                const api = window.electronAPI;
                 if (!api?.restartNocturneBackend) return;
                 setRestartingBackend(true);
                 await api.restartNocturneBackend();
                 await new Promise((r) => setTimeout(r, 2000));
-                api.getNocturneStatus().then((r: any) => setNocturneDetail(r)).catch((err: unknown) => {
-                  const msg = err instanceof Error ? err.message : String(err);
+                api.getNocturneStatus?.().then((r) => setNocturneDetail(r)).catch((err: unknown) => {
+                  const msg = getErrorMessage(err);
                   console.warn('[MemoryTabView] 重启后端后状态刷新失败', msg);
                   setRefreshWarning(`重启后端后状态刷新失败：${msg}`);
                 });
@@ -282,7 +318,7 @@ export function MemoryTabView({
             <button
               type="button"
               className="settings-btn"
-              onClick={() => (window as any).electronAPI?.openNocturneManagement?.()}
+              onClick={() => window.electronAPI?.openNocturneManagement?.()}
             >
               打开管理界面
             </button>
@@ -295,10 +331,10 @@ export function MemoryTabView({
               onClick={() => {
                 setNocturneSetupStatus('loading');
                 setNocturneSetupError('');
-                (window as any).electronAPI?.setupNocturneMemory?.().then((r: { success: boolean; error?: string }) => {
+                window.electronAPI?.setupNocturneMemory?.().then((r) => {
                   if (r.success) setNocturneSetupStatus('success');
                   else { setNocturneSetupStatus('error'); setNocturneSetupError(r.error || '未知错误'); }
-                }).catch((err: Error) => { setNocturneSetupStatus('error'); setNocturneSetupError(err.message); });
+                }).catch((err: unknown) => { setNocturneSetupStatus('error'); setNocturneSetupError(getErrorMessage(err)); });
               }}
               disabled={nocturneSetupStatus === 'loading'}
             >
@@ -308,7 +344,7 @@ export function MemoryTabView({
               type="button"
               className="settings-btn"
               onClick={() => {
-                (window as any).electronAPI?.seedNocturneMemories?.().then((r: { success: boolean; error?: string; output?: string }) => {
+                window.electronAPI?.seedNocturneMemories?.().then((r) => {
                   alert(r.success ? '初始化成功！' + (r.output || '') : '初始化失败：' + (r.error || ''));
                 });
               }}
@@ -320,7 +356,7 @@ export function MemoryTabView({
               className="settings-btn"
               disabled={amyWorkModeWriting}
               onClick={async () => {
-                const api = (window as any).electronAPI;
+                const api = window.electronAPI;
                 if (!api?.nocturneCreate) return;
                 setAmyWorkModeWriting(true);
                 const workModeContent = `${userName} 的工作团队分工：
@@ -351,16 +387,16 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                   const r2 = await api.nocturneCreate('core://agent/claude_routing', claudeRoutingContent, 1, '咨询Claude、问题整理、提示词优化、token节省');
                   if (r1?.ok && r2?.ok) {
                     alert(`已写入 ${assistantName} 工作模式记忆：core://agent/work_mode、core://agent/claude_routing`);
-                    api.getNocturneStatus().then((r: any) => setNocturneDetail(r)).catch((err: unknown) => {
-                      const msg = err instanceof Error ? err.message : String(err);
+                    api.getNocturneStatus?.().then((r) => setNocturneDetail(r)).catch((err: unknown) => {
+                      const msg = getErrorMessage(err);
                       console.warn('[MemoryTabView] 写入工作模式记忆后状态刷新失败', msg);
                       setRefreshWarning(`写入工作模式记忆后状态刷新失败：${msg}`);
                     });
                   } else {
                     alert('写入失败：' + (r1?.error || r2?.error || '未知错误'));
                   }
-                } catch (e: any) {
-                  alert('写入失败：' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                  alert('写入失败：' + getErrorMessage(e));
                 }
                 setAmyWorkModeWriting(false);
               }}
@@ -381,21 +417,19 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                       type="button"
                       className="settings-btn settings-small-btn"
                       onClick={async () => {
-                        const api = (window as any).electronAPI;
+                        const api = window.electronAPI;
                         if (!api?.nocturneRead) return;
                         setMemoryReadLoading(true);
                         setMemoryReadContent(null);
                         try {
                           const r = await api.nocturneRead(uri);
                           if (r?.ok && r?.data) {
-                            const node = (r.data as any)?.node || r.data;
-                            const content = node?.content ?? (typeof r.data === 'string' ? r.data : JSON.stringify(r.data));
-                            setMemoryReadContent(`[${uri}]\n\n${content || '（空）'}`);
+                            setMemoryReadContent(formatSingleMemoryContent(uri, r));
                           } else {
                             setMemoryReadContent('读取失败：' + (r?.error || '未知错误'));
                           }
-                        } catch (e: any) {
-                          setMemoryReadContent('错误：' + (e?.message || String(e)));
+                        } catch (e: unknown) {
+                          setMemoryReadContent('错误：' + getErrorMessage(e));
                         }
                         setMemoryReadLoading(false);
                       }}
@@ -411,24 +445,19 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                   type="button"
                   className="settings-btn"
                   onClick={async () => {
-                    const api = (window as any).electronAPI;
+                    const api = window.electronAPI;
                     if (!api?.nocturneRead) return;
                     setMemoryReadLoading(true);
                     setMemoryReadContent(null);
                     try {
                       const r = await api.nocturneRead('system://boot');
                       if (r?.ok && Array.isArray(r?.data)) {
-                        const parts = (r.data as any[]).map((item: any) => {
-                          const u = item?.uri || '';
-                          const c = item?.node?.content ?? item?.content ?? '';
-                          return `[${u}]\n${c}`;
-                        });
-                        setMemoryReadContent(parts.join('\n\n---\n\n') || '（无内容）');
+                        setMemoryReadContent(formatBootMemoryContent(r.data));
                       } else {
                         setMemoryReadContent(r?.ok ? JSON.stringify(r.data) : '失败：' + (r?.error || ''));
                       }
-                    } catch (e: any) {
-                      setMemoryReadContent('错误：' + (e?.message || String(e)));
+                    } catch (e: unknown) {
+                      setMemoryReadContent('错误：' + getErrorMessage(e));
                     }
                     setMemoryReadLoading(false);
                   }}
