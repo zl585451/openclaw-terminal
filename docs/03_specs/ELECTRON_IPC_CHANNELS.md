@@ -1,6 +1,6 @@
 # Electron IPC 通道清单
 
-> **最后更新时间**：2026-04-19  
+> **最后更新时间**：2026-04-21  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：修改/调试时快速查找前端与主进程的通信通道
 
@@ -130,11 +130,41 @@
 
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
-| `get-ai-library-plugin` | 获取 AI.library 配置 | - | `{ enabled, path?, port?, ... }` | - |
+| `get-ai-library-plugin` | 获取 AI.library 配置 | - | `{ enabled, path?, port?, ... }` |
+| `save-ai-library-plugin` | 保存 AI.library 配置 | `{ enabled, path?, port?, autoStart?, installMode? }` | `{ success, error? }` |
 
 ---
 
-## 十、其他
+## 十、脚本 / Persona / MCP / 音乐
+
+| IPC 通道 | 用途 | 参数 | 返回值 |
+|----------|------|------|--------|
+| `save-script-draft-cache` | 保存剧本草稿缓存 | `{ scriptName, content, updatedAt? }` | `{ success, error? }` |
+| `parse-script-file` | 解析剧本文件 | - | `{ success, data?, error? }` |
+| `save-persona-settings` | 保存人格配置 | `{ aiName?, userName?, stylePreset? }` | `{ success, error? }` |
+| `music-generate` | 生成音乐 | `{ prompt, style?, title?, instrumental?, provider? }` | `{ success, data?, error? }` |
+| `lyrics-generate` | 生成歌词 | `{ prompt, style?, theme?, provider? }` | `{ success, data?, error? }` |
+| `mcp-get-status` | 获取 MCP 服务状态 | - | `{ success, servers?, error? }` |
+| `mcp-add-server` | 添加 MCP 服务 | `name: string`, `cfg: any` | `{ success, error? }` |
+| `mcp-remove-server` | 删除 MCP 服务 | `name: string` | `{ success, error? }` |
+
+---
+
+## 十一、本地视觉兼容占位通道
+
+| IPC 通道 | 用途 | 参数 | 返回值 |
+|----------|------|------|--------|
+| `get-local-vision-status` | 读取本地视觉状态占位 | - | `{ success, status, enabled, downloaded, message }` |
+| `save-local-vision-settings` | 保存本地视觉设置占位 | `{ enabled?, mirrorHost? }` | `{ success }` |
+| `download-local-vision-model` | 下载本地视觉模型占位 | - | `{ success, status, downloaded, message, error? }` |
+
+说明：
+- 这些通道仍由 `electron/main.ts` 注册并由 `preload.ts` 暴露
+- 当前返回的是“本地视觉功能已移除，请使用图片理解 API”的兼容占位结果，不代表本地视觉功能仍然可用
+
+---
+
+## 十二、其他
 
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
@@ -155,7 +185,7 @@
 
 ---
 
-## 十一、前端 → 主进程 事件
+## 十三、前端 → 主进程 事件
 
 主进程通过 `mainWindow.webContents.send('event-name', payload)` 推送给前端：
 
