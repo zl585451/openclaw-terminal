@@ -107,6 +107,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   const [applyStatus, setApplyStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [applyError, setApplyError] = useState<string>('');
+  const [panelWarning, setPanelWarning] = useState<string | null>(null);
   const [ttsPreviewStatus, setTtsPreviewStatus] = useState<'idle' | 'playing' | 'error' | 'success'>('idle');
   const [ttsPreviewError, setTtsPreviewError] = useState('');
   const { themeId, setTheme } = useTheme();
@@ -173,7 +174,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         setLocalPerm(res.data);
         setPermissions(res.data);
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[SettingsPanel] 权限读取失败', msg);
+        setPanelWarning(`权限读取失败：${msg}`);
+      });
   }, [setPermissions]);
 
   useEffect(() => {
@@ -204,7 +209,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
           personaStyle: result.data.OCT_PERSONA_STYLE || 'warm',
         }));
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[SettingsPanel] 人格配置读取失败', msg);
+        setPanelWarning(`人格配置读取失败：${msg}`);
+      });
   }, []);
 
   const apply = async () => {
@@ -355,6 +364,19 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
           ))}
         </div>
         <div className="settings-body" ref={bodyRef}>
+          {panelWarning && (
+            <div className="settings-banner-warning" role="alert">
+              <span>{panelWarning}</span>
+              <button
+                type="button"
+                className="settings-banner-close"
+                onClick={() => setPanelWarning(null)}
+                aria-label="关闭警告"
+              >
+                ×
+              </button>
+            </div>
+          )}
           {activeTab === 'required' && (
             <ConnectionTabView
               apiKeysLoaded={apiKeysLoaded}

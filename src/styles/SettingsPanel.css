@@ -438,6 +438,38 @@
   margin-top: 8px;
 }
 
+.settings-banner-warning,
+.settings-banner-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: var(--text-sm);
+}
+
+.settings-banner-warning {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+}
+
+.settings-banner-error {
+  background: var(--status-error-bg);
+  color: var(--status-error);
+}
+
+.settings-banner-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+}
+
 /* 行布局（开关、选择） */
 .settings-row {
   display: flex;
