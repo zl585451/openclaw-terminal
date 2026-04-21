@@ -22,8 +22,8 @@ export interface GatewayUsagePayload {
 }
 
 export interface GatewayToolPayload {
-  callId?: string;
-  tool?: string;
+  callId: string;
+  tool: string;
   name?: string;
   args?: Record<string, unknown>;
   state?: 'executing' | 'done' | 'error' | string;

@@ -1,59 +1,85 @@
 import { useState, useEffect, useRef } from 'react';
 import type { WorkbenchRoundtripContext, CanvasEvent, WorkbenchEvent } from '../workbench/types';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
+import type { IpcRendererLike } from '../types/electronAPI';
+import type {
+  GatewayCapabilities,
+  GatewayEvent,
+  GatewayKeepalivePayload,
+  GatewaySendPayload,
+  GatewaySendResult,
+  GatewayStatusPayload,
+  GatewayToolPayload,
+  GatewayUsagePayload,
+  NocturneHealthResult,
+} from '../types/gateway';
 
-const ipcRenderer = typeof window !== 'undefined' && typeof (window as any).require === 'function'
-  ? (window as any).require('electron').ipcRenderer
-  : { invoke: () => Promise.resolve(null), on: () => {}, off: () => {}, removeListener: () => {} };
+const noopIpcRenderer: IpcRendererLike = {
+  invoke: <T = unknown>() => Promise.resolve(null as T),
+  on: () => {},
+  off: () => {},
+  removeListener: () => {},
+};
+
+const ipcRenderer: IpcRendererLike = typeof window !== 'undefined' && typeof window.require === 'function'
+  ? window.require('electron').ipcRenderer
+  : noopIpcRenderer;
 
 interface UseWebSocketOptions {
   onChatDelta: (content: string, isDelta: boolean, isSystemReply: boolean, turnId?: string) => void;
   onChatDone: (content: string, isSystemReply: boolean, turnId?: string) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
-  onToolEvent: (payload: any) => void;
+  onToolEvent: (payload: GatewayToolPayload) => void;
   onClarifyOpen?: (spec: ClarifyCardSpec) => void;
-  onKeepalive?: (payload: { phase: string; elapsedMs: number; toolName?: string | null }) => void;
-  onGatewayCapabilities?: (capabilities: {
-    model?: string;
-    toolsSupport?: 'supported' | 'unknown' | 'unsupported';
-    capabilitySource?: string;
-    supportsTools?: boolean;
-    supportsStreamOptions?: boolean;
-    mcpReady?: boolean;
-    mcpServers?: number;
-    mcpConnectedServers?: number;
-  } | null) => void;
+  onKeepalive?: (payload: GatewayKeepalivePayload) => void;
+  onGatewayCapabilities?: (capabilities: GatewayCapabilities | null) => void;
   onWorkbenchEvent: (event: CanvasEvent | WorkbenchEvent) => void;
   onCanvasEvent?: (event: CanvasEvent | WorkbenchEvent) => void;
-  onUsage: (usage: any, isSnapshot: boolean) => void;
+  onUsage: (usage: GatewayUsagePayload, isSnapshot: boolean) => void;
   onModelName: (name: string) => void;
 }
 
-function isDeltaPayload(data: any): boolean {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object';
+}
+
+function nestedRecord(value: unknown, key: 'payload' | 'data'): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const nested = value[key];
+  return isRecord(nested) ? nested : null;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function isDeltaPayload(data: GatewayEvent): boolean {
   if (!data) return false;
-  const src = data.data ?? data.payload;
+  const src = nestedRecord(data, 'data') ?? nestedRecord(data, 'payload');
   return src?.state === 'delta' || (src?.delta !== undefined && src?.delta !== null);
 }
 
-function extractContent(data: any): string {
+function extractContent(data: GatewayEvent): string {
   if (!data) return '';
 
   if (data.type === 'event' && data.event === 'chat' && data.payload) {
-    const p = data.payload;
-    if (p.delta !== undefined) return String(p.delta || '');
-    if (p.text !== undefined) return String(p.text || '');
-    if (p.content !== undefined) return String(p.content || '');
+    const p = nestedRecord(data, 'payload');
+    if (p?.delta !== undefined) return String(p.delta || '');
+    if (p?.text !== undefined) return String(p.text || '');
+    if (p?.content !== undefined) return String(p.content || '');
   }
 
-  if (data.data) {
-    const d = data.data;
+  const dataRecord = nestedRecord(data, 'data');
+  if (dataRecord) {
+    const d = dataRecord;
     if (d.delta !== undefined) return String(d.delta || '');
     if (d.text !== undefined) return String(d.text || '');
     if (d.content !== undefined) return String(d.content || '');
   }
 
-  if (data.payload) {
-    const p = data.payload;
+  const payloadRecord = nestedRecord(data, 'payload');
+  if (payloadRecord) {
+    const p = payloadRecord;
     if (p.delta !== undefined) return String(p.delta || '');
     if (p.text !== undefined) return String(p.text || '');
     if (p.content !== undefined) return String(p.content || '');
@@ -66,12 +92,12 @@ function extractContent(data: any): string {
   return '';
 }
 
-function extractEmbeddedUsage(data: any): any {
+function extractEmbeddedUsage(data: GatewayEvent): GatewayUsagePayload | null {
   if (!data) return null;
-  return data.payload?.usage
-    ?? data.data?.usage
-    ?? data.usage
-    ?? null;
+  const payloadUsage = nestedRecord(data, 'payload')?.usage;
+  const dataUsage = nestedRecord(data, 'data')?.usage;
+  const usage = payloadUsage ?? dataUsage ?? data.usage ?? null;
+  return isRecord(usage) ? usage as GatewayUsagePayload : null;
 }
 
 export function useWebSocket(options: UseWebSocketOptions) {
@@ -89,9 +115,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
   };
 
   useEffect(() => {
-    const handleIncomingMessage = (
-      data: { content?: string; text?: string; delta?: string; done?: boolean; type?: string; phase?: string; event?: string; action?: string; message?: any; usage?: any; payload?: any; data?: any; connected?: boolean; snapshot?: boolean; elapsed?: number; turnId?: string }
-    ) => {
+    const handleIncomingMessage = (data: GatewayEvent) => {
       const opt = optionsRef.current;
       if (!data || data.type === 'status' || data.connected !== undefined) return;
 
@@ -105,13 +129,13 @@ export function useWebSocket(options: UseWebSocketOptions) {
       }
 
       if (data.type === 'tool' || data.event === 'tool') {
-        const payload = data.payload || data.data || data;
+        const payload = (nestedRecord(data, 'payload') || nestedRecord(data, 'data') || data) as GatewayToolPayload;
         opt.onToolEvent(payload);
         return;
       }
 
       if (data.type === 'clarify' || data.event === 'clarify') {
-        const payload = data.payload || data.data || data;
+        const payload = nestedRecord(data, 'payload') || nestedRecord(data, 'data') || data;
         if (payload?.spec) {
           opt.onClarifyOpen?.(payload.spec as ClarifyCardSpec);
         }
@@ -119,22 +143,18 @@ export function useWebSocket(options: UseWebSocketOptions) {
       }
 
       if (data.type === 'keepalive' || data.event === 'keepalive') {
-        const payload = (data.payload || data.data || data) as {
-          phase?: string;
-          elapsedMs?: number;
-          toolName?: string | null;
-        };
+        const payload = nestedRecord(data, 'payload') || nestedRecord(data, 'data') || data;
         opt.onKeepalive?.({
           phase: String(payload?.phase || ''),
           elapsedMs: Number(payload?.elapsedMs || 0),
-          toolName: payload?.toolName ?? null,
+          toolName: readString(payload?.toolName) ?? null,
         });
         return;
       }
 
       if (data.type === 'canvas' || data.event === 'canvas') {
-        const payload = data.payload || data.data || data;
-        const action = data.action || payload?.action;
+        const payload = nestedRecord(data, 'payload') || nestedRecord(data, 'data') || data;
+        const action = readString(data.action) || readString(payload?.action);
         const canvasPayload = payload?.payload ?? payload;
         if (action) {
           emitWorkbenchEvent({
@@ -147,8 +167,8 @@ export function useWebSocket(options: UseWebSocketOptions) {
       }
 
       if (data.type === 'workbench' || data.event === 'workbench') {
-        const payload = data.payload || data.data || data;
-        const action = data.action || payload?.action;
+        const payload = nestedRecord(data, 'payload') || nestedRecord(data, 'data') || data;
+        const action = readString(data.action) || readString(payload?.action);
         const workbenchPayload = payload?.payload ?? payload;
         if (action) {
           emitWorkbenchEvent({
@@ -161,7 +181,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
       }
 
       if (data.type === 'usage' || data.event === 'usage') {
-        const usage = data.payload || data.data || data;
+        const usage = (nestedRecord(data, 'payload') || nestedRecord(data, 'data') || data) as GatewayUsagePayload;
         const isSnapshot = data.snapshot === true;
         opt.onUsage(usage, isSnapshot);
 
@@ -181,12 +201,12 @@ export function useWebSocket(options: UseWebSocketOptions) {
 
       let content = extractContent(data);
       content = (content || '').replace(/\u200B/g, '');
-      const done = (data.done === true) || (data.payload?.done === true);
+      const done = (data.done === true) || (nestedRecord(data, 'payload')?.done === true);
       const isDelta = isDeltaPayload(data);
       const turnId = (() => {
-        const raw = (data as any)?.turnId
-          ?? data?.payload?.turnId
-          ?? data?.data?.turnId;
+        const raw = data.turnId
+          ?? nestedRecord(data, 'payload')?.turnId
+          ?? nestedRecord(data, 'data')?.turnId;
         if (raw == null) return undefined;
         const normalized = String(raw).trim();
         return normalized || undefined;
@@ -204,8 +224,8 @@ export function useWebSocket(options: UseWebSocketOptions) {
       if (!content && !done) return;
 
       const isSystemReply = data.type === 'system' || data.event === 'system' ||
-        (data.payload && (data.payload.type === 'system' || data.payload.isSystemReply === true)) ||
-        (data as any).isSystemReply === true;
+        (nestedRecord(data, 'payload')?.type === 'system' || nestedRecord(data, 'payload')?.isSystemReply === true) ||
+        data.isSystemReply === true;
 
       if (done) {
         opt.onChatDone(content, isSystemReply, turnId);
@@ -214,21 +234,12 @@ export function useWebSocket(options: UseWebSocketOptions) {
       }
     };
 
-    ipcRenderer.invoke('openclaw-status').then((r: {
+    ipcRenderer.invoke<{
       connected?: boolean;
       sessionKey?: string;
       model?: string;
-      capabilities?: {
-        model?: string;
-        toolsSupport?: 'supported' | 'unknown' | 'unsupported';
-        capabilitySource?: string;
-        supportsTools?: boolean;
-        supportsStreamOptions?: boolean;
-        mcpReady?: boolean;
-        mcpServers?: number;
-        mcpConnectedServers?: number;
-      };
-    }) => {
+      capabilities?: GatewayCapabilities;
+    }>('openclaw-status').then((r) => {
       if (r?.connected === true) {
         setWsConnected(true);
       }
@@ -240,22 +251,8 @@ export function useWebSocket(options: UseWebSocketOptions) {
       }
     });
 
-    const handleStatus = (_: any, status: {
-      connected?: boolean;
-      reconnecting?: boolean;
-      error?: string;
-      model?: string;
-      capabilities?: {
-        model?: string;
-        toolsSupport?: 'supported' | 'unknown' | 'unsupported';
-        capabilitySource?: string;
-        supportsTools?: boolean;
-        supportsStreamOptions?: boolean;
-        mcpReady?: boolean;
-        mcpServers?: number;
-        mcpConnectedServers?: number;
-      };
-    }) => {
+    const handleStatus = (_: unknown, payload: unknown) => {
+      const status = isRecord(payload) ? payload as GatewayStatusPayload : {};
       if (status.connected !== undefined) {
         setWsConnected(status.connected);
         setWsReconnecting(false);
@@ -276,9 +273,9 @@ export function useWebSocket(options: UseWebSocketOptions) {
       }
     };
 
-    const handleMessage = (_: any, msg: any) => {
+    const handleMessage = (_: unknown, msg: unknown) => {
       try {
-        handleIncomingMessage(msg);
+        if (isRecord(msg)) handleIncomingMessage(msg as GatewayEvent);
       } catch (e) {
         console.error('[useWebSocket] handleMessage error:', e);
       }
@@ -297,7 +294,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
     let timer: ReturnType<typeof setInterval> | null = null;
     const checkNocturne = async () => {
       try {
-        const result = await ipcRenderer.invoke('nocturne-health');
+        const result = await ipcRenderer.invoke<NocturneHealthResult>('nocturne-health');
         setNocturneOnline(result?.ok === true);
       } catch {
         setNocturneOnline(false);
@@ -315,14 +312,14 @@ export function useWebSocket(options: UseWebSocketOptions) {
   const send = async (
     content: string,
     imageDataUrl?: string,
-    files?: any[],
+    files?: GatewaySendPayload['files'],
     pacingMs?: number,
     workbenchContext?: WorkbenchRoundtripContext,
     requestId?: string
-  ): Promise<{success?: boolean}> => {
+  ): Promise<GatewaySendResult> => {
     const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
     try {
-      const result = await ipcRenderer.invoke('openclaw-send', {
+      const result = await ipcRenderer.invoke<GatewaySendResult>('openclaw-send', {
         content: content.trim(),
         imageDataUrl,
         files,
