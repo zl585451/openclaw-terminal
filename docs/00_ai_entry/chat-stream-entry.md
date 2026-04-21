@@ -8,7 +8,7 @@
 
 ## 一句话定位
 
-当前聊天主链路的真实“流式显示入口”是 `src/hooks/useMessages.ts`，不是 `useTypewriter.ts`。
+当前聊天主链路的真实“流式显示入口”是 `src/hooks/useMessages.ts`，但排查时不能只盯 `runStreamPaintTick`，还要同时看 `useWebSocket.ts` 的 `turnId` 过滤、`agent-phase` 和 `keepalive` 事件。
 
 ---
 
@@ -21,12 +21,14 @@ flowchart TD
   C --> D[useWebSocket.send]
   D --> E[electron/main.ts openclaw-send]
   E --> F[oct-gateway/index.js chat.send]
-  F --> G[oct-gateway/ai.js streamChat]
-  G --> H[Gateway event: chat delta/done]
-  H --> I[useWebSocket.ts]
-  I --> J[useMessages onChatDelta/onChatDone]
-  J --> K[runStreamPaintTick]
-  K --> L[MessageList.tsx streaming pre]
+  F --> G[contextBuilder.build]
+  G --> H[chatEngine.execute]
+  H --> I[Gateway events: chat / tool / agent-phase / keepalive]
+  I --> J[useWebSocket.ts]
+  J --> K[turnId 过滤 + onChatDelta/onChatDone/onAgentPhase]
+  K --> L[useMessages]
+  L --> M[runStreamPaintTick]
+  M --> N[MessageList.tsx streaming pre]
 ```
 
 ---
@@ -61,7 +63,8 @@ flowchart TD
 ### `src/hooks/useWebSocket.ts`
 - 负责 Electron IPC → renderer 的消息适配
 - 解析 `openclaw-message`
-- 区分 delta / done / usage / agent-phase / tool / workbench / canvas(兼容)
+- 区分 `chat` / `tool` / `agent-phase` / `keepalive` / `workbench` / `canvas`(兼容)
+- 读取 `turnId`，避免别的轮次事件串进当前消息
 
 ### `src/ui/chat/MessageList.tsx`
 - 负责最终展示
@@ -74,7 +77,10 @@ flowchart TD
 
 ### `oct-gateway/index.js`
 - `chat.send` 路由入口
-- 拼装上下文、记忆注入、图片/音频多模态分支、调用 `streamChat`
+- 生成 `turnId`
+- 先调 `contextBuilder.build()` 拼装上下文
+- 再调 `chatEngine.execute()` 驱动真正的流式回复
+- 发送 `chat`、`tool`、`agent-phase`、`keepalive` 事件
 
 ---
 
@@ -82,6 +88,8 @@ flowchart TD
 
 - `useTypewriter.ts` 仍存在，但 `ChatTab.v2.tsx` 中当前是 `enabled: false`
 - 真实的字符逐步显示由 `useMessages.ts -> runStreamPaintTick` 驱动
+- `useMessages.ts` 会按 `turnId` 过滤 delta / done，排查串流问题必须看这一层
+- Gateway 已把中间状态拆成 `agent-phase` 与 `keepalive`，不要再把所有“卡住”都归结到 paint tick
 - 如果“界面在打字，但某个依赖旧打字机的功能没生效”，优先怀疑职责迁移不完整
 - 从 2026-04-17 起，连接成功后 `hello-ok.capabilities` 会透传到前端（用于工具能力提示）
 - 从 2026-04-17 起，`useMessages` 增加整轮超时兜底（默认 10 分钟），防止无限 awaitingResponse
@@ -94,8 +102,9 @@ flowchart TD
 | 现象 | 先查 |
 |---|---|
 | 收到 delta 但界面不更新 | `useWebSocket.ts` → `useMessages.ts:onChatDelta` |
+| 某一轮消息串到另一轮里 | `turnId` 生成与 `useMessages.ts` 过滤 |
 | 界面瞬间整坨出现，不是逐字 | `useMessages.ts:runStreamPaintTick` |
 | 流结束后留空白 assistant 占位 | `useMessages.ts:onChatDone` / finalize fallback |
 | 打字音效和界面不同步 | `useMessages.ts`，不要先查 `useTypewriter.ts` |
-| thinking / typing 状态错乱 | `useWebSocket.ts:onAgentPhase` + `useMessages.ts` |
+| thinking / typing 状态错乱 | `useWebSocket.ts:onAgentPhase` + `keepalive` + `useMessages.ts` |
 
