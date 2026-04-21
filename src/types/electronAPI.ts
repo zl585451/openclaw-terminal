@@ -1,0 +1,216 @@
+import type { PermissionConfig } from '../utils/permissionCheck';
+import type { McpServerInfo } from '../ui/settings/tabs/McpTabView';
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type UnknownRecord = Record<string, unknown>;
+
+export interface IpcRendererLike {
+  invoke: <T = unknown>(channel: string, ...args: unknown[]) => Promise<T>;
+  on: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
+  off?: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
+  removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
+}
+
+export interface ElectronRequire {
+  (moduleName: 'electron'): { ipcRenderer: IpcRendererLike };
+  (moduleName: string): unknown;
+}
+
+export interface ApiResult<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+export interface PersonaSettings {
+  OCT_AI_NAME: string;
+  OCT_USER_NAME: string;
+  OCT_PERSONA_STYLE: string;
+}
+
+export interface TtsSpeakResult extends ApiResult {
+  audioBase64?: string;
+  mimeType?: string;
+}
+
+export interface AiLibraryPluginSettings {
+  OCT_AI_LIBRARY_AUTO_START?: boolean;
+  OCT_AI_LIBRARY_PATH?: string;
+  OCT_AI_LIBRARY_PORT?: number;
+}
+
+export interface AiLibraryPluginStatus extends AiLibraryPluginSettings {
+  resolvedGatewayUrl?: string;
+  managed?: boolean;
+  portInUse?: boolean;
+  healthy?: boolean;
+}
+
+export interface NocturneStatusResult {
+  available: boolean;
+  path: string;
+  backendAlive?: boolean;
+  frontendAlive?: boolean;
+  domains?: Array<{ domain: string }>;
+  coreMemoryUris?: string[];
+}
+
+export interface NocturneDashboardStatus {
+  backendRunning: boolean;
+  frontendRunning: boolean;
+}
+
+export interface NocturneNode {
+  content?: string;
+  priority?: number;
+  disclosure?: string;
+}
+
+export interface NocturneMemoryItem {
+  uri?: string;
+  node?: NocturneNode;
+  content?: string;
+}
+
+export interface NocturneReadResult {
+  ok: boolean;
+  data?: NocturneMemoryItem | NocturneMemoryItem[] | string;
+  error?: string;
+}
+
+export interface NocturneWriteResult {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+export interface McpServerConfig {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+export interface ChatHistoryItem {
+  role: string;
+  content: string;
+  timestamp: string;
+  isSystemReply?: boolean;
+}
+
+export interface ImageGeneratePayload {
+  requestId: string;
+  prompt: string;
+  negativePrompt?: string;
+  aspectRatio?: string;
+  width?: number;
+  height?: number;
+  seed?: number | string;
+  promptOptimizer?: boolean;
+  aigcWatermark?: boolean;
+  stylePreset?: string;
+  quality?: string;
+}
+
+export interface ImageResultPayload {
+  requestId?: string;
+  success?: boolean;
+  status?: string;
+  message?: string;
+  url?: string;
+  imageUrl?: string;
+  imageUrls?: string[];
+  prompt?: string;
+  localPath?: string;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface MusicGeneratePayload {
+  title?: string;
+  model?: string;
+  prompt: string;
+  lyrics?: string;
+  instrumental?: boolean;
+  lyricsOptimizer?: boolean;
+  sampleRate?: number;
+  bitrate?: number;
+  format?: 'mp3' | 'wav';
+}
+
+export interface MusicClip {
+  id: string;
+  title: string;
+  prompt: string;
+  lyrics: string;
+  instrumental: boolean;
+  model: string;
+  traceId?: string;
+  durationMs?: number;
+  sampleRate?: number;
+  bitrate?: number;
+  sizeBytes?: number;
+  mimeType: string;
+  filename: string;
+  createdAt: number;
+  filePath: string;
+}
+
+export interface MusicGenerateResult extends ApiResult {
+  clipId?: string;
+  audioBase64?: string;
+  mimeType?: string;
+  model?: string;
+  traceId?: string;
+  durationMs?: number;
+  sampleRate?: number;
+  bitrate?: number;
+  sizeBytes?: number;
+}
+
+export interface LyricsGenerateResult extends ApiResult {
+  title?: string;
+  styleTags?: string;
+  lyrics?: string;
+}
+
+export interface ElectronAPI {
+  minimize: () => Promise<void>;
+  maximize: () => Promise<void>;
+  close: () => Promise<void>;
+  chatHistoryLoad?: () => Promise<ChatHistoryItem[]>;
+  chatHistorySave?: (items: ChatHistoryItem[]) => Promise<void>;
+  imageGenerate?: (payload: ImageGeneratePayload) => Promise<ApiResult>;
+  openExternalUrl?: (url: string) => Promise<ApiResult>;
+  downloadImage?: (payload: { url: string; suggestedName?: string }) => Promise<ApiResult & { path?: string }>;
+  onImageResult?: (callback: (payload: ImageResultPayload) => void) => (() => void);
+  musicGenerate?: (payload: MusicGeneratePayload) => Promise<MusicGenerateResult>;
+  musicHistoryLoad?: () => Promise<ApiResult & { clips: MusicClip[] }>;
+  musicHistoryDelete?: (id: string) => Promise<ApiResult>;
+  lyricsGenerate?: (payload: { prompt?: string; title?: string }) => Promise<LyricsGenerateResult>;
+
+  getAgentPermissions?: () => Promise<ApiResult<PermissionConfig>>;
+  saveAgentPermissions?: (permissions: Partial<PermissionConfig>) => Promise<ApiResult<PermissionConfig>>;
+  getPersonaSettings?: () => Promise<ApiResult<PersonaSettings>>;
+  savePersonaSettings?: (payload: Partial<PersonaSettings>) => Promise<ApiResult>;
+  ttsSpeak?: (payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) => Promise<TtsSpeakResult>;
+
+  mcpGetStatus?: () => Promise<Record<string, McpServerInfo>>;
+  mcpAddServer?: (name: string, cfg: McpServerConfig) => Promise<ApiResult>;
+  mcpRemoveServer?: (name: string) => Promise<ApiResult>;
+
+  getNocturneStatus?: () => Promise<NocturneStatusResult>;
+  setupNocturneMemory?: () => Promise<ApiResult>;
+  seedNocturneMemories?: () => Promise<ApiResult & { output?: string }>;
+  startNocturneDashboard?: () => Promise<ApiResult>;
+  stopNocturneDashboard?: () => Promise<ApiResult>;
+  getNocturneDashboardStatus?: () => Promise<NocturneDashboardStatus>;
+  openNocturneManagement?: () => Promise<ApiResult>;
+  restartNocturneBackend?: () => Promise<ApiResult>;
+  getAiLibraryPlugin?: () => Promise<ApiResult<AiLibraryPluginStatus>>;
+  saveAiLibraryPlugin?: (payload: AiLibraryPluginSettings) => Promise<ApiResult>;
+  nocturneRead?: (uri: string) => Promise<NocturneReadResult>;
+  nocturneCreate?: (uri: string, content: string, priority?: number, disclosure?: string) => Promise<NocturneWriteResult>;
+
+  invokeGatewayTool?: (toolName: string, args: UnknownRecord) => Promise<unknown>;
+}
