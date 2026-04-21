@@ -90,21 +90,21 @@ export function MemoryTabView({
 
   return (
     <div className="settings-tab-content">
-      <div className="settings-guide-card" style={{ marginBottom: 20 }}>
+      <div className="settings-guide-card settings-guide-card-spaced">
         <h4>Nocturne 记忆系统 使用说明</h4>
-        <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-code)', lineHeight: 1.8 }}>
-          <p style={{ marginBottom: 12 }}><strong>什么是记忆系统？</strong></p>
-          <p style={{ marginBottom: 16, paddingLeft: 12 }}>记忆系统可以让 AI 「记住」你的个人信息、偏好、习惯等，让对话更加个性化和智能。例如：你的名字、职业、常用工具等。</p>
+        <div className="settings-description-flow">
+          <p className="settings-guide-copy"><strong>什么是记忆系统？</strong></p>
+          <p className="settings-guide-copy-lg">记忆系统可以让 AI 「记住」你的个人信息、偏好、习惯等，让对话更加个性化和智能。例如：你的名字、职业、常用工具等。</p>
 
-          <p style={{ marginBottom: 12 }}><strong>快速开始（3 步）：</strong></p>
-          <ol style={{ paddingLeft: 20, marginBottom: 16 }}>
+          <p className="settings-guide-copy"><strong>快速开始（3 步）：</strong></p>
+          <ol className="settings-guide-list">
             <li>点击下方「安装 Python 依赖」（首次使用需要）</li>
             <li>点击「▶ 启动 Dashboard」启动记忆管理界面</li>
             <li>在打开的网页中添加你的个人记忆</li>
           </ol>
 
-          <p style={{ marginBottom: 12 }}><strong>系统要求：</strong></p>
-          <p style={{ paddingLeft: 12 }}>Python 3.10 或更高版本</p>
+          <p className="settings-guide-copy"><strong>系统要求：</strong></p>
+          <p className="settings-guide-indent">Python 3.10 或更高版本</p>
         </div>
       </div>
 
