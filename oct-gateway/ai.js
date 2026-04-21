@@ -1192,6 +1192,39 @@ function injectClarifyCapabilityMessage(messages, toolsSupport) {
   ];
 }
 
+function normalizeMessagesForProvider(messages, providerId) {
+  const list = Array.isArray(messages) ? messages : [];
+  if (providerId !== 'minimax') return list;
+
+  const systemText = list
+    .filter((msg) => msg?.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
+    .map((msg) => msg.content.trim())
+    .join('\n\n');
+  if (!systemText) return list;
+
+  const nonSystemMessages = list.filter((msg) => msg?.role !== 'system');
+  const firstUserIndex = nonSystemMessages.findIndex((msg) => msg?.role === 'user');
+  const prefix = `【系统指令】\n${systemText}\n\n【用户消息】\n`;
+
+  if (firstUserIndex < 0) {
+    return [{ role: 'user', content: prefix.trim() }, ...nonSystemMessages];
+  }
+
+  return nonSystemMessages.map((msg, index) => {
+    if (index !== firstUserIndex) return msg;
+    if (typeof msg.content === 'string') {
+      return { ...msg, content: `${prefix}${msg.content}` };
+    }
+    if (Array.isArray(msg.content)) {
+      return {
+        ...msg,
+        content: [{ type: 'text', text: prefix.trim() }, ...msg.content],
+      };
+    }
+    return { ...msg, content: `${prefix}${String(msg.content || '')}` };
+  });
+}
+
 async function streamChat({
   messages,
   onDelta,
@@ -1286,6 +1319,7 @@ async function streamChat({
     }
     const effectiveToolsSupport = caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown');
     effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveToolsSupport);
+    effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
 
     const hasImage = effectiveMessages.some(m =>
       Array.isArray(m.content) &&

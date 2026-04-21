@@ -111,9 +111,16 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 - 可通过 `MINIMAX_TEMPERATURE` 覆盖，支持放在 `.env`、`.env.local` 或用户运行时 `config.json`
 - 合法范围按官方接口约束为 `0 < x <= 1`；超出范围时 Gateway 会回退到 `0.7`
 
+## MiniMax 消息角色兼容
+
+- MiniMax 独立接口不接受 `role=system`
+- Gateway 在 `provider=minimax` 时，会在发送前把 system prompt 与澄清规则合并到第一条 `user` 消息前缀
+- 该转换仅作用于 MiniMax，不改变 Google、DashScope、DeepSeek、自定义 OpenAI 兼容服务的消息结构
+
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-04-21 | MiniMax 独立接口不接受 `role=system`，Gateway 改为仅对 `provider=minimax` 将 system 内容并入第一条 user 消息，避免 400 invalid params |
 | 2026-04-17 | 新增模型 ID 归一化与动态能力探测缓存（runtime_probe/runtime_probe_cache），缓解跨供应商模型命名不一致问题 |
 | 2026-04-17 | 能力协商升级为三态（supported/unknown/unsupported），并在 `/status` 与 `hello-ok.capabilities` 透出来源；`custom` 模型默认工具关闭，可由 `CUSTOM_MODEL_SUPPORTS_TOOLS=true` 显式开启 |
 | 2026-04-14 | `google` 主对话改为仅 `x-goog-api-key`，避免与 Bearer 叠用导致 400；文档与测试连接 IPC 同步 |
