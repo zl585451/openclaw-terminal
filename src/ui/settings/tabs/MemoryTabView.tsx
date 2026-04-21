@@ -371,16 +371,15 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
           {nocturneSetupError && <p className="settings-error">{nocturneSetupError}</p>}
 
           {(nocturneDetail?.coreMemoryUris?.length ?? 0) > 0 && (
-            <div style={{ marginTop: 20 }}>
-              <h4 style={{ marginBottom: 8, fontSize: 'var(--text-code)', color: 'var(--accent-primary)' }}>核心记忆 URI</h4>
-              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            <div className="settings-uri-section">
+              <h4 className="settings-uri-title">核心记忆 URI</h4>
+              <ul className="settings-uri-list">
                 {nocturneDetail?.coreMemoryUris?.map((uri) => (
-                  <li key={uri} style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <code style={{ flex: 1, wordBreak: 'break-all' }}>{uri}</code>
+                  <li key={uri} className="settings-uri-item">
+                    <code className="settings-uri-code">{uri}</code>
                     <button
                       type="button"
-                      className="settings-btn"
-                      style={{ padding: '4px 10px', fontSize: 'var(--text-sm)' }}
+                      className="settings-btn settings-small-btn"
                       onClick={async () => {
                         const api = (window as any).electronAPI;
                         if (!api?.nocturneRead) return;
@@ -407,7 +406,7 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                   </li>
                 ))}
               </ul>
-              <div className="settings-btn-row" style={{ marginTop: 8 }}>
+              <div className="settings-btn-row settings-btn-row-tight">
                 <button
                   type="button"
                   className="settings-btn"
@@ -441,9 +440,9 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
             </div>
           )}
           {memoryReadContent !== null && (
-            <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-surface)', borderRadius: 8, fontSize: 'var(--text-sm)', whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto' }}>
-              <button type="button" className="settings-btn" style={{ marginBottom: 8 }} onClick={() => setMemoryReadContent(null)}>关闭</button>
-              <pre style={{ margin: 0 }}>{memoryReadContent}</pre>
+            <div className="settings-status-card settings-preview-panel">
+              <button type="button" className="settings-btn settings-preview-close" onClick={() => setMemoryReadContent(null)}>关闭</button>
+              <pre className="settings-preview-pre">{memoryReadContent}</pre>
             </div>
           )}
         </section>
