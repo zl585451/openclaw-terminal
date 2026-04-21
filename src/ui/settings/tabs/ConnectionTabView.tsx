@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { ConnectionTabViewBeginner } from './ConnectionTabView.Beginner';
+import type { SettingsMode } from '../../../hooks/settings/useApiKeys';
 
 const CUSTOM_PROVIDER_PRESETS = [
   {
@@ -48,6 +50,7 @@ export type SettingsApiKeysState = {
   CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
+  OCT_SETTINGS_MODE: SettingsMode | '';
   OCT_PROVIDER: string;
   OCT_MODEL: string;
   CUSTOM_MODEL: string; // 自定义模型名称
@@ -121,6 +124,8 @@ export interface ConnectionTabViewProps {
   providers: Record<string, ProviderEntry>;
   currentProviderId: string;
   currentProvider: ProviderEntry | undefined;
+  settingsMode: SettingsMode;
+  setSettingsMode: Dispatch<SetStateAction<SettingsMode>>;
   testConnectionStatus: 'idle' | 'testing' | 'success' | 'error';
   testConnectionError: string;
   setTestConnectionStatus: Dispatch<SetStateAction<'idle' | 'testing' | 'success' | 'error'>>;
@@ -281,6 +286,8 @@ export function ConnectionTabView({
   providers,
   currentProviderId,
   currentProvider,
+  settingsMode,
+  setSettingsMode,
   testConnectionStatus,
   testConnectionError,
   setTestConnectionStatus,
@@ -291,6 +298,27 @@ export function ConnectionTabView({
   const customPresetId = currentProviderId === 'custom'
     ? (apiKeys.CUSTOM_BASE_URL || '').toLowerCase().includes('siliconflow') ? 'siliconflow' : ''
     : '';
+
+  if (settingsMode === 'beginner') {
+    return (
+      <ConnectionTabViewBeginner
+        apiKeysLoaded={apiKeysLoaded}
+        apiKeys={apiKeys}
+        setApiKeys={setApiKeys}
+        showApiKey={showApiKey}
+        setShowApiKey={setShowApiKey}
+        providers={providers}
+        currentProviderId={currentProviderId}
+        currentProvider={currentProvider}
+        setSettingsMode={setSettingsMode}
+        saveGatewayAndReconnect={saveGatewayAndReconnect}
+        testConnectionStatus={testConnectionStatus}
+        testConnectionError={testConnectionError}
+        setTestConnectionStatus={setTestConnectionStatus}
+        setTestConnectionError={setTestConnectionError}
+      />
+    );
+  }
 
   return (
     <div className="settings-tab-content">
@@ -372,7 +400,16 @@ export function ConnectionTabView({
         {!apiKeysLoaded ? null : (
           <>
             <div className="settings-field">
-              <label>AI 服务商</label>
+              <div className="settings-inline-row-between">
+                <label>AI 服务商</label>
+                <button
+                  type="button"
+                  className="settings-link-btn"
+                  onClick={() => setSettingsMode('beginner')}
+                >
+                  切回新手模式
+                </button>
+              </div>
               <select
                 value={currentProviderId}
                 onChange={(e) => {

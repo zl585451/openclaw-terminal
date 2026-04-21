@@ -3294,6 +3294,7 @@ ipcMain.handle('get-api-keys', async () => {
     };
     keys.OPENCLAW_WS_URL = pick('OPENCLAW_WS_URL', cfg.OPENCLAW_WS_URL, 'ws://127.0.0.1:18789');
     keys.OPENCLAW_TOKEN = pick('OPENCLAW_TOKEN', cfg.OPENCLAW_TOKEN);
+    keys.OCT_SETTINGS_MODE = pick('OCT_SETTINGS_MODE', cfg.OCT_SETTINGS_MODE);
     keys.OCT_PROVIDER = pick('OCT_PROVIDER', cfg.OCT_PROVIDER);
     keys.OCT_MODEL = pick('OCT_MODEL', cfg.OCT_MODEL);
     keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);
@@ -3366,6 +3367,7 @@ ipcMain.handle('get-api-keys', async () => {
         CUSTOM_API_KEY: keys.CUSTOM_API_KEY || '',
         OPENCLAW_WS_URL: keys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
         OPENCLAW_TOKEN: keys.OPENCLAW_TOKEN || '',
+        OCT_SETTINGS_MODE: keys.OCT_SETTINGS_MODE || '',
         OCT_PROVIDER: keys.OCT_PROVIDER || '',
         OCT_MODEL: keys.OCT_MODEL || '',
         DASHSCOPE_BASE_URL: keys.DASHSCOPE_BASE_URL || '',
@@ -3413,6 +3415,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     CUSTOM_API_KEY?: string;
     OPENCLAW_WS_URL?: string;
     OPENCLAW_TOKEN?: string;
+    OCT_SETTINGS_MODE?: string;
     OCT_PROVIDER?: string;
     OCT_MODEL?: string;
     CUSTOM_MODEL?: string;
@@ -3442,6 +3445,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     }
     if (keys.OPENCLAW_WS_URL !== undefined) cfg.OPENCLAW_WS_URL = keys.OPENCLAW_WS_URL || '';
     if (keys.OPENCLAW_TOKEN !== undefined) cfg.OPENCLAW_TOKEN = keys.OPENCLAW_TOKEN || '';
+    if (keys.OCT_SETTINGS_MODE !== undefined) cfg.OCT_SETTINGS_MODE = keys.OCT_SETTINGS_MODE || '';
     if (keys.DASHSCOPE_API_KEY !== undefined) cfg.DASHSCOPE_API_KEY = keys.DASHSCOPE_API_KEY || '';
     if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
     if (keys.MINIMAX_API_KEY !== undefined) cfg.MINIMAX_API_KEY = keys.MINIMAX_API_KEY || '';

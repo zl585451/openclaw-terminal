@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { inferProviderFromBaseUrl } from '../../utils/providerUtils';
 
+export type SettingsMode = 'beginner' | 'advanced';
+
 export interface ApiKeysState {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
@@ -24,6 +26,7 @@ export interface ApiKeysState {
   CUSTOM_API_KEY: string;
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
+  OCT_SETTINGS_MODE: SettingsMode | '';
   OCT_PROVIDER: string;
   OCT_MODEL: string;
   CUSTOM_MODEL: string;
@@ -140,6 +143,7 @@ const FALLBACK_PROVIDERS: ProvidersState = {
 type GatewayConfigPayload = {
   OPENCLAW_WS_URL: string;
   OPENCLAW_TOKEN: string;
+  OCT_SETTINGS_MODE: string;
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
@@ -201,6 +205,21 @@ function resolveProviderId(data: Partial<ApiKeysState>): string {
   );
 }
 
+function hasConfiguredKey(data: Partial<ApiKeysState>, providerId: string): boolean {
+  if (providerId === 'deepseek') return !!String(data.DEEPSEEK_API_KEY || '').trim();
+  if (providerId === 'minimax') return !!String(data.MINIMAX_API_KEY || '').trim();
+  if (providerId === 'custom') return !!String(data.CUSTOM_API_KEY || '').trim();
+  if (providerId === 'google') return !!String(data.GOOGLE_AI_API_KEY || '').trim();
+  if (providerId === 'openai') return !!String((data as Record<string, string>).OPENAI_API_KEY || '').trim()
+    || !!String(data.DASHSCOPE_API_KEY || '').trim();
+  if (providerId === 'groq') return !!String((data as Record<string, string>).GROQ_API_KEY || '').trim()
+    || !!String(data.DASHSCOPE_API_KEY || '').trim();
+  if (providerId === 'moonshot') return !!String((data as Record<string, string>).MOONSHOT_API_KEY || '').trim()
+    || !!String(data.DASHSCOPE_API_KEY || '').trim();
+  if (providerId === 'ollama') return true;
+  return !!String(data.DASHSCOPE_API_KEY || '').trim();
+}
+
 /** 与 useMemo(currentGatewayConfig) 一致：用于 savedGatewayConfig，避免 undefined provider 导致 JSON 对比失真、Apply 跳过保存 */
 function providerSnapshotForBaseline(
   providerId: string,
@@ -244,6 +263,7 @@ function buildGatewayPayload(
   return {
     OPENCLAW_WS_URL: apiKeys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
     OPENCLAW_TOKEN: apiKeys.OPENCLAW_TOKEN || '',
+    OCT_SETTINGS_MODE: apiKeys.OCT_SETTINGS_MODE || '',
     DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY || '',
     DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
     MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY || '',
@@ -313,6 +333,7 @@ export function useApiKeys() {
     CUSTOM_API_KEY: '',
     OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
     OPENCLAW_TOKEN: '',
+    OCT_SETTINGS_MODE: '',
     OCT_PROVIDER: '',
     OCT_MODEL: '',
     CUSTOM_MODEL: '',
@@ -340,6 +361,7 @@ export function useApiKeys() {
   const [gatewaySaveStatus, setGatewaySaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
   const [apiKeysRefreshing, setApiKeysRefreshing] = useState(false);
   const [savedGatewayConfig, setSavedGatewayConfig] = useState<GatewayConfigPayload | null>(null);
+  const [settingsMode, setSettingsMode] = useState<SettingsMode>('beginner');
 
   useEffect(() => {
     const api = (window as any).electronAPI;
@@ -357,9 +379,15 @@ export function useApiKeys() {
             searchKeysRef.current = nextSearchKeys;
             const nextApiKeys = { ...apiKeys, ...data };
             setApiKeys((prev) => ({ ...prev, ...data }));
+            const persistedMode = data.OCT_SETTINGS_MODE === 'advanced' || data.OCT_SETTINGS_MODE === 'beginner'
+              ? data.OCT_SETTINGS_MODE
+              : '';
             const providerId = resolveProviderId(data);
+            const inferredMode: SettingsMode = persistedMode
+              || (providerId && hasConfiguredKey(data, providerId) ? 'advanced' : 'beginner');
+            setSettingsMode(inferredMode);
             const snap = providerSnapshotForBaseline(providerId, {});
-            setSavedGatewayConfig(buildGatewayPayload(nextApiKeys, providerId, snap, nextSearchKeys));
+            setSavedGatewayConfig(buildGatewayPayload({ ...nextApiKeys, OCT_SETTINGS_MODE: inferredMode }, providerId, snap, nextSearchKeys));
           }
           setApiKeysLoaded(true);
         })
@@ -405,9 +433,15 @@ export function useApiKeys() {
           searchKeysRef.current = nextSearchKeys;
           const nextApiKeys = { ...apiKeys, ...data };
           setApiKeys((prev) => ({ ...prev, ...data }));
+          const persistedMode = data.OCT_SETTINGS_MODE === 'advanced' || data.OCT_SETTINGS_MODE === 'beginner'
+            ? data.OCT_SETTINGS_MODE
+            : '';
           const providerId = resolveProviderId(data);
+          const inferredMode: SettingsMode = persistedMode
+            || (providerId && hasConfiguredKey(data, providerId) ? 'advanced' : 'beginner');
+          setSettingsMode(inferredMode);
           const snap = providerSnapshotForBaseline(providerId, providers);
-          setSavedGatewayConfig(buildGatewayPayload(nextApiKeys, providerId, snap, nextSearchKeys));
+          setSavedGatewayConfig(buildGatewayPayload({ ...nextApiKeys, OCT_SETTINGS_MODE: inferredMode }, providerId, snap, nextSearchKeys));
         }
       })
       .finally(() => setApiKeysRefreshing(false));
@@ -428,12 +462,16 @@ export function useApiKeys() {
   );
 
   const currentProvider = providers[currentProviderId];
+  const settingsApiKeys = useMemo<ApiKeysState>(
+    () => ({ ...apiKeys, OCT_SETTINGS_MODE: settingsMode }),
+    [apiKeys, settingsMode],
+  );
   const currentGatewayConfig = useMemo(
-    () => buildGatewayPayload(apiKeys, currentProviderId, currentProvider, {
-      BRAVE_SEARCH_API_KEY: apiKeys.BRAVE_SEARCH_API_KEY || searchKeysRef.current.BRAVE_SEARCH_API_KEY,
-      TAVILY_API_KEY: apiKeys.TAVILY_API_KEY || searchKeysRef.current.TAVILY_API_KEY,
+    () => buildGatewayPayload(settingsApiKeys, currentProviderId, currentProvider, {
+      BRAVE_SEARCH_API_KEY: settingsApiKeys.BRAVE_SEARCH_API_KEY || searchKeysRef.current.BRAVE_SEARCH_API_KEY,
+      TAVILY_API_KEY: settingsApiKeys.TAVILY_API_KEY || searchKeysRef.current.TAVILY_API_KEY,
     }),
-    [apiKeys, currentProviderId, currentProvider],
+    [settingsApiKeys, currentProviderId, currentProvider],
   );
   const hasGatewayConfigChanges = useMemo(
     () => {
@@ -481,6 +519,8 @@ export function useApiKeys() {
     refetchApiKeys,
     currentProviderId,
     currentProvider,
+    settingsMode,
+    setSettingsMode,
     hasGatewayConfigChanges,
     saveGatewayAndReconnect,
   };

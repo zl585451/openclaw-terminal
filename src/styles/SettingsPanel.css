@@ -261,6 +261,51 @@
   align-items: center;
 }
 
+.settings-provider-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.settings-provider-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 92px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-provider-card:hover {
+  border-color: var(--border-light);
+}
+
+.settings-provider-card.active {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-muted);
+}
+
+.settings-provider-card-title {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+.settings-provider-card-subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.settings-model-inline {
+  margin-top: 6px;
+}
+
 .settings-actions-row-wrap {
   display: flex;
   gap: 8px;
@@ -415,6 +460,15 @@
   font-size: var(--text-sm);
 }
 
+.settings-note-card-inline {
+  margin: 0;
+  flex: 1;
+}
+
+.settings-note-card-warning {
+  border: 1px solid var(--status-warning);
+}
+
 .settings-guide-card-spaced {
   margin-bottom: 20px;
 }
@@ -516,6 +570,12 @@
 .settings-server-icon {
   margin-right: 8px;
   font-size: var(--text-md);
+}
+
+@media (max-width: 760px) {
+  .settings-provider-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settings-label-strong {

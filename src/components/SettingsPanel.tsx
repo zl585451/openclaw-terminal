@@ -53,6 +53,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     refetchApiKeys,
     currentProviderId,
     currentProvider,
+    settingsMode,
+    setSettingsMode,
     hasGatewayConfigChanges,
     saveGatewayAndReconnect,
   } = useApiKeys();
@@ -401,6 +403,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               providers={providers}
               currentProviderId={currentProviderId}
               currentProvider={currentProvider}
+              settingsMode={settingsMode}
+              setSettingsMode={setSettingsMode}
               testConnectionStatus={testConnectionStatus}
               testConnectionError={testConnectionError}
               setTestConnectionStatus={setTestConnectionStatus}

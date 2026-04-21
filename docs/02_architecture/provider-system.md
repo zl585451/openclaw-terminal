@@ -48,6 +48,13 @@
     → ai.js streamChat 按 provider 能力组装请求
 ```
 
+### Beginner / Advanced 设置分层
+
+- 2026-04-22 起，连接页支持 `beginner` / `advanced` 两层。
+- `beginner` 模式只暴露 3 个默认 provider 卡片（`bailian-coding` / `deepseek` / `minimax`）、单一 API Key 输入框和推荐模型。
+- `advanced` 模式保留完整 provider / key / model / baseUrl / proxy 表单。
+- 分层只改变设置页入口，不改变 `PROVIDERS`、`MODEL_REGISTRY`、Gateway 请求拼装或后端 provider 能力声明。
+
 ## 多模态能力路由
 
 OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当前激活 Provider 的能力**启用。
@@ -120,6 +127,7 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-04-22 | 连接页新增 beginner / advanced 两层：新手模式只暴露 3 个默认 provider 卡片与单一 Key 入口；不改 Gateway provider 注册与能力声明 |
 | 2026-04-21 | MiniMax 独立接口不接受 `role=system`，Gateway 改为仅对 `provider=minimax` 将 system 内容并入第一条 user 消息，避免 400 invalid params |
 | 2026-04-17 | 新增模型 ID 归一化与动态能力探测缓存（runtime_probe/runtime_probe_cache），缓解跨供应商模型命名不一致问题 |
 | 2026-04-17 | 能力协商升级为三态（supported/unknown/unsupported），并在 `/status` 与 `hello-ok.capabilities` 透出来源；`custom` 模型默认工具关闭，可由 `CUSTOM_MODEL_SUPPORTS_TOOLS=true` 显式开启 |

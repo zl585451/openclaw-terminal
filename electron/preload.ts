@@ -71,9 +71,10 @@ const electronAPI = {
         TTS_MINIMAX_VOICE_ID?: string;
         CUSTOM_API_KEY?: string;
         OPENCLAW_WS_URL?: string;
-        OPENCLAW_TOKEN?: string;
-        OCT_PROVIDER?: string;
-        OCT_MODEL?: string;
+         OPENCLAW_TOKEN?: string;
+         OCT_SETTINGS_MODE?: string;
+         OCT_PROVIDER?: string;
+         OCT_MODEL?: string;
         CUSTOM_MODEL?: string;
         DASHSCOPE_BASE_URL?: string;
         DEEPSEEK_BASE_URL?: string;

@@ -47,6 +47,7 @@
 ## 关键配置
 | 配置项 | 说明 |
 |--------|------|
+| `OCT_SETTINGS_MODE` | 设置页展示模式：`beginner` / `advanced`，仅前端 UI 使用，Gateway 忽略 |
 | `OCT_PROVIDER` | 当前服务商 ID（bailian-coding、deepseek、siliconflow 等） |
 | `OCT_MODEL` | 当前模型 ID |
 | `DASHSCOPE_API_KEY` | 百炼/Coding Plan 等使用 |
@@ -61,6 +62,12 @@
 - **getProviderConfig()**：返回当前 provider 的 apiKey、baseUrl、models
 - **MODEL_REGISTRY**：模型能力（supportsTools、supportsStreamOptions、maxTokens）
 
+## 设置页分层
+
+- 连接配置页从 2026-04-22 起支持 `beginner / advanced` 两层模式。
+- `OCT_SETTINGS_MODE` 持久化到 Electron `userData/config.json`，用于记住用户上次看到的设置层级。
+- 该字段不参与 Gateway 配置解析，也不会改变 `getProviderConfig()` 的加载优先级。
+
 ## 验证方法
 终端看到 `[Config] Model: xxx`
 
@@ -72,6 +79,7 @@
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-04-22 | 新增 `OCT_SETTINGS_MODE`：设置页支持 beginner / advanced 两层模式，字段仅供前端 UI 使用 |
 | 2026-03-21 | 新增 ai_library 配置节（P1 集成） |
 | 2026-03-20 | Provider 抽象、多服务商、OCT_PROVIDER/OCT_MODEL |
 | 2026-03-20 | 初始拆分 |
