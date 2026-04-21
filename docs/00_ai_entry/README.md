@@ -45,7 +45,7 @@
 
 - `../_archive/historical_refactors/REFACTOR_4STEP_CHATTAB.md`
 - `../_archive/historical_refactors/REFACTOR_STEP1_USE_TYPEWRITER.md`
-- `../03_specs/DOCUMENTATION_GAP_REPORT.md`
+- `../_archive/historical_reviews/DOCUMENTATION_GAP_REPORT.md`
 
 ---
 

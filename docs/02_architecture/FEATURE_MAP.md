@@ -32,7 +32,7 @@
 | **AI 协作** | 项目总览 | [`AI_PROJECT_OVERVIEW.md`](./AI_PROJECT_OVERVIEW.md) |
 | **AI 协作** | IPC 通道 | [`../03_specs/ELECTRON_IPC_CHANNELS.md`](../03_specs/ELECTRON_IPC_CHANNELS.md) |
 | **AI 协作** | WebSocket 协议 | [`../03_specs/WEBSOCKET_PROTOCOL.md`](../03_specs/WEBSOCKET_PROTOCOL.md) |
-| **AI 协作** | 文档差距报告（历史） | [`../03_specs/DOCUMENTATION_GAP_REPORT.md`](../03_specs/DOCUMENTATION_GAP_REPORT.md) |
+| **AI 协作** | 文档差距报告（历史） | [`../_archive/historical_reviews/DOCUMENTATION_GAP_REPORT.md`](../_archive/historical_reviews/DOCUMENTATION_GAP_REPORT.md) |
 
 > 注意：旧的 `feature-map/` 子目录引用已废弃，现已统一指向实际存在的文档路径。
 

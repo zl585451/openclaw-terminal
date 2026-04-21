@@ -33,4 +33,5 @@
 ## 新增索引
 
 - `historical_reviews/oct-gateway-FEATURE_MAP-historical.md` - 旧 Gateway BUG 编号体系，2026-04-21 归档
+- `historical_reviews/DOCUMENTATION_GAP_REPORT.md` - 2026-03-24 的文档缺口评估报告，现仅供历史追溯
 
