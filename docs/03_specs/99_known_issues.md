@@ -23,6 +23,7 @@
 | 13 | 🟡 中等 | 无语言标记的 fenced code block 被当成行内代码 | “代码框消失”（无 header/Copy/背景） | ✅ 已修复 (2026-03-30，当前实现位于 `src/ui/chat/markdownComponents.tsx`) |
 | 14 | 🟡 中等 | 设置页样式体系分裂 | 已整合 | ✅ 阶段 3B 完成 (2026-04-21) |
 | 15 | 🟡 中等 | Electron 28 → 41、Vite 5 → 8 大版本滞后 | 安全性与生态兼容风险 | 🚧 清理完成后单独 sprint |
+| 16 | 🟢 已完成 | electronAPI 类型收口 | any 使用大幅下降，类型安全性提升 | ✅ 阶段 3C 完成 (2026-04-21) |
 
 ---
 
@@ -114,6 +115,17 @@
 - ✅ src/styles/SettingsPanel.css：新增统一设置页语义类，状态卡/说明文案/代码块/列表/小按钮等均走主题变量
 
 主表 #14 状态：从 🚧 阶段 3 处理 改为 ✅ 阶段 3B 完成
+
+### 2026-04-21 阶段 3C:electronAPI 类型收口
+
+新增集中类型定义并完成 Top 3 any 大户收口：
+- ✅ src/types/electronAPI.ts：按 preload 暴露面整理 3C 所需 electronAPI 类型
+- ✅ src/types/gateway.ts：新增 GatewayEvent、usage、tool、状态与发送 payload 类型
+- ✅ src/hooks/useWebSocket.ts：移除 `(window as any).require`，消息处理改用 GatewayEvent 类型
+- ✅ src/components/SettingsPanel.tsx：electronAPI 调用与 catch 回调完成类型收口
+- ✅ src/ui/settings/tabs/MemoryTabView.tsx：Nocturne / AI.library 调用与读取结果完成类型收口
+
+主表新增 #16，标记阶段 3C 已完成。
 
 ---
 
