@@ -141,6 +141,10 @@
   margin-bottom: 8px;
 }
 
+.settings-heading-inline {
+  margin: 0;
+}
+
 .settings-desc {
   color: var(--text-secondary);
   font-size: var(--text-sm);
@@ -556,6 +560,10 @@
 
 .settings-link:hover {
   color: var(--accent-primary);
+}
+
+.settings-link-inline {
+  margin-left: 6px;
 }
 
 .settings-link-btn {

@@ -402,8 +402,7 @@ export function ConnectionTabView({
                     GOOGLE_AI_BASE_URL: id === 'google' ? (p?.baseUrl || '') : k.GOOGLE_AI_BASE_URL,
                   }));
                 }}
-                className="settings-input settings-input-focusable"
-                style={{ maxWidth: '100%' }}
+                className="settings-input settings-input-focusable settings-input-full"
               >
                 {Object.entries(providers).map(([id, p]) => (
                   <option key={id} value={id}>{p.name}</option>
@@ -466,12 +465,12 @@ export function ConnectionTabView({
                 <a href={currentProvider.keyLink} target="_blank" rel="noopener noreferrer" className="settings-link">获取 API Key →</a>
               )}
               {currentProviderId === 'minimax' && (
-                <p className="settings-desc" style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)' }}>
+                <p className="settings-desc settings-desc-spaced">
                   MiniMax M2.7 现在建议使用 Token Plan 专属 API Key，通常以 <code>sk-cp-</code> 开头；大陆区 Base URL 保持 <code>https://api.minimaxi.com/v1</code> 即可。
                 </p>
               )}
               {currentProviderId === 'google' && (
-                <p className="settings-desc" style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)' }}>
+                <p className="settings-desc settings-desc-spaced">
                   使用 Google Cloud 控制台 <strong>Vertex AI Studio → 设置 → API 密钥</strong> 创建的密钥；走 Gemini 的 OpenAI 兼容接口，计费归属当前 GCP 项目。预设模型暂不支持工具调用（天气/文件等插件不可用）。
                 </p>
               )}
@@ -488,23 +487,21 @@ export function ConnectionTabView({
                       currentProvider?.defaultModel
                       || 'Qwen/Qwen2.5-72B-Instruct（与硅基模型广场 ID 一致）'
                     }
-                    className="settings-input settings-input-focusable"
-                    style={{ maxWidth: '100%' }}
+                    className="settings-input settings-input-focusable settings-input-full"
                     autoComplete="off"
                   />
-                  <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                  <p className="settings-desc settings-desc-compact">
                     硅基流动模型较多且更新快，请直接填写官方模型 ID（与 OpenAI 兼容字段 <code>model</code> 一致）。
                     <a
                       href="https://docs.siliconflow.cn/cn/userguide/quickstart"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="settings-link"
-                      style={{ marginLeft: 6 }}
+                      className="settings-link settings-link-inline"
                     >
                       文档与模型广场 →
                     </a>
                   </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  <div className="settings-chip-row">
                     {(currentProvider?.models || []).map((m) => (
                       <button
                         key={m.id}
@@ -541,8 +538,7 @@ export function ConnectionTabView({
                       CUSTOM_MODEL: modelId === '__custom__' ? (k.CUSTOM_MODEL || '') : k.CUSTOM_MODEL,
                     }));
                   }}
-                  className="settings-input settings-input-focusable"
-                  style={{ maxWidth: '100%' }}
+                  className="settings-input settings-input-focusable settings-input-full"
                 >
                   {(currentProvider?.models || []).map((m) => (
                     <option key={m.id} value={m.id}>{m.label} {m.tools ? '🔧' : ''} {m.thinking ? '🧠' : ''}</option>
@@ -570,12 +566,12 @@ export function ConnectionTabView({
                   className="settings-input settings-input-focusable"
                   autoComplete="off"
                 />
-                <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                <p className="settings-desc settings-desc-compact">
                   输入任意 OpenAI 兼容格式的模型名称
                 </p>
                 {currentProviderId === 'custom' && (
                   <>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    <div className="settings-chip-row">
                       {SILICONFLOW_MODEL_EXAMPLES.map((model) => (
                         <button
                           key={model}
@@ -591,7 +587,7 @@ export function ConnectionTabView({
                         </button>
                       ))}
                     </div>
-                    <p className="settings-desc" style={{ fontSize: 12, marginTop: 6, color: 'var(--text-secondary)' }}>
+                    <p className="settings-desc settings-desc-spaced">
                       上面这些是常见的硅基流动模型 ID，可直接点选填入。
                     </p>
                   </>
@@ -619,11 +615,11 @@ export function ConnectionTabView({
                       </option>
                     ))}
                   </select>
-                  <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                  <p className="settings-desc settings-desc-compact">
                     走 OpenAI 兼容服务时，这里就是 API 请求地址。接硅基流动可直接选择预设。
                   </p>
                     {customPresetId === 'siliconflow' && (
-                      <div style={{ marginTop: 8 }}>
+                      <div className="settings-stack-sm">
                         <a
                           href="https://docs.siliconflow.cn/cn/userguide/quickstart"
                           target="_blank"
@@ -647,7 +643,7 @@ export function ConnectionTabView({
                     className="settings-input settings-input-focusable"
                     autoComplete="off"
                   />
-                  <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                  <p className="settings-desc settings-desc-compact">
                     输入 OpenAI 兼容格式的 API 地址，通常以 /v1 结尾。按硅基流动中文文档，推荐填写 https://api.siliconflow.cn/v1
                   </p>
                 </div>
