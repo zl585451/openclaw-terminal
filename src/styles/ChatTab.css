@@ -902,7 +902,7 @@
 /* 思考计时器 */
 .thinking-elapsed {
   margin-left: 6px;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
 }

@@ -46,7 +46,7 @@ const styles = {
     padding: '6px 10px',
     fontSize: '12px',
     fontWeight: 600,
-    color: 'var(--text-muted)',
+    color: 'var(--text-tertiary)',
     letterSpacing: '0.02em',
     borderBottom: '1px solid var(--border-subtle)',
     marginBottom: '4px',
@@ -118,7 +118,7 @@ const styles = {
   }),
 
   charEmotion: (fontSize: number): React.CSSProperties => ({
-    color: 'var(--text-muted)',
+    color: 'var(--text-tertiary)',
     fontSize: `${Math.max(12, fontSize - 2)}px`,
     flexShrink: 0,
   }),
@@ -137,13 +137,13 @@ const styles = {
   } as React.CSSProperties,
 
   inlineAnnotation: (fontSize: number): React.CSSProperties => ({
-    color: 'var(--text-muted)',
+    color: 'var(--text-tertiary)',
     fontSize: `${Math.max(12, fontSize - 2)}px`,
     fontWeight: 400,
   }),
 
   direction: (fontSize: number): React.CSSProperties => ({
-    color: 'var(--text-muted)',
+    color: 'var(--text-tertiary)',
     fontStyle: 'italic',
     fontSize: `${Math.max(13, fontSize - 1)}px`,
     margin: '4px 0',
@@ -192,12 +192,12 @@ const styles = {
     minWidth: '40px',
     textAlign: 'center' as const,
     fontSize: '12px',
-    color: 'var(--text-muted)',
+    color: 'var(--text-tertiary)',
   } as React.CSSProperties,
 
   formatStatusText: {
     fontSize: '12px',
-    color: 'var(--text-muted)',
+    color: 'var(--text-tertiary)',
     maxWidth: '180px',
     whiteSpace: 'nowrap' as const,
     overflow: 'hidden',
@@ -337,7 +337,7 @@ const styles = {
   } as React.CSSProperties,
 
   polishLabel: {
-    color: 'var(--text-muted)',
+    color: 'var(--text-tertiary)',
     fontSize: '12px',
     marginTop: '8px',
   } as React.CSSProperties,

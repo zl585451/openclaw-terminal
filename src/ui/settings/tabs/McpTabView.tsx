@@ -118,7 +118,7 @@ export function McpTabView({
                       marginTop: 8,
                       padding: '8px 10px',
                       borderRadius: 6,
-                      border: '1px solid var(--border-secondary)',
+                      border: '1px solid var(--border-subtle)',
                       background: 'var(--bg-base)',
                     }}
                   >
@@ -165,7 +165,7 @@ export function McpTabView({
                       fontSize: 12,
                       color: 'var(--status-error)',
                       padding: '4px 8px',
-                      background: 'var(--bg-error)',
+                      background: 'var(--status-error-bg)',
                       borderRadius: 4,
                     }}
                   >
@@ -185,7 +185,7 @@ export function McpTabView({
               background: 'var(--bg-surface)',
               borderRadius: 8,
               marginBottom: 16,
-              border: '2px dashed var(--border-secondary)',
+              border: '2px dashed var(--border-subtle)',
             }}
           >
             <div style={{ fontSize: 24, marginBottom: 8 }}>🔧</div>
@@ -287,7 +287,7 @@ export function McpTabView({
               style={{
                 marginTop: 12,
                 padding: 8,
-                background: 'var(--bg-info)',
+                background: 'var(--status-info-bg)',
                 borderRadius: 4,
                 fontSize: 11,
                 color: 'var(--text-secondary)',
