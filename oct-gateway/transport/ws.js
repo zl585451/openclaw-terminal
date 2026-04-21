@@ -117,7 +117,9 @@ class WsTransport {
         if (ws.readyState === ws.OPEN) {
           try {
             ws.ping();
-          } catch (_) {}
+          } catch (error) {
+            this.log.warn('ping failed', { clientId, error: error?.message || String(error) });
+          }
         } else if (serverPingInterval) {
           clearInterval(serverPingInterval);
           serverPingInterval = null;
@@ -125,7 +127,11 @@ class WsTransport {
       }, SERVER_PING_INTERVAL_MS);
     } catch (e) {
       this.log.error('send challenge failed', { clientId, error: e?.message || String(e) });
-      try { ws.close(1011, 'Server error'); } catch (_) {}
+      try {
+        ws.close(1011, 'Server error');
+      } catch (error) {
+        this.log.warn('close after challenge failure failed', { clientId, error: error?.message || String(error) });
+      }
       return;
     }
 

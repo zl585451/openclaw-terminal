@@ -242,7 +242,9 @@ async function loadFeedbackForBoot() {
         sections.push(`### 用户喜欢的回复（最近${lines.length}条）\n${lines.join('\n')}`);
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    log.warn('load positive feedback section failed', { error: e?.message || String(e) });
+  }
 
   try {
     const negPaths = await getRecentLeafPaths(FEEDBACK_NEGATIVE, negativeLimit);
@@ -266,7 +268,9 @@ async function loadFeedbackForBoot() {
         sections.push(`### 用户不喜欢的回复（最近${lines.length}条）\n${lines.join('\n')}`);
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    log.warn('load negative feedback section failed', { error: e?.message || String(e) });
+  }
 
   try {
     const corPaths = await getRecentLeafPaths(CORRECTIONS, correctionsLimit);
@@ -289,7 +293,9 @@ async function loadFeedbackForBoot() {
         sections.push(`### 用户纠正的规则（最近${lines.length}条）\n${lines.join('\n')}`);
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    log.warn('load corrections section failed', { error: e?.message || String(e) });
+  }
 
   if (sections.length === 0) return '';
   return '\n\n## 📌 反馈与纠正（启动时加载）\n\n' + sections.join('\n\n');
