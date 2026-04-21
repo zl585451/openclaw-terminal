@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { useSettings } from '../../../contexts/SettingsContext';
 
 export type NocturneStatusBrief = { available: boolean; path: string } | null;
@@ -85,6 +85,7 @@ export function MemoryTabView({
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
   const userName = settings.userName || '用户';
+  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
 
 
   return (
@@ -200,6 +201,20 @@ export function MemoryTabView({
         </div>
       </section>
 
+      {refreshWarning && (
+        <div className="settings-banner-warning" role="alert">
+          <span>{refreshWarning}</span>
+          <button
+            type="button"
+            className="settings-banner-close"
+            onClick={() => setRefreshWarning(null)}
+            aria-label="关闭警告"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {nocturneStatus?.available ? (
         <section className="settings-section">
           <h3>记忆系统控制台</h3>
@@ -232,7 +247,11 @@ export function MemoryTabView({
                   setNocturneStarting(false);
                   if (r.success) {
                     setNocturneDashboardStatus({ backendRunning: true, frontendRunning: true });
-                    api.getNocturneStatus().then((r2: any) => setNocturneDetail(r2)).catch(() => {});
+                    api.getNocturneStatus().then((r2: any) => setNocturneDetail(r2)).catch((err: unknown) => {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      console.warn('[MemoryTabView] Dashboard 启动后状态刷新失败', msg);
+                      setRefreshWarning(`Dashboard 启动后状态刷新失败：${msg}`);
+                    });
                   } else {
                     alert('启动失败：' + (r.error || '未知错误'));
                   }
@@ -251,7 +270,11 @@ export function MemoryTabView({
                 setRestartingBackend(true);
                 await api.restartNocturneBackend();
                 await new Promise((r) => setTimeout(r, 2000));
-                api.getNocturneStatus().then((r: any) => setNocturneDetail(r)).catch(() => {});
+                api.getNocturneStatus().then((r: any) => setNocturneDetail(r)).catch((err: unknown) => {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  console.warn('[MemoryTabView] 重启后端后状态刷新失败', msg);
+                  setRefreshWarning(`重启后端后状态刷新失败：${msg}`);
+                });
                 setRestartingBackend(false);
               }}
               disabled={restartingBackend}
@@ -330,7 +353,11 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
                   const r2 = await api.nocturneCreate('core://agent/claude_routing', claudeRoutingContent, 1, '咨询Claude、问题整理、提示词优化、token节省');
                   if (r1?.ok && r2?.ok) {
                     alert(`已写入 ${assistantName} 工作模式记忆：core://agent/work_mode、core://agent/claude_routing`);
-                    api.getNocturneStatus().then((r: any) => setNocturneDetail(r)).catch(() => {});
+                    api.getNocturneStatus().then((r: any) => setNocturneDetail(r)).catch((err: unknown) => {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      console.warn('[MemoryTabView] 写入工作模式记忆后状态刷新失败', msg);
+                      setRefreshWarning(`写入工作模式记忆后状态刷新失败：${msg}`);
+                    });
                   } else {
                     alert('写入失败：' + (r1?.error || r2?.error || '未知错误'));
                   }
