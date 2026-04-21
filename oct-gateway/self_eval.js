@@ -1,3 +1,18 @@
+/**
+ * @deprecated 2026-03-20 起停用
+ *
+ * 此模块的主链调用已在 oct-gateway/index.js 中注释：
+ * - selfEval.evaluateReply()
+ * - maybeDistill()
+ *
+ * 文件保留供未来重新评估或恢复使用。
+ * 如需启用，取消 index.js 的注释即可。
+ *
+ * 停用原因：评分不准确，自动规则写入 SOUL.md 质量不可控。
+ * 替代方案：用户反馈检测（memory_feedback.js 的 detectAndSaveFeedback）。
+ *
+ * 相关文档：docs/03_specs/99_known_issues.md #3
+ */
 const config = require('./config');
 const memory = require('./memory');
 const memoryHistory = require('./memory_history');

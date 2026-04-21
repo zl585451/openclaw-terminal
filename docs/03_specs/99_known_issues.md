@@ -48,6 +48,12 @@
 - **修复**：`index.js` 注释 `selfEval.evaluateReply` 和 `maybeDistill` 调用；`SOUL.md` 删除「## 🤖 自动学习规则」段落
 - **替代**：用户反馈检测 (`detectAndSaveFeedback`) 作为核心学习信号
 
+### 2026-04-21 #3 自评系统状态确认
+- 代码保留：`oct-gateway/self_eval.js` 文件仍在仓库
+- 主链停用：`oct-gateway/index.js` 中 `selfEval.evaluateReply()` 与 `maybeDistill()` 调用已注释
+- 保留意义：如未来需要重新启用，可在保留现有实现的前提下恢复评估
+- 当前状态：不影响现有功能，也不会产生额外 API 调用成本
+
 ### 2026-03-30 前端 Markdown/OptionBox 渲染修复
 - **问题 1**：多表格在“最终渲染”阶段丢失（常伴随 `■` 选项行）
 - **原因**：`optionBoxParser` 在符号选项处理里发生“双转义”（如 `split('\\n')`、`/^\\s*\\|/`），导致按行逻辑失效；以及未正确保护表格行
