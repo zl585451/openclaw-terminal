@@ -922,8 +922,8 @@ export function ConnectionTabView({
       </section>
 
       <section className="settings-section">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0 }}>3. 搜索引擎 API</h3>
+        <div className="settings-inline-row">
+          <h3 className="settings-heading-inline">3. 搜索引擎 API</h3>
           <button
             type="button"
             className="settings-link-btn"
@@ -987,7 +987,7 @@ export function ConnectionTabView({
               </div>
               <a href="https://tavily.com/" target="_blank" rel="noopener noreferrer" className="settings-link">获取 Tavily API Key →</a>
             </div>
-            <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            <div className="settings-note-card">
               💡 <strong>DuckDuckGo</strong> 无需 API Key，作为免费降级方案自动启用
             </div>
           </>
