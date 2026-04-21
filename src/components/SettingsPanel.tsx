@@ -10,12 +10,21 @@ import { AdvancedTabView } from '../ui/settings/tabs/AdvancedTabView';
 import { ConnectionTabView } from '../ui/settings/tabs/ConnectionTabView';
 import { InterfaceTabView } from '../ui/settings/tabs/InterfaceTabView';
 import { MemoryTabView } from '../ui/settings/tabs/MemoryTabView';
-import { McpTabView } from '../ui/settings/tabs/McpTabView';
+import { McpTabView, type McpServerInfo } from '../ui/settings/tabs/McpTabView';
 import { useAiLibrary } from '../hooks/settings/useAiLibrary';
 import { useApiKeys } from '../hooks/settings/useApiKeys';
 import { useNocturneMemory } from '../hooks/settings/useNocturneMemory';
 import { useScreenshotShortcut } from '../hooks/settings/useScreenshotShortcut';
 import { useAdvancedSettings } from '../hooks/settings/useAdvancedSettings';
+import type { ApiResult, IpcRendererLike } from '../types/electronAPI';
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function normalizePersonaStyle(value: string | undefined): 'neutral' | 'warm' | 'companion' {
+  return value === 'neutral' || value === 'companion' ? value : 'warm';
+}
 
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { settings, setSettings } = useSettings();
@@ -114,20 +123,20 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const minimaxTtsAvailable = Boolean(apiKeys.MINIMAX_API_KEY?.trim());
 
   // MCP Server 状态
-  const [mcpStatus, setMcpStatus] = useState<Record<string, any>>({});
+  const [mcpStatus, setMcpStatus] = useState<Record<string, McpServerInfo>>({});
   const [mcpLoading, setMcpLoading] = useState(false);
   const [newServer, setNewServer] = useState({ name: '', command: '', args: '', envText: '' });
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
-  const ipcRenderer =
-    typeof window !== 'undefined' && typeof (window as any).require === 'function'
-      ? (window as any).require('electron').ipcRenderer
+  const ipcRenderer: IpcRendererLike | null =
+    typeof window !== 'undefined' && typeof window.require === 'function'
+      ? window.require('electron').ipcRenderer
       : null;
 
   const loadMcpStatus = async () => {
     setMcpLoading(true);
     try {
-      const status = await (window as any).electronAPI?.mcpGetStatus?.();
+      const status = await window.electronAPI?.mcpGetStatus?.();
       setMcpStatus(status || {});
     } catch { setMcpStatus({}); }
     setMcpLoading(false);
@@ -162,20 +171,20 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   }, [permissions]);
 
   useEffect(() => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     const load = api?.getAgentPermissions
       ? api.getAgentPermissions()
       : ipcRenderer
-      ? ipcRenderer.invoke('get-agent-permissions')
+      ? ipcRenderer.invoke<ApiResult<typeof permissions>>('get-agent-permissions')
       : Promise.resolve(null);
     load
-      .then((res: any) => {
+      .then((res) => {
         if (!res?.success || !res?.data) return;
         setLocalPerm(res.data);
         setPermissions(res.data);
       })
       .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = getErrorMessage(err);
         console.warn('[SettingsPanel] 权限读取失败', msg);
         setPanelWarning(`权限读取失败：${msg}`);
       });
@@ -195,36 +204,38 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   }, [minimaxTtsAvailable, local.ttsProvider]);
 
   useEffect(() => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     api?.getPersonaSettings?.()
-      .then((result: any) => {
+      .then((result) => {
         if (!result?.success || !result?.data) return;
-        setAiName(result.data.OCT_AI_NAME || 'OpenClaw');
-        setUserName(result.data.OCT_USER_NAME || '用户');
-        setPersonaStyle(result.data.OCT_PERSONA_STYLE || 'warm');
+        const data = result.data;
+        const nextPersonaStyle = normalizePersonaStyle(data.OCT_PERSONA_STYLE);
+        setAiName(data.OCT_AI_NAME || 'OpenClaw');
+        setUserName(data.OCT_USER_NAME || '用户');
+        setPersonaStyle(nextPersonaStyle);
         setLocal((prev) => ({
           ...prev,
-          aiName: result.data.OCT_AI_NAME || 'OpenClaw',
-          userName: result.data.OCT_USER_NAME || '用户',
-          personaStyle: result.data.OCT_PERSONA_STYLE || 'warm',
+          aiName: data.OCT_AI_NAME || 'OpenClaw',
+          userName: data.OCT_USER_NAME || '用户',
+          personaStyle: nextPersonaStyle,
         }));
       })
       .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = getErrorMessage(err);
         console.warn('[SettingsPanel] 人格配置读取失败', msg);
         setPanelWarning(`人格配置读取失败：${msg}`);
       });
   }, []);
 
   const apply = async () => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     setApplyStatus('saving');
     setApplyError('');
     setSettings({ ...local, aiName, userName, personaStyle: personaStyle as 'neutral' | 'warm' | 'companion' });
     const permissionResult = api?.saveAgentPermissions
       ? await api.saveAgentPermissions(localPerm)
       : ipcRenderer
-      ? await ipcRenderer.invoke('save-agent-permissions', localPerm)
+      ? await ipcRenderer.invoke<ApiResult<typeof permissions>>('save-agent-permissions', localPerm)
       : null;
     if (!permissionResult?.success) {
       setApplyStatus('error');
@@ -252,7 +263,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       };
       const personaResult = api?.savePersonaSettings
         ? await api.savePersonaSettings(payload)
-        : await ipcRenderer?.invoke('save-persona-settings', payload);
+        : await ipcRenderer?.invoke<ApiResult>('save-persona-settings', payload);
       if (!personaResult?.success) {
         setApplyStatus('error');
         setApplyError(personaResult?.error || '人格设置保存失败');
@@ -298,11 +309,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         window.speechSynthesis.speak(utterance);
         return;
       }
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       const result = api?.ttsSpeak
         ? await api.ttsSpeak(payload)
         : ipcRenderer
-        ? await ipcRenderer.invoke('tts-speak', payload)
+        ? await ipcRenderer.invoke<ApiResult & { audioBase64?: string; mimeType?: string }>('tts-speak', payload)
         : null;
       if (!result?.success || !result?.audioBase64) {
         if (local.ttsProvider === 'auto' && 'speechSynthesis' in window) {
@@ -330,9 +341,9 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         setTtsPreviewError('音频播放失败，请检查系统输出设备或音量');
       };
       await audio.play();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTtsPreviewStatus('error');
-      setTtsPreviewError(err?.message || '试听请求失败');
+      setTtsPreviewError(getErrorMessage(err) || '试听请求失败');
     }
   };
 
@@ -487,7 +498,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   const [k, ...v] = line.split('=');
                   if (k?.trim()) env[k.trim()] = v.join('=').trim();
                 });
-                await (window as any).electronAPI?.mcpAddServer?.(newServer.name, {
+                await window.electronAPI?.mcpAddServer?.(newServer.name, {
                   command: newServer.command,
                   args: newServer.args.split(' ').filter(Boolean),
                   env,
@@ -496,7 +507,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 loadMcpStatus();
               }}
               onUpdateServer={async (name, cfg) => {
-                await (window as any).electronAPI?.mcpAddServer?.(name, {
+                await window.electronAPI?.mcpAddServer?.(name, {
                   command: cfg.command,
                   args: cfg.args || [],
                   env: cfg.env || {},
@@ -504,7 +515,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 loadMcpStatus();
               }}
               onRemoveServer={async (name) => {
-                await (window as any).electronAPI?.mcpRemoveServer?.(name);
+                await window.electronAPI?.mcpRemoveServer?.(name);
                 loadMcpStatus();
               }}
               onRefresh={loadMcpStatus}
