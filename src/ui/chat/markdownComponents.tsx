@@ -132,7 +132,7 @@ export function createMarkdownComponents(
           openExternal(href);
         }
       }}
-      style={{ color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}
+      style={{ color: 'var(--accent-primary)', textDecoration: 'underline', cursor: 'pointer' }}
       title={href}
     >{children}</a>
   ),

@@ -718,7 +718,7 @@
 
 .music-history-item.active {
   border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-secondary));
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-panel));
 }
 
 .music-history-item-main {

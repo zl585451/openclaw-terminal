@@ -337,7 +337,7 @@ const MessageMeta = memo(function MessageMeta({ timestamp }: { timestamp: string
       onMouseEnter={() => setHoverTime(true)}
       onMouseLeave={() => setHoverTime(false)}
       style={{
-        color: hoverTime ? 'var(--accent)' : 'var(--text-secondary)',
+        color: hoverTime ? 'var(--accent-primary)' : 'var(--text-secondary)',
         fontSize: 'var(--text-xs)',
         fontFamily: 'var(--font-mono)',
         cursor: 'default',
@@ -378,7 +378,7 @@ const MessageHeader = memo(
             <AmyAvatar isStreaming={false} size={32} />
             <span
               style={{
-                color: 'var(--accent)',
+                color: 'var(--accent-primary)',
                 fontSize: 'var(--text-xs)',
                 fontFamily: 'var(--font-mono)',
                 letterSpacing: '2px',

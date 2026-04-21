@@ -141,7 +141,7 @@
 }
 
 .activity-entry--tool-call {
-  background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+  background: var(--bg-panel, rgba(255, 255, 255, 0.03));
   border-radius: 6px;
   padding: 8px 10px;
   margin: 6px 0 2px 0;

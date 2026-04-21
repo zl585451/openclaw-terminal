@@ -183,7 +183,7 @@ function VisionApiSection({ apiKeys, setApiKeys, showApiKey, setShowApiKey }: {
         </select>
         {activePreset.keyLink && (
           <p className="settings-desc" style={{ fontSize: 12, marginTop: 4 }}>
-            <a href={activePreset.keyLink} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+            <a href={activePreset.keyLink} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>
               获取 API Key →
             </a>
             {activePreset.modelHint && <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{activePreset.modelHint}</span>}

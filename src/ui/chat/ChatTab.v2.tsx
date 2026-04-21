@@ -759,7 +759,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               fontSize: 'var(--text-lg)',
               fontFamily: 'var(--font-mono)',
               letterSpacing: '3px',
-              textShadow: '0 0 10px var(--glow-color)',
+              textShadow: '0 0 10px var(--accent-primary-glow)',
             }}>⬇ DROP FILES HERE</span>
           </div>
         )}
@@ -897,7 +897,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                 display: 'block',
                 animation: 'chevronGlow 1.4s ease-in-out infinite',
                 animationDelay: `${i * 0.2}s`,
-                filter: `drop-shadow(0 0 ${4 + i * 2}px var(--glow-color))`,
+                filter: `drop-shadow(0 0 ${4 + i * 2}px var(--accent-primary-glow))`,
               }}>
                 <polyline
                   points="2,2 14,13 26,2"

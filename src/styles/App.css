@@ -1,4 +1,4 @@
-/* 主题变量由 SettingsContext 动态注入到 :root，这里不再重复定义 */
+/* 主题变量由 ThemeProvider 注入到 :root，这里不再重复定义 */
 
 /* 全局样式 */
 * {
@@ -23,7 +23,7 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-light);
   position: relative;
   overflow: hidden;
 }
@@ -75,7 +75,7 @@ body {
   position: absolute;
   width: 20px;
   height: 20px;
-  border: 2px solid var(--green);
+  border: 2px solid var(--accent-primary);
   z-index: 10;
 }
 
@@ -119,5 +119,5 @@ body {
 
 .cursor-blink {
   animation: blink 1s step-end infinite;
-  color: var(--green);
+  color: var(--accent-primary);
 }

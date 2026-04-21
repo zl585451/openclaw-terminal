@@ -34,7 +34,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const inputStyle: React.CSSProperties = {
-  background: 'var(--input-bg, var(--bg-input, var(--bg-primary)))',
+  background: 'var(--input-bg, var(--bg-input, var(--bg-base)))',
   border: '1px solid var(--border, var(--border-subtle))',
   borderRadius: '4px',
   padding: '6px 10px',
@@ -47,7 +47,7 @@ const inputStyle: React.CSSProperties = {
 
 const btnPrimaryStyle: React.CSSProperties = {
   flex: 1,
-  background: 'var(--btn-bg, var(--bg-secondary, var(--bg-hover)))',
+  background: 'var(--btn-bg, var(--bg-panel, var(--bg-hover)))',
   border: '1px solid var(--border, var(--border-subtle))',
   borderRadius: '4px',
   color: 'var(--color-accent, var(--accent-primary))',
@@ -302,7 +302,7 @@ export default function VaultPanel({ vaultOpen, setVaultOpen, onStatusChange, co
         overflowY: 'auto',
         zIndex: 99999,
         border: '1px solid var(--border, var(--border-subtle))',
-        background: 'var(--bg-secondary, var(--bg-panel))',
+        background: 'var(--bg-panel)',
         borderRadius: '0 6px 6px 6px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
         padding: 16,
@@ -436,7 +436,7 @@ export default function VaultPanel({ vaultOpen, setVaultOpen, onStatusChange, co
 
           {editingItem && (
             <div style={{
-              background: 'var(--input-bg, var(--bg-primary))',
+              background: 'var(--input-bg, var(--bg-base))',
               border: '1px solid var(--border, var(--border-subtle))',
               borderRadius: 6,
               padding: 12,
@@ -476,7 +476,7 @@ export default function VaultPanel({ vaultOpen, setVaultOpen, onStatusChange, co
 
           {showAddForm && (
             <div style={{
-              background: 'var(--input-bg, var(--bg-primary))',
+              background: 'var(--input-bg, var(--bg-base))',
               border: '1px solid var(--border, var(--border-subtle))',
               borderRadius: 6,
               padding: 12,
@@ -594,7 +594,7 @@ export default function VaultPanel({ vaultOpen, setVaultOpen, onStatusChange, co
                   style={{
                     background: editingItem?.refName === item.refName
                       ? 'var(--bg-hover, rgba(255,255,255,0.05))'
-                      : 'var(--input-bg, var(--bg-primary))',
+                      : 'var(--input-bg, var(--bg-base))',
                     border: `1px solid ${item.riskLevel === 'critical' ? 'var(--color-danger, var(--status-error))' : 'var(--border, var(--border-subtle))'}`,
                     borderRadius: 6,
                     padding: '8px 10px',

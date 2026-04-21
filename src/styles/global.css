@@ -409,7 +409,7 @@ h4 {
   box-shadow: var(--shadow-glow);
 }
 [data-color-scheme="dark"] .glow-text {
-  text-shadow: 0 0 12px var(--glow-color);
+  text-shadow: 0 0 12px var(--accent-primary-glow);
 }
 
 /* 浅色主题不要 glow */

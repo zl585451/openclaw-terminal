@@ -44,8 +44,8 @@
 
 /* 输入框闪烁 */
 @keyframes input-flash {
-  0% { box-shadow: 0 0 20px var(--glow-color); border-color: var(--accent-primary); }
-  100% { box-shadow: 0 0 5px var(--glow-color); border-color: var(--border-subtle); }
+  0% { box-shadow: 0 0 20px var(--accent-primary-glow); border-color: var(--accent-primary); }
+  100% { box-shadow: 0 0 5px var(--accent-primary-glow); border-color: var(--border-subtle); }
 }
 
 .chat-tab {
@@ -435,7 +435,7 @@
 
 .chat-message.assistant .msg-label {
   background: var(--accent-primary-muted);
-  color: var(--accent);
+  color: var(--accent-primary);
   animation: label-scanline 3s ease-in-out infinite;
 }
 
@@ -621,7 +621,7 @@
 }
 
 .msg-content.markdown-body li::marker {
-  color: var(--accent);
+  color: var(--accent-primary);
 }
 
 .msg-content.markdown-body code {
@@ -655,7 +655,7 @@
 }
 
 .msg-content.markdown-body a {
-  color: var(--accent);
+  color: var(--accent-primary);
   text-decoration: underline;
 }
 
@@ -752,7 +752,7 @@
 .msg-content.markdown-body blockquote {
   margin: 8px 0;
   padding-left: 12px;
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--accent-primary);
   color: var(--text-secondary);
 }
 

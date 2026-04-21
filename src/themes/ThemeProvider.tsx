@@ -55,35 +55,6 @@ function resolveLegacyTheme(): string {
 }
 
 // ============================================================
-// 旧变量兼容层（迁移后可删）
-// ============================================================
-const LEGACY_VAR_MAP: Record<string, string> = {
-  '--oct-bg-primary': '--bg-base',
-  '--oct-accent':     '--accent-primary',
-  '--primary-color':  '--accent-primary',
-  '--accent-color':   '--accent-primary',
-  '--bg-primary':     '--bg-base',
-  '--bg-secondary':   '--bg-panel',
-  '--bg-tertiary':    '--bg-surface',
-  '--text-dim':       '--text-secondary',
-  '--text-secondary': '--text-secondary',
-  '--green':          '--accent-primary',
-  '--glow-color':     '--accent-primary-glow',
-  '--border-color':   '--border-light',
-  '--accent':         '--accent-primary',
-  '--p0':             '--priority-p0',
-  '--p1':             '--priority-p1',
-  '--p2':             '--priority-p2',
-};
-
-function injectLegacyVars(root: HTMLElement) {
-  Object.entries(LEGACY_VAR_MAP).forEach(([oldVar, newVar]) => {
-    const value = root.style.getPropertyValue(newVar);
-    if (value) root.style.setProperty(oldVar, value);
-  });
-}
-
-// ============================================================
 // Provider
 // ============================================================
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -106,9 +77,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     Object.entries(theme.vars).forEach(([key, val]) => {
       root.style.setProperty(key, val);
     });
-
-    // 注入旧变量兼容（迁移后删这行）
-    injectLegacyVars(root);
 
     // data 属性
     root.setAttribute('data-theme', themeId);

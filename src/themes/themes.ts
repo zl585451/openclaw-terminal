@@ -141,7 +141,6 @@ export const terminalTheme: ThemeDefinition = {
     "--scrollbar-thumb-hover": "#2A3A4A",
 
     // 特殊效果
-    "--glow-color":     "rgba(0, 230, 118, 0.4)",
     "--selection-bg":   "rgba(0, 230, 118, 0.25)",
     "--selection-text":  "#D4E5D0",
   },
@@ -268,7 +267,6 @@ export const deepspaceTheme: ThemeDefinition = {
     "--scrollbar-thumb":       "#22274A",
     "--scrollbar-thumb-hover": "#2E3460",
 
-    "--glow-color":     "rgba(124, 138, 255, 0.3)",
     "--selection-bg":   "rgba(124, 138, 255, 0.25)",
     "--selection-text":  "#D0D4F0",
   },
@@ -396,7 +394,6 @@ export const claudeDarkTheme: ThemeDefinition = {
     "--scrollbar-thumb":       "#4A4944",
     "--scrollbar-thumb-hover": "#5A5955",
 
-    "--glow-color":     "none",
     "--selection-bg":   "rgba(212, 118, 78, 0.25)",
     "--selection-text":  "#E8E4DD",
   },
