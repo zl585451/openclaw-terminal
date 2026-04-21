@@ -649,7 +649,7 @@ export function ConnectionTabView({
                 </div>
               </>
             )}
-            <section className="settings-section" style={{ marginTop: 18 }}>
+            <section className="settings-section settings-section-nested">
               <h3>3. 生图配置</h3>
               <p className="settings-desc">
                 独立于聊天模型的生图 API 配置。默认不会复用聊天 Key，避免跨服务商串 key。
@@ -712,7 +712,7 @@ export function ConnectionTabView({
                     {showApiKey.IMAGE_API_KEY ? '🙈' : '👁'}
                   </button>
                 </div>
-                <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                <p className="settings-desc settings-desc-compact">
                   当前值会保存到所选生图服务商的独立配置中，不会覆盖其他生图服务商。
                 </p>
               </div>
@@ -779,8 +779,8 @@ export function ConnectionTabView({
 
               <div className="settings-field">
                 <label>生图 Key 回退策略</label>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <p className="settings-desc" style={{ margin: 0, fontSize: 12 }}>
+                <div className="settings-inline-row-between">
+                  <p className="settings-desc settings-desc-inline">
                     允许回退到聊天 Key（默认关闭，建议保持关闭）
                   </p>
                   <label className="toggle-wrap">
@@ -795,7 +795,7 @@ export function ConnectionTabView({
                     <span className="toggle-slider" />
                   </label>
                 </div>
-                <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--status-warning)' }}>
+                <p className="settings-desc settings-desc-compact settings-desc-warning">
                   开启后可能把聊天服务商的 Key 误用于生图服务商，只有临时兼容旧配置时再启用。
                 </p>
               </div>
@@ -815,11 +815,11 @@ export function ConnectionTabView({
                 </select>
               </div>
             </section>
-            <details className="settings-details" style={{ marginTop: 8 }}>
+            <details className="settings-details settings-details-tight">
               <summary>高级：Base URL</summary>
-              <div className="settings-details-content" style={{ marginTop: 8 }}>
+              <div className="settings-details-content">
                 {currentProviderId === 'custom' ? (
-                  <p className="settings-desc" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <p className="settings-desc">
                     自定义服务的请求地址已在上方主表单中配置，这里无需重复填写。
                   </p>
                 ) : (
@@ -848,7 +848,7 @@ export function ConnectionTabView({
                     autoComplete="off"
                   />
                   {currentProviderId === 'custom' && (
-                    <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+                    <p className="settings-desc settings-desc-compact">
                       输入 OpenAI 兼容格式的 API 地址，通常以 /v1 结尾。按硅基流动中文文档，推荐填写 https://api.siliconflow.cn/v1
                     </p>
                   )}
@@ -856,7 +856,7 @@ export function ConnectionTabView({
                 )}
               </div>
             </details>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
+            <div className="settings-actions-row settings-stack-md">
               <button
                 type="button"
                 className="settings-btn"
@@ -897,11 +897,11 @@ export function ConnectionTabView({
                 {testConnectionStatus === 'testing' ? '测试中...' : testConnectionStatus === 'success' ? '✓ 连接成功' : '测试连接'}
               </button>
               {testConnectionStatus === 'error' && testConnectionError && (
-                <span style={{ fontSize: 12, color: 'var(--status-error)' }}>{testConnectionError}</span>
+                <span className="settings-error-inline">{testConnectionError}</span>
               )}
             </div>
 
-            <div className="settings-field" style={{ marginTop: 14 }}>
+            <div className="settings-field settings-field-offset">
               <label>HTTPS 代理（可选，仅 oct-gateway 出站）</label>
               <input
                 type="text"
@@ -911,7 +911,7 @@ export function ConnectionTabView({
                 className="settings-input settings-input-focusable"
                 autoComplete="off"
               />
-              <p className="settings-desc" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>
+              <p className="settings-desc settings-desc-compact">
                 访问 Gemini / Google 等境外接口时使用。填 V2rayN「本地 HTTP 代理」地址（常见 10809，以你本机为准）。留空则不走代理。保存后会写入配置并重启网关。
               </p>
             </div>

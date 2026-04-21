@@ -671,6 +671,10 @@
   margin: 12px 0;
 }
 
+.settings-details-tight {
+  margin-top: 8px;
+}
+
 .settings-details summary {
   color: var(--text-tertiary);
   cursor: pointer;
@@ -765,6 +769,11 @@
   color: var(--status-error);
   font-size: var(--text-sm);
   margin-top: 8px;
+}
+
+.settings-error-inline {
+  color: var(--status-error);
+  font-size: var(--text-sm);
 }
 
 .settings-banner-warning,
