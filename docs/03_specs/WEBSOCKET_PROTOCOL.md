@@ -1,6 +1,6 @@
 # Gateway WebSocket 消息协议
 
-> **最后更新时间**：2026-04-17  
+> **最后更新时间**：2026-04-21  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：理解前端与 Gateway 的通信格式，调试连接、消息收发问题
 
@@ -166,7 +166,7 @@
 ```json
 {
   "type": "event",
-  "event": "stream.delta | stream.done | thinking | workbench | canvas | ...",
+  "event": "chat | tool | agent-phase | keepalive | workbench | canvas | ...",
   "payload": { ... }
 }
 ```
@@ -174,17 +174,46 @@
 | event | 说明 |
 |-------|------|
 | `connect.challenge` | 握手挑战（含 nonce） |
-| `stream.delta` | 流式文本片段 |
-| `stream.done` | 流结束 |
-| `thinking` | 思考心跳（长任务时每 8 秒） |
+| `chat` | 主聊天事件；`payload.state = delta | done` |
+| `tool` | 工具调用、工具结果、agent 状态等事件 |
+| `agent-phase` | 前端阶段提示；常见值：`thinking / tool_executing / agent_running / idle` |
 | `keepalive` | 阶段心跳（`waiting_first_token / streaming / tool_running / waiting_continuation`） |
-| `tool_call` | 工具调用（若需展示） |
 | `workbench` | Workbench 工作台事件（创建/更新/聚焦 artifact），当前主路径 |
 | `canvas` | Canvas 兼容事件（旧字段名，仍保留兼容） |
 | `error` | 错误 |
 
 补充字段：
-- `chat delta` 与 `chat done` payload 均可包含 `turnId`（当前实现会透传），用于前端只消费“当前回合”消息，避免旧流误结束新回合。
+- `chat` 事件的 `payload.state` 目前使用 `delta` 与 `done`
+- `chat delta` 与 `chat done` payload 均包含 `turnId`（当前实现会透传），用于前端只消费“当前回合”消息，避免旧流误结束新回合
+- `tool` 事件的 `payload.type` 常见为 `tool_call`、`tool_result`、`agent_status`
+
+### chat 事件示例
+
+```json
+{
+  "type": "event",
+  "event": "chat",
+  "payload": {
+    "delta": "你好，",
+    "state": "delta",
+    "done": false,
+    "turnId": "chat-xxx"
+  }
+}
+```
+
+```json
+{
+  "type": "event",
+  "event": "chat",
+  "payload": {
+    "text": "你好，我来帮你看。",
+    "state": "done",
+    "done": true,
+    "turnId": "chat-xxx"
+  }
+}
+```
 
 ### Workbench / Canvas 事件
 
@@ -243,9 +272,9 @@
 
 1. `image.generate` → 独立图片生成处理器，直接访问外部图像模型接口
 2. `chat.send` 且 **以 `/` 开头** → `handleSlashCommand`（/status、/new、/memory 等）
-3. 其他 `chat.send` → `orchestrator.dispatch`（意图分析）→ `ai.js streamChat`
+3. 其他 `chat.send` → `orchestrator.dispatch`（意图分析）→ `contextBuilder.build()` → `chatEngine.execute()`
 
-图片生成不走对话上下文；Slash 命令直接回复，不走 AI；普通消息走 AI 流式回复。
+图片生成不走对话上下文；Slash 命令直接回复，不走 AI；普通消息会先完成上下文构建，再进入 chat engine 的流式执行。
 
 ---
 
@@ -264,8 +293,10 @@
 | 文件 | 角色 |
 |------|------|
 | `electron/main.ts` | 建立 WebSocket、组装请求、转发回复 |
-| `oct-gateway/index.js` | 接收请求、路由、调用 ai.js、发送事件 |
-| `oct-gateway/ai.js` | streamChat、工具调用、流式回调 |
+| `oct-gateway/index.js` | 接收请求、路由、发送 `chat/tool/agent-phase/keepalive` 事件 |
+| `oct-gateway/runtime/contextBuilder.js` | 构建最终消息上下文 |
+| `oct-gateway/runtime/chatEngine.js` | 执行聊天主链与流式回调 |
+| `oct-gateway/ai.js` | 底层 `streamChat` 与 provider 适配 |
 
 ---
 
