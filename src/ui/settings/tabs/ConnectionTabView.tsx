@@ -343,8 +343,8 @@ export function ConnectionTabView({
             <details className="settings-details">
               <summary>如何获取 Token？</summary>
               <div className="settings-details-content">
-                <p style={{ marginBottom: 12 }}><strong>方法：在终端运行命令</strong></p>
-                <div style={{ background: 'var(--bg-surface)', padding: '12px', borderRadius: '6px', marginBottom: 12, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-code)', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <p className="settings-guide-copy"><strong>方法：在终端运行命令</strong></p>
+                <div className="settings-code-block">
                   <span>openclaw dashboard --no-open</span>
                   <button
                     type="button"
@@ -360,9 +360,9 @@ export function ConnectionTabView({
                     复制
                   </button>
                 </div>
-                <p style={{ marginBottom: 8 }}>命令执行后会输出类似这样的网址：</p>
-                <div style={{ background: 'var(--bg-surface)', padding: '12px', borderRadius: '6px', marginBottom: 12, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', wordBreak: 'break-all', color: 'var(--text-secondary)' }}>
-                  http://127.0.0.1:18789/dashboard#token=<span style={{ color: 'var(--status-warning)' }}>xxxxx-xxxxx-xxxxx</span>&amp;...
+                <p className="settings-guide-copy">命令执行后会输出类似这样的网址：</p>
+                <div className="settings-code-url">
+                  http://127.0.0.1:18789/dashboard#token=<span className="settings-code-highlight">xxxxx-xxxxx-xxxxx</span>&amp;...
                 </div>
                 <p><strong>复制黄色高亮部分的 token 值</strong>（#token= 后面到 &amp; 之前的内容），粘贴到上方输入框即可。</p>
               </div>
