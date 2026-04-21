@@ -1,9 +1,11 @@
 # Canvas → Workbench 独立化架构方案
 
-> 状态：PROPOSAL（设计稿，待落地）  
+> 状态：IMPLEMENTED  
+> Last Updated: 2026-04-21  
+> Original Proposal Date: 2026-04-12  
 > 作者：架构评审  
-> 日期：2026-04-12  
-> 针对版本：当前 `main` 分支（commit 83494f5 附近）
+> 针对版本：当前 `main` 分支（commit 83494f5 附近）  
+> Implementation: `src/workbench/`、`src/components/workbench/`、`src/hooks/useWorkbenchBridge.ts`、`oct-gateway/tools/canvas.js`、`oct-gateway/runtime/toolLoop.js`
 
 ---
 
@@ -496,3 +498,19 @@ export interface RendererPlugin {
 | `src/components/canvas/plugins/*.tsx` | `src/workbench/plugins/*.tsx` | 复制（内容不变），旧文件改为 re-export |
 | `src/hooks/useCanvasBridge.ts` | 保留，内部改用 WorkbenchBus | 改写，保持 hook 接口不变 |
 | `oct-gateway/tools/canvas.js` | 保留，追加 `workbenchEvent` 别名字段 | 增量改写 |
+
+---
+
+## 落地情况（2026-04-21 补注）
+
+| 阶段 | 文档目标 | 实际代码路径 | 状态 |
+|---|---|---|---|
+| Phase 1 | 拆 `CanvasContext`、引入 `WorkbenchBus`、建立 `src/workbench/` 基础层 | `src/workbench/types.ts`, `src/workbench/DocumentStore.ts`, `src/workbench/WorkbenchBus.ts`, `src/workbench/WorkbenchContext.tsx`, `src/contexts/CanvasContext.tsx` | ✅ |
+| Phase 2 | 引入 `WorkbenchHost/WorkbenchPanel`，解除 chat-only 绑定 | `src/components/workbench/WorkbenchHost.tsx`, `src/components/workbench/WorkbenchPanel.tsx`, `src/components/CanvasPanel.tsx`, `src/components/canvas/CanvasHost.tsx`, `src/App.tsx` | ✅ |
+| Phase 3 | Gateway / 前端兼容 `workbenchEvent` | `oct-gateway/tools/canvas.js`, `oct-gateway/runtime/toolLoop.js`, `src/hooks/useWebSocket.ts`, `docs/03_specs/WORKBENCH_EVENT_COMPAT.md` | ✅ |
+| Phase 4 | 插件注册迁移到 `src/workbench/plugins/` | `src/workbench/plugins/index.ts`, `src/workbench/plugins/*.tsx`, `src/components/canvas/plugins/index.ts` | ✅ |
+| Phase 5 | 验证工作台可扩展到非图表 artifact | `src/workbench/plugins/scriptPlugin.tsx`, `src/workbench/types.ts`, `src/components/workbench/DocumentAppendBar.tsx` | ✅ |
+
+说明：
+- 本文档已从“待落地 proposal”转为“已落地设计基线”，保留其架构判断、边界和阶段拆分，供后续继续演进时参考。
+- 真实演进记录可交叉查看 `docs/05_changelog/2026-04-12-workbench-foundation-phase1.md` 到 `phase4.md` 以及 2026-04-15 / 2026-04-18 的 workbench 相关 changelog。
