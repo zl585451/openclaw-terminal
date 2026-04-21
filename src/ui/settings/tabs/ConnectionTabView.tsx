@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { ConnectionTabViewBeginner } from './ConnectionTabView.Beginner';
-import type { SettingsMode } from '../../../hooks/settings/useApiKeys';
+import type { ApiKeysState, SettingsMode } from '../../../hooks/settings/useApiKeys';
+import type { ProviderEntry } from '../providerTypes';
+import {
+  getChatProviderApiKeyField,
+  getChatProviderApiKeyValue,
+  isAnyChatProviderKeyVisible,
+  isChatProviderKeyVisible,
+} from '../providerViewHelpers';
+
+export type { ProviderEntry } from '../providerTypes';
+export type SettingsApiKeysState = ApiKeysState;
 
 const CUSTOM_PROVIDER_PRESETS = [
   {
@@ -26,48 +36,6 @@ const SILICONFLOW_MODEL_EXAMPLES = [
   'deepseek-ai/DeepSeek-R1',
   'Pro/Qwen/Qwen2.5-7B-Instruct',
 ];
-
-export type SettingsApiKeysState = {
-  DASHSCOPE_API_KEY: string;
-  DEEPSEEK_API_KEY: string;
-  MINIMAX_API_KEY: string;
-  IMAGE_PROVIDER: string;
-  IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: boolean;
-  IMAGE_API_KEY: string;
-  IMAGE_BASE_URL: string;
-  IMAGE_MODEL: string;
-  IMAGE_MINIMAX_API_KEY: string;
-  IMAGE_MINIMAX_BASE_URL: string;
-  IMAGE_MINIMAX_MODEL: string;
-  IMAGE_SILICONFLOW_API_KEY: string;
-  IMAGE_SILICONFLOW_BASE_URL: string;
-  IMAGE_SILICONFLOW_MODEL: string;
-  IMAGE_OPENAI_API_KEY: string;
-  IMAGE_OPENAI_BASE_URL: string;
-  IMAGE_OPENAI_MODEL: string;
-  IMAGE_SIZE: string;
-  TTS_MINIMAX_VOICE_ID: string;
-  CUSTOM_API_KEY: string;
-  OPENCLAW_WS_URL: string;
-  OPENCLAW_TOKEN: string;
-  OCT_SETTINGS_MODE: SettingsMode | '';
-  OCT_PROVIDER: string;
-  OCT_MODEL: string;
-  CUSTOM_MODEL: string; // 自定义模型名称
-  DASHSCOPE_BASE_URL: string;
-  DEEPSEEK_BASE_URL: string;
-  MINIMAX_BASE_URL: string;
-  CUSTOM_BASE_URL: string; // 自定义 Base URL
-  GOOGLE_AI_API_KEY: string;
-  GOOGLE_AI_BASE_URL: string;
-  HTTPS_PROXY: string;
-  HTTP_PROXY: string;
-  BRAVE_SEARCH_API_KEY: string;
-  TAVILY_API_KEY: string;
-  VISION_API_KEY: string;
-  VISION_BASE_URL: string;
-  VISION_MODEL: string;
-};
 
 type ImageProviderId = 'minimax' | 'siliconflow' | 'openai';
 
@@ -100,17 +68,6 @@ function readScopedImageValues(state: SettingsApiKeysState, providerRaw: string)
     model: state.IMAGE_MINIMAX_MODEL || '',
   };
 }
-
-export type ProviderEntry = {
-  id: string;
-  name: string;
-  baseUrl: string;
-  keyLink: string;
-  keyPlaceholder: string;
-  defaultModel: string;
-  models: Array<{ id: string; label: string; tools: boolean; thinking: boolean; custom?: boolean }>;
-  allowCustomModel?: boolean;
-};
 
 export interface ConnectionTabViewProps {
   apiKeysLoaded: boolean;
@@ -440,21 +397,10 @@ export function ConnectionTabView({
               <label>API Key</label>
               <div className="settings-input-row">
                 <input
-                  type={showApiKey.DASHSCOPE_API_KEY || showApiKey.DEEPSEEK_API_KEY || showApiKey.MINIMAX_API_KEY || showApiKey.CUSTOM_API_KEY || showApiKey.GOOGLE_AI_API_KEY ? 'text' : 'password'}
-                  value={
-                    currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_API_KEY : 
-                    currentProviderId === 'minimax' ? apiKeys.MINIMAX_API_KEY :
-                    currentProviderId === 'custom' ? apiKeys.CUSTOM_API_KEY : 
-                    currentProviderId === 'google' ? apiKeys.GOOGLE_AI_API_KEY :
-                    apiKeys.DASHSCOPE_API_KEY
-                  }
+                  type={isAnyChatProviderKeyVisible(showApiKey) ? 'text' : 'password'}
+                  value={getChatProviderApiKeyValue(apiKeys, currentProviderId)}
                   onChange={(e) => {
-                    let key: keyof SettingsApiKeysState;
-                    if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
-                    else if (currentProviderId === 'minimax') key = 'MINIMAX_API_KEY';
-                    else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
-                    else if (currentProviderId === 'google') key = 'GOOGLE_AI_API_KEY';
-                    else key = 'DASHSCOPE_API_KEY';
+                    const key = getChatProviderApiKeyField(currentProviderId);
                     setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                   }}
                   placeholder={currentProvider?.keyPlaceholder || 'sk-xxxxxxxxxxxxxxxx'}
@@ -465,24 +411,11 @@ export function ConnectionTabView({
                   type="button"
                   className="settings-eye-btn"
                   onClick={() => {
-                    let key: string;
-                    if (currentProviderId === 'deepseek') key = 'DEEPSEEK_API_KEY';
-                    else if (currentProviderId === 'minimax') key = 'MINIMAX_API_KEY';
-                    else if (currentProviderId === 'custom') key = 'CUSTOM_API_KEY';
-                    else if (currentProviderId === 'google') key = 'GOOGLE_AI_API_KEY';
-                    else key = 'DASHSCOPE_API_KEY';
+                    const key = getChatProviderApiKeyField(currentProviderId);
                     setShowApiKey((s) => ({ ...s, [key]: !s[key as keyof typeof s] }));
                   }}
                 >
-                  {currentProviderId === 'deepseek' 
-                    ? (showApiKey.DEEPSEEK_API_KEY ? '🙈' : '👁') 
-                    : currentProviderId === 'minimax'
-                    ? (showApiKey.MINIMAX_API_KEY ? '🙈' : '👁')
-                    : currentProviderId === 'custom'
-                    ? (showApiKey.CUSTOM_API_KEY ? '🙈' : '👁')
-                    : currentProviderId === 'google'
-                    ? (showApiKey.GOOGLE_AI_API_KEY ? '🙈' : '👁')
-                    : (showApiKey.DASHSCOPE_API_KEY ? '🙈' : '👁')}
+                  {isChatProviderKeyVisible(showApiKey, currentProviderId) ? '🙈' : '👁'}
                 </button>
               </div>
               {currentProvider?.keyLink && (

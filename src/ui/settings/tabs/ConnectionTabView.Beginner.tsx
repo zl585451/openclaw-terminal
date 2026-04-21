@@ -1,24 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { getRecommendedModels } from '../../../hooks/settings/recommendedModels';
+import {
+  BEGINNER_PROVIDER_CARD_SUBTITLE,
+  BEGINNER_PROVIDER_IDS,
+  getFirstRecommendedModel,
+  getRecommendedModels,
+  isBeginnerProviderId,
+} from '../../../hooks/settings/recommendedModels';
+import type { BeginnerProviderId } from '../../../hooks/settings/recommendedModels';
 import type { SettingsMode } from '../../../hooks/settings/useApiKeys';
 import { humanizeAiConnectionError } from '../../../utils/aiConnectionErrors';
 import { detectProviderFromKey } from '../../../utils/providerUtils';
 import type { ProviderEntry, SettingsApiKeysState } from './ConnectionTabView';
-
-const BEGINNER_PROVIDER_IDS = ['bailian-coding', 'deepseek', 'minimax'] as const;
-
-type BeginnerProviderId = typeof BEGINNER_PROVIDER_IDS[number];
-
-function isBeginnerProviderId(id: string): id is BeginnerProviderId {
-  return BEGINNER_PROVIDER_IDS.includes(id as BeginnerProviderId);
-}
-
-function getProviderKey(state: SettingsApiKeysState, providerId: BeginnerProviderId): string {
-  if (providerId === 'deepseek') return state.DEEPSEEK_API_KEY || '';
-  if (providerId === 'minimax') return state.MINIMAX_API_KEY || '';
-  return state.DASHSCOPE_API_KEY || '';
-}
+import { getChatProviderApiKeyField, getChatProviderApiKeyValue, isChatProviderKeyVisible } from '../providerViewHelpers';
 
 function buildProviderPatch(
   prev: SettingsApiKeysState,
@@ -84,13 +78,8 @@ export function ConnectionTabViewBeginner({
   const selectedProvider = (providers[selectedProviderId] || currentProvider) as ProviderEntry | undefined;
   const recommendedModels = useMemo(() => getRecommendedModels(selectedProviderId), [selectedProviderId]);
   const recommendedModel = recommendedModels[recommendedIndex] || selectedProvider?.defaultModel || '';
-  const keyFieldVisible =
-    selectedProviderId === 'deepseek'
-      ? showApiKey.DEEPSEEK_API_KEY
-      : selectedProviderId === 'minimax'
-        ? showApiKey.MINIMAX_API_KEY
-        : showApiKey.DASHSCOPE_API_KEY;
-  const currentKey = getProviderKey(apiKeys, selectedProviderId);
+  const keyFieldVisible = isChatProviderKeyVisible(showApiKey, selectedProviderId);
+  const currentKey = getChatProviderApiKeyValue(apiKeys, selectedProviderId);
 
   useEffect(() => {
     if (isBeginnerProviderId(currentProviderId)) setSelectedProviderId(currentProviderId);
@@ -110,7 +99,7 @@ export function ConnectionTabViewBeginner({
 
   const updateProvider = (providerId: BeginnerProviderId, keyValue?: string, modelId?: string) => {
     setSelectedProviderId(providerId);
-    setApiKeys((prev) => buildProviderPatch(prev, providerId, keyValue, modelId || getRecommendedModels(providerId)[0] || prev.OCT_MODEL));
+    setApiKeys((prev) => buildProviderPatch(prev, providerId, keyValue, modelId || getFirstRecommendedModel(providerId) || prev.OCT_MODEL));
   };
 
   const handleKeyChange = (value: string) => {
@@ -132,7 +121,7 @@ export function ConnectionTabViewBeginner({
     } else {
       setDetectionMessage(detection.reason);
     }
-    setApiKeys((prev) => buildProviderPatch(prev, selectedProviderId, value, prev.OCT_MODEL || getRecommendedModels(selectedProviderId)[0]));
+    setApiKeys((prev) => buildProviderPatch(prev, selectedProviderId, value, prev.OCT_MODEL || getFirstRecommendedModel(selectedProviderId)));
   };
 
   const handleSaveAndTest = async () => {
@@ -235,9 +224,7 @@ export function ConnectionTabViewBeginner({
                     onClick={() => updateProvider(id)}
                   >
                     <span className="settings-provider-card-title">{provider?.name || id}</span>
-                    <span className="settings-provider-card-subtitle">
-                      {id === 'bailian-coding' ? '推荐新手' : id === 'deepseek' ? '便宜够用' : '自研 M2.7'}
-                    </span>
+                    <span className="settings-provider-card-subtitle">{BEGINNER_PROVIDER_CARD_SUBTITLE[id]}</span>
                   </button>
                 );
               })}
@@ -258,11 +245,7 @@ export function ConnectionTabViewBeginner({
                   type="button"
                   className="settings-eye-btn"
                   onClick={() => {
-                    const field = selectedProviderId === 'deepseek'
-                      ? 'DEEPSEEK_API_KEY'
-                      : selectedProviderId === 'minimax'
-                        ? 'MINIMAX_API_KEY'
-                        : 'DASHSCOPE_API_KEY';
+                    const field = getChatProviderApiKeyField(selectedProviderId);
                     setShowApiKey((s) => ({ ...s, [field]: !s[field as keyof typeof s] }));
                   }}
                 >

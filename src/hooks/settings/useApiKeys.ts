@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ProviderEntry, ProvidersState } from '../../ui/settings/providerTypes';
 import { inferProviderFromBaseUrl } from '../../utils/providerUtils';
 
 export type SettingsMode = 'beginner' | 'advanced';
@@ -45,18 +46,6 @@ export interface ApiKeysState {
   VISION_BASE_URL: string;
   VISION_MODEL: string;
 }
-
-export interface ProviderEntry {
-  id: string;
-  name: string;
-  baseUrl: string;
-  keyLink: string;
-  keyPlaceholder: string;
-  defaultModel: string;
-  models: Array<{ id: string; label: string; tools: boolean; thinking: boolean }>;
-}
-
-export type ProvidersState = Record<string, ProviderEntry>;
 
 const FALLBACK_PROVIDERS: ProvidersState = {
   'bailian-coding': {
@@ -525,3 +514,12 @@ export function useApiKeys() {
     saveGatewayAndReconnect,
   };
 }
+
+export type { BeginnerProviderId } from './recommendedModels';
+export {
+  BEGINNER_PROVIDER_CARD_SUBTITLE,
+  BEGINNER_PROVIDER_IDS,
+  getFirstRecommendedModel,
+  getRecommendedModels,
+  isBeginnerProviderId,
+} from './recommendedModels';
