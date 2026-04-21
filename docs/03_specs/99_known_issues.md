@@ -15,12 +15,12 @@
 | 5 | 🟡 中等 | 所有异步调用 `.catch(() => {})` 静默吞错 | 出了问题完全看不到 | 🚧 待修复 |
 | 6 | 🟡 中等 | Nocturne 偶尔掉线 | 所有记忆功能全部静默失效 | 🟡 已优化待运行验证（重试/限流已加） |
 | 7 | 🟡 中等 | `cleanupOldHistory` 只打日志不真删 | 历史数据无限增长 | 🚧 待完善 |
-| 8 | 🔵 低 | `hypothesis.js` 需确认是否真正接入 | 可能额外浪费 API 调用 | ✅ 已接入 (2026-03-26，index.js 已调用 `selectBestApproach`) |
+| 8 | 🔵 低 | `hypothesis.js` 已接入但主链未触发 | 可能误判能力现状，且保留无效 sidecar 成本认知 | ⚠️ 已接入但未真实触发 (2026-04-21，见 `docs/07_research/hypothesis-call-trace-2026-04-21.md`) |
 | 9 | 🔵 低 | 两套提示词目录并存 | 可能写错地方 | 🚧 待统一 |
-| 10 | 🔴 致命 | `truncateHistory` 截断导致孤立 tool 消息 | API 返回 400 错误，会话中断 | ⚠️ 代码与文档不一致，需运行回归验证 |
+| 10 | 🔴 致命 | `truncateHistory` 截断导致孤立 tool 消息 | API 返回 400 错误，会话中断 | ⚠️ 已有部分修复，但历史记录与当前代码证据不一致，需继续运行回归验证 |
 | 11 | 🟡 中等 | Windows 中文路径编码导致工具失败 | 找不到文件错误 | ✅ 已修复 (2026-03-22) |
 | 12 | 🔴 致命 | 多表格（含 `|---|`）在最终渲染阶段丢失 | 聊天内容缺行/整表消失 | ✅ 已修复 (2026-03-30，`optionBoxParser`：逐行处理 + 跳过表格行 + 修复双转义) |
-| 13 | 🟡 中等 | 无语言标记的 fenced code block 被当成行内代码 | “代码框消失”（无 header/Copy/背景） | ✅ 已修复 (2026-03-30，`ChatTab.v2`：`code` 组件恢复 `inline` 判断) |
+| 13 | 🟡 中等 | 无语言标记的 fenced code block 被当成行内代码 | “代码框消失”（无 header/Copy/背景） | ✅ 已修复 (2026-03-30，当前实现位于 `src/ui/chat/markdownComponents.tsx`) |
 | 14 | 🟡 中等 | 设置页样式体系分裂（inline style + CSS 文件并存）| 维护成本增加，主题变量难统一 | 🚧 阶段 3 处理 |
 | 15 | 🟡 中等 | Electron 28 → 41、Vite 5 → 8 大版本滞后 | 安全性与生态兼容风险 | 🚧 清理完成后单独 sprint |
 
@@ -33,7 +33,7 @@
 - **原因**：`truncateHistory` 函数简单截断消息列表，可能在 `assistant.tool_calls` 和对应的 `tool` 消息之间截断，导致孤立的 `tool` 消息
 - **修复**：
   - 重写 `truncateHistory`：智能查找安全截断点（以 `user` 消息为边界）
-  - 新增 `validateAndFixMessages`：防御性地移除孤立的 `tool` 消息
+  - 当前代码可确认 `truncateHistory()` 仍存在；未检出 `validateAndFixMessages` 实现，实际收敛更多依赖 `preserveToolChain` 分支
 - **问题 2**：Windows 上包含中文的文件路径导致工具执行失败
 - **原因**：PowerShell 默认使用 GBK 编码，无法正确处理 UTF-8 中文路径
 - **修复**：`exec_command` 在 Windows 上先执行 `chcp 65001` 切换到 UTF-8 编码
@@ -63,7 +63,12 @@
   - 继续保护 fenced code block 内文本不参与解析
 - **问题 2**：无语言标记的代码块被渲染成行内代码（代码框消失）
 - **原因**：仅依赖 `className`（`language-`）与 `children.includes('\n')` 判定块级，在部分情况下不可靠
-- **修复**：`ChatTab.v2.tsx` 的 `code` 组件使用 `!inline && (...)` 作为块级判定前置条件
+- **修复**：当前实现位于 `src/ui/chat/markdownComponents.tsx`，`code` 组件使用 `!inline && (...)` 作为块级判定前置条件
+
+### 2026-04-21 #8 / #10 / #13 文档证据同步
+- #8：`hypothesis.js` 已完成深度核查，结论为“已接入但未真实触发”，不再标记为“已调用”
+- #10：保留“需回归验证”结论，但将说明改为与当前代码证据一致，不再声称存在未检出的 `validateAndFixMessages`
+- #13：修复说明中的实现位置更新为 `src/ui/chat/markdownComponents.tsx`，不再引用过时的 `ChatTab.v2`
 
 ### 2026-04-21 #5 静默吞错受影响范围补充
 
