@@ -997,6 +997,14 @@
   height: 40px;
 }
 
+.settings-panel select.settings-input {
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 40px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
 .settings-select {
   background: var(--bg-input);
   border: 1px solid var(--border-light);
