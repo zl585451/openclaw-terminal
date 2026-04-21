@@ -108,15 +108,15 @@ export function MemoryTabView({
         </div>
       </div>
 
-      <section className="settings-section" style={{ marginBottom: 24 }}>
+      <section className="settings-section settings-section-spaced">
         <h3>AI.library 知识库（插件）</h3>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-code)', marginBottom: 12, lineHeight: 1.6 }}>
+        <p className="settings-description-code">
           与 Nocturne（端口 <strong>8000</strong>）并行；知识库服务默认 <strong>8001</strong>。开启「随 OCT 启动」后，打开应用会自动拉起 <code>api_server.py</code>，Gateway 会收到检索结果。
         </p>
         {aiLibStatus && (
-          <div style={{ marginBottom: 12, padding: '12px 16px', background: 'var(--bg-surface)', borderRadius: 8, fontSize: 'var(--text-code)' }}>
-            <p style={{ margin: '0 0 6px' }}>
-              服务：<span style={{ color: aiLibStatus.healthy ? 'var(--status-success)' : 'var(--text-tertiary)' }}>
+          <div className="settings-status-card settings-status-card-tight">
+            <p className="settings-status-line">
+              服务：<span className={aiLibStatus.healthy ? 'settings-status-success' : 'settings-status-muted'}>
                 {aiLibStatus.healthy ? '✅ /health 正常' : '— 未就绪'}
               </span>
               {' · '}
@@ -125,7 +125,7 @@ export function MemoryTabView({
               OCT 托管进程：{aiLibStatus.managed ? '是' : '否'}
             </p>
             {aiLibStatus.resolvedGatewayUrl ? (
-              <p style={{ margin: 0, color: 'var(--text-tertiary)' }}>Gateway 使用：{aiLibStatus.resolvedGatewayUrl}</p>
+              <p className="settings-status-line-muted">Gateway 使用：{aiLibStatus.resolvedGatewayUrl}</p>
             ) : null}
           </div>
         )}
@@ -144,8 +144,7 @@ export function MemoryTabView({
           <label>项目根目录</label>
           <input
             type="text"
-            className="settings-input"
-            style={{ flex: 1, minWidth: 0 }}
+            className="settings-input settings-input-grow"
             placeholder="例如 E:\AI.library（需含 api_server.py）"
             value={aiLibPath}
             onChange={(e) => setAiLibPath(e.target.value)}
@@ -155,8 +154,7 @@ export function MemoryTabView({
           <label>端口</label>
           <input
             type="number"
-            className="settings-input"
-            style={{ width: 100 }}
+            className="settings-input settings-input-port"
             min={1024}
             max={65535}
             value={aiLibPort}
@@ -290,7 +288,7 @@ export function MemoryTabView({
             </button>
           </div>
 
-          <div className="settings-btn-row" style={{ marginTop: 12 }}>
+          <div className="settings-btn-row settings-btn-row-spaced">
             <button
               type="button"
               className="settings-btn"
