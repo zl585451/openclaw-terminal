@@ -49,6 +49,8 @@ class ChatEngine {
             assistantReply: sanitizedReply,
             sessionKey: request.sessionKey,
             prevAssistantReply: request.prevAssistantReply || '',
+            toolsUsed: [],
+            attachments: [],
           });
         }
 

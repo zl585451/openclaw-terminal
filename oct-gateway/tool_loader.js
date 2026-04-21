@@ -115,7 +115,9 @@ function resolveToolContext(name, args) {
 }
 
 async function executeTool(name, args, context) {
-  enforceAgentPermission(resolveToolContext(name, args));
+  if (context?.skipAgentPermission !== true) {
+    enforceAgentPermission(resolveToolContext(name, args));
+  }
   // 优先查静态工具
   if (_executors[name]) return await _executors[name](args, context);
   // 再查动态提供者

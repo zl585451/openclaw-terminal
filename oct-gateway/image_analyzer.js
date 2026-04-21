@@ -129,6 +129,42 @@ function resolveVisionToolName(defs) {
   return '';
 }
 
+function resolveToolDefinition(defs, toolName) {
+  return (defs || []).find((def) => def?.function?.name === toolName) || null;
+}
+
+function buildMcpVisionArgs(definition, filePath, dataUrl) {
+  const schemaProps = definition?.function?.parameters?.properties || {};
+  const propNames = Object.keys(schemaProps);
+  const args = {};
+
+  const setIfKnown = (name, value) => {
+    if (!propNames.length || Object.prototype.hasOwnProperty.call(schemaProps, name)) {
+      args[name] = value;
+    }
+  };
+
+  setIfKnown('image_source', filePath);
+  setIfKnown('image_path', filePath);
+  setIfKnown('file_path', filePath);
+  setIfKnown('path', filePath);
+  setIfKnown('file', filePath);
+  setIfKnown('source', filePath);
+  setIfKnown('image_url', dataUrl);
+  setIfKnown('url', dataUrl);
+  setIfKnown('image', dataUrl);
+  setIfKnown('prompt', VISION_API_PROMPT);
+  setIfKnown('query', VISION_API_PROMPT);
+
+  if (propNames.length === 0) {
+    args.image_source = filePath;
+    args.image_url = dataUrl;
+    args.prompt = VISION_API_PROMPT;
+  }
+
+  return args;
+}
+
 // ─── 路径 1：DashScope 云端（仅 bailian provider）────────────────────────────
 
 async function analyzeImageCloud(url, timeoutMs, options = {}) {
@@ -259,16 +295,18 @@ async function analyzeImageViaMcp(dataUrl, mimeType) {
 
   const { filePath, cleanup } = dataUrlToTempFile(dataUrl, mimeType);
   try {
+    const definition = resolveToolDefinition(defs, visionToolName);
+    const args = buildMcpVisionArgs(definition, filePath, dataUrl);
     logger.info('[ImageAnalyzer] 准备调用 MCP 图片理解工具', {
       tool: visionToolName,
       mimeType: mimeType || 'image/png',
       tempFileExt: path.extname(filePath),
       availableToolCount: availableTools.length,
+      argKeys: Object.keys(args),
     });
-    const result = await toolLoader.executeTool(visionToolName, {
-      image_source: filePath,
-      image_url: filePath,
-      prompt: VISION_API_PROMPT,
+    const result = await toolLoader.executeTool(visionToolName, args, {
+      skipAgentPermission: true,
+      reason: 'internal_image_analysis',
     });
     const text = typeof result === 'string' ? result.trim() : JSON.stringify(result);
     if (!text) return null;

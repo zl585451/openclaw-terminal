@@ -1,4 +1,5 @@
 const { sanitizeAssistantReply } = require('../cot_sanitize');
+const memoryRawLog = require('../memory_raw_log');
 
 class PostProcessor {
   constructor({
@@ -23,7 +24,7 @@ class PostProcessor {
     this.log = logger;
   }
 
-  process({ userMessage, assistantReply, sessionKey, prevAssistantReply }) {
+  process({ userMessage, assistantReply, sessionKey, prevAssistantReply, toolsUsed, attachments }) {
     this.nocturneQueue.enqueue(
       () => this.memoryFeedback.detectAndSaveFeedback(userMessage, assistantReply),
       'memoryFeedback'
@@ -33,12 +34,15 @@ class PostProcessor {
       'detectAndSaveParking'
     );
     this.nocturneQueue.enqueue(
-      () => this.memoryHistory.saveHistorySummary(userMessage, assistantReply),
-      'memoryHistory'
-    );
-    this.nocturneQueue.enqueue(
-      () => this.extractAndSaveMemory(userMessage, assistantReply),
-      'extractAndSaveMemory'
+      () => memoryRawLog.saveRawTurn({
+        userMessage,
+        assistantReply,
+        sessionKey,
+        toolsUsed: toolsUsed || [],
+        attachments: attachments || [],
+        dedupeKey: memoryRawLog.makeRawTurnDedupeKey({ userMessage, assistantReply, sessionKey }),
+      }),
+      'saveRawTurn'
     );
     this.nocturneQueue.enqueue(
       () => this.clarificationMemory.detectAndSaveClarification(
@@ -86,6 +90,11 @@ class PostProcessor {
   }
 
   async extractAndSaveMemory(userMsg, assistantReply) {
+    // 已在 v0.4.0 禁用：由 L2/L1/L0 三级摘要系统取代。
+    // 旧行为：触发词检测 + AI 生成 50 字摘要；问题是 URI 混乱、上下文丢失。
+    this.log.debug('[Memory] extractAndSaveMemory 已禁用（由三级摘要取代）');
+    return;
+
     try {
       const nocturneAlive = await this.memory.isAlive();
       if (!nocturneAlive) return;

@@ -163,6 +163,24 @@ const electronAPI = {
     OCT_AI_LIBRARY_PATH?: string;
     OCT_AI_LIBRARY_PORT?: number;
   }) => ipcRenderer.invoke('save-ai-library-plugin', payload),
+  getMemorySummarizerConfig: () => ipcRenderer.invoke('get-memory-summarizer-config'),
+  saveMemorySummarizerConfig: (payload: {
+    enabled?: boolean;
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+  }) => ipcRenderer.invoke('save-memory-summarizer-config', payload),
+  getMemoryVectorRecallConfig: () => ipcRenderer.invoke('get-memory-vector-recall-config'),
+  saveMemoryVectorRecallConfig: (payload: {
+    enabled?: boolean;
+    provider?: 'bailian' | 'volcengine' | 'custom';
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+    dimensions?: number;
+    threshold?: number;
+    topK?: number;
+  }) => ipcRenderer.invoke('save-memory-vector-recall-config', payload),
   // Nocturne Memory — 完整 6 工具直接访问
   nocturneHealth: () => ipcRenderer.invoke('nocturne-health'),
   nocturneRead: (uri: string) => ipcRenderer.invoke('nocturne-read', { uri }),

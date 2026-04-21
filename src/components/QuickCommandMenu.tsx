@@ -29,7 +29,7 @@ const MENU_STRUCTURE: { group: string; items: QuickCommandItem[] }[] = [
     group: '━━ AGENT ━━━━━━━━━━━━━',
     items: [
       { id: 'status', label: '状态查询', sendText: '/status' },
-      { id: 'new', label: '新对话', sendText: '/new' },
+      { id: 'new', label: '保存并新对话', sendText: '/new' },
       {
         id: 'switch-model',
         label: '切换模型',

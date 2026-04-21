@@ -47,6 +47,24 @@ export interface AiLibraryPluginStatus extends AiLibraryPluginSettings {
   healthy?: boolean;
 }
 
+export interface MemorySummarizerConfig {
+  enabled: boolean;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+export interface MemoryVectorRecallConfig {
+  enabled: boolean;
+  provider: 'bailian' | 'volcengine' | 'custom';
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  dimensions: number;
+  threshold: number;
+  topK: number;
+}
+
 export interface NocturneStatusResult {
   available: boolean;
   path: string;
@@ -209,6 +227,10 @@ export interface ElectronAPI {
   restartNocturneBackend?: () => Promise<ApiResult>;
   getAiLibraryPlugin?: () => Promise<ApiResult<AiLibraryPluginStatus>>;
   saveAiLibraryPlugin?: (payload: AiLibraryPluginSettings) => Promise<ApiResult>;
+  getMemorySummarizerConfig?: () => Promise<ApiResult<MemorySummarizerConfig>>;
+  saveMemorySummarizerConfig?: (payload: Partial<MemorySummarizerConfig>) => Promise<ApiResult>;
+  getMemoryVectorRecallConfig?: () => Promise<ApiResult<MemoryVectorRecallConfig>>;
+  saveMemoryVectorRecallConfig?: (payload: Partial<MemoryVectorRecallConfig>) => Promise<ApiResult>;
   nocturneRead?: (uri: string) => Promise<NocturneReadResult>;
   nocturneCreate?: (uri: string, content: string, priority?: number, disclosure?: string) => Promise<NocturneWriteResult>;
 

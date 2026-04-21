@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const ProviderRouter = require('../runtime/providerRouter');
+const { saveRawTurn, makeRawTurnDedupeKey } = require('../memory_raw_log');
 
 function buildChatHeaders(baseUrl, apiKey) {
   const target = String(baseUrl || '');
@@ -120,15 +121,75 @@ class SlashHandler {
     this.providerRouter = new ProviderRouter({ config: this.config });
   }
 
+  collectSessionTurnsForFlush(sessionKey) {
+    const history = this.session.getHistory(sessionKey) || [];
+    const turns = [];
+    let pendingUser = null;
+
+    for (const message of history) {
+      if (!message || !String(message.content || '').trim()) continue;
+      if (message.role === 'user') {
+        pendingUser = message;
+        continue;
+      }
+      if (message.role === 'assistant' && pendingUser) {
+        turns.push({
+          userMessage: String(pendingUser.content || ''),
+          assistantReply: String(message.content || ''),
+        });
+        pendingUser = null;
+      }
+    }
+
+    return turns;
+  }
+
   async handle(command, request, connection) {
     const parts = command.split(/\s+/);
     const base = (parts[0] || '').toLowerCase();
     const sessionKey = request?.params?.sessionKey || 'main';
 
     if (base === '/new' || base === '/reset') {
+      let savedCount = 0;
+      let skippedCount = 0;
+      let failedCount = 0;
+      let rawSaveNote = '';
+      try {
+        const turns = this.collectSessionTurnsForFlush(sessionKey);
+        if (turns.length === 0) {
+          rawSaveNote = '未找到可保存的完整对话轮次';
+        } else {
+          for (const turn of turns) {
+            const result = await saveRawTurn({
+              ...turn,
+              sessionKey,
+              toolsUsed: ['new_conversation_flush'],
+              attachments: [],
+              dedupeKey: makeRawTurnDedupeKey({ ...turn, sessionKey }),
+            });
+            if (result?.skipped) {
+              skippedCount += 1;
+            } else if (result?.error) {
+              failedCount += 1;
+            } else if (result?.uri) {
+              savedCount += 1;
+            }
+          }
+        }
+      } catch (err) {
+        failedCount += 1;
+        rawSaveNote = `保存失败：${err?.message || String(err)}`;
+        this.log.warn('new conversation raw flush failed', { error: err?.message || String(err), sessionKey });
+      }
       this.session.clearSession(sessionKey);
       this.session.clearThinkMode(sessionKey);
-      this.reply(connection, '✅ 会话已重置，记忆已清空。');
+      const vectorHint = this.config.memory?.vectorRecall?.enabled
+        ? '，并已触发向量入库'
+        : '';
+      const totalTouched = savedCount + skippedCount + failedCount;
+      this.reply(connection, totalTouched > 0
+        ? `✅ 已保存并开启新对话：新增 ${savedCount} 轮，去重跳过 ${skippedCount} 轮，失败 ${failedCount} 轮${vectorHint}。`
+        : `✅ 已开启新对话。${rawSaveNote ? `（${rawSaveNote}）` : ''}`);
       return;
     }
 
@@ -149,6 +210,36 @@ class SlashHandler {
       const provider = resolved.provider;
       const modelDef = provider.models.find((model) => model.id === this.config.DASHSCOPE_MODEL);
       const registryCaps = this.config.getModelCaps(this.config.DASHSCOPE_MODEL);
+      let vectorStatusLines = [];
+      try {
+        const vectorCfg = this.config.memory?.vectorRecall || {};
+        if (vectorCfg.enabled) {
+          const vectorDb = require('../memory_vector/db');
+          const vectorStats = vectorDb.getStats();
+          const recentDates = (vectorStats.byDate || [])
+            .slice(0, 7)
+            .map((row) => `${row.date}:${row.c}`)
+            .join(' / ') || '无';
+          const latest = vectorStats.latest
+            ? `${vectorStats.latest.date || '-'} ${vectorStats.latest.uri || ''}`
+            : '无';
+          const latestFailure = vectorStats.latestFailure
+            ? `${vectorStats.latestFailure.uri || '-'} (${String(vectorStats.latestFailure.last_error || '').slice(0, 48)})`
+            : '无';
+          vectorStatusLines = [
+            `🧲 向量记忆：✅ 启用，${vectorStats.total} 条，失败 ${vectorStats.failed}`,
+            `   模型：\`${vectorCfg.embedding?.model || '未配置'}\`，最近：${latest}`,
+            `   近 7 天：${recentDates}`,
+          ];
+          if (vectorStats.failed > 0) {
+            vectorStatusLines.push(`   最近失败：${latestFailure}`);
+          }
+        } else {
+          vectorStatusLines = ['🧲 向量记忆：⚫ 未启用'];
+        }
+      } catch (err) {
+        vectorStatusLines = [`🧲 向量记忆：⚠️ 状态读取失败（${err?.message || String(err)}）`];
+      }
       let probeCaps = this.config.getProbeCacheEntry
         ? this.config.getProbeCacheEntry({
             providerId: provider.id,
@@ -191,6 +282,7 @@ class SlashHandler {
         `🧩 能力来源: \`${effectiveCapabilitySource}\``,
         `🧠 Nocturne: ${nocturneAlive ? '✅ 在线' : '❌ 离线'}`,
         `📚 AI.library：${aiLibraryAlive ? '✅ 在线' : '⚫ 未启动'}`,
+        ...vectorStatusLines,
         `💬 当前会话：${currentHistory.length} 条消息`,
         `📊 上下文估算：~${totalEstimated.toLocaleString()} tokens（含 system prompt ~${systemPromptTokens.toLocaleString()}）`,
         `🗂️ 所有会话：${sessions.length > 0 ? sessions.join(', ') : 'none'}`,
@@ -287,6 +379,16 @@ class SlashHandler {
       return;
     }
 
+    if (base === '/summary') {
+      await this._handleSummary(parts, connection);
+      return;
+    }
+
+    if (base === '/recall') {
+      await this._handleRecall(parts, connection);
+      return;
+    }
+
     if (base === '/export') {
       await this._handleExport(parts, connection);
       return;
@@ -304,6 +406,8 @@ class SlashHandler {
         '  /model [名称] — 查看/切换模型',
         '  /provider [id] — 查看/切换 AI 服务商',
         '  /memory   — 记忆系统管理',
+        '  /summary daily|weekly|monthly [日期] — 生成分层记忆摘要',
+        '  /recall test|status|query|backfill — 向量召回管理',
         '  /think [off/low/medium/high] — 思考模式',
         '  /task add [内容] [p0/p1/p2] — 添加任务',
         '  /task done [序号] — 标记任务完成',
@@ -321,6 +425,190 @@ class SlashHandler {
     }
 
     this.reply(connection, `未知命令：${command}\n输入 /help 查看可用命令`);
+  }
+
+  async _handleSummary(parts, connection) {
+    const subCmd = (parts[1] || '').toLowerCase();
+    const arg = parts.slice(2).join(' ').trim();
+
+    if (subCmd === 'daily') {
+      const { generateDailySummary } = require('../summarizer/daily');
+      const date = arg || new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        this.reply(connection, '用法：/summary daily YYYY-MM-DD');
+        return;
+      }
+      this.reply(connection, `⏳ 正在生成 ${date} 的日摘要...`);
+      const result = await generateDailySummary(date);
+      if (result.ok) {
+        this.reply(connection, result.skipped ? `ℹ️ ${date} 无原始日志` : `✅ 日摘要已生成：${result.uri}`);
+      } else {
+        this.reply(connection, `❌ 失败：${result.error}`);
+      }
+      return;
+    }
+
+    if (subCmd === 'weekly') {
+      const { generateWeeklySummary, getIsoWeek } = require('../summarizer/weekly');
+      const week = arg || getIsoWeek(new Date(Date.now() - 7 * 86400000));
+      if (!/^\d{4}-W\d{2}$/.test(week)) {
+        this.reply(connection, '用法：/summary weekly YYYY-Www，例如 /summary weekly 2026-W16');
+        return;
+      }
+      this.reply(connection, `⏳ 正在生成 ${week} 的周摘要...`);
+      const result = await generateWeeklySummary(week);
+      if (result.ok) {
+        this.reply(connection, result.skipped ? `ℹ️ ${week} 无日摘要` : `✅ 周摘要已生成：${result.uri}`);
+      } else {
+        this.reply(connection, `❌ 失败：${result.error}`);
+      }
+      return;
+    }
+
+    if (subCmd === 'monthly') {
+      const { generateMonthlySummary, getMonthStr } = require('../summarizer/monthly');
+      const month = arg || getMonthStr(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 15));
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        this.reply(connection, '用法：/summary monthly YYYY-MM，例如 /summary monthly 2026-04');
+        return;
+      }
+      this.reply(connection, `⏳ 正在生成 ${month} 的月摘要...`);
+      const result = await generateMonthlySummary(month);
+      if (result.ok) {
+        this.reply(connection, result.skipped ? `ℹ️ ${month} 无周摘要` : `✅ 月摘要已生成：${result.uri}`);
+      } else {
+        this.reply(connection, `❌ 失败：${result.error}`);
+      }
+      return;
+    }
+
+    this.reply(connection, [
+      '可用摘要口令：',
+      '/summary daily YYYY-MM-DD — 生成日摘要（L2）',
+      '/summary weekly YYYY-Www — 生成周摘要（L1）',
+      '/summary monthly YYYY-MM — 生成月摘要（L0）',
+    ].join('\n'));
+  }
+
+  async _handleRecall(parts, connection) {
+    const subCmd = (parts[1] || '').toLowerCase();
+
+    if (subCmd === 'test') {
+      const text = parts.slice(2).join(' ').trim() || '测试 embedding';
+      this.reply(connection, `⏳ 正在调用 embedding API...（输入：${text.slice(0, 60)}）`);
+      try {
+        const { embedOne } = require('../summarizer/embedding_client');
+        const t0 = Date.now();
+        const vec = await embedOne(text);
+        const elapsed = Date.now() - t0;
+        this.reply(connection, [
+          '✅ Embedding 调用成功',
+          `耗时：${elapsed}ms`,
+          `维度：${vec.length}`,
+          `向量前 5 个值：[${vec.slice(0, 5).map((n) => Number(n).toFixed(4)).join(', ')}, ...]`,
+          `模型：${this.config.memory.vectorRecall.embedding.model || '(未配置)'}`,
+        ].join('\n'));
+      } catch (err) {
+        this.reply(connection, `❌ Embedding 调用失败：${err?.message || String(err)}`);
+      }
+      return;
+    }
+
+    if (subCmd === 'status') {
+      try {
+        const db = require('../memory_vector/db');
+        const stats = db.getStats();
+        const lines = [
+          '📊 向量库状态',
+          `启用：${this.config.memory.vectorRecall.enabled ? 'true' : 'false'}`,
+          `模型：${this.config.memory.vectorRecall.embedding.model || '(未配置)'}`,
+          `数据库：${stats.dbPath}`,
+          `总向量数：${stats.total}`,
+          `失败待重试：${stats.failed}`,
+          '最近 7 天分布：',
+        ];
+        stats.byDate.slice(0, 7).forEach((item) => lines.push(`  ${item.date}: ${item.c}`));
+        this.reply(connection, lines.join('\n'));
+      } catch (err) {
+        this.reply(connection, `❌ 向量库未初始化或查询失败：${err?.message || String(err)}`);
+      }
+      return;
+    }
+
+    if (subCmd === 'query') {
+      const text = parts.slice(2).join(' ').trim();
+      if (!text) {
+        this.reply(connection, '用法：/recall query <查询文本>');
+        return;
+      }
+      try {
+        const recaller = require('../memory_vector/recaller');
+        const result = await recaller.recall(text, 'slash-test');
+        if (result.skipped) {
+          this.reply(connection, `⏭️ 已跳过：${result.reason}（耗时 ${result.latencyMs}ms）`);
+          return;
+        }
+        const lines = [`✅ 召回 ${result.hits.length} 条（耗时 ${result.latencyMs}ms）`];
+        result.hits.forEach((hit, idx) => {
+          lines.push('');
+          lines.push(`[${idx + 1}] ${hit.date} 相似度 ${(hit.similarity * 100).toFixed(1)}%`);
+          lines.push(`  ${String(hit.text_preview || '').slice(0, 150)}`);
+          lines.push(`  ${hit.uri}`);
+        });
+        this.reply(connection, lines.join('\n'));
+      } catch (err) {
+        this.reply(connection, `❌ 查询失败：${err?.message || String(err)}`);
+      }
+      return;
+    }
+
+    if (subCmd === 'backfill') {
+      const arg = parts[2] || '';
+      this.reply(connection, '⏳ 开始回填向量库，过程可能较长，请耐心等待...');
+      try {
+        const { backfillAll, backfillDay, retryFailed } = require('../summarizer/backfill');
+        let result;
+        if (arg === 'retry') {
+          result = await retryFailed();
+          this.reply(connection, [
+            '✅ 重试完成',
+            `总数：${result.total}`,
+            `成功：${result.success}`,
+            `仍失败：${result.stillFailed}`,
+          ].join('\n'));
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(arg)) {
+          result = await backfillDay(arg);
+          this.reply(connection, [
+            `✅ ${result.dateStr} 回填完成`,
+            `总数：${result.total}`,
+            `新增：${result.processed}`,
+            `已存在跳过：${result.skipped}`,
+            `失败：${result.failed}`,
+          ].join('\n'));
+        } else {
+          result = await backfillAll();
+          this.reply(connection, [
+            '✅ 全量回填完成',
+            `覆盖天数：${result.dates}`,
+            `总条目：${result.total}`,
+            `新增：${result.processed}`,
+            `已存在跳过：${result.skipped}`,
+            `失败：${result.failed}`,
+          ].join('\n'));
+        }
+      } catch (err) {
+        this.reply(connection, `❌ 回填失败：${err?.message || String(err)}`);
+      }
+      return;
+    }
+
+    this.reply(connection, [
+      '召回口令：',
+      '/recall test <文本> — 测试 embedding API',
+      '/recall status — 查看向量库状态',
+      '/recall query <文本> — 手动查询向量库',
+      '/recall backfill [YYYY-MM-DD|retry] — 回填历史日志',
+    ].join('\n'));
   }
 
   // ═══════════════════════════════════════════════════════════════

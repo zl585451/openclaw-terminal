@@ -74,6 +74,7 @@ const taskQueue = require('./task_queue');
 const { handleImageGenerate } = require('./image_gen');
 const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
+const { startScheduler, stopScheduler } = require('./summarizer/scheduler');
 const log = createLogger('gateway');
 const memLog = createLogger('mem');
 
@@ -465,6 +466,7 @@ async function handleTransportMessage(msg, connection) {
 const HTTP_PORT = PORT + 1;
 
 startMemoryMonitor({ logger: memLog });
+startScheduler();
 
 const wsTransport = new WsTransport({
   port: PORT,
@@ -490,6 +492,14 @@ if (tools.setOnTaskBoardUpdate) {
 
 process.on('SIGINT', () => {
   log.info('shutting down');
+  stopScheduler();
+  httpTransport?.close();
+  wsTransport?.close(() => process.exit(0));
+});
+
+process.on('SIGTERM', () => {
+  log.info('shutting down');
+  stopScheduler();
   httpTransport?.close();
   wsTransport?.close(() => process.exit(0));
 });

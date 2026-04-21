@@ -96,6 +96,7 @@ function stripTextToolAnnotations(input) {
   let out = removeBalancedBlocks(text, /\[To=(?:"[^"]+"|'[^']+')\]\s*\{/g);
   out = removeBalancedBlocks(out, /\{tool\s*=>\s*(?:"[^"]+"|'[^']+'|[a-zA-Z_][\w-]*)\s*,\s*args\s*=>\s*\{/g);
   out = out
+    .replace(/\[[a-zA-Z0-9_.-]+\]\s*<tool_code>\s*[\s\S]*?\s*<\/tool_code>/gi, ' ')
     .replace(/<tool_call>\s*[\s\S]*?\s*<\/tool_call>/gi, ' ')
     .replace(/\[\/?TOOL_CALLS?\]/gi, ' ')
     .replace(/\n{3,}/g, '\n\n')

@@ -920,9 +920,112 @@ const defaultMemoryConfig = {
   compress_length: { user: 100, amy: 200 },
 };
 
+const defaultSummarizerConfig = {
+  enabled: process.env.SUMMARIZER_ENABLED !== 'false',
+  api: {
+    baseUrl: process.env.SUMMARIZER_BASE_URL || '',
+    apiKey: process.env.SUMMARIZER_API_KEY || '',
+    model: process.env.SUMMARIZER_MODEL || '',
+  },
+  schedule: {
+    daily: { hour: 4, minute: 0 },
+    weekly: { hour: 4, minute: 30 },
+    monthly: { hour: 5, minute: 0 },
+  },
+  bootInject: {
+    dailyCount: 3,
+    weeklyCount: 1,
+    monthlyCount: 1,
+  },
+  maxTokens: {
+    daily: 3000,
+    weekly: 4000,
+    monthly: 5000,
+  },
+  retry: {
+    maxAttempts: 3,
+    backoffMs: [10000, 60000, 300000],
+  },
+};
+
+const defaultVectorRecallConfig = {
+  enabled: process.env.VECTOR_RECALL_ENABLED === 'true',
+  embedding: {
+    baseUrl: process.env.EMBEDDING_BASE_URL || '',
+    apiKey: process.env.EMBEDDING_API_KEY || '',
+    model: process.env.EMBEDDING_MODEL || '',
+    dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || '1024', 10),
+    version: parseInt(process.env.EMBEDDING_VERSION || '1', 10),
+    timeoutMs: 30000,
+  },
+  dbPath: process.env.VECTOR_DB_PATH || path.join(os.homedir(), '.openclaw', 'vector_recall', 'vectors.db'),
+  recall: {
+    threshold: parseFloat(process.env.VECTOR_RECALL_THRESHOLD || '0.75'),
+    topK: parseInt(process.env.VECTOR_RECALL_TOP_K || '3', 10),
+    maxLatencyMs: parseInt(process.env.VECTOR_RECALL_MAX_LATENCY || '2000', 10),
+    minInputLen: 4,
+    cooldownMs: 5000,
+    excludeSameSession: true,
+    sameSessionWindowMs: 10 * 60 * 1000,
+  },
+  write: {
+    async: true,
+    maxRetries: 3,
+    retryBackoffMs: [5000, 30000, 120000],
+  },
+  backfill: {
+    batchSize: 50,
+    intervalMs: 200,
+  },
+};
+
 const memoryConfig = _fileConfig.memory && typeof _fileConfig.memory === 'object'
   ? { ...defaultMemoryConfig, ..._fileConfig.memory }
   : defaultMemoryConfig;
+memoryConfig.summarizer = {
+  ...defaultSummarizerConfig,
+  ...((memoryConfig.summarizer && typeof memoryConfig.summarizer === 'object') ? memoryConfig.summarizer : {}),
+  api: {
+    ...defaultSummarizerConfig.api,
+    ...((memoryConfig.summarizer?.api && typeof memoryConfig.summarizer.api === 'object') ? memoryConfig.summarizer.api : {}),
+  },
+  schedule: {
+    ...defaultSummarizerConfig.schedule,
+    ...((memoryConfig.summarizer?.schedule && typeof memoryConfig.summarizer.schedule === 'object') ? memoryConfig.summarizer.schedule : {}),
+  },
+  bootInject: {
+    ...defaultSummarizerConfig.bootInject,
+    ...((memoryConfig.summarizer?.bootInject && typeof memoryConfig.summarizer.bootInject === 'object') ? memoryConfig.summarizer.bootInject : {}),
+  },
+  maxTokens: {
+    ...defaultSummarizerConfig.maxTokens,
+    ...((memoryConfig.summarizer?.maxTokens && typeof memoryConfig.summarizer.maxTokens === 'object') ? memoryConfig.summarizer.maxTokens : {}),
+  },
+  retry: {
+    ...defaultSummarizerConfig.retry,
+    ...((memoryConfig.summarizer?.retry && typeof memoryConfig.summarizer.retry === 'object') ? memoryConfig.summarizer.retry : {}),
+  },
+};
+memoryConfig.vectorRecall = {
+  ...defaultVectorRecallConfig,
+  ...((memoryConfig.vectorRecall && typeof memoryConfig.vectorRecall === 'object') ? memoryConfig.vectorRecall : {}),
+  embedding: {
+    ...defaultVectorRecallConfig.embedding,
+    ...((memoryConfig.vectorRecall?.embedding && typeof memoryConfig.vectorRecall.embedding === 'object') ? memoryConfig.vectorRecall.embedding : {}),
+  },
+  recall: {
+    ...defaultVectorRecallConfig.recall,
+    ...((memoryConfig.vectorRecall?.recall && typeof memoryConfig.vectorRecall.recall === 'object') ? memoryConfig.vectorRecall.recall : {}),
+  },
+  write: {
+    ...defaultVectorRecallConfig.write,
+    ...((memoryConfig.vectorRecall?.write && typeof memoryConfig.vectorRecall.write === 'object') ? memoryConfig.vectorRecall.write : {}),
+  },
+  backfill: {
+    ...defaultVectorRecallConfig.backfill,
+    ...((memoryConfig.vectorRecall?.backfill && typeof memoryConfig.vectorRecall.backfill === 'object') ? memoryConfig.vectorRecall.backfill : {}),
+  },
+};
 
 const defaultAgentPermissions = {
   shellCommands: false,
@@ -1059,6 +1162,10 @@ try {
   log.info('API Key (resolved for chat)', { prefix: pc.apiKey ? pc.apiKey.slice(0, 8) + '***' : 'EMPTY' });
   log.info('Base URL (resolved for chat)', { url: pc.baseUrl });
   log.info('Model', { model: config.DASHSCOPE_MODEL });
+  log.info('Summarizer enabled', { enabled: config.memory.summarizer.enabled });
+  log.info('Summarizer model', { model: config.memory.summarizer.api.model || 'EMPTY' });
+  log.info('VectorRecall enabled', { enabled: config.memory.vectorRecall.enabled });
+  log.info('Embedding model', { model: config.memory.vectorRecall.embedding.model || 'EMPTY' });
   log.debug('DASHSCOPE_API_KEY file prefix', {
     prefix: config.DASHSCOPE_API_KEY ? config.DASHSCOPE_API_KEY.slice(0, 8) + '***' : 'EMPTY',
   });

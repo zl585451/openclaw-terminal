@@ -112,7 +112,11 @@ class ContextBuilder {
       sessionKey,
     });
 
+    const recallInjection = await this._buildVectorRecallInjection({ userMessage, sessionKey });
     const messages = this.contextManager.buildApiMessages(history, finalSystemPrompt, lastUserMsg);
+    if (recallInjection) {
+      messages.splice(1, 0, { role: 'system', content: recallInjection });
+    }
     this.log.info('context window', this.contextManager.summarize(messages));
 
     return {
@@ -121,6 +125,29 @@ class ContextBuilder {
       imageAttachments,
       audioAttachments,
     };
+  }
+
+  async _buildVectorRecallInjection({ userMessage, sessionKey }) {
+    if (!this.config.memory?.vectorRecall?.enabled) return '';
+    try {
+      const recaller = require('../memory_vector/recaller');
+      const result = await recaller.recall(userMessage, sessionKey || 'default');
+      if (result.skipped || !result.hits?.length) {
+        this.log.debug('vector recall skipped', {
+          reason: result.reason || 'no_hits',
+          latencyMs: result.latencyMs || 0,
+        });
+        return '';
+      }
+      this.log.info('vector recall injected', {
+        hits: result.hits.length,
+        latencyMs: result.latencyMs,
+      });
+      return recaller.buildRecallInjection(result.hits);
+    } catch (error) {
+      this.log.warn('vector recall failed, continuing without injection', { error: error?.message || String(error) });
+      return '';
+    }
   }
 
   _supportsInlineAudio(providerConfig, modelId) {

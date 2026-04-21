@@ -49,6 +49,94 @@ function injectGoogleDiagramGuard(messages) {
   return [{ role: 'system', content: guard }, ...list];
 }
 
+function readMemoryJson(result) {
+  const content = result?.data?.node?.content || result?.data?.content || result?.node?.content || result?.content || '';
+  if (!content) return null;
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+async function loadSummariesForBoot() {
+  const summarizer = config.memory?.summarizer;
+  if (!summarizer?.enabled) return '';
+  const bootInject = summarizer.bootInject || {};
+  const lines = [];
+
+  try {
+    const now = new Date();
+    for (let i = 0; i < (bootInject.monthlyCount ?? 1); i += 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 15);
+      const monthStr = d.toISOString().slice(0, 7);
+      const result = await memory.readMemory(`core://logs/summary/monthly/${monthStr}`, { treat404AsDebug: true });
+      if (!result.ok) continue;
+      const s = readMemoryJson(result);
+      if (!s) continue;
+      lines.push(`## ${monthStr} 月度回顾`);
+      lines.push(`主线：${s.month_narrative || '(空)'}`);
+      if (s.major_achievements?.length) {
+        lines.push('主要成就：');
+        s.major_achievements.forEach((a) => lines.push(`- ${a.title || a}`));
+      }
+      if (s.carryovers?.length) lines.push(`跨月延续事项：${s.carryovers.join('；')}`);
+      lines.push('');
+    }
+  } catch {}
+
+  try {
+    const now = new Date();
+    const { getIsoWeek } = require('./summarizer/weekly');
+    for (let i = 0; i < (bootInject.weeklyCount ?? 1); i += 1) {
+      const d = new Date(now.getTime() - i * 7 * 86400000);
+      const weekStr = getIsoWeek(d);
+      const result = await memory.readMemory(`core://logs/summary/weekly/${weekStr}`, { treat404AsDebug: true });
+      if (!result.ok) continue;
+      const s = readMemoryJson(result);
+      if (!s) continue;
+      lines.push(`## ${weekStr} 周回顾`);
+      lines.push(`主题：${s.week_theme || '(空)'}`);
+      if (s.key_decisions?.length) {
+        lines.push('关键决策：');
+        s.key_decisions.forEach((d) => lines.push(`- [${d.date || ''}] ${d.decision || d}`));
+      }
+      if (s.unresolved?.length) lines.push(`未解决：${s.unresolved.join('；')}`);
+      lines.push('');
+    }
+  } catch {}
+
+  try {
+    const now = new Date();
+    for (let i = 1; i <= (bootInject.dailyCount ?? 3); i += 1) {
+      const d = new Date(now.getTime() - i * 86400000);
+      const dateStr = d.toISOString().slice(0, 10);
+      const result = await memory.readMemory(`core://logs/summary/daily/${dateStr}`, { treat404AsDebug: true });
+      if (!result.ok) continue;
+      const s = readMemoryJson(result);
+      if (!s) continue;
+      lines.push(`## ${dateStr} 日摘要`);
+      if (s.topics?.length) {
+        s.topics.forEach((t) => lines.push(`- ${t.title || '话题'}：${t.summary || ''}`));
+      }
+      if (s.decisions?.length) lines.push(`今日决定：${s.decisions.join('；')}`);
+      if (s.completed?.length) lines.push(`已完成：${s.completed.join('；')}`);
+      if (s.open_questions?.length) lines.push(`未解决：${s.open_questions.join('；')}`);
+      lines.push('');
+    }
+  } catch {}
+
+  if (lines.length === 0) return '';
+  const text = [
+    '# 历史回忆（三级摘要）',
+    '',
+    '以下是少爷和你（AMY）过去的对话回顾。当少爷提到相关话题时，你应该表现出记得这些事。',
+    '',
+    ...lines,
+  ].join('\n');
+  return text.length > 8000 ? `${text.slice(0, 8000)}\n\n---\n> 历史回忆已截断到 8000 字符` : text;
+}
+
 function createGoogleScopedDispatcher(url) {
   try {
     const proxyUrl = String(config.GOOGLE_HTTPS_PROXY || '').trim();
@@ -202,6 +290,15 @@ async function loadSystemPrompt(promptsDir) {
     } catch (e) {
       log.warn('clarification prefs load failed', { error: e?.message || String(e) });
     }
+
+    const summariesSection = await loadSummariesForBoot();
+    if (summariesSection) {
+      bootMemory = bootMemory
+        ? `${bootMemory}\n\n---\n\n${summariesSection}`
+        : summariesSection;
+      log.info('summary memories loaded for boot', { len: summariesSection.length });
+    }
+
     if (bootMemory && bootMemory.length > 100) {
       log.info('System prompt loaded from Nocturne');
 
@@ -887,7 +984,50 @@ function extractXmlPseudoToolCalls(text) {
   return calls;
 }
 
+function extractBracketToolCodePseudoToolCalls(text) {
+  const source = String(text || '');
+  if (!source || !/<tool_code>/i.test(source)) {
+    return [];
+  }
+  const KNOWN_TOOL_NAMES = new Set(
+    (toolLoader.getDefinitions?.() || [])
+      .map((def) => String(def?.function?.name || '').trim())
+      .filter(Boolean)
+  );
+  const calls = [];
+  const callRe = /\[([a-zA-Z0-9_.-]+)\]\s*<tool_code>\s*([\s\S]*?)\s*<\/tool_code>/gi;
+  let match;
+  while ((match = callRe.exec(source)) !== null) {
+    const toolName = String(match[1] || '').trim();
+    if (!toolName) continue;
+    if (!KNOWN_TOOL_NAMES.has(toolName) && !toolName.startsWith('mcp_')) continue;
+
+    const block = String(match[2] || '').trim();
+    const jsonHit = findBalancedJsonObjectSlice(block, 0);
+    if (!jsonHit) continue;
+
+    let args;
+    try {
+      args = JSON.parse(jsonHit.jsonStr);
+    } catch {
+      continue;
+    }
+
+    calls.push({
+      id: `pseudo-bracket-tool-code-${Date.now()}-${calls.length}`,
+      type: 'function',
+      function: {
+        name: toolName,
+        arguments: JSON.stringify(args || {}),
+      },
+    });
+  }
+  return calls;
+}
+
 function extractPseudoToolCalls(text) {
+  const bracketToolCode = extractBracketToolCodePseudoToolCalls(text);
+  if (bracketToolCode.length > 0) return bracketToolCode;
   const ruby = extractRubyPseudoToolCalls(text);
   if (ruby.length > 0) return ruby;
   const kimi = extractKimiStylePseudoToolCalls(text);
@@ -1713,6 +1853,7 @@ async function streamChat({
       const textToCheck = fullText || assistantResponseContent || '';
       const hasToolCallResidue =
         /<tool_call>/i.test(textToCheck)
+        || /<tool_code>/i.test(textToCheck)
         || /<function=\w+>/i.test(textToCheck)
         || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
         || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);

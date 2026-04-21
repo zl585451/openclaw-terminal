@@ -88,6 +88,11 @@ async function ensurePathExists(domain, fullPath) {
 
 /**
  * 保存一轮对话摘要到 core://my_user/history/YYYY-MM-DD/HH-MM-SS
+ *
+ * @deprecated v0.4.0 起不再被调用，由 memory_raw_log.js 的 saveRawTurn 取代。
+ * 旧行为：用 AI 压缩对话后写入 core://my_user/history/...。
+ * 保留函数定义仅供历史参考，实际调用方已在 postProcessor.js 中移除。
+ *
  * @param {string} userMsg - 用户消息原文
  * @param {string} amyReply - AMY 回复原文
  * @param {string} [type] - 'chat' | 'task' | 'query'，不传则自动推断

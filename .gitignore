@@ -29,6 +29,9 @@ resources/vault.enc
 # 数据库文件
 *.db
 *.sqlite
+oct-gateway/runtime_data/
+oct-gateway/resources/vectors.db*
+resources/vectors.db*
 
 # 日志
 *.log

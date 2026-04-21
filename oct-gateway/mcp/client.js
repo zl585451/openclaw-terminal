@@ -6,7 +6,8 @@ const { spawn } = require('child_process');
 const { createLogger } = require('../logger');
 
 function buildChildEnv(extraEnv) {
-  const env = { ...process.env, ...(extraEnv || {}) };
+  const explicitEnv = extraEnv || {};
+  const env = { ...process.env };
   // MCP 子进程默认走用户当前网络，不继承宿主进程里残留的代理环境变量，
   // 避免开发机/历史代理配置污染普通用户链路。
   delete env.HTTP_PROXY;
@@ -15,6 +16,7 @@ function buildChildEnv(extraEnv) {
   delete env.http_proxy;
   delete env.https_proxy;
   delete env.all_proxy;
+  Object.assign(env, explicitEnv);
   const noProxyValue = [env.NO_PROXY, env.no_proxy, 'localhost', '127.0.0.1', '::1']
     .filter(Boolean)
     .flatMap((value) => String(value).split(','))
