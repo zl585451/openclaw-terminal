@@ -21,7 +21,7 @@ export function useContextMenu(): UseContextMenuReturn {
   const onCopy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch (_) {}
+    } catch (_) { /* intentional: 右键菜单关闭时的权限异常可忽略 */ }
     setContextMenu(null);
   }, []);
 

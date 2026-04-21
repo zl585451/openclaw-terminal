@@ -100,7 +100,7 @@ export function useFileAttachment(): UseFileAttachmentReturn {
           if (blob) {
             try {
               await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            } catch (_) {}
+            } catch (_) { /* intentional: 用户取消文件选择不是错误 */ }
           }
           resolve();
         }, 'image/png');

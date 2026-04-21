@@ -3,7 +3,7 @@ let audioContext: AudioContext | null = null;
 function getCtx(): AudioContext {
   if (!audioContext) audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
   if (audioContext.state === 'suspended') {
-    void audioContext.resume().catch(() => {});
+    void audioContext.resume().catch(() => { /* intentional: 音频上下文 resume 失败不影响功能 */ });
   }
   return audioContext;
 }
