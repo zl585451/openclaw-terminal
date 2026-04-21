@@ -1,7 +1,7 @@
 # Bug Triage
 
 > Status: CURRENT  
-> Last Updated: 2026-04-14  
+> Last Updated: 2026-04-21  
 > Purpose: 小模型和工程师 AI 的统一排错顺序
 
 ---
@@ -34,6 +34,9 @@
 ### 先搜关键词
 - `onChatDelta`
 - `onChatDone`
+- `turnId`
+- `agent-phase`
+- `keepalive`
 - `runStreamPaintTick`
 - `stream interrupted`
 - `stream done`
@@ -56,6 +59,7 @@
 
 ### 先搜关键词
 - `image request routing`
+- `ImageService`
 - `ImageAnalyzer`
 - `HTTP 529`
 - `stream interrupted`
