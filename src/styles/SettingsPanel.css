@@ -298,6 +298,14 @@
   font-size: var(--text-code);
 }
 
+.settings-status-card-spaced {
+  margin-bottom: 16px;
+}
+
+.settings-status-card-tight {
+  margin-bottom: 12px;
+}
+
 .settings-status-card-plain {
   border-color: transparent;
 }

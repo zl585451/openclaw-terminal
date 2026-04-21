@@ -218,14 +218,14 @@ export function MemoryTabView({
       {nocturneStatus?.available ? (
         <section className="settings-section">
           <h3>记忆系统控制台</h3>
-          <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--bg-surface)', borderRadius: 8, fontSize: 'var(--text-code)' }}>
-            <p style={{ margin: '0 0 6px', color: 'var(--accent-primary)' }}>
+          <div className="settings-status-card settings-status-card-spaced">
+            <p className="settings-status-line-primary">
               后端状态：{nocturneDetail?.backendAlive ? '✅ http://localhost:8000 可访问' : '❌ 不可用'}
             </p>
-            <p style={{ margin: '0 0 6px', color: 'var(--accent-primary)' }}>
+            <p className="settings-status-line-primary">
               前端状态：{nocturneDetail?.frontendAlive ? '✅ http://localhost:3000 可访问' : '❌ 不可用'}
             </p>
-            <p style={{ margin: 0, color: 'var(--text-tertiary)' }}>
+            <p className="settings-status-line-muted">
               已加载记忆：{nocturneDetail?.domains?.length ?? 0} 个 domain
             </p>
           </div>
