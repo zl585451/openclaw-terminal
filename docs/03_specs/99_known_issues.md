@@ -21,7 +21,7 @@
 | 11 | 🟡 中等 | Windows 中文路径编码导致工具失败 | 找不到文件错误 | ✅ 已修复 (2026-03-22) |
 | 12 | 🔴 致命 | 多表格（含 `|---|`）在最终渲染阶段丢失 | 聊天内容缺行/整表消失 | ✅ 已修复 (2026-03-30，`optionBoxParser`：逐行处理 + 跳过表格行 + 修复双转义) |
 | 13 | 🟡 中等 | 无语言标记的 fenced code block 被当成行内代码 | “代码框消失”（无 header/Copy/背景） | ✅ 已修复 (2026-03-30，当前实现位于 `src/ui/chat/markdownComponents.tsx`) |
-| 14 | 🟡 中等 | 设置页样式体系分裂（inline style + CSS 文件并存）| 维护成本增加，主题变量难统一 | 🚧 阶段 3 处理 |
+| 14 | 🟡 中等 | 设置页样式体系分裂 | 已整合 | ✅ 阶段 3B 完成 (2026-04-21) |
 | 15 | 🟡 中等 | Electron 28 → 41、Vite 5 → 8 大版本滞后 | 安全性与生态兼容风险 | 🚧 清理完成后单独 sprint |
 
 ---
@@ -104,6 +104,16 @@
 - src/utils/clickSound.ts:6
 
 主表 #5 状态：从 🚧 改为 🟢 前端侧已完成，Electron 主进程待评估
+
+### 2026-04-21 阶段 3B:设置页样式体系整合
+
+完成设置页 inline style 迁移与 CSS class 统一：
+- ✅ src/ui/settings/tabs/ConnectionTabView.tsx：按 provider、API Key/Base URL、搜索 API、连接测试/状态、说明文档区分段迁移
+- ✅ src/ui/settings/tabs/MemoryTabView.tsx：按 Nocturne 状态、安装初始化、核心记忆 URI、说明文案区分段迁移
+- ✅ src/ui/settings/tabs/McpTabView.tsx：服务器列表、空状态、表单卡、提示信息已对齐统一类
+- ✅ src/styles/SettingsPanel.css：新增统一设置页语义类，状态卡/说明文案/代码块/列表/小按钮等均走主题变量
+
+主表 #14 状态：从 🚧 阶段 3 处理 改为 ✅ 阶段 3B 完成
 
 ---
 
