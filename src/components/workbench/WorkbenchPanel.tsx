@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useWorkbench } from '../../workbench/WorkbenchContext';
 import { resolveWorkbenchPlugin } from '../../workbench/plugins';
 import DocumentAppendBar from './DocumentAppendBar';
-import { parseScript } from '../../utils/scriptParser';
+import { inferImportedTextArtifactType, parseScript } from '../../utils/scriptParser';
 import '../CanvasPanel.css';
 
 const ipcRenderer =
@@ -71,7 +71,7 @@ export default function WorkbenchPanel() {
     workbench.deleteDocument(activeDocument.id);
   }, [activeDocument, workbench]);
 
-  // 上传剧本文件（.txt / .docx）
+  // 上传文本文件（剧本优先，正文自动回退到 document）
   const handleImportScript = useCallback(async () => {
     if (!ipcRenderer || importing) return;
     setImporting(true);
@@ -87,13 +87,14 @@ export default function WorkbenchPanel() {
         await ipcRenderer.invoke('parse-script-file');
       if (!result.success || !result.text) return;
 
-      // 预解析，验证能识别出章节/角色
+      const artifactType = inferImportedTextArtifactType(result.text);
       const parsed = parseScript(result.text);
-      const title = parsed.title || result.fileName?.replace(/\.(docx|txt)$/i, '') || '剧本';
+      const fallbackTitle = artifactType === 'script' ? '剧本' : '文档';
+      const title = parsed.title || result.fileName?.replace(/\.(docx|txt)$/i, '') || fallbackTitle;
 
-      workbench.openCanvas(result.text, 'markdown', title, 'text', 'script', {
+      workbench.openCanvas(result.text, 'markdown', title, 'text', artifactType, {
         sourcePath: result.sourcePath,
-        draftCachePath: result.draftCachePath,
+        draftCachePath: artifactType === 'script' ? result.draftCachePath : undefined,
       });
     } catch (err) {
       console.error('[ScriptImport] 解析失败:', err);
@@ -120,7 +121,7 @@ export default function WorkbenchPanel() {
         onClick={handleImportScript}
         disabled={importing}
       >
-        {importing ? '解析中…' : '📄 上传剧本'}
+        {importing ? '解析中…' : '📄 上传文本'}
       </button>
     </div>
   );
@@ -157,14 +158,14 @@ export default function WorkbenchPanel() {
           </div>
         )}
         <div className="canvas-toolbar-actions">
-          {/* 剧本上传按钮（始终显示在工具栏） */}
+          {/* 文本上传按钮（剧本优先，正文自动回退） */}
           <button
             className="canvas-action-btn"
             onClick={handleImportScript}
             disabled={importing}
-            title="上传 .txt 或 .docx 剧本文件"
+            title="上传 .txt 或 .docx 文本文件"
           >
-            {importing ? '解析中…' : '📄 剧本'}
+            {importing ? '解析中…' : '📄 文本'}
           </button>
           <button
             className="canvas-action-btn"

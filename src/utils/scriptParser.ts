@@ -39,6 +39,17 @@ export interface ParsedScript {
   characterColors: Record<string, string>; // 角色 → 颜色
 }
 
+export interface ScriptStructureStats {
+  title: string;
+  nonEmptyLineCount: number;
+  chapterCount: number;
+  dialogueCount: number;
+  narratorCount: number;
+  directionCount: number;
+  textCount: number;
+  characterCount: number;
+}
+
 /**
  * 剧本文本预处理：在正则解析之前统一格式（保守模式）
  * 仅做字符级归一化，尽量不改动语义内容
@@ -262,4 +273,57 @@ export function parseScript(rawText: string): ParsedScript {
     characters: characterSet,
     characterColors,
   };
+}
+
+export function analyzeScriptStructure(rawText: string): ScriptStructureStats {
+  const parsed = parseScript(rawText);
+  let nonEmptyLineCount = 0;
+  let chapterCount = parsed.chapters.length;
+  let dialogueCount = 0;
+  let narratorCount = 0;
+  let directionCount = 0;
+  let textCount = 0;
+
+  for (const chapter of parsed.chapters) {
+    for (const line of chapter.lines) {
+      if (line.type === 'blank') continue;
+      nonEmptyLineCount += 1;
+      if (line.type === 'dialogue') dialogueCount += 1;
+      if (line.type === 'narrator') narratorCount += 1;
+      if (line.type === 'direction') directionCount += 1;
+      if (line.type === 'text') textCount += 1;
+    }
+  }
+
+  return {
+    title: parsed.title,
+    nonEmptyLineCount,
+    chapterCount,
+    dialogueCount,
+    narratorCount,
+    directionCount,
+    textCount,
+    characterCount: parsed.characters.length,
+  };
+}
+
+export function inferImportedTextArtifactType(rawText: string): 'script' | 'document' {
+  const stats = analyzeScriptStructure(rawText);
+  const structuralCount = stats.dialogueCount + stats.narratorCount + stats.directionCount;
+  const proseRatio = stats.nonEmptyLineCount > 0 ? stats.textCount / stats.nonEmptyLineCount : 0;
+  const structuralRatio = stats.nonEmptyLineCount > 0 ? structuralCount / stats.nonEmptyLineCount : 0;
+  const hasStrongScriptSignals =
+    stats.characterCount >= 2
+    && structuralCount >= 8
+    && structuralRatio >= 0.12;
+  const hasStrongDocumentSignals =
+    stats.chapterCount >= 3
+    && stats.textCount >= 20
+    && proseRatio >= 0.6
+    && structuralRatio <= 0.1;
+
+  if (hasStrongDocumentSignals) return 'document';
+  if (hasStrongScriptSignals) return 'script';
+
+  return structuralRatio >= 0.18 ? 'script' : 'document';
 }
