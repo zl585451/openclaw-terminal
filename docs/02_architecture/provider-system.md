@@ -21,7 +21,7 @@
 | bailian-coding | 阿里云百炼 Coding Plan | coding.dashscope.aliyuncs.com |
 | deepseek | DeepSeek | api.deepseek.com |
 | siliconflow | 硅基流动 | api.siliconflow.cn |
-| moonshot | Moonshot (Kimi) | api.moonshot.cn |
+| moonshot | Kimi 开放平台 | api.moonshot.cn |
 | groq | Groq | api.groq.com |
 | openai | OpenAI | api.openai.com |
 | ollama | Ollama 本地 | localhost:11434 |
@@ -127,6 +127,7 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-04-23 | `moonshot` provider 对齐 Kimi 官方平台：控制台链接改为 `platform.kimi.com`，默认模型切到 `kimi-k2.6`，并补齐 `kimi-k2.5 / kimi-k2-turbo-preview` 等官方模型；`moonshot-v1-*` 仅作为兼容选项保留 |
 | 2026-04-22 | 连接页新增 beginner / advanced 两层：新手模式只暴露 3 个默认 provider 卡片与单一 Key 入口；不改 Gateway provider 注册与能力声明 |
 | 2026-04-21 | MiniMax 独立接口不接受 `role=system`，Gateway 改为仅对 `provider=minimax` 将 system 内容并入第一条 user 消息，避免 400 invalid params |
 | 2026-04-17 | 新增模型 ID 归一化与动态能力探测缓存（runtime_probe/runtime_probe_cache），缓解跨供应商模型命名不一致问题 |

@@ -206,6 +206,14 @@ const MODEL_REGISTRY = {
     supportsThinking: false,
     maxTokens: 4096,
   },
+  'kimi-k2.6': {
+    provider: 'bailian',
+    label: 'Kimi K2.6（月之暗面）',
+    supportsTools: true,
+    supportsStreamOptions: true,
+    supportsThinking: false,
+    maxTokens: 4096,
+  },
   'kimi-k2.5': {
     provider: 'bailian',
     label: 'Kimi K2.5（月之暗面）',
@@ -503,6 +511,7 @@ function loadAvailableModels() {
       { id: 'qwen3-max-2026-01-23', provider: 'bailian' },
       { id: 'qwen3-coder-next', provider: 'bailian' },
       { id: 'qwen3-coder-plus', provider: 'bailian' },
+      { id: 'kimi-k2.6', provider: 'bailian' },
       { id: 'kimi-k2.5', provider: 'bailian' },
       { id: 'MiniMax-M2.5', provider: 'bailian' },
       { id: 'glm-5', provider: 'bailian' },
@@ -771,6 +780,7 @@ function getProviderConfig() {
   const isBailian = preset.id === 'bailian' || preset.id === 'bailian-coding';
   const isDeepseek = preset.id === 'deepseek';
   const isMinimax = preset.id === 'minimax';
+  const isMoonshot = preset.id === 'moonshot';
   const isGoogle = preset.id === 'google';
   const isCustom = preset.id === 'custom';
 
@@ -816,6 +826,17 @@ function getProviderConfig() {
       isMinimax ? legacyConfig.MINIMAX_API_KEY : null,
     ].filter(Boolean));
     apiKey = pickKey(...sources);
+    if (isMoonshot && apiKey && String(apiKey).trim().toLowerCase().startsWith('sk-sp-')) {
+      apiKey = '';
+      try {
+        const { createLogger } = require('./logger');
+        createLogger('config').warn(
+          'OCT_PROVIDER=moonshot：检测到阿里云百炼 Coding(sk-sp-) Key，不能用于 Kimi 官方直连接口。请填写 MOONSHOT_API_KEY。',
+        );
+      } catch (_) {
+        console.warn('[config] moonshot: sk-sp- key is not valid for api.moonshot.cn');
+      }
+    }
   }
 
   let baseUrl = preset.baseUrl || '';
@@ -825,6 +846,8 @@ function getProviderConfig() {
     baseUrl = getEnvOrConfig('DEEPSEEK_BASE_URL') || preset.baseUrl;
   } else if (isMinimax) {
     baseUrl = getEnvOrConfig('MINIMAX_BASE_URL') || preset.baseUrl;
+  } else if (isMoonshot) {
+    baseUrl = getEnvOrConfig('MOONSHOT_BASE_URL') || preset.baseUrl;
   } else if (isGoogle) {
     baseUrl = sanitizeGoogleOpenAiBaseUrl(getEnvOrConfig('GOOGLE_AI_BASE_URL') || preset.baseUrl);
   } else if (isCustom) {

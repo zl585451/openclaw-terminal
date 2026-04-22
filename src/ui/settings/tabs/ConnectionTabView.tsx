@@ -422,6 +422,7 @@ export function ConnectionTabView({
                     DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' || id === 'google' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
                     DEEPSEEK_BASE_URL: id === 'deepseek' ? (p?.baseUrl || '') : k.DEEPSEEK_BASE_URL,
                     MINIMAX_BASE_URL: id === 'minimax' ? (p?.baseUrl || '') : k.MINIMAX_BASE_URL,
+                    MOONSHOT_BASE_URL: id === 'moonshot' ? (p?.baseUrl || '') : k.MOONSHOT_BASE_URL,
                     CUSTOM_BASE_URL: id === 'custom' ? (p?.baseUrl || '') : k.CUSTOM_BASE_URL,
                     GOOGLE_AI_BASE_URL: id === 'google' ? (p?.baseUrl || '') : k.GOOGLE_AI_BASE_URL,
                   }));
@@ -854,6 +855,7 @@ export function ConnectionTabView({
                     value={
                       currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : 
                       currentProviderId === 'minimax' ? apiKeys.MINIMAX_BASE_URL :
+                      currentProviderId === 'moonshot' ? apiKeys.MOONSHOT_BASE_URL :
                       currentProviderId === 'custom' ? apiKeys.CUSTOM_BASE_URL :
                       currentProviderId === 'google' ? apiKeys.GOOGLE_AI_BASE_URL :
                       apiKeys.DASHSCOPE_BASE_URL
@@ -862,6 +864,7 @@ export function ConnectionTabView({
                       let key: keyof SettingsApiKeysState;
                       if (currentProviderId === 'deepseek') key = 'DEEPSEEK_BASE_URL';
                       else if (currentProviderId === 'minimax') key = 'MINIMAX_BASE_URL';
+                      else if (currentProviderId === 'moonshot') key = 'MOONSHOT_BASE_URL';
                       else if (currentProviderId === 'custom') key = 'CUSTOM_BASE_URL';
                       else if (currentProviderId === 'google') key = 'GOOGLE_AI_BASE_URL';
                       else key = 'DASHSCOPE_BASE_URL';
@@ -904,11 +907,13 @@ export function ConnectionTabView({
                       DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
                       DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
                       MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
+                      MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY,
                       CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
                       GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY,
-                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' || providerId === 'google' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
+                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' || providerId === 'google' || providerId === 'moonshot' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
                       DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
                       MINIMAX_BASE_URL: providerId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || p?.baseUrl || '') : '',
+                      MOONSHOT_BASE_URL: providerId === 'moonshot' ? (apiKeys.MOONSHOT_BASE_URL || p?.baseUrl || '') : '',
                       CUSTOM_BASE_URL: providerId === 'custom' ? (apiKeys.CUSTOM_BASE_URL || p?.baseUrl || '') : '',
                       GOOGLE_AI_BASE_URL: providerId === 'google' ? (apiKeys.GOOGLE_AI_BASE_URL || p?.baseUrl || '') : '',
                     });
