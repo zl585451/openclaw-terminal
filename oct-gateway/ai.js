@@ -203,6 +203,7 @@ function getModelContextLimit(modelId) {
     'qwen3-coder-plus': 1000000,
     'qwen-vl-max': 32768,
     'qwen2-vl-7b': 32768,
+    'kimi-k2.6': 262144,
     'kimi-k2.5': 262144,
     'minimax-m2.5': 196608,
     'glm-5': 202752,
@@ -241,6 +242,7 @@ function parseCustomTemperature() {
 
 function resolveTemperatureForRequest({ provider, model }) {
   if (provider?.id === 'minimax') return getMiniMaxTemperature();
+  if (provider?.id === 'moonshot') return null;
   if (provider?.id === 'custom') {
     const customTemperature = parseCustomTemperature();
     if (customTemperature !== null) return customTemperature;

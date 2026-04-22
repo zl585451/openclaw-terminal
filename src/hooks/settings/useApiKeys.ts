@@ -8,6 +8,7 @@ export interface ApiKeysState {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  MOONSHOT_API_KEY: string;
   IMAGE_PROVIDER: string;
   IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: boolean;
   IMAGE_API_KEY: string;
@@ -34,6 +35,7 @@ export interface ApiKeysState {
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
+  MOONSHOT_BASE_URL: string;
   CUSTOM_BASE_URL: string;
   GOOGLE_AI_API_KEY: string;
   GOOGLE_AI_BASE_URL: string;
@@ -100,6 +102,20 @@ const FALLBACK_PROVIDERS: ProvidersState = {
       { id: 'deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1（推理）', tools: false, thinking: true },
     ],
   },
+  moonshot: {
+    id: 'moonshot',
+    name: 'Kimi 开放平台',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    keyLink: 'https://platform.kimi.com/',
+    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+    defaultModel: 'kimi-k2.6',
+    models: [
+      { id: 'kimi-k2.6', label: 'Kimi K2.6（官方最新）', tools: true, thinking: false },
+      { id: 'kimi-k2.5', label: 'Kimi K2.5（稳定）', tools: true, thinking: false },
+      { id: 'kimi-k2-turbo-preview', label: 'Kimi K2 Turbo（高速）', tools: true, thinking: false },
+      { id: 'moonshot-v1-128k', label: 'Moonshot V1 128K（兼容）', tools: true, thinking: false },
+    ],
+  },
   google: {
     id: 'google',
     name: 'Google Gemini（Vertex AI Studio API 密钥）',
@@ -136,6 +152,7 @@ type GatewayConfigPayload = {
   DASHSCOPE_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
+  MOONSHOT_API_KEY: string;
   IMAGE_PROVIDER: string;
   IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: boolean;
   IMAGE_API_KEY: string;
@@ -159,6 +176,7 @@ type GatewayConfigPayload = {
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
+  MOONSHOT_BASE_URL: string;
   CUSTOM_BASE_URL: string;
   GOOGLE_AI_API_KEY: string;
   GOOGLE_AI_BASE_URL: string;
@@ -197,13 +215,12 @@ function resolveProviderId(data: Partial<ApiKeysState>): string {
 function hasConfiguredKey(data: Partial<ApiKeysState>, providerId: string): boolean {
   if (providerId === 'deepseek') return !!String(data.DEEPSEEK_API_KEY || '').trim();
   if (providerId === 'minimax') return !!String(data.MINIMAX_API_KEY || '').trim();
+  if (providerId === 'moonshot') return !!String((data as Record<string, string>).MOONSHOT_API_KEY || '').trim();
   if (providerId === 'custom') return !!String(data.CUSTOM_API_KEY || '').trim();
   if (providerId === 'google') return !!String(data.GOOGLE_AI_API_KEY || '').trim();
   if (providerId === 'openai') return !!String((data as Record<string, string>).OPENAI_API_KEY || '').trim()
     || !!String(data.DASHSCOPE_API_KEY || '').trim();
   if (providerId === 'groq') return !!String((data as Record<string, string>).GROQ_API_KEY || '').trim()
-    || !!String(data.DASHSCOPE_API_KEY || '').trim();
-  if (providerId === 'moonshot') return !!String((data as Record<string, string>).MOONSHOT_API_KEY || '').trim()
     || !!String(data.DASHSCOPE_API_KEY || '').trim();
   if (providerId === 'ollama') return true;
   return !!String(data.DASHSCOPE_API_KEY || '').trim();
@@ -228,6 +245,8 @@ function buildGatewayPayload(
     baseUrl = apiKeys.DEEPSEEK_BASE_URL;
   } else if (currentProviderId === 'minimax') {
     baseUrl = apiKeys.MINIMAX_BASE_URL;
+  } else if (currentProviderId === 'moonshot') {
+    baseUrl = apiKeys.MOONSHOT_BASE_URL;
   } else if (currentProviderId === 'custom') {
     baseUrl = apiKeys.CUSTOM_BASE_URL;
   } else if (currentProviderId === 'google') {
@@ -256,6 +275,7 @@ function buildGatewayPayload(
     DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY || '',
     DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
     MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY || '',
+    MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY || '',
     IMAGE_PROVIDER: apiKeys.IMAGE_PROVIDER || 'minimax',
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: !!apiKeys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY,
     IMAGE_API_KEY: apiKeys.IMAGE_API_KEY || '',
@@ -278,11 +298,12 @@ function buildGatewayPayload(
     CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
     DASHSCOPE_BASE_URL:
       currentProviderId === 'deepseek' || currentProviderId === 'custom' || currentProviderId === 'minimax'
-      || currentProviderId === 'google'
+      || currentProviderId === 'google' || currentProviderId === 'moonshot'
         ? ''
         : (baseUrl || currentProvider?.baseUrl || ''),
     DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     MINIMAX_BASE_URL: currentProviderId === 'minimax' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+    MOONSHOT_BASE_URL: currentProviderId === 'moonshot' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     CUSTOM_BASE_URL: currentProviderId === 'custom' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     GOOGLE_AI_BASE_URL: currentProviderId === 'google' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY || '',
@@ -303,6 +324,7 @@ export function useApiKeys() {
     DASHSCOPE_API_KEY: '',
     DEEPSEEK_API_KEY: '',
     MINIMAX_API_KEY: '',
+    MOONSHOT_API_KEY: '',
     IMAGE_PROVIDER: 'minimax',
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: false,
     IMAGE_API_KEY: '',
@@ -329,6 +351,7 @@ export function useApiKeys() {
     DASHSCOPE_BASE_URL: '',
     DEEPSEEK_BASE_URL: '',
     MINIMAX_BASE_URL: '',
+    MOONSHOT_BASE_URL: '',
     CUSTOM_BASE_URL: '',
     GOOGLE_AI_API_KEY: '',
     GOOGLE_AI_BASE_URL: '',
@@ -444,6 +467,7 @@ export function useApiKeys() {
       apiKeys.CUSTOM_API_KEY,
       apiKeys.CUSTOM_MODEL,
       apiKeys.MINIMAX_BASE_URL,
+      apiKeys.MOONSHOT_BASE_URL,
       apiKeys.DASHSCOPE_BASE_URL,
       apiKeys.DEEPSEEK_BASE_URL,
       apiKeys.GOOGLE_AI_BASE_URL,

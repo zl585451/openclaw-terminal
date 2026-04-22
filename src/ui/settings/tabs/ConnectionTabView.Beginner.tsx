@@ -150,11 +150,13 @@ export function ConnectionTabViewBeginner({
       DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
       DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
       MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
+      MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY,
       CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
       GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY,
       DASHSCOPE_BASE_URL: selectedProviderId === 'bailian-coding' ? (apiKeys.DASHSCOPE_BASE_URL || provider?.baseUrl || '') : '',
       DEEPSEEK_BASE_URL: selectedProviderId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || provider?.baseUrl || '') : '',
       MINIMAX_BASE_URL: selectedProviderId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || provider?.baseUrl || '') : '',
+      MOONSHOT_BASE_URL: '',
       CUSTOM_BASE_URL: '',
       GOOGLE_AI_BASE_URL: '',
     });
