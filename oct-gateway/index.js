@@ -1,4 +1,36 @@
 const path = require('path');
+
+// 打包版通过 Electron 内嵌 Node 启动 Gateway 时，某些运行时（如 Node 18）
+// 没有把 File 挂到 globalThis 上，但 undici 初始化会直接读取它。
+// 这里在任何 require('undici') 之前补齐最小兼容层，避免 Gateway 启动即崩。
+(function ensureWebFileShim() {
+  if (typeof globalThis.File === 'function') return;
+  try {
+    const bufferModule = require('node:buffer');
+    if (typeof bufferModule.File === 'function') {
+      globalThis.File = bufferModule.File;
+      return;
+    }
+  } catch {}
+
+  if (typeof globalThis.Blob !== 'function') return;
+
+  class FileShim extends Blob {
+    constructor(bits = [], name = '', options = {}) {
+      super(bits, options);
+      this.name = String(name);
+      this.lastModified = Number.isFinite(options.lastModified) ? options.lastModified : Date.now();
+      this.webkitRelativePath = '';
+    }
+
+    get [Symbol.toStringTag]() {
+      return 'File';
+    }
+  }
+
+  globalThis.File = FileShim;
+})();
+
 const config = require('./config');
 
 // Node 原生 fetch 默认不读 HTTP(S)_PROXY；V2rayN 等仅系统/TUN 生效时，网关仍可能直连 Google 导致 fetch failed。

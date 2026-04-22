@@ -55,6 +55,26 @@ function isMemoryModule(module) {
   return m === 'mem' || m.includes('memory') || m.startsWith('mem_') || m.startsWith('memory_');
 }
 
+function isLowSignalMemoryLog(level, module, message) {
+  if (!isMemoryModule(module)) return false;
+  const normalizedLevel = normalizeLevel(level);
+  if (normalizedLevel !== 'DEBUG' && normalizedLevel !== 'INFO') return false;
+
+  const msg = String(message || '');
+  const noisyPatterns = [
+    /^read ok$/i,
+    /^read not found$/i,
+    /^boot read$/i,
+    /^search$/i,
+    /^ensurePathExists: path exists$/i,
+    /^ensurePathExists: parent already confirmed$/i,
+    /^memory not found, using empty$/i,
+    /^glossary warmed$/i,
+  ];
+
+  return noisyPatterns.some((pattern) => pattern.test(msg));
+}
+
 function extractHttpStatusFromError(errText) {
   const s = String(errText || '');
   const m = s.match(/HTTP\s+(\d{3})\b/);
@@ -116,6 +136,7 @@ function formatLine({ ts, level, module, message }) {
 function write(level, module, message, meta) {
   // 新增：检查日志级别
   if (!shouldLog(level)) return;
+  if (isLowSignalMemoryLog(level, module, message)) return;
   
   if (shouldDedupe({ level, module, message, meta })) return;
 

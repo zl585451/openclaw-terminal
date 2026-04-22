@@ -64,7 +64,11 @@ class McpManager {
       this._clients.set(name, client);
       log.info(`Server "${name}" 已连接`, { tools: client.tools.map(t => t.name) });
     } catch (e) {
-      log.error(`Server "${name}" 启动失败`, { error: e.message });
+      if (name === 'minimax') {
+        log.info(`可选 MCP "${name}" 启动失败，已跳过`, { error: e.message });
+      } else {
+        log.error(`Server "${name}" 启动失败`, { error: e.message });
+      }
       // 失败不中断其他 Server
     }
   }

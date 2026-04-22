@@ -1,7 +1,6 @@
 .oct-cap-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
   width: 100%;
   max-width: 800px;
@@ -10,6 +9,8 @@
   border-top: none;
   background: transparent;
   min-height: 40px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .oct-cap-bar.is-disabled {
@@ -25,15 +26,21 @@
 }
 
 .oct-cap-bar-scroll {
-  flex: 0 1 auto;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
-  justify-content: center;
+  align-items: center;
   gap: 6px;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  white-space: nowrap;
+  overscroll-behavior-x: contain;
 }
 
-.oct-cap-bar-scroll::-webkit-scrollbar { height: 4px; }
+.oct-cap-bar-scroll::-webkit-scrollbar { display: none; height: 0; }
 .oct-cap-bar-scroll::-webkit-scrollbar-thumb {
   background: var(--border-subtle, rgba(255, 255, 255, 0.08));
   border-radius: 2px;

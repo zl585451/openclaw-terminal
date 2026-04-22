@@ -630,16 +630,7 @@ function LogPanelComponent(props: {
         )}
       </div>
 
-      <div
-        style={{
-          color: '#888',
-          fontSize: 12,
-          marginTop: 8,
-          display: 'flex',
-          gap: 16,
-          alignItems: 'center',
-        }}
-      >
+      <div className="log-panel-overlay-statusbar">
         <span>{lines.length} 行</span>
         {nocturneOnline !== undefined && (
           <span style={{ color: nocturneOnline ? '#86efac' : '#fca5a5' }}>
@@ -647,9 +638,9 @@ function LogPanelComponent(props: {
           </span>
         )}
         {modelName && (
-          <span style={{ color: '#93c5fd' }}>{modelName}</span>
+          <span className="log-model-name" title={modelName}>{modelName}</span>
         )}
-        <span style={{ marginLeft: 'auto' }}>按 ESC 收回</span>
+        <span className="log-overlay-dismiss-hint">按 ESC 收回</span>
       </div>
     </div>
   ) : null;
@@ -741,14 +732,16 @@ function LogPanelComponent(props: {
           )}
         </div>
         <div className="log-panel-statusbar">
-          <span>{lines.length} 行</span>
-          {nocturneOnline !== undefined && (
-            <span className={`log-status-indicator ${nocturneOnline ? 'online' : 'offline'}`}>
-              Nocturne: {nocturneOnline ? '✅' : '❌'}
-            </span>
-          )}
+          <span className="log-status-meta">
+            <span>{lines.length} 行</span>
+            {nocturneOnline !== undefined && (
+              <span className={`log-status-indicator ${nocturneOnline ? 'online' : 'offline'}`}>
+                Nocturne: {nocturneOnline ? '✅' : '❌'}
+              </span>
+            )}
+          </span>
           {modelName && (
-            <span className="log-model-name">{modelName}</span>
+            <span className="log-model-name" title={modelName}>{modelName}</span>
           )}
         </div>
       </div>
