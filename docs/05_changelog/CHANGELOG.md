@@ -1,6 +1,7 @@
 # FEATURE_MAP 变更日志
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
+| 2026-04-22 | Workbench 文本导入增加“剧本 / 正文”自动判定：`.txt/.docx` 不再一律按剧本渲染，章节正文类文本会回退到普通文档模式；上传按钮文案同步改为“文本” | `src/utils/scriptParser.ts`, `src/components/workbench/WorkbenchPanel.tsx`, `docs/05_changelog/2026-04-22-workbench-text-import-classification.md` | 修复长篇章节正文上传后显示不正常的问题 |
 | 2026-04-20 | 修正 ClarifyCard 触发策略：从“偏边界确认”统一为“多字段精准澄清 / 边界确认双用途”，并消除“只能追问一次”的提示词歧义 | `docs/01_system_prompts/*.md`, `resources/system_prompts/*.md` | 详见 `docs/05_changelog/2026-04-20-clarify-card-trigger-strategy-fix.md` |
 |------|----------|----------|------|
 | 2026-04-16 | 网关：硅基流动解析 API Key 时跳过百炼 Coding `sk-sp-`，优先 `SILICONFLOW_API_KEY`；启动日志改为输出解析后的 provider/Key/BaseURL | `oct-gateway/config.js` | 详见 `docs/05_changelog/2026-04-16-siliconflow-skip-sk-sp-dashscope.md` |
