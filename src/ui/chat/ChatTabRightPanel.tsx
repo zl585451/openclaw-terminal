@@ -21,7 +21,6 @@ export interface ChatTabRightPanelProps {
   tokenIn: number | null;
   ctxUsed: number | null;
   ctxMax: number | null;
-  streak: number;
   pauseSidePanelsDuringStream: boolean;
   localTime: string;
   localDate: string;
@@ -79,7 +78,6 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   tokenIn,
   ctxUsed,
   ctxMax,
-  streak,
   pauseSidePanelsDuringStream,
   localTime,
   localDate,
@@ -258,11 +256,6 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
                   : '--'}
             </span>
           </div>
-          {streak > 0 && (
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <span style={{ color: 'var(--status-warning)' }}>🔥 STREAK {streak}</span>
-            </div>
-          )}
         </div>
 
         <div
@@ -390,7 +383,6 @@ const ChatTabRightPanel = React.memo(ChatTabRightPanelComponent, (prev, next) =>
     prev.tokenIn === next.tokenIn &&
     prev.ctxUsed === next.ctxUsed &&
     prev.ctxMax === next.ctxMax &&
-    prev.streak === next.streak &&
     prev.pauseSidePanelsDuringStream === next.pauseSidePanelsDuringStream &&
     prev.localTime === next.localTime &&
     prev.localDate === next.localDate &&

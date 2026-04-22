@@ -45,6 +45,16 @@ class McpClient {
     this._log = createLogger(`mcp:${serverName}`);
   }
 
+  _isOptionalStartupNoise(errorMessage = '') {
+    if (this.serverName !== 'minimax') return false;
+    const text = String(errorMessage || '');
+    return (
+      text.includes('spawn EPERM')
+      || text.includes('MCP 请求超时')
+      || text.includes(`MCP Server "${this.serverName}" 意外退出`)
+    );
+  }
+
   async connect() {
     this.status = 'connecting';
     try {
@@ -68,21 +78,28 @@ class McpClient {
       this._pending.clear();
       this._buf = '';
       this.tools = [];
-      this._log.warn('MCP 镜像拉包失败，回退官方 PyPI 源重试', {
-        mirrorIndex,
-        error: e.message,
-      });
+      const retryLogPayload = { mirrorIndex, error: e.message };
+      if (this._isOptionalStartupNoise(e.message)) {
+        this._log.debug('MCP 镜像拉包失败，回退官方 PyPI 源重试', retryLogPayload);
+      } else {
+        this._log.warn('MCP 镜像拉包失败，回退官方 PyPI 源重试', retryLogPayload);
+      }
 
       try {
         await this._connectOnce(fallbackEnv, 'fallback_default_index');
       } catch (fallbackError) {
         this.status = 'error';
         this.errorMessage = fallbackError.message;
-        this._log.error('握手失败', {
+        const finalPayload = {
           error: fallbackError.message,
           fallbackFromMirror: true,
           mirrorIndex,
-        });
+        };
+        if (this._isOptionalStartupNoise(fallbackError.message)) {
+          this._log.info('可选 MCP 启动失败，已跳过', finalPayload);
+        } else {
+          this._log.error('握手失败', finalPayload);
+        }
         throw fallbackError;
       }
     }
@@ -114,12 +131,17 @@ class McpClient {
 
   async _connectOnce(envOverride, attemptLabel) {
     const spawnEnv = buildChildEnv(envOverride);
-    this._log.info('启动 MCP Server', {
+    const startPayload = {
       command: this.config.command,
       args: this.config.args,
       attempt: attemptLabel,
       uvDefaultIndex: envOverride?.UV_DEFAULT_INDEX || envOverride?.UV_INDEX_URL || '',
-    });
+    };
+    if (this.serverName === 'minimax') {
+      this._log.debug('启动 MCP Server', startPayload);
+    } else {
+      this._log.info('启动 MCP Server', startPayload);
+    }
 
     this._proc = spawn(this.config.command, this.config.args || [], {
       env: spawnEnv,
@@ -128,11 +150,24 @@ class McpClient {
 
     const proc = this._proc;
     proc.stdout.on('data', (chunk) => this._onData(chunk));
-    proc.stderr.on('data', (d) => this._log.debug('stderr', { msg: d.toString().trim(), attempt: attemptLabel }));
+    proc.stderr.on('data', (d) => {
+      const msg = d.toString().trim();
+      if (!msg) return;
+      if (this.serverName === 'minimax') {
+        this._log.trace?.('stderr', { msg, attempt: attemptLabel });
+        return;
+      }
+      this._log.debug('stderr', { msg, attempt: attemptLabel });
+    });
     proc.on('exit', (code) => {
       if (proc !== this._proc) return;
       this.status = 'disconnected';
-      this._log.warn('MCP Server 退出', { code, attempt: attemptLabel });
+      const exitPayload = { code, attempt: attemptLabel };
+      if (this.serverName === 'minimax' && code !== 0) {
+        this._log.info('可选 MCP 已退出', exitPayload);
+      } else {
+        this._log.warn('MCP Server 退出', exitPayload);
+      }
       for (const { reject, timer } of this._pending.values()) {
         clearTimeout(timer);
         reject(new Error(`MCP Server "${this.serverName}" 意外退出`));
@@ -143,7 +178,12 @@ class McpClient {
       if (proc !== this._proc) return;
       this.status = 'error';
       this.errorMessage = e.message;
-      this._log.error('MCP Server 启动失败', { error: e.message, attempt: attemptLabel });
+      const errorPayload = { error: e.message, attempt: attemptLabel };
+      if (this._isOptionalStartupNoise(e.message)) {
+        this._log.info('可选 MCP 启动失败，已跳过', errorPayload);
+      } else {
+        this._log.error('MCP Server 启动失败', errorPayload);
+      }
     });
 
     await this._request('initialize', {

@@ -143,6 +143,17 @@
   color: var(--text-tertiary);
   border-top: 1px solid var(--border-light);
   background: var(--bg-surface);
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+
+.log-status-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .log-status-indicator {
@@ -160,6 +171,28 @@
 .log-model-name {
   color: #93c5fd;
   font-family: var(--font-mono);
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.log-panel-overlay-statusbar {
+  color: #888;
+  font-size: 12px;
+  margin-top: 8px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.log-overlay-dismiss-hint {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* ── 收起模式：紧凑行 ── */

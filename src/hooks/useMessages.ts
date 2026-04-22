@@ -16,31 +16,6 @@ import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnno
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 
-// ── Streak helpers ────────────────────────────────────────────────────────────
-function getTodayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getStreakData(): { streak: number; lastActiveDate: string } {
-  try {
-    const raw = localStorage.getItem('oct_streak');
-    if (raw) return JSON.parse(raw) as { streak: number; lastActiveDate: string };
-  } catch {}
-  return { streak: 0, lastActiveDate: '' };
-}
-
-function touchStreak(): number {
-  const today = getTodayStr();
-  const data = getStreakData();
-  if (data.lastActiveDate === today) return data.streak;
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const newStreak = data.lastActiveDate === yesterday ? data.streak + 1 : 1;
-  try {
-    localStorage.setItem('oct_streak', JSON.stringify({ streak: newStreak, lastActiveDate: today }));
-  } catch {}
-  return newStreak;
-}
-
 // ── Util helpers ──────────────────────────────────────────────────────────────
 function isSystemCommand(text: string): boolean {
   const t = (text || '').trim();
@@ -207,7 +182,6 @@ export function useMessages({
   const [modelName, setModelName] = useState('--');
   const [pendingPills, setPendingPills] = useState<string[] | null>(null);
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
-  const [streak, setStreak] = useState<number>(() => getStreakData().streak);
   /** 流式阶段 reconcile 每帧调用会引发大量 layout；限制频率 */
   const lastStreamReconcileMsRef = useRef(0);
   /** usage 事件 RAF 合并：同一帧多条合并后再 setState */
@@ -1053,7 +1027,6 @@ export function useMessages({
       timestamp: Date.now(),
       hint: '让我想想...',
     }]);
-    setStreak(touchStreak());
     setPendingPills(null);
     setMessages((prev) => {
       const next: ChatMessage[] = [
@@ -1248,7 +1221,7 @@ export function useMessages({
     modelName,
     thinkMode,
     pendingPills,
-    streak,
+    streak: 0,
     fullTextRef,
     streamingDomRef,
     sendMessage,
