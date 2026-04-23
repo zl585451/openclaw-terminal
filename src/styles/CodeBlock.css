@@ -138,11 +138,15 @@
 .code-block-wrap .code-block-body pre {
   padding: 12px 14px !important;
   background: var(--bg-code) !important;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .code-block-wrap .code-block-body code {
   padding: 0 !important;
   background: transparent !important;
+  white-space: inherit !important;
 }
 
 /* 行号（未来扩展：showLineNumbers 时可配合折叠隐藏） */
@@ -163,6 +167,9 @@
   margin: 0 !important;
   padding: 14px 16px !important;
   background: var(--bg-code) !important;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 [data-oct-block-code] .md-codeblock-pre code,
@@ -170,4 +177,5 @@
   margin: 0 !important;
   padding: 0 !important;
   background: transparent !important;
+  white-space: inherit !important;
 }

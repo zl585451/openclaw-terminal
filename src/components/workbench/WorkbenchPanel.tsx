@@ -3,6 +3,7 @@ import { useWorkbench } from '../../workbench/WorkbenchContext';
 import { resolveWorkbenchPlugin } from '../../workbench/plugins';
 import DocumentAppendBar from './DocumentAppendBar';
 import { inferImportedTextArtifactType, parseScript } from '../../utils/scriptParser';
+import type { WorkbenchArtifactType } from '../../workbench/types';
 import '../CanvasPanel.css';
 
 const ipcRenderer =
@@ -14,18 +15,7 @@ export default function WorkbenchPanel() {
   const workbench = useWorkbench();
   const activeDocument = workbench.activeDocument;
   const hasMultipleDocuments = workbench.documents.length > 1;
-  const [showDetails, setShowDetails] = useState(false);
   const [importing, setImporting] = useState(false);
-  const lineCount = activeDocument?.content ? activeDocument.content.split(/\r?\n/).length : 0;
-  const charCount = activeDocument?.content?.length || 0;
-  const updatedAtLabel = activeDocument
-    ? new Date(activeDocument.updatedAt).toLocaleString('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '';
 
   // 中文字数：去掉所有空白字符后的长度，对中英文混排都是合理近似
   const cnCharCount = activeDocument?.content
@@ -37,6 +27,14 @@ export default function WorkbenchPanel() {
 
   // 是否为文档类，控制是否在 toolbar 显示字数与阅读时长
   const isDocumentArtifact = activeDocument?.artifactType === 'document';
+  const canToggleScriptView = !!activeDocument
+    && activeDocument.mode === 'markdown'
+    && (activeDocument.artifactType === 'document' || activeDocument.artifactType === 'script');
+  const toggleArtifactTarget: WorkbenchArtifactType | null = !canToggleScriptView
+    ? null
+    : activeDocument?.artifactType === 'script'
+      ? 'document'
+      : 'script';
 
   const handleCopy = useCallback(async () => {
     if (!activeDocument) return;
@@ -70,6 +68,13 @@ export default function WorkbenchPanel() {
     if (!activeDocument) return;
     workbench.deleteDocument(activeDocument.id);
   }, [activeDocument, workbench]);
+
+  const handleToggleScriptView = useCallback(() => {
+    if (!activeDocument || !toggleArtifactTarget) return;
+    workbench.updateDocument(activeDocument.id, {
+      artifactType: toggleArtifactTarget,
+    });
+  }, [activeDocument, toggleArtifactTarget, workbench]);
 
   // 上传文本文件（剧本优先，正文自动回退到 document）
   const handleImportScript = useCallback(async () => {
@@ -167,13 +172,15 @@ export default function WorkbenchPanel() {
           >
             {importing ? '解析中…' : '📄 文本'}
           </button>
-          <button
-            className="canvas-action-btn"
-            onClick={() => setShowDetails((prev) => !prev)}
-            disabled={!activeDocument}
-          >
-            {showDetails ? 'Hide Details' : 'Details'}
-          </button>
+          {canToggleScriptView && (
+            <button
+              className="canvas-action-btn"
+              onClick={handleToggleScriptView}
+              title={toggleArtifactTarget === 'script' ? '切换到剧本编辑器视图' : '切换回普通文档视图'}
+            >
+              {toggleArtifactTarget === 'script' ? '切到 Script' : '切到 Document'}
+            </button>
+          )}
           <button className="canvas-action-btn" onClick={handleCopy} disabled={!activeDocument}>
             Copy
           </button>
@@ -188,50 +195,6 @@ export default function WorkbenchPanel() {
           </button>
         </div>
       </div>
-
-      {activeDocument && showDetails && (
-        <div className="canvas-details-panel">
-          <div className="canvas-studio-card">
-            <div className="canvas-studio-card-title">作品说明</div>
-            <div className="canvas-studio-card-body">
-              {activeDocument.explanation?.trim() || '当前产物暂无说明。你可以继续让 AI 解释设计意图或补充关键要点。'}
-            </div>
-          </div>
-          <div className="canvas-studio-card">
-            <div className="canvas-studio-card-title">元信息</div>
-            <div className="canvas-studio-meta-grid">
-              <div className="canvas-studio-meta-item">
-                <span className="canvas-studio-meta-key">类型</span>
-                <span className="canvas-studio-meta-value">{activeDocument.artifactType}</span>
-              </div>
-              <div className="canvas-studio-meta-item">
-                <span className="canvas-studio-meta-key">模式</span>
-                <span className="canvas-studio-meta-value">{activeDocument.mode}</span>
-              </div>
-              <div className="canvas-studio-meta-item">
-                <span className="canvas-studio-meta-key">版本</span>
-                <span className="canvas-studio-meta-value">v{activeDocument.version}</span>
-              </div>
-              <div className="canvas-studio-meta-item">
-                <span className="canvas-studio-meta-key">来源</span>
-                <span className="canvas-studio-meta-value">{activeDocument.origin}</span>
-              </div>
-              <div className="canvas-studio-meta-item">
-                <span className="canvas-studio-meta-key">行数</span>
-                <span className="canvas-studio-meta-value">{lineCount}</span>
-              </div>
-              <div className="canvas-studio-meta-item">
-                <span className="canvas-studio-meta-key">字符</span>
-                <span className="canvas-studio-meta-value">{charCount}</span>
-              </div>
-              <div className="canvas-studio-meta-item">
-                <span className="canvas-studio-meta-key">更新</span>
-                <span className="canvas-studio-meta-value">{updatedAtLabel}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="canvas-workspace canvas-workspace--studio">
         {!activeDocument ? (

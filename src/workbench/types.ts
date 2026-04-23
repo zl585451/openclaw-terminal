@@ -9,6 +9,28 @@ export type WorkbenchArtifactType =
   | 'script';  // 剧本/有声书格式
 export type WorkbenchDocumentStatus = 'draft' | 'refining' | 'final';
 
+export interface ScriptCharacterProfile {
+  name: string;
+  color: string;
+}
+
+export interface ScriptLineAttribution {
+  lineIndex: number;
+  speaker: string;
+  confidence?: 'high' | 'medium' | 'low';
+}
+
+export interface ScriptStructuredLineMarker {
+  lineIndex: number;
+  label?: string;
+}
+
+export interface ScriptVoiceFragmentMarker {
+  lineIndex: number;
+  speaker?: string;
+  mentionedNames?: string[];
+}
+
 export interface WorkbenchDocument {
   id: string;
   title: string;
@@ -21,6 +43,10 @@ export interface WorkbenchDocument {
   draftCachePath?: string;
   sourceMessageId?: string;
   explanation?: string;
+  scriptCharacterLibrary?: ScriptCharacterProfile[];
+  scriptChapterAttributions?: Record<string, ScriptLineAttribution[]>;
+  scriptChapterStructuredLines?: Record<string, ScriptStructuredLineMarker[]>;
+  scriptChapterVoiceFragments?: Record<string, ScriptVoiceFragmentMarker[]>;
   status: WorkbenchDocumentStatus;
   version: number;
   createdAt: number;

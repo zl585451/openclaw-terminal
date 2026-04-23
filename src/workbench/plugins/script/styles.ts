@@ -17,9 +17,11 @@ export const scriptStyles = {
     width: collapsed ? '44px' : '210px',
     flexShrink: 0,
     borderRight: '1px solid var(--border-subtle)',
-    overflow: 'auto',
+    overflow: 'hidden',
     padding: '8px 0',
     background: 'var(--bg-sidebar, #161b22)',
+    display: 'flex',
+    flexDirection: 'column',
     transition: 'width 0.18s ease',
   }),
 
@@ -70,6 +72,29 @@ export const scriptStyles = {
     lineHeight: '1.5',
   }),
 
+  sidebarList: {
+    flex: 1,
+    overflow: 'auto',
+    minHeight: 0,
+    position: 'relative' as const,
+  } as React.CSSProperties,
+
+  virtualChapterItem: (
+    active: boolean,
+    top: number,
+    height: number,
+  ): React.CSSProperties => ({
+    ...scriptStyles.chapterItem(active),
+    position: 'absolute' as const,
+    top: `${top}px`,
+    left: 0,
+    right: 0,
+    height: `${height}px`,
+    boxSizing: 'border-box' as const,
+    display: 'flex',
+    alignItems: 'center',
+  }),
+
   content: (fontSize: number): React.CSSProperties => ({
     flex: 1,
     overflow: 'auto',
@@ -91,6 +116,15 @@ export const scriptStyles = {
     margin: '4px 0',
     padding: 0,
   } as React.CSSProperties,
+
+  lineSelectionHighlight: (selected: boolean): React.CSSProperties => ({
+    margin: '2px -8px',
+    padding: '2px 8px',
+    borderRadius: '8px',
+    background: selected ? 'rgba(126, 200, 227, 0.16)' : 'transparent',
+    boxShadow: selected ? 'inset 0 0 0 1px rgba(126, 200, 227, 0.32)' : 'none',
+    transition: 'background 0.15s ease, box-shadow 0.15s ease',
+  }),
 
   charName: (color: string): React.CSSProperties => ({
     color,
@@ -133,7 +167,15 @@ export const scriptStyles = {
   text: {
     color: 'var(--text-secondary)',
     margin: '2px 0',
+    whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-word' as const,
   } as React.CSSProperties,
+
+  inferredQuote: (color: string): React.CSSProperties => ({
+    color,
+    fontWeight: 600,
+    textShadow: `0 0 0.01px ${color}`,
+  }),
 
   characterBar: {
     display: 'flex',
@@ -147,6 +189,13 @@ export const scriptStyles = {
     lineHeight: 1.25,
   } as React.CSSProperties,
 
+  characterBarStack: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    borderBottom: '1px solid var(--border-subtle)',
+    background: 'var(--bg-base)',
+  } as React.CSSProperties,
+
   characterBarLeft: {
     display: 'flex',
     flexWrap: 'wrap' as const,
@@ -157,9 +206,51 @@ export const scriptStyles = {
   characterBarRight: {
     display: 'flex',
     alignItems: 'center',
+    flexWrap: 'wrap' as const,
     gap: '8px',
     marginLeft: 'auto',
     flexShrink: 0,
+  } as React.CSSProperties,
+
+  roleListPanel: {
+    padding: '8px 28px 12px 28px',
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '8px',
+    alignItems: 'center',
+    borderTop: '1px solid rgba(255,255,255,0.04)',
+  } as React.CSSProperties,
+
+  roleListEmpty: {
+    fontSize: '12px',
+    color: 'var(--text-tertiary)',
+  } as React.CSSProperties,
+
+  roleListChip: (color: string, active: boolean): React.CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '4px 10px',
+    borderRadius: '999px',
+    border: `1px solid ${color}`,
+    background: active ? `${color}20` : 'transparent',
+    color: active ? color : 'var(--text-secondary)',
+    fontSize: '12px',
+    lineHeight: 1.2,
+    opacity: active ? 1 : 0.8,
+  }),
+
+  roleListDot: (color: string): React.CSSProperties => ({
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    background: color,
+    flexShrink: 0,
+  }),
+
+  roleListBadge: {
+    fontSize: '11px',
+    color: 'var(--text-tertiary)',
   } as React.CSSProperties,
 
   fontSizeGroup: {
@@ -331,6 +422,21 @@ export const scriptStyles = {
     wordBreak: 'break-word' as const,
   } as React.CSSProperties,
 
+  polishSourceBox: {
+    marginTop: '8px',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '6px',
+    background: 'rgba(126, 200, 227, 0.08)',
+    color: 'var(--text-primary)',
+    fontSize: '13px',
+    lineHeight: 1.6,
+    whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-word' as const,
+    padding: '8px 10px',
+    maxHeight: '160px',
+    overflow: 'auto',
+  } as React.CSSProperties,
+
   polishActions: {
     display: 'flex',
     gap: '8px',
@@ -351,6 +457,94 @@ export const scriptStyles = {
     padding: '8px 10px',
     resize: 'vertical' as const,
     outline: 'none',
+  } as React.CSSProperties,
+
+  roleDetectPanel: {
+    position: 'fixed' as const,
+    right: '20px',
+    top: '72px',
+    width: '460px',
+    maxWidth: 'calc(100vw - 32px)',
+    maxHeight: 'calc(100vh - 92px)',
+    overflow: 'auto',
+    background: 'var(--bg-sidebar, #161b22)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '10px',
+    boxShadow: '0 10px 24px rgba(0, 0, 0, 0.35)',
+    zIndex: 13040,
+    padding: '12px',
+  } as React.CSSProperties,
+
+  roleDetectMeta: {
+    fontSize: '12px',
+    color: 'var(--text-tertiary)',
+    marginBottom: '8px',
+  } as React.CSSProperties,
+
+  roleDetectSection: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '8px',
+    marginTop: '8px',
+  } as React.CSSProperties,
+
+  roleDetectList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '8px',
+    marginTop: '8px',
+  } as React.CSSProperties,
+
+  roleDetectRow: {
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '8px',
+    background: 'var(--bg-base)',
+    padding: '8px 10px',
+  } as React.CSSProperties,
+
+  roleDetectRowHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '6px',
+    flexWrap: 'wrap' as const,
+  } as React.CSSProperties,
+
+  roleDetectSpeaker: (confidence: 'high' | 'medium' | 'low'): React.CSSProperties => ({
+    fontSize: '12px',
+    fontWeight: 600,
+    color: confidence === 'high'
+      ? 'var(--accent-primary, #7EC8E3)'
+      : confidence === 'medium'
+        ? '#E9C46A'
+        : '#F4A261',
+  }),
+
+  roleDetectConfidence: {
+    fontSize: '11px',
+    color: 'var(--text-tertiary)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.04em',
+  } as React.CSSProperties,
+
+  roleDetectLineIndex: {
+    fontSize: '11px',
+    color: 'var(--text-tertiary)',
+    marginLeft: 'auto',
+  } as React.CSSProperties,
+
+  roleDetectText: {
+    fontSize: '13px',
+    lineHeight: 1.6,
+    color: 'var(--text-primary)',
+    whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-word' as const,
+  } as React.CSSProperties,
+
+  roleDetectEmpty: {
+    fontSize: '12px',
+    color: 'var(--text-tertiary)',
+    padding: '6px 2px',
   } as React.CSSProperties,
 
   polishActionBtn: {
