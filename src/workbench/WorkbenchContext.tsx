@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import {
   createWorkbenchDocument,
   initialWorkbenchDocumentState,
+  restoreWorkbenchDocumentState,
   workbenchDocumentReducer,
 } from './DocumentStore';
 import { workbenchBus } from './WorkbenchBus';
@@ -17,6 +18,49 @@ import { toWorkbenchCommand } from './types';
 
 interface WorkbenchState {
   isOpen: boolean;
+}
+
+const WORKBENCH_STORAGE_KEY = 'oct-workbench-state-v1';
+
+interface PersistedWorkbenchState {
+  uiState?: Partial<WorkbenchState>;
+  documentState?: unknown;
+}
+
+function loadPersistedWorkbenchState(): {
+  uiState: WorkbenchState;
+  documentState: typeof initialWorkbenchDocumentState;
+} {
+  if (typeof window === 'undefined') {
+    return {
+      uiState: { isOpen: false },
+      documentState: initialWorkbenchDocumentState,
+    };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(WORKBENCH_STORAGE_KEY);
+    if (!raw) {
+      return {
+        uiState: { isOpen: false },
+        documentState: initialWorkbenchDocumentState,
+      };
+    }
+
+    const parsed = JSON.parse(raw) as PersistedWorkbenchState;
+    const documentState = restoreWorkbenchDocumentState(parsed?.documentState);
+    return {
+      uiState: {
+        isOpen: parsed?.uiState?.isOpen === true && documentState.documents.length > 0,
+      },
+      documentState,
+    };
+  } catch {
+    return {
+      uiState: { isOpen: false },
+      documentState: initialWorkbenchDocumentState,
+    };
+  }
 }
 
 interface WorkbenchContextValue extends WorkbenchState {
@@ -50,8 +94,12 @@ interface WorkbenchContextValue extends WorkbenchState {
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null);
 
 export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
-  const [uiState, setUiState] = useState<WorkbenchState>({ isOpen: false });
-  const [documentState, dispatchDocument] = useReducer(workbenchDocumentReducer, initialWorkbenchDocumentState);
+  const persistedStateRef = useRef(loadPersistedWorkbenchState());
+  const [uiState, setUiState] = useState<WorkbenchState>(persistedStateRef.current.uiState);
+  const [documentState, dispatchDocument] = useReducer(
+    workbenchDocumentReducer,
+    persistedStateRef.current.documentState,
+  );
 
   const nodeInspectRef = useRef<((nodeLabel: string, nodeGroup?: string) => void) | null>(null);
   const [nodeInspectVersion, setNodeInspectVersion] = useState(0);
@@ -180,6 +228,16 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     workbenchBus.setContextGetter(getRoundtripContext);
   }, [getRoundtripContext]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(WORKBENCH_STORAGE_KEY, JSON.stringify({
+      uiState: {
+        isOpen: uiState.isOpen && documentState.documents.length > 0,
+      },
+      documentState,
+    }));
+  }, [documentState, uiState.isOpen]);
 
   const value = useMemo<WorkbenchContextValue>(() => ({
     ...uiState,

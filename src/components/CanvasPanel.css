@@ -121,68 +121,6 @@
   flex-direction: column;
 }
 
-.canvas-details-panel {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-panel);
-}
-
-.canvas-studio-card {
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: var(--bg-surface);
-  padding: 10px;
-}
-
-.canvas-studio-card-title {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.3px;
-  margin-bottom: 8px;
-}
-
-.canvas-studio-card-body {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-}
-
-.canvas-studio-meta-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-}
-
-.canvas-studio-meta-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--bg-panel);
-}
-
-.canvas-studio-meta-key {
-  font-family: var(--font-sans);
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.canvas-studio-meta-value {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-primary);
-}
-
 .canvas-content {
   flex: 1;
   overflow-y: auto;
@@ -1168,9 +1106,5 @@
 
   .canvas-document-select {
     max-width: none;
-  }
-
-  .canvas-details-panel {
-    grid-template-columns: 1fr;
   }
 }

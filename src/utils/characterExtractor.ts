@@ -1,4 +1,5 @@
 import { detectDialogueLikeLine } from './dialogueDetector';
+import { normalizeSpeakerCueName } from './speakerCueNormalizer';
 
 export const DEFAULT_CHARACTER_COLORS: string[] = [
   '#7EC8E3', // 浅蓝
@@ -109,8 +110,10 @@ export function extractDocumentCharacterMentions(rawText: string): CharacterMent
   for (const line of lines) {
     const result = detectDialogueLikeLine(String(line || '').trim());
     if (result?.type === 'dialogue' || result?.type === 'narrator') {
-      const current = weightedCounts.get(result.character) || 0;
-      weightedCounts.set(result.character, current + 5);
+      const normalizedName = normalizeSpeakerCueName(result.character);
+      if (!normalizedName) continue;
+      const current = weightedCounts.get(normalizedName) || 0;
+      weightedCounts.set(normalizedName, current + 5);
     }
   }
 

@@ -10,17 +10,76 @@ import {
   parseScript,
   type ScriptLine,
 } from '../../utils/scriptParser';
-import { mergeCharacterColors } from '../../utils/characterExtractor';
+import {
+  DEFAULT_CHARACTER_COLORS,
+  extractDocumentCharacterMentions,
+  mergeCharacterColors,
+} from '../../utils/characterExtractor';
 import { exportScriptToText } from '../../utils/scriptExporter';
 import { buildChapterLineRanges } from '../../utils/chapterParser';
+import { normalizeSpeakerCueName } from '../../utils/speakerCueNormalizer';
 import { useWorkbench } from '../WorkbenchContext';
+import { workbenchBus } from '../WorkbenchBus';
 import type { WorkbenchRendererPlugin } from './types';
-import type { WorkbenchDocument } from '../types';
+import type {
+  ScriptCharacterProfile,
+  ScriptLineAttribution,
+  ScriptStructuredLineMarker,
+  ScriptVoiceFragmentMarker,
+  WorkbenchDocument,
+} from '../types';
 import { ScriptCharacterBar } from './script/ScriptCharacterBar';
 import { ScriptContent } from './script/ScriptContent';
 import { ScriptPolishPanel } from './script/ScriptPolishPanel';
+import { ScriptRoleDetectPanel } from './script/ScriptRoleDetectPanel';
 import { ScriptSidebar } from './script/ScriptSidebar';
 import { scriptStyles } from './script/styles';
+import {
+  buildRoleDetectPanelResult,
+  extractStructuredRecordCandidates,
+  extractQuoteCandidateLines,
+  type RoleDetectPanelResult,
+} from './script/roleDetect';
+
+interface BoundSelection {
+  text: string;
+  lineRange: { start: number; end: number } | null;
+  chapterIndex: number;
+}
+
+function buildScriptChapterKey(chapterIndex: number, chapterTitle: string): string {
+  return `${chapterIndex}:${String(chapterTitle || '').trim()}`;
+}
+
+function mergeCharacterLibrary(
+  existing: ScriptCharacterProfile[] | undefined,
+  names: string[],
+): ScriptCharacterProfile[] {
+  const next: ScriptCharacterProfile[] = [];
+  const seen = new Set<string>();
+
+  (Array.isArray(existing) ? existing : []).forEach((entry) => {
+    const name = normalizeSpeakerCueName(entry?.name) || String(entry?.name || '').trim();
+    const color = String(entry?.color || '').trim();
+    if (!name || !color || seen.has(name)) return;
+    seen.add(name);
+    next.push({ name, color });
+  });
+
+  const paletteOffset = next.length;
+
+  names.forEach((rawName, index) => {
+    const name = normalizeSpeakerCueName(rawName) || String(rawName || '').trim();
+    if (!name || seen.has(name)) return;
+    next.push({
+      name,
+      color: DEFAULT_CHARACTER_COLORS[(paletteOffset + index) % DEFAULT_CHARACTER_COLORS.length],
+    });
+    seen.add(name);
+  });
+
+  return next;
+}
 
 // ─── 主组件 ──────────────────────────────────────────────────────────────────
 
@@ -35,10 +94,16 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
   const [selectedCharacters, setSelectedCharacters] = useState<Set<string>>(new Set());
   const [selectedText, setSelectedText] = useState('');
   const [selectedLineRange, setSelectedLineRange] = useState<{ start: number; end: number } | null>(null);
+  const [boundSelection, setBoundSelection] = useState<BoundSelection | null>(null);
   const [selectionPosition, setSelectionPosition] = useState<{ top: number; left: number } | null>(null);
   const [isPolishing, setIsPolishing] = useState(false);
   const [isFormatting, setIsFormatting] = useState(false);
+  const [isDetectingRoles, setIsDetectingRoles] = useState(false);
   const [formatStatus, setFormatStatus] = useState('');
+  const [roleDetectStatus, setRoleDetectStatus] = useState('');
+  const [isRoleListOpen, setIsRoleListOpen] = useState(false);
+  const [isRoleDetectPanelOpen, setIsRoleDetectPanelOpen] = useState(false);
+  const [roleDetectPanelResult, setRoleDetectPanelResult] = useState<RoleDetectPanelResult | null>(null);
   const [polishDraft, setPolishDraft] = useState('');
   const [polishError, setPolishError] = useState<string | null>(null);
   const [isPolishPanelOpen, setIsPolishPanelOpen] = useState(false);
@@ -59,9 +124,19 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
     ? (window as any).electronAPI
     : null;
 
+  const libraryColorMap = useMemo(
+    () => Object.fromEntries(
+      (document.scriptCharacterLibrary || []).map((entry) => [entry.name, entry.color]),
+    ),
+    [document.scriptCharacterLibrary],
+  );
+
   const effectiveColors = useMemo(
-    () => mergeCharacterColors(parsed.characterColors, customColors),
-    [parsed.characterColors, customColors],
+    () => mergeCharacterColors(
+      mergeCharacterColors(parsed.characterColors, libraryColorMap),
+      customColors,
+    ),
+    [parsed.characterColors, libraryColorMap, customColors],
   );
 
   useEffect(() => {
@@ -70,11 +145,16 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
     setSelectedCharacters(new Set());
     setSelectedText('');
     setSelectedLineRange(null);
+    setBoundSelection(null);
     setSelectionPosition(null);
     setPolishDraft('');
     setPolishError(null);
     setReplaceHistory([]);
     setPanelPosition(null);
+    setRoleDetectStatus('');
+    setIsRoleListOpen(false);
+    setIsRoleDetectPanelOpen(false);
+    setRoleDetectPanelResult(null);
     setActiveIdx(0);
     setIsSidebarCollapsed(false);
     setContentFontSize(16);
@@ -128,22 +208,48 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
   }, [editingCharacter]);
 
   const chapter = parsed.chapters[activeIdx];
-  const toggleCharacterFilter = (name: string) => {
-    setSelectedCharacters((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-      } else {
-        next.add(name);
-      }
-      return next;
-    });
-  };
-
-  const clearCharacterFilter = () => {
-    setSelectedCharacters(new Set());
-  };
-
+  const chapterKey = useMemo(
+    () => buildScriptChapterKey(activeIdx, chapter?.title || ''),
+    [activeIdx, chapter?.title],
+  );
+  const currentChapterAttributions = useMemo<ScriptLineAttribution[]>(
+    () => document.scriptChapterAttributions?.[chapterKey] || [],
+    [document.scriptChapterAttributions, chapterKey],
+  );
+  const currentChapterStructuredLines = useMemo<ScriptStructuredLineMarker[]>(
+    () => document.scriptChapterStructuredLines?.[chapterKey] || [],
+    [document.scriptChapterStructuredLines, chapterKey],
+  );
+  const currentChapterVoiceFragments = useMemo<ScriptVoiceFragmentMarker[]>(
+    () => document.scriptChapterVoiceFragments?.[chapterKey] || [],
+    [document.scriptChapterVoiceFragments, chapterKey],
+  );
+  const structuredLineIndices = useMemo(
+    () => new Set(currentChapterStructuredLines.map((entry) => entry.lineIndex)),
+    [currentChapterStructuredLines],
+  );
+  const voiceFragmentSpeakers = useMemo(
+    () => Object.fromEntries(currentChapterVoiceFragments.map((entry) => [entry.lineIndex, entry.speaker])),
+    [currentChapterVoiceFragments],
+  );
+  const inferredSpeakers = useMemo(
+    () => Object.fromEntries(currentChapterAttributions.map((entry) => [entry.lineIndex, entry.speaker])),
+    [currentChapterAttributions],
+  );
+  const currentChapterRoleNames = useMemo(
+    () => Array.from(
+      new Set([
+        ...(chapter?.lines || [])
+          .filter((line, lineIndex) =>
+            (line.type === 'dialogue' || line.type === 'narrator')
+            && !structuredLineIndices.has(lineIndex))
+          .map((line) => String(line.character || '').trim())
+          .filter(Boolean),
+        ...currentChapterAttributions.map((entry) => entry.speaker).filter(Boolean),
+      ]),
+    ),
+    [chapter?.lines, currentChapterAttributions, structuredLineIndices],
+  );
   const isLineVisible = (line: ScriptLine): boolean => {
     if (selectedCharacters.size === 0) return true;
     if (line.type === 'dialogue') {
@@ -157,6 +263,23 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
       .map((line, chapterLineIndex) => ({ line, chapterLineIndex }))
       .filter(({ line }) => isLineVisible(line))
     : [];
+
+  const openPolishPanelForSelection = (
+    text: string,
+    lineRange: { start: number; end: number } | null,
+  ) => {
+    const cleanText = String(text || '').trim();
+    if (!cleanText) return;
+
+    setBoundSelection({
+      text: cleanText,
+      lineRange,
+      chapterIndex: activeIdx,
+    });
+    setIsPolishPanelOpen(true);
+    setPolishError(null);
+    setPolishDraft(cleanText);
+  };
 
   const updateTextSelection = () => {
     const root = contentRef.current;
@@ -259,10 +382,11 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
     const text = selection.toString().trim();
     if (!text) return;
 
-    // 右键命中选中文本时，直接触发润色，规避浮动按钮显示不稳定
+    // 右键命中选中文本时，直接打开编辑面板，规避浮动按钮显示不稳定
     event.preventDefault();
     event.stopPropagation();
     setSelectedText(text);
+    let lineRange: { start: number; end: number } | null = null;
     const lineEls = Array.from(root.querySelectorAll('[data-script-line-index]')) as HTMLDivElement[];
     const hitIndices = lineEls
       .filter((el) => {
@@ -273,28 +397,31 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
       .filter((v) => Number.isFinite(v));
     if (hitIndices.length > 0) {
       const index = hitIndices[0];
-      setSelectedLineRange({ start: index, end: index });
+      lineRange = { start: index, end: index };
+      setSelectedLineRange(lineRange);
+    } else {
+      setSelectedLineRange(null);
     }
     setSelectionPosition({
       top: Math.max(8, event.clientY - 36),
       left: event.clientX,
     });
-    void runPolish(text);
+    openPolishPanelForSelection(text, lineRange);
   };
 
-  const runPolish = async (text: string) => {
-    if (!text || isPolishing) return;
+  const runPolish = async () => {
+    const sourceText = String(polishDraft || boundSelection?.text || '').trim();
+    if (!sourceText || isPolishing) return;
     setIsPolishing(true);
     setIsPolishPanelOpen(true);
     setPolishError(null);
-    setPolishDraft('');
 
     try {
       const response = await fetch('http://127.0.0.1:18790/api/polish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text,
+          text: sourceText,
           instruction: '请润色以下台词，保持角色语气和风格，使表达更生动自然。',
         }),
       });
@@ -314,9 +441,169 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
     }
   };
 
-  const handlePolish = async () => {
-    if (!selectedText || isPolishing) return;
-    await runPolish(selectedText);
+  const handleOpenPolishPanel = () => {
+    if (!selectedText) return;
+    openPolishPanelForSelection(selectedText, selectedLineRange);
+  };
+
+  const handleDiscussInChat = () => {
+    const originalText = String(boundSelection?.text || '').trim();
+    if (!originalText) return;
+
+    const draftText = String(polishDraft || '').trim();
+    const prompt = [
+      '我们正在修改剧本中的一段选中文本，请只围绕这段内容讨论，不要改整篇文档。',
+      '',
+      '【当前选段】',
+      originalText,
+      ...(draftText && draftText !== originalText
+        ? ['', '【当前编辑稿】', draftText]
+        : []),
+      '',
+      '请先给我 2-3 个修改方向，并说明各自适合的语气或效果。暂时不要直接改全文。',
+    ].join('\n');
+
+    workbenchBus.requestSendMessage({
+      text: prompt,
+      intent: 'rewrite',
+    });
+  };
+
+  const handleDetectCurrentChapterRoles = async () => {
+    if (isDetectingRoles || !chapter) return;
+
+    const chapterLines = chapter.lines || [];
+    const candidateLines = extractQuoteCandidateLines(chapterLines);
+    const structuredCandidates = extractStructuredRecordCandidates(chapterLines);
+    if (candidateLines.length === 0 && structuredCandidates.length === 0) {
+      setRoleDetectStatus('当前章节没有可识别的对白或结构化候选');
+      window.setTimeout(() => setRoleDetectStatus(''), 2800);
+      return;
+    }
+
+    const chapterText = chapterLines
+      .map((line) => String(line.raw || line.content || ''))
+      .join('\n')
+      .trim();
+    const existingRoles = [
+      ...(document.scriptCharacterLibrary || []).map((entry) => entry.name),
+      ...parsed.characters,
+      ...extractDocumentCharacterMentions(chapterText).map((entry) => entry.name),
+    ];
+
+    setIsDetectingRoles(true);
+    setRoleDetectStatus('识别当前章节角色中...');
+    try {
+      const response = await fetch('http://127.0.0.1:18790/api/script-role-detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chapterTitle: chapter.title,
+          chapterText,
+          existingRoles: Array.from(
+            new Set(
+              existingRoles
+                .map((name) => normalizeSpeakerCueName(name) || String(name || '').trim())
+                .filter(Boolean),
+            ),
+          ),
+          candidateLines,
+          structuredCandidates,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success || !data?.result) {
+        throw new Error(data?.error || `HTTP ${response.status}`);
+      }
+
+      const roles = Array.isArray(data.result.roles)
+        ? data.result.roles.map((name: unknown) => String(name || '').trim()).filter(Boolean)
+        : [];
+      const attributions = Array.isArray(data.result.attributions)
+        ? data.result.attributions
+          .map((entry: any) => ({
+            lineIndex: Number(entry?.lineIndex),
+            speaker: normalizeSpeakerCueName(entry?.speaker) || String(entry?.speaker || '').trim(),
+            confidence: entry?.confidence === 'high' || entry?.confidence === 'low'
+              ? entry.confidence
+              : 'medium',
+          }))
+          .filter((entry: ScriptLineAttribution) =>
+            Number.isInteger(entry.lineIndex)
+            && entry.lineIndex >= 0
+            && entry.speaker)
+        : [];
+      const structuredLines = Array.isArray(data.result.structuredLines)
+        ? data.result.structuredLines
+          .map((entry: any) => ({
+            lineIndex: Number(entry?.lineIndex),
+            label: normalizeSpeakerCueName(entry?.label) || String(entry?.label || '').trim(),
+          }))
+          .filter((entry: ScriptStructuredLineMarker) => Number.isInteger(entry.lineIndex) && entry.lineIndex >= 0)
+        : [];
+      const voiceFragments = Array.isArray(data.result.voiceFragments)
+        ? data.result.voiceFragments
+          .map((entry: any) => ({
+            lineIndex: Number(entry?.lineIndex),
+            speaker: normalizeSpeakerCueName(entry?.speaker) || String(entry?.speaker || '').trim(),
+            mentionedNames: Array.isArray(entry?.mentionedNames)
+              ? entry.mentionedNames
+                .map((name: unknown) => normalizeSpeakerCueName(name) || String(name || '').trim())
+                .filter(Boolean)
+              : [],
+          }))
+          .filter((entry: ScriptVoiceFragmentMarker) => Number.isInteger(entry.lineIndex) && entry.lineIndex >= 0)
+        : [];
+      const structuredLineIndexSet = new Set(structuredLines.map((entry: ScriptStructuredLineMarker) => entry.lineIndex));
+
+      const explicitChapterRoles = chapterLines
+        .filter((line, lineIndex) =>
+          (line.type === 'dialogue' || line.type === 'narrator')
+          && !structuredLineIndexSet.has(lineIndex))
+        .map((line) => normalizeSpeakerCueName(line.character) || String(line.character || '').trim())
+        .filter(Boolean);
+      const mergedNames = Array.from(new Set([
+        ...explicitChapterRoles,
+        ...roles.map((name: string) => normalizeSpeakerCueName(name) || name),
+        ...attributions.map((entry: ScriptLineAttribution) => entry.speaker),
+      ]));
+      const nextLibrary = mergeCharacterLibrary(document.scriptCharacterLibrary, mergedNames);
+      const nextAttributions = {
+        ...(document.scriptChapterAttributions || {}),
+        [chapterKey]: attributions,
+      };
+      const nextStructuredLines = {
+        ...(document.scriptChapterStructuredLines || {}),
+        [chapterKey]: structuredLines,
+      };
+      const nextVoiceFragments = {
+        ...(document.scriptChapterVoiceFragments || {}),
+        [chapterKey]: voiceFragments,
+      };
+
+      workbench.updateDocument(document.id, {
+        scriptCharacterLibrary: nextLibrary,
+        scriptChapterAttributions: nextAttributions,
+        scriptChapterStructuredLines: nextStructuredLines,
+        scriptChapterVoiceFragments: nextVoiceFragments,
+      });
+      setRoleDetectPanelResult(buildRoleDetectPanelResult({
+        chapterTitle: chapter.title,
+        roleLibrary: nextLibrary,
+        candidateLines,
+        structuredCandidates,
+        attributions,
+        structuredLines,
+        voiceFragments,
+      }));
+      setIsRoleDetectPanelOpen(true);
+      setRoleDetectStatus(`识别到 ${mergedNames.length} 个角色，并标出 OS 片段与结构化内容`);
+    } catch (error) {
+      setRoleDetectStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsDetectingRoles(false);
+      window.setTimeout(() => setRoleDetectStatus(''), 3200);
+    }
   };
 
   const handleAIFormat = async () => {
@@ -523,12 +810,15 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
 
   const handleApplyPolishToSource = () => {
     const draftToApply = polishDraft.trim();
-    if (!draftToApply || !selectedText || polishError) return;
+    const sourceSelectionText = String(boundSelection?.text || '').trim();
+    const sourceLineRange = boundSelection?.lineRange || null;
+    const sourceChapterIndex = boundSelection?.chapterIndex;
+    if (!draftToApply || !sourceSelectionText) return;
     const source = document.content;
 
     // 优先按“选中行块”定位，避免渲染文本与原文存在格式差异时 indexOf 失败
-    if (chapter && selectedLineRange) {
-      const { start, end } = selectedLineRange;
+    if (chapter && sourceLineRange && sourceChapterIndex === activeIdx) {
+      const { start, end } = sourceLineRange;
       if (
         Number.isInteger(start)
         && Number.isInteger(end)
@@ -550,7 +840,7 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
       }
     }
 
-    const targetIndex = source.indexOf(selectedText);
+    const targetIndex = source.indexOf(sourceSelectionText);
 
     const locateCollapsedRange = (fullText: string, segment: string): { start: number; end: number } | null => {
       const query = segment.replace(/\s+/g, ' ').trim();
@@ -583,10 +873,10 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
     };
 
     let replaceStart = targetIndex;
-    let replaceEnd = targetIndex >= 0 ? targetIndex + selectedText.length : -1;
+    let replaceEnd = targetIndex >= 0 ? targetIndex + sourceSelectionText.length : -1;
 
     if (targetIndex < 0) {
-      const collapsedRange = locateCollapsedRange(source, selectedText);
+      const collapsedRange = locateCollapsedRange(source, sourceSelectionText);
       if (collapsedRange) {
         replaceStart = collapsedRange.start;
         replaceEnd = collapsedRange.end;
@@ -605,6 +895,11 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
 
     setReplaceHistory((prev) => [...prev, { before: source, after: nextContent }]);
     workbench.updateDocument(document.id, { content: nextContent });
+    setBoundSelection({
+      text: draftToApply,
+      lineRange: sourceLineRange,
+      chapterIndex: sourceChapterIndex ?? activeIdx,
+    });
   };
 
   const handleUndoLastApply = () => {
@@ -632,11 +927,25 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
       onClose={() => {
         setIsPolishPanelOpen(false);
         setPolishError(null);
+        setBoundSelection(null);
       }}
+      originalText={boundSelection?.text || ''}
       polishDraft={polishDraft}
       polishError={polishError}
-      onChangeDraft={setPolishDraft}
+      onChangeDraft={(value) => {
+        setPolishDraft(value);
+        if (polishError) setPolishError(null);
+      }}
+      onPolishWithAI={runPolish}
+      onDiscussInChat={handleDiscussInChat}
+      isPolishing={isPolishing}
       onApply={handleApplyPolishToSource}
+    />
+  ) : null;
+  const roleDetectPanelElement = isRoleDetectPanelOpen && roleDetectPanelResult ? (
+    <ScriptRoleDetectPanel
+      result={roleDetectPanelResult}
+      onClose={() => setIsRoleDetectPanelOpen(false)}
     />
   ) : null;
 
@@ -652,11 +961,13 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <ScriptCharacterBar
-          characters={parsed.characters}
-          selectedCharacters={selectedCharacters}
-          editingCharacter={editingCharacter}
-          effectiveColors={effectiveColors}
-          pickerContainerRef={pickerContainerRef}
+          roleLibrary={document.scriptCharacterLibrary || []}
+          currentChapterRoleNames={currentChapterRoleNames}
+          roleListOpen={isRoleListOpen}
+          onToggleRoleList={() => setIsRoleListOpen((prev) => !prev)}
+          roleDetectStatus={roleDetectStatus}
+          isDetectingRoles={isDetectingRoles}
+          onDetectRoles={handleDetectCurrentChapterRoles}
           formatStatus={formatStatus}
           isFormatting={isFormatting}
           onAIFormat={handleAIFormat}
@@ -665,16 +976,9 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
           onIncreaseFontSize={increaseContentFontSize}
           selectedText={selectedText}
           isPolishing={isPolishing}
-          onPolish={handlePolish}
+          onPolish={handleOpenPolishPanel}
           replaceHistoryLength={replaceHistory.length}
           onUndoLastApply={handleUndoLastApply}
-          onClearCharacterFilter={clearCharacterFilter}
-          onToggleCharacterFilter={toggleCharacterFilter}
-          onToggleEditingCharacter={(name) => setEditingCharacter((prev) => (prev === name ? null : name))}
-          onChangeCharacterColor={(name, color) => {
-            setCustomColors((prev) => ({ ...prev, [name]: color }));
-            setEditingCharacter(null);
-          }}
         />
 
         <ScriptContent
@@ -683,22 +987,27 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
           activeIdx={activeIdx}
           visibleLineEntries={visibleLineEntries}
           effectiveColors={effectiveColors}
+          inferredSpeakers={inferredSpeakers}
+          structuredLineIndices={structuredLineIndices}
+          voiceFragmentSpeakers={voiceFragmentSpeakers}
           contentFontSize={contentFontSize}
+          boundLineRange={boundSelection && boundSelection.chapterIndex === activeIdx
+            ? boundSelection.lineRange
+            : null}
           onMouseUp={scheduleSelectionUpdate}
           onKeyUp={scheduleSelectionUpdate}
           onContextMenu={handleContentContextMenu}
         />
       </div>
 
-      {selectionPosition && selectedText && (
+      {selectionPosition && selectedText && !isPolishPanelOpen && (
         <div style={scriptStyles.polishTrigger(selectionPosition.top, selectionPosition.left)}>
           <button
             type="button"
-            style={scriptStyles.polishButton(isPolishing)}
-            onClick={handlePolish}
-            disabled={isPolishing}
+            style={scriptStyles.polishButton(false)}
+            onClick={handleOpenPolishPanel}
           >
-            {isPolishing ? '润色中...' : '✨ AI 润色'}
+            打开编辑面板
           </button>
         </div>
       )}
@@ -707,6 +1016,10 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
         && typeof window !== 'undefined'
         && globalThis.document?.body
         && createPortal(polishPanelElement, globalThis.document.body)}
+      {roleDetectPanelElement
+        && typeof window !== 'undefined'
+        && globalThis.document?.body
+        && createPortal(roleDetectPanelElement, globalThis.document.body)}
     </div>
   );
 }

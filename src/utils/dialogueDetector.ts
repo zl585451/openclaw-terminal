@@ -1,3 +1,5 @@
+import { normalizeSpeakerCueName } from './speakerCueNormalizer';
+
 export type DialogueDetectionResult =
   | { type: 'narrator'; character: string; content: string }
   | { type: 'direction'; dirTag: string; content: string }
@@ -53,8 +55,8 @@ export function detectDialogueLikeLine(trimmedLine: string): DialogueDetectionRe
 
   const colonMatch = trimmed.match(RE_DIALOGUE_COLON);
   if (colonMatch) {
-    const character = colonMatch[1].trim();
-    if (character.length <= 10 && colonMatch[2].trim().length > 0) {
+    const character = normalizeSpeakerCueName(colonMatch[1]);
+    if (character && character.length <= 10 && colonMatch[2].trim().length > 0) {
       return {
         type: 'dialogue',
         character,

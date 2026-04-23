@@ -24,6 +24,42 @@ const SCRIPT_FORMAT_SYSTEM_PROMPT = `你是剧本格式化助手。用户会给�
 - 删除 markdown 列表/标题/代码块标记（如 #、-、1.、三反引号代码围栏）
 - 不要添加任何解释，只输出格式化后的剧本文本`;
 
+const SCRIPT_ROLE_DETECT_SYSTEM_PROMPT = `你是小说对话角色识别助手。
+
+你的任务是在“当前章节”中同时做两件事：
+1. 识别说话角色，并判断给定引号句属于谁
+2. 判断给定的“冒号标签行”哪些更像结构化记录，而不是角色对白
+
+【硬规则】
+- 只能做角色识别与归属判断，不能改写原文
+- 不能补写剧情，不能新增原文中不存在的台词
+- 只能使用章节文本中已经出现或高度确定的角色名
+- 不确定时不要硬猜，可跳过该句
+- 对于案卷、档案、表单、记录字段这类内容，应优先标记为 structuredLines，而不是角色
+- 引号里的可发声文本优先视为对白候选；结构化字段、编号、日期、案号、记录项优先排除
+- 只输出 JSON，不要解释，不要 markdown 代码块
+
+【输出 JSON 结构】
+{
+  "roles": ["角色A", "角色B"],
+  "structuredLines": [
+    { "lineIndex": 3, "label": "案号" }
+  ],
+  "voiceFragments": [
+    { "lineIndex": 9, "speaker": "老马", "mentionedNames": ["老马"] }
+  ],
+  "attributions": [
+    { "lineIndex": 12, "speaker": "角色A", "confidence": "high" }
+  ]
+}
+
+【说明】
+- roles: 当前章节里识别出的角色名数组
+- structuredLines: 你判断为结构化记录、应从角色对白里排除的冒号标签行
+- voiceFragments: 更像 OS / 回声 / 碎片化角色音的引号句，可不给 speaker，但可给 mentionedNames
+- attributions: 只包含你有把握判断的引号句
+- confidence 只能是 high / medium / low`;
+
 function runOneShotCompletion(messages) {
   return new Promise((resolve, reject) => {
     streamChat({
@@ -35,6 +71,18 @@ function runOneShotCompletion(messages) {
       onError: (err) => reject(err),
     });
   });
+}
+
+function parseJsonFromModelReply(reply) {
+  const cleaned = String(reply || '')
+    .replace(/\[cot\][\s\S]*?\[\/cot\]/g, '')
+    .trim();
+  if (!cleaned) return null;
+  const fenced = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const source = fenced ? fenced[1].trim() : cleaned;
+  const objectMatch = source.match(/\{[\s\S]*\}/);
+  if (!objectMatch) return null;
+  return JSON.parse(objectMatch[0]);
 }
 
 function createHttpRequestHandler({
@@ -196,6 +244,125 @@ function createHttpRequestHandler({
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, result: cleaned }));
+      }).catch((e) => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e?.message || String(e) }));
+      });
+      return true;
+    }
+
+    if (req.method === 'POST' && req.url === '/api/script-role-detect') {
+      readJsonBody(req).then(async (body) => {
+        const chapterTitle = String(body?.chapterTitle || '').trim();
+        const chapterText = String(body?.chapterText || '').trim();
+        const existingRoles = Array.isArray(body?.existingRoles)
+          ? body.existingRoles.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 40)
+          : [];
+        const candidateLines = Array.isArray(body?.candidateLines)
+          ? body.candidateLines
+            .map((entry) => ({
+              lineIndex: Number(entry?.lineIndex),
+              text: String(entry?.text || '').trim(),
+            }))
+            .filter((entry) => Number.isInteger(entry.lineIndex) && entry.lineIndex >= 0 && entry.text)
+            .slice(0, 80)
+          : [];
+        const structuredCandidates = Array.isArray(body?.structuredCandidates)
+          ? body.structuredCandidates
+            .map((entry) => ({
+              lineIndex: Number(entry?.lineIndex),
+              label: String(entry?.label || '').trim(),
+              text: String(entry?.text || '').trim(),
+            }))
+            .filter((entry) => Number.isInteger(entry.lineIndex) && entry.lineIndex >= 0 && entry.label && entry.text)
+            .slice(0, 80)
+          : [];
+
+        if (!chapterText || (candidateLines.length === 0 && structuredCandidates.length === 0)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'chapterText and at least one candidate set are required' }));
+          return;
+        }
+
+        const messages = [
+          { role: 'system', content: SCRIPT_ROLE_DETECT_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              chapterTitle ? `【当前章节】${chapterTitle}` : '',
+              existingRoles.length > 0 ? `【已有角色库】${existingRoles.join('、')}` : '',
+              candidateLines.length > 0
+                ? ['【候选引号句】', candidateLines.map((entry) => `- lineIndex=${entry.lineIndex}: ${entry.text}`).join('\n')].join('\n')
+                : '',
+              structuredCandidates.length > 0
+                ? ['【冒号标签候选】', structuredCandidates.map((entry) => `- lineIndex=${entry.lineIndex}, label=${entry.label}: ${entry.text}`).join('\n')].join('\n')
+                : '',
+              '',
+              '【章节全文】',
+              chapterText.slice(0, 16000),
+            ].filter(Boolean).join('\n'),
+          },
+        ];
+
+        const reply = await runOneShotCompletion(messages);
+        const parsed = parseJsonFromModelReply(reply);
+        const roles = Array.isArray(parsed?.roles)
+          ? parsed.roles.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 40)
+          : [];
+        const structuredLines = Array.isArray(parsed?.structuredLines)
+          ? parsed.structuredLines
+            .map((entry) => ({
+              lineIndex: Number(entry?.lineIndex),
+              label: String(entry?.label || '').trim(),
+            }))
+            .filter((entry) =>
+              Number.isInteger(entry.lineIndex)
+              && entry.lineIndex >= 0
+              && structuredCandidates.some((line) => line.lineIndex === entry.lineIndex))
+            .slice(0, 80)
+          : [];
+        const voiceFragments = Array.isArray(parsed?.voiceFragments)
+          ? parsed.voiceFragments
+            .map((entry) => ({
+              lineIndex: Number(entry?.lineIndex),
+              speaker: String(entry?.speaker || '').trim(),
+              mentionedNames: Array.isArray(entry?.mentionedNames)
+                ? entry.mentionedNames.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 12)
+                : [],
+            }))
+            .filter((entry) =>
+              Number.isInteger(entry.lineIndex)
+              && entry.lineIndex >= 0
+              && candidateLines.some((line) => line.lineIndex === entry.lineIndex))
+            .slice(0, 80)
+          : [];
+        const attributions = Array.isArray(parsed?.attributions)
+          ? parsed.attributions
+            .map((entry) => ({
+              lineIndex: Number(entry?.lineIndex),
+              speaker: String(entry?.speaker || '').trim(),
+              confidence: entry?.confidence === 'high' || entry?.confidence === 'low'
+                ? entry.confidence
+                : 'medium',
+            }))
+            .filter((entry) =>
+              Number.isInteger(entry.lineIndex)
+              && entry.lineIndex >= 0
+              && entry.speaker
+              && candidateLines.some((line) => line.lineIndex === entry.lineIndex))
+            .slice(0, 80)
+          : [];
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          result: {
+            roles,
+            structuredLines,
+            voiceFragments,
+            attributions,
+          },
+        }));
       }).catch((e) => {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: e?.message || String(e) }));

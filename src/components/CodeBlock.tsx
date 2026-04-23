@@ -74,7 +74,13 @@ export default function CodeBlock({ language = 'text', children }: CodeBlockProp
             color: 'var(--text-code)',
           }}
         >
-          <pre style={{ margin: 0, whiteSpace: 'pre', fontFamily: 'inherit' }}>
+          <pre style={{
+            margin: 0,
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
+            fontFamily: 'inherit',
+          }}>
             <code
               className="oct-prism-code"
               dangerouslySetInnerHTML={{ __html: html }}
