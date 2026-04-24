@@ -116,6 +116,7 @@
   flex-direction: column;
   gap: 16px;
   min-height: 100%;
+  padding: 4px 2px 8px;
 }
 
 .layoutHeader {
@@ -123,6 +124,28 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.layoutControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.backButton {
+  padding: 8px 12px;
+  border: 1px solid var(--oct-border-tertiary, rgba(0, 0, 0, 0.15));
+  border-radius: 999px;
+  background: var(--oct-bg-primary, #fff);
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.backButton:hover {
+  border-color: rgba(55, 138, 221, 0.28);
 }
 
 .tabList {

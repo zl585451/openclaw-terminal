@@ -7,14 +7,17 @@ import ReaperTab from './components/ReaperTab';
 import SettingsPanel from './components/SettingsPanel';
 import WorkbenchHost from './components/workbench/WorkbenchHost';
 import FirstLaunchSetup from './components/FirstLaunchSetup';
+import { ScriptAdapterApp } from './modules/script-adapter';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { WorkbenchProvider } from './workbench/WorkbenchContext';
 import './styles/App.css';
 
 
 export type TabType = 'chat' | 'sound' | 'reaper';
+type AppView = 'chat' | 'script-adapter';
 
 const App: React.FC = () => {
+  const [appView, setAppView] = useState<AppView>('chat');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vaultUnlocked, setVaultUnlocked] = useState(false);
@@ -118,31 +121,53 @@ const App: React.FC = () => {
         <TitleBar />
         
         {/* 标签栏 + 右侧 portal 插槽 */}
-        <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-panel)', borderBottom: '1px solid var(--border-subtle)' }}>
-          <TabBar
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            vaultOpen={vaultOpen}
-            setVaultOpen={setVaultOpen}
-            vaultUnlocked={vaultUnlocked}
-            onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
-          />
-          <div id="chat-header-portal" />
+        <div className="app-shell-bar">
+          {appView === 'chat' ? (
+            <>
+              <TabBar
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                vaultOpen={vaultOpen}
+                setVaultOpen={setVaultOpen}
+                vaultUnlocked={vaultUnlocked}
+                onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
+              />
+              <div className="app-shell-actions">
+                <button
+                  type="button"
+                  className="script-adapter-entry-button"
+                  data-temp-entry="script-adapter"
+                  onClick={() => setAppView('script-adapter')}
+                >
+                  打开小说改编模块
+                </button>
+                <div id="chat-header-portal" />
+              </div>
+            </>
+          ) : (
+            <div className="app-shell-module-title">小说改编模块 · 骨架 v1</div>
+          )}
         </div>
 
         {/* 内容区域 */}
         <div className="content-area">
-          {activeTab === 'chat' && (
-            <ChatTab
-              messages={messages}
-              setMessages={setMessages}
-              getNextMessageId={getNextMessageId}
-              onStatusChange={() => {}}
-              onSwitchTab={setActiveTab}
-            />
+          {appView === 'chat' ? (
+            <>
+              {activeTab === 'chat' && (
+                <ChatTab
+                  messages={messages}
+                  setMessages={setMessages}
+                  getNextMessageId={getNextMessageId}
+                  onStatusChange={() => {}}
+                  onSwitchTab={setActiveTab}
+                />
+              )}
+              {activeTab === 'sound' && <SoundTab />}
+              {activeTab === 'reaper' && <ReaperTab />}
+            </>
+          ) : (
+            <ScriptAdapterApp onBack={() => setAppView('chat')} />
           )}
-          {activeTab === 'sound' && <SoundTab />}
-          {activeTab === 'reaper' && <ReaperTab />}
         </div>
         <WorkbenchHost />
         {showSettings && (

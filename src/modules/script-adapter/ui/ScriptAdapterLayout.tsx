@@ -11,7 +11,11 @@ const VIEW_LABEL: Record<ViewMode, string> = {
   agents: 'Agent 清单',
 };
 
-export function ScriptAdapterLayout() {
+interface ScriptAdapterLayoutProps {
+  onBack?: () => void;
+}
+
+export function ScriptAdapterLayout({ onBack }: ScriptAdapterLayoutProps) {
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -21,19 +25,27 @@ export function ScriptAdapterLayout() {
   return (
     <div className={styles.layout}>
       <div className={styles.layoutHeader}>
-        <div className={styles.tabList} role="tablist" aria-label="Script Adapter Views">
-          {(Object.keys(VIEW_LABEL) as ViewMode[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              role="tab"
-              aria-selected={viewMode === mode}
-              className={`${styles.tabButton} ${viewMode === mode ? styles.tabButtonActive : ''}`}
-              onClick={() => scriptAdapterActions.setViewMode(mode)}
-            >
-              {VIEW_LABEL[mode]}
+        <div className={styles.layoutControls}>
+          {onBack ? (
+            <button type="button" className={styles.backButton} onClick={onBack}>
+              ← 返回 Chat
             </button>
-          ))}
+          ) : null}
+
+          <div className={styles.tabList} role="tablist" aria-label="Script Adapter Views">
+            {(Object.keys(VIEW_LABEL) as ViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                role="tab"
+                aria-selected={viewMode === mode}
+                className={`${styles.tabButton} ${viewMode === mode ? styles.tabButtonActive : ''}`}
+                onClick={() => scriptAdapterActions.setViewMode(mode)}
+              >
+                {VIEW_LABEL[mode]}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className={styles.projectMeta}>
