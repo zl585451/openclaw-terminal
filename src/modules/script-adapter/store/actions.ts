@@ -31,8 +31,21 @@ export const scriptAdapterActions = {
     console.log('[ScriptAdapter] selected stage', idx);
   },
 
+  openStageInWorkbench(idx: number) {
+    useScriptAdapterStore.getState()._set(() => ({ viewMode: 'workbench', selectedStageIdx: idx }));
+    console.log('[ScriptAdapter] opened stage in workbench', idx);
+  },
+
   rejectArtifact(artifactId: string, reason: string) {
     console.log('[ScriptAdapter] TODO: reject artifact', artifactId, 'reason:', reason);
+  },
+
+  openArtifact(artifactId: string) {
+    console.log('[ScriptAdapter] TODO: open artifact', artifactId);
+  },
+
+  viewArtifactHistory(artifactId: string) {
+    console.log('[ScriptAdapter] TODO: view artifact history', artifactId);
   },
 
   rerunScene(projectId: string, sceneId: string) {

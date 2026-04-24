@@ -110,3 +110,509 @@
   font-size: 12px;
   line-height: 1.4;
 }
+
+.layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100%;
+}
+
+.layoutHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tabList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tabButton {
+  padding: 8px 14px;
+  border: 1px solid var(--oct-border-tertiary, rgba(0, 0, 0, 0.15));
+  border-radius: 999px;
+  background: var(--oct-bg-primary, #fff);
+  color: var(--oct-text-secondary, #666);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.tabButton:hover {
+  border-color: rgba(55, 138, 221, 0.28);
+  color: var(--oct-text-primary, #1a1a1a);
+}
+
+.tabButtonActive {
+  border-color: rgba(55, 138, 221, 0.32);
+  background: rgba(55, 138, 221, 0.12);
+  color: #1f5e97;
+}
+
+.projectMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.projectName {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.projectSub {
+  color: var(--oct-text-secondary, #666);
+  font-size: 12px;
+}
+
+.viewFrame {
+  min-height: 0;
+}
+
+.workbench {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.projectCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.projectCardTitle {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.projectCardMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.projectCardItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.projectCardLabel {
+  color: var(--oct-text-tertiary, #888);
+  font-size: 11px;
+}
+
+.projectCardValue {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stageList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stageItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--oct-border-tertiary, rgba(0, 0, 0, 0.15));
+  border-radius: 10px;
+  background: var(--oct-bg-primary, #fff);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.stageItem:hover {
+  transform: translateY(-1px);
+  border-color: rgba(55, 138, 221, 0.24);
+}
+
+.stageItemActive {
+  border-color: rgba(55, 138, 221, 0.3);
+  background: rgba(55, 138, 221, 0.1);
+}
+
+.stageIndex {
+  min-width: 22px;
+  color: var(--oct-text-secondary, #666);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.stageName {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.detailPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.detailTitleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detailEyebrow {
+  color: var(--oct-text-tertiary, #888);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detailTitle {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.detailDesc {
+  color: var(--oct-text-secondary, #666);
+  font-size: 14px;
+}
+
+.detailActionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ghostButton {
+  padding: 8px 12px;
+  border: 1px solid var(--oct-border-tertiary, rgba(0, 0, 0, 0.15));
+  border-radius: 8px;
+  background: var(--oct-bg-primary, #fff);
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ghostButton:hover {
+  border-color: rgba(55, 138, 221, 0.28);
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.artifactSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionTitle {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.artifactList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artifactCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.artifactHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.artifactTitleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.artifactTitle {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.artifactMeta {
+  color: var(--oct-text-secondary, #666);
+  font-size: 12px;
+}
+
+.artifactPreview {
+  color: var(--oct-text-secondary, #666);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.artifactActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.placeholderCard {
+  color: var(--oct-text-secondary, #666);
+  font-size: 14px;
+}
+
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--oct-text-secondary, #666);
+  font-size: 13px;
+}
+
+.pipelineScroller {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.pipelineTrack {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 10px;
+  min-width: max-content;
+}
+
+.pipelineArrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--oct-text-tertiary, #888);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.stageNode {
+  width: 180px;
+  padding: 14px;
+  border: 1px solid var(--oct-border-tertiary, rgba(0, 0, 0, 0.15));
+  border-radius: 12px;
+  background: var(--oct-bg-primary, #fff);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.stageNode:hover {
+  transform: translateY(-2px);
+  border-color: rgba(55, 138, 221, 0.26);
+}
+
+.stageNodeActive {
+  border-color: rgba(55, 138, 221, 0.3);
+  box-shadow: 0 8px 20px rgba(55, 138, 221, 0.08);
+}
+
+.stageNodeTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stageNodeIndex {
+  color: var(--oct-text-tertiary, #888);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.stageNodeName {
+  margin-top: 10px;
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.stageNodeSub {
+  margin-top: 6px;
+  color: var(--oct-text-secondary, #666);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pipelineDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pipelineDetailStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pipelineDetailItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pipelineDetailLabel {
+  color: var(--oct-text-tertiary, #888);
+  font-size: 11px;
+}
+
+.pipelineDetailValue {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.agentsTable {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.agentMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agentId {
+  color: var(--oct-text-primary, #1a1a1a);
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.agentRole {
+  color: var(--oct-text-secondary, #666);
+  font-size: 13px;
+}
+
+.agentMetaGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.agentMetaTag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--oct-text-secondary, #666);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mutedText {
+  color: var(--oct-text-secondary, #666);
+}
+
+@media (max-width: 980px) {
+  .layoutHeader,
+  .detailHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .projectMeta {
+    align-items: flex-start;
+  }
+
+  .workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .metricsGrid,
+  .pipelineDetailStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .projectCardMeta,
+  .metricsGrid,
+  .pipelineDetailStats {
+    grid-template-columns: 1fr;
+  }
+
+  .agentRow {
+    grid-template-columns: 1fr;
+  }
+
+  .agentMetaGroup {
+    justify-content: flex-start;
+  }
+}
