@@ -3180,11 +3180,19 @@ async function startNocturneBackend(): Promise<boolean> {
     const base = getNocturnePath();
     if (!base) {
       console.warn('[Nocturne] 未找到 nocturne_memory 目录或 nocturne_server.exe，跳过自动启动');
+      appendNocturneDiagnostic('backend_missing_resources', { dbPath });
       return false;
     }
-    ensureNocturneEnv();
     const [pyExe, ...pyArgs] = getPythonForNocturne();
     const backendPath = path.join(base, 'backend');
+    appendNocturneDiagnostic('backend_spawn', {
+      mode: 'python',
+      python: [pyExe, ...pyArgs].join(' '),
+      backendPath,
+      dbPath,
+      envPath: envInfo?.envPath || '',
+      coreMemoryUris: DEFAULT_NOCTURNE_CORE_MEMORY_URIS,
+    });
     nocturneBackendProcess = spawn(pyExe, [...pyArgs, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'], {
       cwd: backendPath,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -3200,7 +3208,7 @@ async function startNocturneBackend(): Promise<boolean> {
   }
 
   // Nocturne stderr 持久化到 userData，便于排查 DB 锁等问题
-  const nocturneLogPath = path.join(userDataDir, 'nocturne_stderr.log');
+  const nocturneLogPath = getNocturneStderrLogPath();
   let nocturneStderrStream: fs.WriteStream | null = null;
   try {
     nocturneStderrStream = fs.createWriteStream(nocturneLogPath, { flags: 'a' });
@@ -3221,6 +3229,7 @@ async function startNocturneBackend(): Promise<boolean> {
     nocturneStderrStream?.end();
     nocturneStderrStream = null;
     console.log('[Nocturne] 后端退出，code:', code);
+    appendNocturneDiagnostic('backend_exit', { code });
     nocturneBackendProcess = null;
     if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
       mainWindow.webContents.send('nocturne-status', { backendAlive: false });
@@ -3228,6 +3237,7 @@ async function startNocturneBackend(): Promise<boolean> {
   });
   nocturneBackendProcess.on('error', (err) => {
     console.error('[Nocturne] 启动失败:', err.message);
+    appendNocturneDiagnostic('backend_error', { error: err.message });
     nocturneBackendProcess = null;
     if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
       mainWindow.webContents.send('nocturne-status', { backendAlive: false, error: err.message });
@@ -3240,6 +3250,7 @@ async function startNocturneBackend(): Promise<boolean> {
   }
   if (!(await isPortInUse(8000))) {
     console.warn('[Nocturne] 端口 8000 未就绪，启动超时');
+    appendNocturneDiagnostic('backend_timeout', { port: 8000, dbPath });
     return false;
   }
 
@@ -3250,12 +3261,24 @@ async function startNocturneBackend(): Promise<boolean> {
       if (res.ok) {
         console.log('[Nocturne] 后端已就绪 port 8000 + DB 健康');
         mainWindow?.webContents.send('openclaw-log-lines', ['[Nocturne] 记忆系统已启动 ✅']);
+        appendNocturneDiagnostic('backend_ready', {
+          port: 8000,
+          dbPath,
+          stderrLogPath: nocturneLogPath,
+          diagnosticLogPath: getNocturneDiagnosticLogPath(),
+        });
+        await logNocturneStatusSnapshot('backend_ready');
         return true;
       }
     } catch {}
   }
   console.warn('[Nocturne] /health 未返回 200，可能数据库未连接');
   mainWindow?.webContents.send('openclaw-log-lines', ['[Nocturne] 端口已监听，若仍显示不可用请点「重启 Nocturne 后端」']);
+  appendNocturneDiagnostic('backend_health_unready', {
+    port: 8000,
+    dbPath,
+    stderrLogPath: nocturneLogPath,
+  });
   return true;
 }
 
