@@ -85,7 +85,7 @@
 
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
-| `get-nocturne-status` | Nocturne 状态 | - | `{ backendAlive, ... }` |
+| `get-nocturne-status` | Nocturne 状态 | - | `{ backendAlive, frontendAlive, domains, coreMemoryUris, coreMemoryStatus, coreMemoryReadyCount, coreMemoryMissingCount, dbPath, envPath, diagnosticLogPath, stderrLogPath }` |
 | `open-nocturne-management` | 打开管理页 | - | - |
 | `restart-nocturne-backend` | 重启 Nocturne | - | - |
 | `nocturne-read` | 读记忆 | `{ uri }` | 记忆内容 |
@@ -101,7 +101,7 @@
 | `nocturne-add-task` | 添加任务 | `{ content, priority?, source? }` | - |
 | `nocturne-clear-completed-tasks` | 清除已完成 | - | - |
 | `nocturne-set-intention` | 设置意图 | `{ intention }` | - |
-| `seed-nocturne-memories` | 种子记忆 | - | - |
+| `seed-nocturne-memories` | 初始化/补齐核心记忆 | - | `{ success, output?, error? }` |
 | `setup-nocturne-memory` | 初始化记忆 | - | - |
 | `start-nocturne-dashboard` | 启动 Nocturne Dashboard | - | - |
 | `stop-nocturne-dashboard` | 停止 Dashboard | - | - |

@@ -70,8 +70,22 @@ export interface NocturneStatusResult {
   path: string;
   backendAlive?: boolean;
   frontendAlive?: boolean;
-  domains?: Array<{ domain: string }>;
+  domains?: Array<{ domain: string; root_count?: number }>;
   coreMemoryUris?: string[];
+  coreMemoryStatus?: Array<{
+    uri: string;
+    ok: boolean;
+    hasContent: boolean;
+    contentLength: number;
+    error?: string;
+  }>;
+  coreMemoryReadyCount?: number;
+  coreMemoryMissingCount?: number;
+  dbPath?: string;
+  dbUrl?: string;
+  envPath?: string;
+  diagnosticLogPath?: string;
+  stderrLogPath?: string;
 }
 
 export interface NocturneDashboardStatus {

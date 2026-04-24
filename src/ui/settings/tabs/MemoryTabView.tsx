@@ -9,8 +9,22 @@ export type NocturneDetailState = {
   path: string;
   backendAlive?: boolean;
   frontendAlive?: boolean;
-  domains?: Array<{ domain: string }>;
+  domains?: Array<{ domain: string; root_count?: number }>;
   coreMemoryUris?: string[];
+  coreMemoryStatus?: Array<{
+    uri: string;
+    ok: boolean;
+    hasContent: boolean;
+    contentLength: number;
+    error?: string;
+  }>;
+  coreMemoryReadyCount?: number;
+  coreMemoryMissingCount?: number;
+  dbPath?: string;
+  dbUrl?: string;
+  envPath?: string;
+  diagnosticLogPath?: string;
+  stderrLogPath?: string;
 } | null;
 
 export type AiLibStatusState = {
@@ -226,13 +240,13 @@ export function MemoryTabView({
 
           <p className="settings-guide-copy"><strong>快速开始（3 步）：</strong></p>
           <ol className="settings-guide-list">
-            <li>点击下方「安装 Python 依赖」（首次使用需要）</li>
-            <li>点击「▶ 启动 Dashboard」启动记忆管理界面</li>
-            <li>在打开的网页中添加你的个人记忆</li>
+            <li>确认下方后端状态为可访问</li>
+            <li>点击「初始化预设记忆」补齐系统基础记忆</li>
+            <li>再用「刷新核心记忆」检查 system://boot 是否已有内容</li>
           </ol>
 
           <p className="settings-guide-copy"><strong>系统要求：</strong></p>
-          <p className="settings-guide-indent">Python 3.10 或更高版本</p>
+          <p className="settings-guide-indent">发布版基础记忆初始化不再依赖本机 Python；只有开发态调试后端脚本时才需要 Python 3.10+</p>
         </div>
       </div>
 
@@ -562,6 +576,27 @@ export function MemoryTabView({
             <p className="settings-status-line-muted">
               已加载记忆：{nocturneDetail?.domains?.length ?? 0} 个 domain
             </p>
+            <p className="settings-status-line-muted">
+              核心记忆：{nocturneDetail?.coreMemoryReadyCount ?? 0} / {nocturneDetail?.coreMemoryUris?.length ?? 0} 已就绪
+            </p>
+            {nocturneDetail?.dbPath ? (
+              <p className="settings-status-line-muted">数据库：{nocturneDetail.dbPath}</p>
+            ) : null}
+            {nocturneDetail?.diagnosticLogPath ? (
+              <p className="settings-status-line-muted">诊断日志：{nocturneDetail.diagnosticLogPath}</p>
+            ) : null}
+            {nocturneDetail?.stderrLogPath ? (
+              <p className="settings-status-line-muted">后端日志：{nocturneDetail.stderrLogPath}</p>
+            ) : null}
+            {(nocturneDetail?.coreMemoryMissingCount ?? 0) > 0 ? (
+              <p className="settings-error">
+                缺失核心记忆：
+                {nocturneDetail?.coreMemoryStatus
+                  ?.filter((item) => !item.ok || !item.hasContent)
+                  .map((item) => item.uri)
+                  .join('，') || '未知'}
+              </p>
+            ) : null}
           </div>
 
           <div className="settings-btn-row">
@@ -640,14 +675,27 @@ export function MemoryTabView({
               }}
               disabled={nocturneSetupStatus === 'loading'}
             >
-              {nocturneSetupStatus === 'loading' ? '安装中...' : nocturneSetupStatus === 'success' ? '依赖已安装 ✓' : '安装 Python 依赖'}
+              {nocturneSetupStatus === 'loading' ? '安装中...' : nocturneSetupStatus === 'success' ? '依赖已安装 ✓' : '安装 Python 依赖（开发调试）'}
             </button>
             <button
               type="button"
               className="settings-btn"
-              onClick={() => {
+              onClick={async () => {
                 window.electronAPI?.seedNocturneMemories?.().then((r) => {
-                  alert(r.success ? '初始化成功！' + (r.output || '') : '初始化失败：' + (r.error || ''));
+                  alert(r.success ? '初始化成功！\n' + (r.output || '') : '初始化失败：\n' + (r.error || ''));
+                  window.electronAPI?.getNocturneStatus?.().then((detail) => {
+                    setNocturneDetail(detail);
+                    if (detail?.backendAlive !== undefined) {
+                      setNocturneDashboardStatus({
+                        backendRunning: detail.backendAlive,
+                        frontendRunning: !!detail.frontendAlive,
+                      });
+                    }
+                  }).catch((err: unknown) => {
+                    const msg = getErrorMessage(err);
+                    console.warn('[MemoryTabView] 初始化预设记忆后状态刷新失败', msg);
+                    setRefreshWarning(`初始化预设记忆后状态刷新失败：${msg}`);
+                  });
                 });
               }}
             >
@@ -714,7 +762,15 @@ Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、�
               <ul className="settings-uri-list">
                 {nocturneDetail?.coreMemoryUris?.map((uri) => (
                   <li key={uri} className="settings-uri-item">
-                    <code className="settings-uri-code">{uri}</code>
+                    <code className="settings-uri-code">
+                      {uri}
+                      {(() => {
+                        const status = nocturneDetail?.coreMemoryStatus?.find((item) => item.uri === uri);
+                        if (!status) return '';
+                        if (status.ok && status.hasContent) return '  [OK]';
+                        return `  [MISSING${status.error ? `: ${status.error}` : ''}]`;
+                      })()}
+                    </code>
                     <button
                       type="button"
                       className="settings-btn settings-small-btn"

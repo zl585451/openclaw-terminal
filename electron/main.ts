@@ -162,27 +162,102 @@ function getPythonForNocturne(): string[] {
   return process.platform === 'win32' ? ['py', '-3'] : ['python3'];
 }
 
+const DEFAULT_NOCTURNE_CORE_MEMORY_URIS = [
+  'core://agent/identity',
+  'core://my_user/profile',
+  'core://agent/rules/output_format',
+  'core://my_user/preferences',
+  'core://my_user/communication',
+  'core://project/oct/status',
+  'core://project/oct/decisions',
+];
+
+function getNocturneStderrLogPath(): string {
+  return path.join(app.getPath('userData'), 'nocturne_stderr.log');
+}
+
+function getNocturneDiagnosticLogPath(): string {
+  return path.join(app.getPath('userData'), 'nocturne_diagnostics.log');
+}
+
+function readNocturneEnvConfig(base: string): {
+  envPath: string;
+  dbUrl: string;
+  dbPath: string;
+  coreMemoryUris: string[];
+} {
+  const envPath = path.join(base, '.env');
+  const defaultDbPath = path.join(app.getPath('userData'), 'nocturne_memory.db');
+  let dbUrl = `sqlite+aiosqlite:///${defaultDbPath.replace(/\\/g, '/')}`;
+  let dbPath = defaultDbPath;
+  let coreMemoryUris = [...DEFAULT_NOCTURNE_CORE_MEMORY_URIS];
+
+  if (fs.existsSync(envPath)) {
+    try {
+      const envContent = fs.readFileSync(envPath, 'utf-8');
+      const dbMatch = envContent.match(/^DATABASE_URL=(.+)$/m);
+      if (dbMatch?.[1]?.trim()) {
+        dbUrl = dbMatch[1].trim();
+        const sqlitePrefix = 'sqlite+aiosqlite:///';
+        if (dbUrl.startsWith(sqlitePrefix)) {
+          dbPath = dbUrl.slice(sqlitePrefix.length).replace(/\//g, '\\');
+        }
+      }
+      const coreMatch = envContent.match(/^CORE_MEMORY_URIS=(.+)$/m);
+      if (coreMatch?.[1]?.trim()) {
+        const parsed = coreMatch[1]
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (parsed.length > 0) coreMemoryUris = parsed;
+      }
+    } catch {}
+  }
+
+  return { envPath, dbUrl, dbPath, coreMemoryUris };
+}
+
+function buildNocturneEnvContent(dbUrl: string): string {
+  return `# OCT + Nocturne Memory - auto-generated
+DATABASE_URL=${dbUrl}
+VALID_DOMAINS=core,writer,notes,system
+
+# 热记忆（L1）：每次 system://boot 自动加载
+# 与 Gateway 启动健康检查保持一致，避免“后端在线但基础记忆未注入”
+CORE_MEMORY_URIS=${DEFAULT_NOCTURNE_CORE_MEMORY_URIS.join(',')}
+`;
+}
+
+function appendNocturneDiagnostic(event: string, payload?: Record<string, unknown>): void {
+  const logPath = getNocturneDiagnosticLogPath();
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    event,
+    ...(payload || {}),
+  });
+  try {
+    fs.appendFileSync(logPath, line + '\n', 'utf-8');
+  } catch (e) {
+    console.warn('[NocturneDiag] 写入失败:', (e as Error)?.message);
+  }
+}
+
+function emitNocturneUiLog(message: string): void {
+  mainWindow?.webContents.send('openclaw-log-lines', [message]);
+}
+
 // 确保 Nocturne 的 .env 存在（DATABASE_URL 指向 userData）
 // 同时写入 nocturne_memory/.env 与 backend/.env，保证 uvicorn cwd=backend 时能加载到
 function ensureNocturneEnv(): void {
   const base = getNocturnePath();
   if (!base) return;
   const rootEnvPath = path.join(base, '.env');
-  if (fs.existsSync(rootEnvPath)) return;
   const userDataDir = app.getPath('userData');
   try {
     if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
   } catch {}
-  const dbPath = path.join(userDataDir, 'nocturne_memory.db');
-  const dbUrl = `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
-  const envContent = `# OCT + Nocturne Memory - auto-generated
-DATABASE_URL=${dbUrl}
-VALID_DOMAINS=core,writer,notes,system
-
-# 热记忆（L1）：每次 system://boot 自动加载
-# 按优先级排列：AI 身份 → 用户信息（发布版不含个人记忆路径，用户可自行添加）
-CORE_MEMORY_URIS=core://agent/identity,core://agent/principles,core://my_user,core://my_user/profile,core://agent/my_user
-`;
+  const existing = readNocturneEnvConfig(base);
+  const envContent = buildNocturneEnvContent(existing.dbUrl);
   const envPaths = [rootEnvPath, path.join(base, 'backend', '.env')];
   for (const envPath of envPaths) {
     try {
@@ -190,6 +265,11 @@ CORE_MEMORY_URIS=core://agent/identity,core://agent/principles,core://my_user,co
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(envPath, envContent, 'utf-8');
       console.log('[Nocturne] .env ready:', envPath);
+      appendNocturneDiagnostic('env_sync', {
+        envPath,
+        dbPath: existing.dbPath,
+        coreMemoryUris: DEFAULT_NOCTURNE_CORE_MEMORY_URIS,
+      });
     } catch (e) {
       console.warn('[Nocturne] Failed to write .env at', envPath, e);
     }
@@ -2335,41 +2415,260 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   }
 }
 
+async function collectNocturneStatusSnapshot(base: string): Promise<{
+  domains: Array<{ domain: string; root_count?: number }>;
+  coreMemoryUris: string[];
+  coreMemoryStatus: Array<{
+    uri: string;
+    ok: boolean;
+    hasContent: boolean;
+    contentLength: number;
+    error?: string;
+  }>;
+  dbPath: string;
+  dbUrl: string;
+  envPath: string;
+  diagnosticLogPath: string;
+  stderrLogPath: string;
+}> {
+  const envInfo = readNocturneEnvConfig(base);
+  let domains: Array<{ domain: string; root_count?: number }> = [];
+  const coreMemoryStatus: Array<{
+    uri: string;
+    ok: boolean;
+    hasContent: boolean;
+    contentLength: number;
+    error?: string;
+  }> = [];
+
+  if (await isNocturneBackendAlive()) {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/browse/domains', { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) domains = data;
+        else if (data?.data && Array.isArray(data.data)) domains = data.data;
+      }
+    } catch {}
+
+    for (const uri of envInfo.coreMemoryUris) {
+      const parts = splitUri(uri);
+      if (!parts) {
+        coreMemoryStatus.push({ uri, ok: false, hasContent: false, contentLength: 0, error: 'invalid uri' });
+        continue;
+      }
+      const result = await nocturneRequest('GET', '/browse/node', { path: parts.path, domain: parts.domain });
+      if (!result.ok) {
+        coreMemoryStatus.push({
+          uri,
+          ok: false,
+          hasContent: false,
+          contentLength: 0,
+          error: result.error || 'unknown error',
+        });
+        continue;
+      }
+      const data = result.data as any;
+      const content = String(data?.node?.content || data?.content || '').trim();
+      coreMemoryStatus.push({
+        uri,
+        ok: true,
+        hasContent: content.length > 0 && content !== '[DELETED]',
+        contentLength: content.length,
+      });
+    }
+  }
+
+  return {
+    domains,
+    coreMemoryUris: envInfo.coreMemoryUris,
+    coreMemoryStatus,
+    dbPath: envInfo.dbPath,
+    dbUrl: envInfo.dbUrl,
+    envPath: envInfo.envPath,
+    diagnosticLogPath: getNocturneDiagnosticLogPath(),
+    stderrLogPath: getNocturneStderrLogPath(),
+  };
+}
+
+async function logNocturneStatusSnapshot(reason: string): Promise<void> {
+  const base = getNocturnePath();
+  if (!base) return;
+  const snapshot = await collectNocturneStatusSnapshot(base);
+  const readyCount = snapshot.coreMemoryStatus.filter((item) => item.ok && item.hasContent).length;
+  const missing = snapshot.coreMemoryStatus
+    .filter((item) => !item.ok || !item.hasContent)
+    .map((item) => item.uri);
+  appendNocturneDiagnostic('status_snapshot', {
+    reason,
+    dbPath: snapshot.dbPath,
+    domains: snapshot.domains.map((item) => item.domain),
+    domainCount: snapshot.domains.length,
+    coreReadyCount: readyCount,
+    coreTotalCount: snapshot.coreMemoryUris.length,
+    missingCoreUris: missing,
+  });
+}
+
+async function seedNocturneCoreMemories(reason: string): Promise<{ success: boolean; output: string; error?: string }> {
+  const cfg = readAppConfig();
+  const aiName = String(cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME || 'OpenClaw').trim() || 'OpenClaw';
+  const userName = String(cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME || '用户').trim() || '用户';
+  const plan = [
+    {
+      uri: 'core://agent/identity',
+      priority: 0,
+      disclosure: '当用户问“你是谁”或需要说明身份时',
+      content: `我是 ${aiName}，${userName} 的智能助手。我的职责是提供清晰、可靠、诚实的帮助；不确定时要明确说明，不假装已经完成未执行的事。`,
+    },
+    {
+      uri: 'core://my_user/profile',
+      priority: 1,
+      disclosure: '当需要了解用户基本身份时',
+      content: `${userName} 是 ${aiName} 当前服务的默认用户。这个节点用于保存用户身份、习惯与长期资料；若信息不足，先保持为空白占位，等待后续补充。`,
+    },
+    {
+      uri: 'core://agent/rules/output_format',
+      priority: 1,
+      disclosure: '当需要约束输出风格时',
+      content: '默认输出要求：先给结论，再给关键依据；不要编造执行结果；需要用户操作时给最短可执行步骤；信息不足时明确说缺什么。',
+    },
+    {
+      uri: 'core://my_user/preferences',
+      priority: 1,
+      disclosure: '当需要读取用户偏好时',
+      content: '用户偏好默认占位节点。记录展示风格、常用工具、语言习惯等长期偏好；没有明确信息前不要杜撰。',
+    },
+    {
+      uri: 'core://my_user/communication',
+      priority: 1,
+      disclosure: '当需要调整交流方式时',
+      content: '交流原则默认占位节点。保持真诚、直接、可执行；避免夸大、避免空泛安慰；必要时用短步骤帮助用户定位问题。',
+    },
+    {
+      uri: 'core://project/oct/status',
+      priority: 1,
+      disclosure: '当用户提到 OCT 项目现状时',
+      content: 'OCT 是一个 Electron 桌面 AI 助手项目，前端为 React + Vite，桌面主进程负责拉起 Gateway 与 Nocturne 记忆后端。',
+    },
+    {
+      uri: 'core://project/oct/decisions',
+      priority: 1,
+      disclosure: '当需要了解 OCT 的关键约束时',
+      content: '关键约束：优先保证真实可验证；记忆系统在线不代表基础记忆已初始化；发布版功能不应依赖用户额外安装 Python 才能完成基础初始化。',
+    },
+  ];
+
+  appendNocturneDiagnostic('seed_begin', {
+    reason,
+    plannedUris: plan.map((item) => item.uri),
+    aiName,
+    userName,
+  });
+
+  for (const item of plan) {
+    const parts = splitUri(item.uri);
+    if (!parts) {
+      appendNocturneDiagnostic('seed_invalid_uri', { reason, uri: item.uri });
+      return { success: false, output: '', error: `无效 URI: ${item.uri}` };
+    }
+  }
+
+  const lines: string[] = [];
+  for (const item of plan) {
+    const parts = splitUri(item.uri)!;
+    const existing = await nocturneRequest('GET', '/browse/node', { path: parts.path, domain: parts.domain });
+    const existingContent = existing.ok
+      ? String((existing.data as any)?.node?.content || (existing.data as any)?.content || '').trim()
+      : '';
+
+    if (existing.ok && existingContent.length > 0 && existingContent !== '[DELETED]') {
+      lines.push(`[SKIP] ${item.uri}`);
+      appendNocturneDiagnostic('seed_skip_existing', {
+        reason,
+        uri: item.uri,
+        contentLength: existingContent.length,
+      });
+      continue;
+    }
+
+    const action = existing.ok ? 'PUT' : 'POST';
+    const result = await nocturneRequest(
+      action,
+      '/browse/node',
+      { path: parts.path, domain: parts.domain },
+      { content: item.content, priority: item.priority, disclosure: item.disclosure }
+    );
+
+    if (!result.ok) {
+      appendNocturneDiagnostic('seed_write_failed', {
+        reason,
+        uri: item.uri,
+        method: action,
+        error: result.error || 'unknown error',
+      });
+      return {
+        success: false,
+        output: lines.join('\n'),
+        error: `写入失败 ${item.uri}: ${result.error || '未知错误'}\n诊断日志：${getNocturneDiagnosticLogPath()}`,
+      };
+    }
+
+    lines.push(`[${action}] ${item.uri}`);
+    appendNocturneDiagnostic('seed_write_ok', {
+      reason,
+      uri: item.uri,
+      method: action,
+      contentLength: item.content.length,
+    });
+  }
+
+  await logNocturneStatusSnapshot(`seed:${reason}`);
+
+  return {
+    success: true,
+    output: `${lines.join('\n')}\n\n诊断日志：${getNocturneDiagnosticLogPath()}`,
+  };
+}
+
 // Nocturne Memory 集成
 ipcMain.handle('get-nocturne-status', async () => {
   const base = getNocturnePath();
   const available = !!base;
   let backendAlive = false;
   let frontendAlive = false;
-  let domains: Array<{ domain: string }> = [];
-  let coreMemoryUris: string[] = [];
+  let snapshot = {
+    domains: [] as Array<{ domain: string; root_count?: number }>,
+    coreMemoryUris: [] as string[],
+    coreMemoryStatus: [] as Array<{ uri: string; ok: boolean; hasContent: boolean; contentLength: number; error?: string }>,
+    dbPath: '',
+    dbUrl: '',
+    envPath: '',
+    diagnosticLogPath: getNocturneDiagnosticLogPath(),
+    stderrLogPath: getNocturneStderrLogPath(),
+  };
+
   if (base) {
-    try {
-      const envPath = path.join(base, '.env');
-      const envContent = fs.readFileSync(envPath, 'utf-8');
-      const m = envContent.match(/CORE_MEMORY_URIS=(.+)/);
-      if (m) coreMemoryUris = m[1]!.split(',').map((s: string) => s.trim()).filter(Boolean);
-    } catch {}
     backendAlive = await isPortInUse(8000);
     frontendAlive = await isPortInUse(3000);
-    if (backendAlive) {
-      try {
-        const res = await fetch('http://127.0.0.1:8000/browse/domains', { signal: AbortSignal.timeout(3000) });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) domains = data;
-          else if (data?.data && Array.isArray(data.data)) domains = data.data;
-        }
-      } catch {}
-    }
+    snapshot = await collectNocturneStatusSnapshot(base);
   }
+
   return {
     available,
     path: base || '',
     backendAlive,
     frontendAlive,
-    domains,
-    coreMemoryUris,
+    domains: snapshot.domains,
+    coreMemoryUris: snapshot.coreMemoryUris,
+    coreMemoryStatus: snapshot.coreMemoryStatus,
+    coreMemoryReadyCount: snapshot.coreMemoryStatus.filter((item) => item.ok && item.hasContent).length,
+    coreMemoryMissingCount: snapshot.coreMemoryStatus.filter((item) => !item.ok || !item.hasContent).length,
+    dbPath: snapshot.dbPath,
+    dbUrl: snapshot.dbUrl,
+    envPath: snapshot.envPath,
+    diagnosticLogPath: snapshot.diagnosticLogPath,
+    stderrLogPath: snapshot.stderrLogPath,
   };
 });
 ipcMain.handle('open-nocturne-management', () => {
@@ -2753,31 +3052,31 @@ ipcMain.handle('mcp-remove-server', async (_, name: string) => {
 ipcMain.handle('seed-nocturne-memories', async (): Promise<{ success: boolean; error?: string; output?: string }> => {
   const base = getNocturnePath();
   if (!base) return { success: false, error: 'Nocturne 未找到' };
-  const scriptPath = path.join(base, 'backend', 'scripts', 'seed_oct_memories.py');
-  if (!fs.existsSync(scriptPath)) return { success: false, error: 'seed 脚本未找到' };
-  const { execSync } = require('child_process');
-  const pythonCmd = getPythonForNocturne().join(' ');
   try {
-    const cwd = path.join(base, 'backend');
-    const cfg: Record<string, string> = fs.existsSync(CONFIG_FILE)
-      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
-      : {};
-    const out = execSync(`${pythonCmd} -m scripts.seed_oct_memories`, {
-      cwd,
-      encoding: 'utf8',
-      timeout: 30000,
-      env: {
-        ...process.env,
-        PYTHONPATH: cwd,
-        PYTHONIOENCODING: 'utf-8',
-        OCT_AI_NAME: (cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME).toString(),
-        OCT_USER_NAME: (cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME).toString(),
-      },
-    });
-    return { success: true, output: out };
+    ensureNocturneEnv();
+    const alive = await isNocturneBackendAlive();
+    if (!alive) {
+      appendNocturneDiagnostic('seed_backend_not_alive', { base });
+      emitNocturneUiLog('[Nocturne] 初始化预设记忆前，先尝试拉起后端...');
+      const started = await startNocturneBackend();
+      if (!started || !(await isNocturneBackendAlive())) {
+        const error = `Nocturne 后端未就绪，无法初始化预设记忆。\n诊断日志：${getNocturneDiagnosticLogPath()}`;
+        appendNocturneDiagnostic('seed_backend_start_failed', { base, error });
+        return { success: false, error };
+      }
+    }
+
+    const result = await seedNocturneCoreMemories('ipc');
+    if (result.success) {
+      emitNocturneUiLog('[Nocturne] 预设核心记忆已完成初始化');
+      return { success: true, output: result.output };
+    }
+    emitNocturneUiLog('[Nocturne] 预设核心记忆初始化失败，请查看诊断日志');
+    return { success: false, error: result.error || '执行失败', output: result.output };
   } catch (e: any) {
     const msg = e?.stderr || e?.stdout || e?.message || String(e);
-    return { success: false, error: msg || '执行失败' };
+    appendNocturneDiagnostic('seed_exception', { error: msg || '执行失败' });
+    return { success: false, error: `${msg || '执行失败'}\n诊断日志：${getNocturneDiagnosticLogPath()}` };
   }
 });
 ipcMain.handle('setup-nocturne-memory', async (): Promise<{ success: boolean; error?: string }> => {
@@ -2821,9 +3120,11 @@ function getLocalIP(): string {
 async function startNocturneBackend(): Promise<boolean> {
   if (nocturneBackendProcess && !nocturneBackendProcess.killed) return true;
 
+  ensureNocturneEnv();
   const portInUse = await isPortInUse(8000);
   if (portInUse) {
     console.log('[Nocturne] 端口 8000 已被占用，跳过启动');
+    appendNocturneDiagnostic('backend_port_in_use', { port: 8000 });
     return true;
   }
 
@@ -2841,14 +3142,22 @@ async function startNocturneBackend(): Promise<boolean> {
   );
 
   const userDataDir = app.getPath('userData');
-  const dbPath = path.join(userDataDir, 'nocturne_memory.db');
-  const dbUrl = `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
+  const envInfo = getNocturnePath() ? readNocturneEnvConfig(getNocturnePath()) : null;
+  const dbPath = envInfo?.dbPath || path.join(userDataDir, 'nocturne_memory.db');
+  const dbUrl = envInfo?.dbUrl || `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
 
   // 优先使用预编译 exe（打包后无需 Python）
   const exePath = getNocturneExePath();
   if (exePath) {
     const exeDir = path.dirname(exePath);
     console.log('[Nocturne] 使用预编译 exe:', exePath);
+    appendNocturneDiagnostic('backend_spawn', {
+      mode: 'exe',
+      exePath,
+      dbPath,
+      envPath: envInfo?.envPath || '',
+      coreMemoryUris: DEFAULT_NOCTURNE_CORE_MEMORY_URIS,
+    });
     nocturneBackendProcess = spawn(exePath, [], {
       cwd: exeDir,
       stdio: ['ignore', 'pipe', 'pipe'],
