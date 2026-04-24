@@ -208,6 +208,8 @@ function getModelContextLimit(modelId) {
     'minimax-m2.5': 196608,
     'glm-5': 202752,
     'glm-4.7': 202752,
+    'deepseek-v4-flash': 128000,
+    'deepseek-v4-pro': 128000,
     'deepseek-chat': 64000,
     'deepseek-reasoner': 64000,
   };
@@ -1416,6 +1418,8 @@ async function streamChat({
 
   let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用
   let assistantResponseContent = '';
+  /** DeepSeek V4 等：思考流片段，工具轮次必须原样回传，否则 API 400 */
+  let assistantReasoningContent = '';
   const _thinkState = {
     inThink: false,
     cotOpen: false,
@@ -1755,7 +1759,7 @@ async function streamChat({
         if (!delta) continue;
 
         if (delta.reasoning_content) {
-          // qwen3.5-plus thinking tokens - skip silently
+          assistantReasoningContent += delta.reasoning_content;
         }
         if (delta.content) {
           lastChunkTime = Date.now(); // 每次收到真实 chunk 时更新时间
@@ -1792,6 +1796,9 @@ async function streamChat({
             assistantResponseMessage: {
               role: 'assistant',
               content: assistantResponseContent || '',
+              ...(provider.id === 'deepseek' && assistantReasoningContent
+                ? { reasoning_content: assistantReasoningContent }
+                : {}),
               tool_calls: toolCalls.filter(Boolean),
             },
             truncatedMessages: effectiveMessages,
@@ -1883,6 +1890,9 @@ async function streamChat({
         assistantResponseMessage: {
           role: 'assistant',
           content: '',
+          ...(provider.id === 'deepseek' && assistantReasoningContent
+            ? { reasoning_content: assistantReasoningContent }
+            : {}),
           tool_calls: pseudoToolCalls,
         },
         truncatedMessages: effectiveMessages,
@@ -1961,7 +1971,7 @@ async function streamChat({
       const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;
       config.currentProvider = 'deepseek';
-      config.DASHSCOPE_MODEL = 'deepseek-chat';
+      config.DASHSCOPE_MODEL = 'deepseek-v4-flash';
       try {
         await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
       } finally {

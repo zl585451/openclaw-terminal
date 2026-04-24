@@ -35,7 +35,7 @@
 // 【DeepSeek】
 // DASHSCOPE_API_KEY=你的DeepSeek Key
 // DASHSCOPE_BASE_URL=https://api.deepseek.com/v1
-// OCT_MODEL=deepseek-chat
+// OCT_MODEL=deepseek-v4-flash
 //
 // 【OpenAI】
 // DASHSCOPE_API_KEY=你的OpenAI Key

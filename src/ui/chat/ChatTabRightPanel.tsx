@@ -49,6 +49,8 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   'glm-4.7': 131072,
   'deepseek-v3': 65536,
   'deepseek-r1': 65536,
+  'deepseek-v4-flash': 128000,
+  'deepseek-v4-pro': 128000,
   'deepseek-chat': 65536,
   'deepseek-reasoner': 65536,
 };

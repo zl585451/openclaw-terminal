@@ -70,10 +70,12 @@ const FALLBACK_PROVIDERS: ProvidersState = {
     baseUrl: 'https://api.deepseek.com/v1',
     keyLink: 'https://platform.deepseek.com/',
     keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-flash',
     models: [
-      { id: 'deepseek-chat', label: 'DeepSeek Chat（通用）', tools: true, thinking: false },
-      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（推理）', tools: false, thinking: true },
+      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash（通用，推荐）', tools: true, thinking: false },
+      { id: 'deepseek-v4-pro',   label: 'DeepSeek V4 Pro（深度推理）',    tools: false, thinking: true },
+      { id: 'deepseek-chat',     label: 'DeepSeek Chat（旧版）',          tools: true, thinking: false },
+      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（旧版）',      tools: false, thinking: true },
     ],
   },
   minimax: {

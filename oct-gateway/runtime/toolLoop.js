@@ -149,6 +149,10 @@ class ToolLoop {
       ? {
           role: 'assistant',
           content: assistantResponseMessage.content || '',
+          ...(typeof assistantResponseMessage.reasoning_content === 'string'
+            && assistantResponseMessage.reasoning_content.length > 0
+            ? { reasoning_content: assistantResponseMessage.reasoning_content }
+            : {}),
           tool_calls: normalizedToolCalls,
         }
       : {

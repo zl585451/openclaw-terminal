@@ -81,10 +81,13 @@ const PROVIDERS = {
     keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
     keyLink: 'https://platform.deepseek.com/',
     keyEnvVars: ['DEEPSEEK_API_KEY'],
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-flash',
     models: [
-      { id: 'deepseek-chat',     label: 'DeepSeek Chat（通用）',     tools: true,  thinking: false },
-      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（推理）', tools: false, thinking: true  },
+      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash（通用，推荐）', tools: true,  thinking: false },
+      { id: 'deepseek-v4-pro',   label: 'DeepSeek V4 Pro（深度推理）',    tools: false, thinking: true  },
+      // 以下旧模型将于 2026/07/24 弃用，仅作兼容保留
+      { id: 'deepseek-chat',     label: 'DeepSeek Chat（旧版）',         tools: true,  thinking: false },
+      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（旧版）',     tools: false, thinking: true  },
     ],
     supportsStreamOptions: false,
   },

@@ -328,17 +328,33 @@ const MODEL_REGISTRY = {
     maxTokens: 4096,
   },
   // ─── DeepSeek 官方 API ───
-  'deepseek-chat': {
+  'deepseek-v4-flash': {
     provider: 'deepseek',
-    label: 'DeepSeek Chat（官方 API）',
+    label: 'DeepSeek V4 Flash（通用，推荐）',
     supportsTools: true,
     supportsStreamOptions: false,  // DeepSeek 官方不支持
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'deepseek-v4-pro': {
+    provider: 'deepseek',
+    label: 'DeepSeek V4 Pro（深度推理）',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'deepseek-chat': {
+    provider: 'deepseek',
+    label: 'DeepSeek Chat（旧版，2026/07/24 弃用）',
+    supportsTools: true,
+    supportsStreamOptions: false,
     supportsThinking: false,
     maxTokens: 4096,
   },
   'deepseek-reasoner': {
     provider: 'deepseek',
-    label: 'DeepSeek Reasoner（官方深度推理）',
+    label: 'DeepSeek Reasoner（旧版，2026/07/24 弃用）',
     supportsTools: false,
     supportsStreamOptions: false,
     supportsThinking: true,
@@ -517,7 +533,9 @@ function loadAvailableModels() {
       { id: 'MiniMax-M2.5', provider: 'bailian' },
       { id: 'glm-5', provider: 'bailian' },
       { id: 'glm-4.7', provider: 'bailian' },
-      { id: 'deepseek-chat', provider: 'deepseek' },
+      { id: 'deepseek-v4-flash', provider: 'deepseek' },
+      { id: 'deepseek-v4-pro',   provider: 'deepseek' },
+      { id: 'deepseek-chat',     provider: 'deepseek' },
     ];
   }
   return models;
