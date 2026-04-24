@@ -7,12 +7,14 @@ export type ChatProviderApiKeyField =
   | 'DASHSCOPE_API_KEY'
   | 'DEEPSEEK_API_KEY'
   | 'MINIMAX_API_KEY'
+  | 'MOONSHOT_API_KEY'
   | 'CUSTOM_API_KEY'
   | 'GOOGLE_AI_API_KEY';
 
 export function getChatProviderApiKeyField(providerId: string): ChatProviderApiKeyField {
   if (providerId === 'deepseek') return 'DEEPSEEK_API_KEY';
   if (providerId === 'minimax') return 'MINIMAX_API_KEY';
+  if (providerId === 'moonshot') return 'MOONSHOT_API_KEY';
   if (providerId === 'custom') return 'CUSTOM_API_KEY';
   if (providerId === 'google') return 'GOOGLE_AI_API_KEY';
   return 'DASHSCOPE_API_KEY';
@@ -29,6 +31,7 @@ export function isAnyChatProviderKeyVisible(showApiKey: Record<string, boolean>)
     showApiKey.DASHSCOPE_API_KEY
     || showApiKey.DEEPSEEK_API_KEY
     || showApiKey.MINIMAX_API_KEY
+    || showApiKey.MOONSHOT_API_KEY
     || showApiKey.CUSTOM_API_KEY
     || showApiKey.GOOGLE_AI_API_KEY
   );
