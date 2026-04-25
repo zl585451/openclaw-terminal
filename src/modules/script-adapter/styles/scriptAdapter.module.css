@@ -1882,6 +1882,11 @@
   box-shadow: 0 8px 22px rgba(30, 117, 91, 0.08);
 }
 
+.taskStepDone {
+  border-color: rgba(30, 117, 91, 0.16);
+  background: rgba(255, 255, 253, 0.94);
+}
+
 .taskStepIndex {
   display: inline-flex;
   align-items: center;
@@ -1898,6 +1903,11 @@
 .taskStepActive .taskStepIndex {
   background: #1e755b;
   color: #ffffff;
+}
+
+.taskStepDone .taskStepIndex {
+  background: rgba(30, 117, 91, 0.13);
+  color: #176149;
 }
 
 .taskStepText {
@@ -1951,6 +1961,18 @@
   background:
     radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.16), transparent 34%),
     linear-gradient(135deg, rgba(255, 255, 253, 0.98), rgba(234, 244, 239, 0.98));
+}
+
+.executionHeroCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 22px;
+  border-color: rgba(30, 117, 91, 0.22);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(239, 247, 242, 0.98), rgba(255, 255, 253, 0.98));
 }
 
 .heroTaskCopy {
@@ -2101,6 +2123,189 @@
   color: #596165;
   font-size: 14px;
   line-height: 1.75;
+}
+
+.executionSummaryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 14px;
+}
+
+.executionBriefCard,
+.outputChecklistCard,
+.agentExecutionCard,
+.executionGuardCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.executionBriefGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.executionBriefGrid div,
+.outputChecklist div,
+.executionGuardList div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+}
+
+.executionBriefGrid span,
+.outputChecklist strong,
+.executionGuardList span {
+  color: #667075;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.executionBriefGrid strong,
+.outputChecklist span,
+.executionGuardList strong {
+  color: #15191b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.outputChecklist,
+.executionGuardList {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.agentExecutionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.agentExecutionHeader p {
+  margin: 6px 0 0;
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.agentExecutionList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agentExecutionItem {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 253, 0.9);
+}
+
+.agentExecutionIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.12);
+  color: #176149;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.agentExecutionMain {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.agentExecutionTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agentExecutionTop strong {
+  color: #15191b;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.agentExecutionTop span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #596165;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.agentExecutionMain p {
+  margin: 0;
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.agentExecutionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.agentExecutionMeta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(53, 64, 67, 0.07);
+  color: #4f595c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lockedEvidenceList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lockedEvidenceList div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 13px;
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+}
+
+.lockedEvidenceList strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.lockedEvidenceList span {
+  max-height: 130px;
+  overflow: auto;
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
 }
 
 .sidebar {
@@ -2659,6 +2864,8 @@
   .taskGrid,
   .compareGrid,
   .heroTaskCard,
+  .executionHeroCard,
+  .executionSummaryGrid,
   .directionCard,
   .entryHeroGrid,
   .createGrid,
@@ -2666,6 +2873,7 @@
   .composerConfigGrid,
   .sourceGateLayout,
   .planDecisionList,
+  .executionBriefGrid,
   .directionFitGrid,
   .analysisIssueGrid,
   .strategyGrid,
@@ -2733,6 +2941,8 @@
   .composerSectionHeader,
   .summaryList div,
   .agentPreviewItem,
+  .agentExecutionHeader,
+  .agentExecutionTop,
   .analysisHeroCard div,
   .evidenceItem,
   .planHeroHeader,
