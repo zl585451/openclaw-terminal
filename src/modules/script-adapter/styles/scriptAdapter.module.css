@@ -814,6 +814,7 @@
 }
 
 .backgroundStepDone,
+.backgroundStepRunning,
 .backgroundStepPending {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
@@ -830,11 +831,17 @@
   background: rgba(239, 247, 242, 0.92);
 }
 
+.backgroundStepRunning {
+  border-color: rgba(239, 159, 39, 0.28);
+  background: rgba(255, 248, 232, 0.92);
+}
+
 .backgroundStepPending {
   opacity: 0.72;
 }
 
 .backgroundStepDone span,
+.backgroundStepRunning span,
 .backgroundStepPending span {
   display: inline-flex;
   align-items: center;
@@ -853,11 +860,34 @@
   color: #ffffff;
 }
 
+.backgroundStepRunning span {
+  background: #ef9f27;
+  color: #ffffff;
+}
+
 .backgroundStepDone strong,
+.backgroundStepRunning strong,
 .backgroundStepPending strong {
   color: #15191b;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.backgroundStepDone div,
+.backgroundStepRunning div,
+.backgroundStepPending div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.backgroundStepDone em,
+.backgroundStepRunning em,
+.backgroundStepPending em {
+  color: #667075;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.45;
 }
 
 .composerActionBar {
@@ -1248,6 +1278,13 @@
   color: #9b6206;
   font-size: 12px;
   font-weight: 700;
+}
+
+.inlineErrorText {
+  color: #9f2e2d;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .layoutHeader {

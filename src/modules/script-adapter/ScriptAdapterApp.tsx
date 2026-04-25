@@ -6,6 +6,12 @@ import { MOCK_STAGES } from './mockData/mockStages';
 import { MOCK_ARTIFACTS } from './mockData/mockArtifacts';
 import { MOCK_AGENTS } from './mockData/mockAgents';
 import { MOCK_TEAM_TEMPLATES } from './mockData/mockTemplates';
+import {
+  MOCK_INTAKE_STEPS,
+  type IntakeResult,
+  type IntakeStatus,
+  runMockTaskIntake,
+} from './services/mockTaskIntake';
 import styles from './styles/scriptAdapter.module.css';
 
 type ScriptAdapterScreen = 'home' | 'create' | 'workspace';
@@ -38,39 +44,6 @@ const AGENT_QUEUE_SUMMARY = [
   { label: '即将执行', value: '1', desc: '业务分析 Agent' },
   { label: '后续候选', value: '3', desc: '场景拆分、文本改编、角色音标注' },
   { label: '人工确认', value: '是', desc: '分析方向和冲突要求需要确认' },
-];
-
-const PLAN_CONFIRM_ITEMS = [
-  {
-    label: '目标产物',
-    value: '多人演播有声书',
-    desc: '按有声书团队模板生成分析和后续制作链路。',
-  },
-  {
-    label: '处理范围',
-    value: '第 1 章',
-    desc: '先跑样章范围，避免第一次任务过大。',
-  },
-  {
-    label: '改动权限',
-    value: '不改剧情，只提升听感',
-    desc: '保护剧情事实，先聚焦听感、角色音和演播可执行性。',
-  },
-  {
-    label: '下一步 Agent',
-    value: '业务分析 Agent',
-    desc: '先输出问题和方向，不直接进入改稿。',
-  },
-];
-
-const INTAKE_SUMMARY = '系统判断：小说正文 / 已识别第 1 章 / 适合多人演播 / 轻风险';
-
-const BACKGROUND_INTAKE_STEPS = [
-  'RawAsset 原始文件留存',
-  '文本抽取 / 清洗 / 编码统一',
-  'SourceDocument 标准化入库',
-  'SourceProfile 建索引和轻量画像',
-  '任务安排 Agent 生成 TaskDraft',
 ];
 
 interface ScriptAdapterAppProps {
@@ -206,16 +179,29 @@ interface WizardProps {
 
 function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [brief, setBrief] = useState('不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。');
-  const [sourceConfirmed, setSourceConfirmed] = useState(false);
+  const [intakeStatus, setIntakeStatus] = useState<IntakeStatus>('idle');
+  const [intakeStepIndex, setIntakeStepIndex] = useState(0);
+  const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
+  const [intakeError, setIntakeError] = useState('');
+  const sourceConfirmed = intakeStatus === 'completed' && Boolean(intakeResult);
+  const isIntakeRunning = intakeStatus === 'running';
   const briefLength = brief.trim().length;
   const isBriefLong = briefLength > 220;
   const isBriefTooShort = briefLength > 0 && briefLength < 12;
-  const progressValue = sourceConfirmed ? 78 : 46;
+  const progressValue = sourceConfirmed ? 78 : isIntakeRunning ? 58 : 46;
+  const agentQueueSummary = intakeResult
+    ? [
+        { label: '已预分配', value: String(intakeResult.agentPreAllocation.assignedCount), desc: '文件解析、内容识别、任务安排' },
+        { label: '即将执行', value: '1', desc: intakeResult.agentPreAllocation.nextAgent },
+        { label: '后续候选', value: String(intakeResult.agentPreAllocation.candidateCount), desc: '场景拆分、文本改编、角色音标注' },
+        { label: '人工确认', value: intakeResult.agentPreAllocation.requiresHumanConfirm ? '是' : '否', desc: '分析方向和冲突要求需要确认' },
+      ]
+    : AGENT_QUEUE_SUMMARY;
   const createSteps = [
     {
       index: 1,
       title: '确认素材',
-      desc: sourceConfirmed ? '参数已确认 · 已生成预分配' : '上传原始文本 · 生成预分配',
+      desc: sourceConfirmed ? '参数已确认 · 已生成预分配' : isIntakeRunning ? '正在生成素材对象' : '上传原始文本 · 生成预分配',
       status: sourceConfirmed ? 'done' : 'active',
     },
     {
@@ -234,13 +220,39 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     });
   };
 
+  const handleConfirmSource = async () => {
+    if (isIntakeRunning) return;
+
+    setIntakeStatus('running');
+    setIntakeStepIndex(0);
+    setIntakeResult(null);
+    setIntakeError('');
+
+    try {
+      const result = await runMockTaskIntake((stepIndex) => {
+        setIntakeStepIndex(stepIndex);
+      });
+      setIntakeResult(result);
+      setIntakeStatus('completed');
+    } catch (error) {
+      setIntakeStatus('failed');
+      setIntakeError(error instanceof Error ? error.message : '素材摄入失败，请重试。');
+    }
+  };
+
+  const getIntakeStepClassName = (stepIndex: number) => {
+    if (intakeStatus === 'completed' || intakeStepIndex > stepIndex) return styles.backgroundStepDone;
+    if (isIntakeRunning && intakeStepIndex === stepIndex) return styles.backgroundStepRunning;
+    return styles.backgroundStepPending;
+  };
+
   return (
     <div className={styles.createShell}>
       <header className={styles.createComposerHeader}>
         <div>
           <div className={styles.detailEyebrow}>后台任务编排</div>
           <h1>配置内容制作任务</h1>
-          <p>先安排素材、目标、范围和要求。当前只定 UI，不接真实上传、文件解析或 Gateway 执行。</p>
+          <p>先安排素材、目标、范围和要求。当前接入本地 mock 摄入链路，可试走第 1 步到第 2 步的任务方案生成。</p>
         </div>
         <button type="button" className={styles.backButton} onClick={onBack}>
           ← 返回任务大厅
@@ -256,7 +268,11 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <span style={{ width: `${progressValue}%` }} />
             </div>
             <div className={styles.mutedText}>
-              {sourceConfirmed ? '已生成初步任务草案，等待你确认详细执行方案。' : '先确认素材参数，系统再生成 Agent 预分配。'}
+              {sourceConfirmed
+                ? '已生成初步任务草案，等待你确认详细执行方案。'
+                : isIntakeRunning
+                  ? `正在执行第 ${Math.min(intakeStepIndex + 1, MOCK_INTAKE_STEPS.length)} 步素材摄入。`
+                  : '先确认素材参数，系统再生成 Agent 预分配。'}
             </div>
           </div>
 
@@ -288,7 +304,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <h2>提交原始文本，确认素材参数</h2>
               </div>
               <span className={sourceConfirmed ? styles.composerStatePill : styles.reviewPill}>
-                {sourceConfirmed ? '已确认' : '待确认'}
+                {sourceConfirmed ? '已确认' : isIntakeRunning ? '处理中' : '待确认'}
               </span>
             </div>
 
@@ -312,10 +328,10 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <div className={styles.sourceInspectPanel}>
                 <div className={styles.taskFieldLabel}>确认后生成的素材参数</div>
                 <div className={styles.sourceParamGrid}>
-                  <div><span>文件</span><strong>长夜未瞑_第1章.txt</strong></div>
-                  <div><span>类型</span><strong>小说正文</strong></div>
-                  <div><span>章节</span><strong>识别第 1 章</strong></div>
-                  <div><span>字数</span><strong>待真实解析</strong></div>
+                  <div><span>文件</span><strong>{intakeResult?.sourceDocument.fileName ?? '长夜未瞑_第1章.txt'}</strong></div>
+                  <div><span>类型</span><strong>{intakeResult?.sourceDocument.sourceType ?? '待识别'}</strong></div>
+                  <div><span>章节</span><strong>{intakeResult?.sourceDocument.chapterHint ?? '待解析'}</strong></div>
+                  <div><span>字数</span><strong>{intakeResult?.sourceDocument.wordCountLabel ?? '待真实解析'}</strong></div>
                 </div>
                 <div className={styles.agentPreviewList}>
                   {SOURCE_AGENT_PREVIEW.map((item) => (
@@ -331,10 +347,12 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  onClick={() => setSourceConfirmed(true)}
+                  disabled={isIntakeRunning}
+                  onClick={handleConfirmSource}
                 >
-                  确认素材，生成任务方案
+                  {isIntakeRunning ? '正在生成任务方案' : sourceConfirmed ? '重新生成任务方案' : '确认素材，生成任务方案'}
                 </button>
+                {intakeError ? <div className={styles.inlineErrorText}>{intakeError}</div> : null}
               </div>
             </div>
           </div>
@@ -346,29 +364,29 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <h2>定义产物、范围和本轮要求</h2>
               </div>
               <span className={sourceConfirmed ? styles.reviewPill : styles.mutedPill}>
-                {sourceConfirmed ? '初步分析已生成' : '等待素材'}
+                {sourceConfirmed ? '初步分析已生成' : isIntakeRunning ? '生成中' : '等待素材'}
               </span>
             </div>
 
-            {sourceConfirmed ? (
+            {sourceConfirmed && intakeResult ? (
               <>
                 <div className={styles.planHeroCard}>
                   <div className={styles.planHeroHeader}>
                     <div>
                       <strong>AI 推荐执行方案</strong>
-                      <span>{INTAKE_SUMMARY}</span>
+                      <span>{intakeResult.intakeSummary}</span>
                     </div>
-                    <em>task.intake_planner@1.0</em>
+                    <em>{intakeResult.plannerAgent}</em>
                   </div>
                   <div className={styles.planHeroMain}>
                     <span>建议方案</span>
-                    <strong>先做第 1 章的业务分析，不直接改稿。</strong>
-                    <p>文本为小说正文，旁白和对白混合，适合先做听感、结构和角色音风险分析。确认后，系统会锁定任务草案和下一步 Agent 队列。</p>
+                    <strong>{intakeResult.recommendedAction}</strong>
+                    <p>{intakeResult.recommendedReason}确认后，系统会锁定任务草案和下一步 Agent 队列。</p>
                   </div>
                 </div>
 
                 <div className={styles.planDecisionList}>
-                  {PLAN_CONFIRM_ITEMS.map((item) => (
+                  {intakeResult.taskDraft.confirmItems.map((item) => (
                     <div key={item.label} className={styles.planDecisionItem}>
                       <div>
                         <span>{item.label}</span>
@@ -478,8 +496,12 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               </>
             ) : (
               <div className={styles.intakeWaitingPanel}>
-                <strong>等待第 1 步确认后生成 AI 初步判断</strong>
-                <span>确认素材后，系统会先完成文件留存、文本标准化、轻量画像和任务草案生成，再进入这里让你调整。</span>
+                <strong>{isIntakeRunning ? '正在生成 AI 初步判断' : '等待第 1 步确认后生成 AI 初步判断'}</strong>
+                <span>
+                  {isIntakeRunning
+                    ? '系统正在完成文件留存、文本标准化、轻量画像和任务草案生成，完成后会自动回填到这里。'
+                    : '确认素材后，系统会先完成文件留存、文本标准化、轻量画像和任务草案生成，再进入这里让你调整。'}
+                </span>
               </div>
             )}
           </div>
@@ -497,21 +519,24 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               </span>
             </div>
             <div className={styles.summaryList}>
-              <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 等待解析接入' : '上传文件 · 待确认'}</strong></div>
+              <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 已完成解析' : isIntakeRunning ? '正在摄入 · 生成素材对象' : '上传文件 · 待确认'}</strong></div>
               <div><span>目标</span><strong>多人演播有声书</strong></div>
               <div><span>范围</span><strong>前1章</strong></div>
               <div><span>本轮</span><strong>先分析问题</strong></div>
-              <div><span>草案</span><strong>{sourceConfirmed ? '已生成 TaskDraft' : '等待生成'}</strong></div>
+              <div><span>草案</span><strong>{sourceConfirmed ? '已生成 TaskDraft' : isIntakeRunning ? '生成中' : '等待生成'}</strong></div>
             </div>
           </div>
 
           <div className={`${styles.card} ${styles.taskMapCard}`}>
             <div className={styles.sidebarSectionLabel}>后台摄入链路</div>
             <div className={styles.backgroundStepList}>
-              {BACKGROUND_INTAKE_STEPS.map((step, index) => (
-                <div key={step} className={sourceConfirmed ? styles.backgroundStepDone : styles.backgroundStepPending}>
+              {MOCK_INTAKE_STEPS.map((step, index) => (
+                <div key={step.id} className={getIntakeStepClassName(index)}>
                   <span>{index + 1}</span>
-                  <strong>{step}</strong>
+                  <div>
+                    <strong>{step.title}</strong>
+                    <em>{step.desc}</em>
+                  </div>
                 </div>
               ))}
             </div>
@@ -531,7 +556,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <span>2</span>
                 <div>
                   <strong>执行确认</strong>
-                  <em>{sourceConfirmed ? '等待确认方案' : '等待素材确认'}</em>
+                  <em>{sourceConfirmed ? '等待确认方案' : isIntakeRunning ? '等待摄入完成' : '等待素材确认'}</em>
                 </div>
               </div>
             </div>
@@ -540,7 +565,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <div className={`${styles.card} ${styles.taskMapCard}`}>
             <div className={styles.sidebarSectionLabel}>Agent 队列总览</div>
             <div className={styles.queueSummaryGrid}>
-              {AGENT_QUEUE_SUMMARY.map((item) => (
+              {agentQueueSummary.map((item) => (
                 <div key={item.label} className={styles.queueSummaryItem}>
                   <span>{item.label}</span>
                   <strong>{item.value}</strong>
