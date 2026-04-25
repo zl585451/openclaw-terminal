@@ -40,18 +40,30 @@ const AGENT_QUEUE_SUMMARY = [
   { label: '人工确认', value: '是', desc: '分析方向和冲突要求需要确认' },
 ];
 
-const INTAKE_INSIGHTS = [
-  { label: '素材判断', value: '小说正文', desc: '旁白和对白混合，适合先做多人演播方向分析。' },
-  { label: '结构判断', value: '识别第 1 章', desc: '章节边界可用，适合先从样章范围开始。' },
-  { label: '推荐目标', value: '多人演播有声书', desc: '当前文本更适合听感优化、角色音和演播标注。' },
-  { label: '风险提示', value: '轻风险', desc: '字数与章节仍需真实解析；未发现明显目标冲突。' },
+const PLAN_CONFIRM_ITEMS = [
+  {
+    label: '目标产物',
+    value: '多人演播有声书',
+    desc: '按有声书团队模板生成分析和后续制作链路。',
+  },
+  {
+    label: '处理范围',
+    value: '第 1 章',
+    desc: '先跑样章范围，避免第一次任务过大。',
+  },
+  {
+    label: '改动权限',
+    value: '不改剧情，只提升听感',
+    desc: '保护剧情事实，先聚焦听感、角色音和演播可执行性。',
+  },
+  {
+    label: '下一步 Agent',
+    value: '业务分析 Agent',
+    desc: '先输出问题和方向，不直接进入改稿。',
+  },
 ];
 
-const RECOMMENDED_PLAN = [
-  { label: '推荐范围', value: '第 1 章', desc: '先控制样章范围，避免第一次任务过大。' },
-  { label: '推荐本轮', value: '先分析问题', desc: '先输出文本问题、听感风险和改编方向，不直接改稿。' },
-  { label: '推荐后续', value: '业务分析 Agent', desc: '第二步确认后再进入作品结构和听感问题分析。' },
-];
+const INTAKE_SUMMARY = '系统判断：小说正文 / 已识别第 1 章 / 适合多人演播 / 轻风险';
 
 const BACKGROUND_INTAKE_STEPS = [
   'RawAsset 原始文件留存',
@@ -339,128 +351,137 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             </div>
 
             {sourceConfirmed ? (
-              <div className={styles.intakeResultPanel}>
-                <div className={styles.intakeResultHeader}>
-                  <div>
-                    <strong>AI 初步判断</strong>
-                    <span>任务安排 Agent 已完成轻量摄入分析，下面是给第 2 步的默认建议。</span>
+              <>
+                <div className={styles.planHeroCard}>
+                  <div className={styles.planHeroHeader}>
+                    <div>
+                      <strong>AI 推荐执行方案</strong>
+                      <span>{INTAKE_SUMMARY}</span>
+                    </div>
+                    <em>task.intake_planner@1.0</em>
                   </div>
-                  <em>task.intake_planner@1.0</em>
+                  <div className={styles.planHeroMain}>
+                    <span>建议方案</span>
+                    <strong>先做第 1 章的业务分析，不直接改稿。</strong>
+                    <p>文本为小说正文，旁白和对白混合，适合先做听感、结构和角色音风险分析。确认后，系统会锁定任务草案和下一步 Agent 队列。</p>
+                  </div>
                 </div>
-                <div className={styles.intakeInsightGrid}>
-                  {INTAKE_INSIGHTS.map((item) => (
-                    <div key={item.label} className={styles.intakeInsightCard}>
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
-                      <em>{item.desc}</em>
+
+                <div className={styles.planDecisionList}>
+                  {PLAN_CONFIRM_ITEMS.map((item) => (
+                    <div key={item.label} className={styles.planDecisionItem}>
+                      <div>
+                        <span>{item.label}</span>
+                        <strong>{item.value}</strong>
+                        <em>{item.desc}</em>
+                      </div>
+                      <button type="button" className={styles.tinyEditButton}>
+                        修改
+                      </button>
                     </div>
                   ))}
                 </div>
-              </div>
+
+                <div className={styles.supplementRequirementBlock}>
+                  <div className={styles.composerSectionHeader}>
+                    <div>
+                      <div className={styles.taskFieldLabel}>补充要求</div>
+                      <span className={styles.mutedText}>只写额外边界或偏好，不需要复述上面的方案。</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.choiceGrid}>
+                    {REQUIREMENT_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className={brief.includes(preset) ? styles.choiceCardActive : styles.choiceCard}
+                        onClick={() => addRequirementPreset(preset)}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    className={styles.taskTextarea}
+                    aria-label="本轮任务补充要求"
+                    placeholder="例：不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。"
+                    value={brief}
+                    onChange={(event) => setBrief(event.target.value)}
+                  />
+
+                  <div className={styles.requirementMetaRow}>
+                    <span className={isBriefLong || isBriefTooShort ? styles.requirementWarnText : styles.mutedText}>
+                      {briefLength}/300 建议字数
+                    </span>
+                    {isBriefTooShort ? <span className={styles.requirementWarnText}>要求太短，建议至少说明目标或边界。</span> : null}
+                    {isBriefLong ? <span className={styles.requirementWarnText}>要求偏长，AI 会先压缩成任务摘要再执行。</span> : null}
+                  </div>
+                </div>
+
+                <details className={styles.advancedPlanDetails}>
+                  <summary>需要微调目标、范围或本轮动作</summary>
+                  <div className={styles.advancedPlanBody}>
+                    <div className={styles.composerConfigGrid}>
+                      <div className={styles.composerConfigGroup}>
+                        <strong>目标产物</strong>
+                        <div className={styles.choiceGrid}>
+                          <button type="button" className={styles.choiceCardActive}>多人演播有声书</button>
+                          <button type="button" className={styles.choiceCard}>广播剧</button>
+                          <button type="button" className={styles.choiceCard}>短剧脚本</button>
+                          <button type="button" className={styles.choiceCard}>只做作品分析</button>
+                        </div>
+                      </div>
+                      <div className={styles.composerConfigGroup}>
+                        <strong>处理范围</strong>
+                        <div className={styles.choiceGrid}>
+                          <button type="button" className={styles.choiceCardActive}>前1章</button>
+                          <button type="button" className={styles.choiceCard}>全文</button>
+                          <button type="button" className={styles.choiceCard}>自定义范围</button>
+                        </div>
+                      </div>
+                      <div className={styles.composerConfigGroup}>
+                        <strong>本轮目标</strong>
+                        <div className={styles.choiceGrid}>
+                          <button type="button" className={styles.choiceCardActive}>先分析问题</button>
+                          <button type="button" className={styles.choiceCard}>直接生成样章</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={styles.requirementGuide}>
+                      {REQUIREMENT_HINTS.map((hint) => (
+                        <div key={hint.title} className={styles.requirementHintCard}>
+                          <strong>{hint.title}</strong>
+                          <span>{hint.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+
+                <div className={styles.teamLockBox}>
+                  <div>
+                    <strong>确认后锁定的 Agent 团队</strong>
+                    <span>业务分析 Agent 先执行；场景拆分、文本改编、角色音标注和演播设计进入后续候选队列。</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    disabled={!sourceConfirmed}
+                    onClick={onStart}
+                  >
+                    确认方案，开始 AI 初读分析
+                  </button>
+                </div>
+              </>
             ) : (
               <div className={styles.intakeWaitingPanel}>
                 <strong>等待第 1 步确认后生成 AI 初步判断</strong>
                 <span>确认素材后，系统会先完成文件留存、文本标准化、轻量画像和任务草案生成，再进入这里让你调整。</span>
               </div>
             )}
-
-            {sourceConfirmed ? (
-              <div className={styles.recommendedPlanPanel}>
-                <div className={styles.taskFieldLabel}>推荐执行方案</div>
-                <div className={styles.recommendedPlanGrid}>
-                  {RECOMMENDED_PLAN.map((item) => (
-                    <div key={item.label} className={styles.recommendedPlanItem}>
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
-                      <em>{item.desc}</em>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className={styles.composerConfigGrid}>
-              <div className={styles.composerConfigGroup}>
-                <strong>目标产物</strong>
-                <div className={styles.choiceGrid}>
-                  <button type="button" className={styles.choiceCardActive}>多人演播有声书</button>
-                  <button type="button" className={styles.choiceCard}>广播剧</button>
-                  <button type="button" className={styles.choiceCard}>短剧脚本</button>
-                  <button type="button" className={styles.choiceCard}>只做作品分析</button>
-                </div>
-              </div>
-              <div className={styles.composerConfigGroup}>
-                <strong>处理范围</strong>
-                <div className={styles.choiceGrid}>
-                  <button type="button" className={styles.choiceCardActive}>前1章</button>
-                  <button type="button" className={styles.choiceCard}>全文</button>
-                  <button type="button" className={styles.choiceCard}>自定义范围</button>
-                </div>
-              </div>
-              <div className={styles.composerConfigGroup}>
-                <strong>本轮目标</strong>
-                <div className={styles.choiceGrid}>
-                  <button type="button" className={styles.choiceCardActive}>先分析问题</button>
-                  <button type="button" className={styles.choiceCard}>直接生成样章</button>
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.requirementGuide}>
-              {REQUIREMENT_HINTS.map((hint) => (
-                <div key={hint.title} className={styles.requirementHintCard}>
-                  <strong>{hint.title}</strong>
-                  <span>{hint.text}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className={styles.requirementPresetBlock}>
-              <div className={styles.taskFieldLabel}>推荐要求标签</div>
-              <div className={styles.choiceGrid}>
-                {REQUIREMENT_PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    className={brief.includes(preset) ? styles.choiceCardActive : styles.choiceCard}
-                    onClick={() => addRequirementPreset(preset)}
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <textarea
-              className={styles.taskTextarea}
-              aria-label="本轮任务补充要求"
-              placeholder="例：不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。"
-              value={brief}
-              onChange={(event) => setBrief(event.target.value)}
-            />
-
-            <div className={styles.requirementMetaRow}>
-              <span className={isBriefLong || isBriefTooShort ? styles.requirementWarnText : styles.mutedText}>
-                {briefLength}/300 建议字数
-              </span>
-              {isBriefTooShort ? <span className={styles.requirementWarnText}>要求太短，建议至少说明目标或边界。</span> : null}
-              {isBriefLong ? <span className={styles.requirementWarnText}>要求偏长，AI 会先压缩成任务摘要再执行。</span> : null}
-            </div>
-
-            <div className={styles.teamLockBox}>
-              <div>
-                <strong>确认后锁定的 Agent 团队</strong>
-                <span>业务分析 Agent 先执行；场景拆分、文本改编、角色音标注和演播设计进入后续候选队列。</span>
-              </div>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                disabled={!sourceConfirmed}
-                onClick={onStart}
-              >
-                确认方案，开始 AI 初读分析
-              </button>
-            </div>
           </div>
         </section>
 

@@ -898,6 +898,158 @@
   gap: 10px;
 }
 
+.planHeroCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(30, 117, 91, 0.18);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.12), transparent 32%),
+    linear-gradient(135deg, rgba(239, 247, 242, 0.95), rgba(255, 255, 253, 0.95));
+}
+
+.planHeroHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.planHeroHeader div,
+.planHeroMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.planHeroHeader strong {
+  color: #15191b;
+  font-size: 14px;
+}
+
+.planHeroHeader span,
+.planHeroMain span {
+  color: #596165;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.planHeroHeader em {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.12);
+  color: #176149;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.planHeroMain strong {
+  color: #121819;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.planHeroMain p {
+  max-width: 820px;
+  margin: 2px 0 0;
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.planDecisionList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.planDecisionItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 253, 0.9);
+}
+
+.planDecisionItem div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.planDecisionItem span {
+  color: #667075;
+  font-size: 12px;
+}
+
+.planDecisionItem strong {
+  color: #15191b;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.planDecisionItem em {
+  color: #596165;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.tinyEditButton {
+  padding: 5px 8px;
+  border: 1px solid rgba(53, 64, 67, 0.12);
+  border-radius: 999px;
+  background: rgba(244, 246, 241, 0.92);
+  color: #596165;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tinyEditButton:hover {
+  border-color: rgba(30, 117, 91, 0.24);
+  color: #176149;
+}
+
+.supplementRequirementBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(248, 249, 246, 0.72);
+}
+
+.advancedPlanDetails {
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 253, 0.72);
+}
+
+.advancedPlanDetails summary {
+  padding: 11px 12px;
+  color: #4f595c;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.advancedPlanBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
 .intakeResultPanel,
 .recommendedPlanPanel,
 .intakeWaitingPanel {
@@ -2027,6 +2179,7 @@
   .composerGrid,
   .composerConfigGrid,
   .sourceGateLayout,
+  .planDecisionList,
   .intakeInsightGrid,
   .recommendedPlanGrid {
     grid-template-columns: 1fr;
@@ -2091,6 +2244,8 @@
   .composerSectionHeader,
   .summaryList div,
   .agentPreviewItem,
+  .planHeroHeader,
+  .planDecisionItem,
   .teamLockBox,
   .queueSummaryGrid,
   .intakeResultHeader {
@@ -2101,7 +2256,8 @@
     align-items: stretch;
   }
 
-  .intakeResultHeader {
+  .intakeResultHeader,
+  .planHeroHeader {
     flex-direction: column;
   }
 
