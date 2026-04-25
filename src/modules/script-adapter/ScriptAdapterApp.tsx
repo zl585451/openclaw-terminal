@@ -191,8 +191,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     },
     {
       index: 2,
-      title: '确认执行',
-      desc: sourceConfirmed ? '定义产物 · 锁定团队结构' : '等待素材确认',
+      title: '确认目标和范围',
+      desc: sourceConfirmed ? '定义产物 · 工作范围' : '等待素材确认',
       status: sourceConfirmed ? 'active' : 'pending',
     },
   ] as const;
@@ -262,7 +262,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
         <div>
           <div className={styles.detailEyebrow}>后台任务编排</div>
           <h1>配置内容制作任务</h1>
-          <p>先安排素材、目标、范围和要求。当前接入本地 mock 摄入链路，可试走第 1 步到第 2 步的任务方案生成。</p>
+          <p>先确认素材，再确认产品内容和工作范围。改动策略会在 AI 初读分析后单独确认。</p>
         </div>
         <button type="button" className={styles.backButton} onClick={onBack}>
           ← 返回任务大厅
@@ -370,8 +370,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <div className={`${styles.card} ${styles.composerRequirementCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
-                <div className={styles.detailEyebrow}>第 2 步 · 执行确认</div>
-                <h2>确认 AI 推荐方案</h2>
+                <div className={styles.detailEyebrow}>第 2 步 · 目标和范围确认</div>
+                <h2>确认产品内容和工作范围</h2>
               </div>
               <span className={sourceConfirmed ? styles.reviewPill : styles.mutedPill}>
                 {sourceConfirmed ? '初步分析已生成' : isIntakeRunning ? '生成中' : '等待素材'}
@@ -391,7 +391,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   <div className={styles.planHeroMain}>
                     <span>建议方案</span>
                     <strong>{intakeResult.recommendedAction}</strong>
-                    <p>{intakeResult.recommendedReason}确认后，系统会锁定任务草案和下一步 Agent 队列。</p>
+                    <p>{intakeResult.recommendedReason}确认后只进入 AI 初读分析，不会直接改稿。</p>
                   </div>
                 </div>
 
@@ -451,14 +451,14 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   <div className={styles.composerSectionHeader}>
                     <div>
                       <div className={styles.taskFieldLabel}>可选补充说明</div>
-                      <span className={styles.mutedText}>如果上面三项没有覆盖你的要求，再补一句。留空也可以继续。</span>
+                      <span className={styles.mutedText}>这里只补充产品目标或处理范围，改动深度等 AI 分析后再选。留空也可以继续。</span>
                     </div>
                   </div>
 
                   <textarea
                     className={styles.taskTextarea}
-                    aria-label="本轮任务补充要求"
-                    placeholder="例：人物名称和故事大纲不能变；如果要补 BGM 和角色音，先在分析里提示即可。"
+                    aria-label="目标和范围补充说明"
+                    placeholder="例：先分析第1章前半段；产物按多人演播有声书方向判断；暂时不要进入改稿。"
                     value={brief}
                     onChange={(event) => setBrief(event.target.value)}
                   />
@@ -475,7 +475,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <div className={styles.teamLockBox}>
                   <div>
                     <strong>确认后锁定的 Agent 团队</strong>
-                    <span>业务分析 Agent 先执行；场景拆分、文本改编、角色音标注和演播设计进入后续候选队列。</span>
+                    <span>业务分析 Agent 先执行；AI 输出问题、风险和可修改建议后，再进入第 3 步确认修改策略。</span>
                   </div>
                   <button
                     type="button"
@@ -483,7 +483,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                     disabled={!sourceConfirmed}
                     onClick={onStart}
                   >
-                    确认方案，开始 AI 初读分析
+                    确认目标和范围，开始 AI 初读分析
                   </button>
                 </div>
               </>
@@ -548,8 +548,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <div className={sourceConfirmed ? styles.gateMapItemActive : styles.gateMapItemPending}>
                 <span>2</span>
                 <div>
-                  <strong>执行确认</strong>
-                  <em>{sourceConfirmed ? '等待确认方案' : isIntakeRunning ? '等待摄入完成' : '等待素材确认'}</em>
+                  <strong>目标和范围确认</strong>
+                  <em>{sourceConfirmed ? '等待确认目标和范围' : isIntakeRunning ? '等待摄入完成' : '等待素材确认'}</em>
                 </div>
               </div>
             </div>
@@ -570,15 +570,15 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
           <div className={styles.requirementBoundaryBox}>
             <strong>执行边界</strong>
-            <span>AI 会把输入整理成“任务摘要”。与当前素材、目标产物无关的内容不会进入改写执行，只会作为备注保留；如果要求互相冲突，会先让你确认。</span>
+            <span>当前只确认产品内容和工作范围。AI 初读分析完成后，系统会再给出可修改建议，由用户单独确认改动策略。</span>
           </div>
         </aside>
       </main>
 
       <footer className={styles.composerActionBar}>
         <div>
-          <strong>{sourceConfirmed ? '等待确认执行方案' : '等待确认素材参数'}</strong>
-          <span>每一步确认都会沉淀成后台任务对象，方便后续 Agent 分配和人工复核。</span>
+          <strong>{sourceConfirmed ? '等待确认目标和范围' : '等待确认素材参数'}</strong>
+          <span>确认后只进入 AI 初读分析，不会直接改稿；修改策略会在分析结果后单独选择。</span>
         </div>
         <div className={styles.createFooterActions}>
           <button type="button" className={styles.ghostButton} onClick={onBack}>
@@ -593,7 +593,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             disabled={!sourceConfirmed}
             onClick={onStart}
           >
-            确认方案，开始分析
+            确认目标和范围，开始分析
           </button>
         </div>
       </footer>
