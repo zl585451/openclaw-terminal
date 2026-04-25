@@ -10,7 +10,7 @@ export const MOCK_ARTIFACTS: Artifact[] = [
     version: 1,
     content: null,
     contentPreview:
-      '模板：多人演播有声小说。默认链路：项目摄入 -> 作品分析 -> 场景拆分 -> 文本改编 -> 角色音标注 -> 演播设计 -> 质检审核 -> 打包交付。',
+      '多人演播有声小说模板\n\n制作链路：项目摄入 -> 作品分析 -> 场景拆分 -> 文本改编 -> 角色音标注 -> 演播设计 -> 质检审核 -> 打包交付。\n\n当前目标：先跑通第1章样章，确认文本、角色音、演播标注和质检报告的交付形态。',
     status: 'approved',
     isFrozen: true,
     createdAt: '2026-04-25T09:00:00Z',
@@ -24,7 +24,7 @@ export const MOCK_ARTIFACTS: Artifact[] = [
     version: 1,
     content: null,
     contentPreview:
-      '{ "genre": "悬疑刑侦", "source": "小说", "adaptationBoundary": "只改表达，不改事实", "currentMode": "单章试跑", "humanCheckpoints": ["角色音回绑", "质检打回"] }',
+      '项目上下文\n\n题材：悬疑刑侦\n原文类型：小说\n当前模式：单章试跑\n改编边界：只改表达，不改事实；只提升听感、演播连贯性和制作可读性。\n\n需要人工确认：角色音回绑、质检打回、正式导出。',
     status: 'approved',
     isFrozen: true,
     createdAt: '2026-04-25T09:00:04Z',
@@ -38,7 +38,7 @@ export const MOCK_ARTIFACTS: Artifact[] = [
     version: 1,
     content: null,
     contentPreview:
-      '[\n  { "idx": 1, "title": "樟木箱", "time": "2015年3月", "chars": 3240 },\n  { "idx": 2, "title": "夜", "time": "2015年3月", "chars": 2890 },\n  { "idx": 3, "title": "滋啦", "time": "1986年3月", "chars": 3105 }\n]',
+      '章节索引\n\n第1章 樟木箱：2015年3月，临水市，约3240字\n第2章 夜：2015年3月，临水市，约2890字\n第3章 滋啦：1986年3月，临水市，约3105字\n\n当前试跑章节：第1章 樟木箱',
     status: 'approved',
     isFrozen: true,
     createdAt: '2026-04-24T08:30:04Z',
@@ -66,7 +66,7 @@ export const MOCK_ARTIFACTS: Artifact[] = [
     version: 1,
     content: null,
     contentPreview:
-      '[\n  { "id": "zhou_jianing", "name": "周佳宁", "role": "2015线主角", "voice_style": "克制、理性、偏冷静" },\n  { "id": "zhou_wanyun", "name": "周婉云", "role": "母亲", "voice_style": "疲惫、回避、压抑" },\n  { "id": "zhou_zhenshan", "name": "周振山", "role": "1986线关键人物", "voice_style": "基层刑警、硬朗克制" }\n]',
+      '人物档案摘要\n\n周佳宁：2015线主角。声线建议偏冷静、克制、理性，情绪不外放。\n周婉云：母亲角色。声线建议疲惫、回避、压抑，语气不要刻薄。\n周振山：1986线关键人物。声线建议基层刑警质感，硬朗但克制。',
     status: 'approved',
     isFrozen: true,
     createdAt: '2026-04-24T08:32:10Z',
@@ -80,7 +80,7 @@ export const MOCK_ARTIFACTS: Artifact[] = [
     version: 1,
     content: null,
     contentPreview:
-      '[\n  { "id": "camphor_trunk", "name": "樟木箱", "significance": "开启主线，连接双时空" },\n  { "id": "walkie_talkie", "name": "对讲机", "significance": "跨时空通话载体，暂不解释机制" },\n  { "id": "notebooks", "name": "笔记本", "significance": "案件与欠字线索载体" }\n]',
+      '物件追踪摘要\n\n樟木箱：开启主线，连接旧屋、周振山笔记和双时空线索。\n对讲机：跨时空通话载体，当前阶段只呈现异常，不解释机制。\n笔记本：案件、年份和“欠”字线索载体，需保持悬疑信息顺序。',
     status: 'approved',
     isFrozen: true,
     createdAt: '2026-04-24T08:32:15Z',
@@ -94,7 +94,7 @@ export const MOCK_ARTIFACTS: Artifact[] = [
     version: 1,
     content: null,
     contentPreview:
-      '{ "tone": "冷峻、克制、物件特写密集", "narrative_pov": "第三人称有限视角", "signature": ["气味与触感描写", "旧物承载悬念"] }',
+      '风格画像\n\n整体基调：冷峻、克制、旧物压迫感强。\n叙事视角：第三人称有限视角，贴近周佳宁感知。\n风格重点：气味、触感、声音细节要保留；旧物承担悬念，不要提前解释。',
     status: 'approved',
     isFrozen: true,
     createdAt: '2026-04-24T08:32:20Z',
@@ -108,7 +108,7 @@ export const MOCK_ARTIFACTS: Artifact[] = [
     version: 1,
     content: null,
     contentPreview:
-      '[\n  { "scene_id": "ch01-sc01", "summary": "周佳宁和周婉云进入旧屋，交代收拾阁楼" },\n  { "scene_id": "ch01-sc02", "summary": "周佳宁上阁楼，发现樟木箱" },\n  { "scene_id": "ch01-sc03", "summary": "箱内出现笔记本、对讲机和手铐" }\n]',
+      '第1章场景拆分\n\n场景 1：周佳宁和周婉云进入旧屋，周婉云交代她上阁楼收拾旧物。\n场景 2：周佳宁穿过客厅到阳台，踩着旧木梯进入阁楼。\n场景 3：周佳宁发现樟木箱，箱内出现笔记本、对讲机和手铐。\n\n制作提示：本章前半段以旧屋空间、气味和物件悬疑为主，不提前解释对讲机。',
     status: 'approved',
     isFrozen: true,
     createdAt: '2026-04-25T09:03:00Z',
@@ -136,7 +136,7 @@ export const MOCK_ARTIFACTS: Artifact[] = [
     version: 1,
     content: null,
     contentPreview:
-      '[\n  { "voice_tag": "周佳宁", "category": "明确角色对白", "status": "已确认", "cast": "主役，不建议兼配" },\n  { "voice_tag": "周婉云", "category": "明确角色对白", "status": "已确认", "cast": "协役，可人工确认兼配" },\n  { "voice_tag": "未定记录者A", "category": "未定来源角色音", "status": "独立占位，可回绑", "delivery": "OS候选" }\n]',
+      '角色音表\n\n周佳宁：明确角色对白，主役，不建议兼配。\n周婉云：明确角色对白，协役，可由统筹确认是否兼配。\n未定记录者A：未定来源角色音，独立占位，可后续回绑；建议标为 OS 候选，不直接归旁白。\n\n待人工确认：未定记录者A 是否需要提前独立锁 CV。',
     status: 'reviewing',
     isFrozen: false,
     createdAt: '2026-04-25T09:14:50Z',

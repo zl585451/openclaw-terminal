@@ -28,13 +28,16 @@ export function ScriptAdapterLayout({ onBack }: ScriptAdapterLayoutProps) {
   return (
     <div className={styles.layout}>
       <div className={styles.layoutHeader}>
-        <div className={styles.layoutControls}>
-          {onBack ? (
-            <button type="button" className={styles.backButton} onClick={onBack}>
-              ← 返回 Chat
-            </button>
-          ) : null}
+        <div className={styles.projectMeta}>
+          <div className={styles.projectName}>内容制作工作台</div>
+          <div className={styles.projectSub}>
+            {project && template
+              ? `${project.name} · ${template.name} · 当前模板 v${project.templateVersion}`
+              : '等待项目数据'}
+          </div>
+        </div>
 
+        <div className={styles.layoutControls}>
           <div className={styles.tabList} role="tablist" aria-label="Content Workbench Views">
             {(Object.keys(VIEW_LABEL) as ViewMode[]).map((mode) => (
               <button
@@ -49,15 +52,12 @@ export function ScriptAdapterLayout({ onBack }: ScriptAdapterLayoutProps) {
               </button>
             ))}
           </div>
-        </div>
 
-        <div className={styles.projectMeta}>
-          <div className={styles.projectName}>内容制作工作台</div>
-          <div className={styles.projectSub}>
-            {project && template
-              ? `${project.name} · ${template.name} · v${project.templateVersion}`
-              : '等待项目数据'}
-          </div>
+          {onBack ? (
+            <button type="button" className={styles.backButton} onClick={onBack}>
+              ← 返回 Chat
+            </button>
+          ) : null}
         </div>
       </div>
 

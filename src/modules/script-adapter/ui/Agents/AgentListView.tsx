@@ -13,10 +13,9 @@ export function AgentListView() {
       {agents.map((agent) => (
         <div key={`${agent.id}@${agent.version}`} className={`${styles.card} ${styles.agentRow}`}>
           <div className={styles.agentMain}>
-            <div className={styles.agentId}>
-              {agent.id}@{agent.version}
-            </div>
-            <div className={styles.agentRole}>{agent.role}</div>
+            <div className={styles.agentRoleTitle}>{agent.role}</div>
+            <div className={styles.agentId}>{agent.id}@{agent.version}</div>
+            {agent.description ? <div className={styles.agentRole}>{agent.description}</div> : null}
           </div>
 
           <div className={styles.agentMetaGroup}>

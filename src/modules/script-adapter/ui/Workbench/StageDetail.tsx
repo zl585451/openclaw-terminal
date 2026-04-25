@@ -40,6 +40,10 @@ const ARTIFACT_STATUS_LABEL: Record<ArtifactStatus, string> = {
   superseded: '已被替代',
 };
 
+function getArtifactLabel(type: string): string {
+  return ARTIFACT_LABEL[type as ArtifactType] ?? type;
+}
+
 function buildVirtualArtifact(
   base: Artifact,
   overrides: Partial<Artifact>,
@@ -148,6 +152,9 @@ export function StageDetail() {
       ? (state.stages[currentProjectId] ?? []).find((item) => item.idx === selectedStageIdx) ?? null
       : null,
   );
+  const agent = useScriptAdapterStore((state) =>
+    stage ? state.agents.find((item) => item.id === stage.agentRef.split('@')[0]) ?? null : null,
+  );
 
   if (!project || !currentProjectId || !stage) {
     return <div className={`${styles.card} ${styles.placeholderCard}`}>等待阶段数据加载。</div>;
@@ -159,7 +166,7 @@ export function StageDetail() {
     <section className={styles.detailPanel}>
       <div className={`${styles.card} ${styles.detailHeader}`}>
         <div className={styles.detailTitleGroup}>
-          <div className={styles.detailEyebrow}>Stage {stage.idx}</div>
+          <div className={styles.detailEyebrow}>阶段 {stage.idx}</div>
           <div className={styles.detailTitle}>{stage.name}</div>
           <div className={styles.detailDesc}>{stage.description}</div>
         </div>
@@ -180,10 +187,10 @@ export function StageDetail() {
       </div>
 
       <div className={styles.metricsGrid}>
-        <MetricCard label="Agent 绑定" value={stage.agentRef} sub="当前执行角色" />
-        <MetricCard label="Token 消耗" value={stage.tokensUsed} sub="累计使用量" />
-        <MetricCard label="运行时长" value={`${stage.runtimeSeconds}s`} sub="本阶段累计" />
-        <MetricCard label="产物数量" value={stage.artifactCount} sub="阶段产出" />
+        <MetricCard label="负责 Agent" value={agent?.role ?? stage.name} sub={stage.agentRef} />
+        <MetricCard label="当前产物" value={stage.artifactCount} sub="本阶段已产出" />
+        <MetricCard label="运行时长" value={`${stage.runtimeSeconds}s`} sub="开发指标" />
+        <MetricCard label="Token 消耗" value={stage.tokensUsed} sub="开发指标" />
       </div>
 
       <div className={styles.contractGrid}>
@@ -191,14 +198,22 @@ export function StageDetail() {
           <div className={styles.sectionTitleSmall}>输入产物</div>
           <div className={styles.tagList}>
             {stage.inputArtifactTypes.length > 0
-              ? stage.inputArtifactTypes.map((type) => <span key={type} className={styles.agentMetaTag}>{type}</span>)
+              ? stage.inputArtifactTypes.map((type) => (
+                  <span key={type} className={styles.agentMetaTag} title={type}>
+                    {getArtifactLabel(type)}
+                  </span>
+                ))
               : <span className={styles.mutedText}>无前置输入</span>}
           </div>
         </div>
         <div className={`${styles.card} ${styles.contractCard}`}>
           <div className={styles.sectionTitleSmall}>输出产物</div>
           <div className={styles.tagList}>
-            {stage.outputArtifactTypes.map((type) => <span key={type} className={styles.agentMetaTag}>{type}</span>)}
+            {stage.outputArtifactTypes.map((type) => (
+              <span key={type} className={styles.agentMetaTag} title={type}>
+                {getArtifactLabel(type)}
+              </span>
+            ))}
           </div>
         </div>
         <div className={`${styles.card} ${styles.contractCard}`}>
@@ -206,6 +221,15 @@ export function StageDetail() {
           <div className={styles.ruleDocText}>{stage.ruleDocPath ?? '规则驱动 / 暂无专属规则文档'}</div>
         </div>
       </div>
+
+      {stage.requiresHumanReview ? (
+        <div className={`${styles.card} ${styles.reviewBox}`}>
+          <div className={styles.sectionTitleSmall}>人工确认</div>
+          <div className={styles.reviewBoxText}>
+            当前阶段需要统筹或导演确认后再进入下一步。重点检查角色归属、未定占位、返工风险和是否允许后续 Agent 继续消费该产物。
+          </div>
+        </div>
+      ) : null}
 
       {PLACEHOLDER_STAGE_SET.has(stage.idx) && displayArtifacts.length === 0 ? (
         <div className={`${styles.card} ${styles.placeholderCard}`}>
@@ -242,10 +266,7 @@ export function StageDetail() {
                     />
                   </div>
 
-                  <div className={styles.artifactPreview}>
-                    {artifact.contentPreview.slice(0, 150)}
-                    {artifact.contentPreview.length > 150 ? '...' : ''}
-                  </div>
+                  <div className={styles.artifactPreview}>{artifact.contentPreview}</div>
 
                   <div className={styles.artifactActions}>
                     <button

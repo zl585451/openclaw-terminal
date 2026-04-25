@@ -11,6 +11,22 @@ const LEGEND_ITEMS = [
   { status: 'pending' as const, label: '待开始' },
 ];
 
+const ARTIFACT_NAME: Record<string, string> = {
+  chapter_index: '章节索引',
+  project_context: '项目上下文',
+  plot_lock: '剧情锁定表',
+  character_profile: '人物档案',
+  artifact_tracker: '物件追踪表',
+  timeline: '时间线',
+  style_profile: '风格画像',
+  scene_breakdown: '场景拆解',
+  adapted_script: '改编台本',
+  voice_registry: '角色音表',
+  performance_design: '演播设计',
+  review_report: '质检报告',
+  final_package: '交付包',
+};
+
 export function PipelineView() {
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const stages = useScriptAdapterStore((state) =>
@@ -95,8 +111,8 @@ export function PipelineView() {
 
         <div className={styles.tagList}>
           {selectedStage.outputArtifactTypes.map((type) => (
-            <span key={type} className={styles.agentMetaTag}>
-              {type}
+            <span key={type} className={styles.agentMetaTag} title={type}>
+              {ARTIFACT_NAME[type] ?? type}
             </span>
           ))}
         </div>

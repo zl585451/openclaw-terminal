@@ -30,6 +30,7 @@ export function StageSidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={`${styles.card} ${styles.projectCard}`}>
+        <div className={styles.sidebarSectionLabel}>项目</div>
         <div className={styles.projectCardTitle}>{project.name}</div>
         <div className={styles.projectCardMeta}>
           <div className={styles.projectCardItem}>
@@ -54,7 +55,7 @@ export function StageSidebar() {
       </div>
 
       <div className={`${styles.card} ${styles.chapterCard}`}>
-        <div className={styles.sectionTitleSmall}>章节</div>
+        <div className={styles.sidebarSectionLabel}>章节导航</div>
         <div className={styles.chapterList}>
           {chapters.slice(0, 8).map((chapter) => (
             <div
@@ -70,6 +71,7 @@ export function StageSidebar() {
         </div>
       </div>
 
+      <div className={styles.sidebarSectionLabel}>制作阶段</div>
       <div className={styles.stageList}>
         {stages.map((stage) => (
           <button
