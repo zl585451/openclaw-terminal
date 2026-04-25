@@ -807,6 +807,59 @@
   line-height: 1.45;
 }
 
+.backgroundStepList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backgroundStepDone,
+.backgroundStepPending {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+}
+
+.backgroundStepDone {
+  border-color: rgba(30, 117, 91, 0.18);
+  background: rgba(239, 247, 242, 0.92);
+}
+
+.backgroundStepPending {
+  opacity: 0.72;
+}
+
+.backgroundStepDone span,
+.backgroundStepPending span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(53, 64, 67, 0.08);
+  color: #4f595c;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.backgroundStepDone span {
+  background: #1e755b;
+  color: #ffffff;
+}
+
+.backgroundStepDone strong,
+.backgroundStepPending strong {
+  color: #15191b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .composerActionBar {
   position: sticky;
   bottom: 0;
@@ -843,6 +896,115 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.intakeResultPanel,
+.recommendedPlanPanel,
+.intakeWaitingPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(30, 117, 91, 0.16);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.1), transparent 30%),
+    rgba(239, 247, 242, 0.9);
+}
+
+.intakeWaitingPanel {
+  border-color: rgba(53, 64, 67, 0.12);
+  background: rgba(244, 246, 241, 0.9);
+}
+
+.intakeWaitingPanel strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.intakeWaitingPanel span {
+  color: #667075;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.intakeResultHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.intakeResultHeader div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.intakeResultHeader strong {
+  color: #15191b;
+  font-size: 14px;
+}
+
+.intakeResultHeader span {
+  color: #596165;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.intakeResultHeader em {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.12);
+  color: #176149;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.intakeInsightGrid,
+.recommendedPlanGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.recommendedPlanGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.intakeInsightCard,
+.recommendedPlanItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 253, 0.82);
+}
+
+.intakeInsightCard span,
+.recommendedPlanItem span {
+  color: #667075;
+  font-size: 12px;
+}
+
+.intakeInsightCard strong,
+.recommendedPlanItem strong {
+  color: #15191b;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.intakeInsightCard em,
+.recommendedPlanItem em {
+  color: #596165;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
 }
 
 .requirementHintCard {
@@ -1864,7 +2026,9 @@
   .createGrid,
   .composerGrid,
   .composerConfigGrid,
-  .sourceGateLayout {
+  .sourceGateLayout,
+  .intakeInsightGrid,
+  .recommendedPlanGrid {
     grid-template-columns: 1fr;
   }
 
@@ -1928,12 +2092,17 @@
   .summaryList div,
   .agentPreviewItem,
   .teamLockBox,
-  .queueSummaryGrid {
+  .queueSummaryGrid,
+  .intakeResultHeader {
     grid-template-columns: 1fr;
   }
 
   .teamLockBox {
     align-items: stretch;
+  }
+
+  .intakeResultHeader {
+    flex-direction: column;
   }
 
   .summaryList div {

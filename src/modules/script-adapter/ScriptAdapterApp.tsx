@@ -30,14 +30,35 @@ const REQUIREMENT_HINTS = [
 const SOURCE_AGENT_PREVIEW = [
   { name: '文件解析 Agent', status: '预分配', desc: '识别文件类型、字数、章节边界和基础元数据。' },
   { name: '内容识别 Agent', status: '预分配', desc: '判断题材、文本形态和是否适合当前目标产物。' },
-  { name: '作品分析 Agent', status: '候选', desc: '素材确认后进入第一轮初读分析。' },
+  { name: '任务安排 Agent', status: '预分配', desc: '生成初步任务草案、推荐方案和后续 Agent 队列。' },
 ];
 
 const AGENT_QUEUE_SUMMARY = [
-  { label: '已预分配', value: '3', desc: '文件解析、内容识别、作品分析' },
-  { label: '即将执行', value: '1', desc: '作品分析 Agent' },
+  { label: '已预分配', value: '3', desc: '文件解析、内容识别、任务安排' },
+  { label: '即将执行', value: '1', desc: '业务分析 Agent' },
   { label: '后续候选', value: '3', desc: '场景拆分、文本改编、角色音标注' },
   { label: '人工确认', value: '是', desc: '分析方向和冲突要求需要确认' },
+];
+
+const INTAKE_INSIGHTS = [
+  { label: '素材判断', value: '小说正文', desc: '旁白和对白混合，适合先做多人演播方向分析。' },
+  { label: '结构判断', value: '识别第 1 章', desc: '章节边界可用，适合先从样章范围开始。' },
+  { label: '推荐目标', value: '多人演播有声书', desc: '当前文本更适合听感优化、角色音和演播标注。' },
+  { label: '风险提示', value: '轻风险', desc: '字数与章节仍需真实解析；未发现明显目标冲突。' },
+];
+
+const RECOMMENDED_PLAN = [
+  { label: '推荐范围', value: '第 1 章', desc: '先控制样章范围，避免第一次任务过大。' },
+  { label: '推荐本轮', value: '先分析问题', desc: '先输出文本问题、听感风险和改编方向，不直接改稿。' },
+  { label: '推荐后续', value: '业务分析 Agent', desc: '第二步确认后再进入作品结构和听感问题分析。' },
+];
+
+const BACKGROUND_INTAKE_STEPS = [
+  'RawAsset 原始文件留存',
+  '文本抽取 / 清洗 / 编码统一',
+  'SourceDocument 标准化入库',
+  'SourceProfile 建索引和轻量画像',
+  '任务安排 Agent 生成 TaskDraft',
 ];
 
 interface ScriptAdapterAppProps {
@@ -177,7 +198,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const briefLength = brief.trim().length;
   const isBriefLong = briefLength > 220;
   const isBriefTooShort = briefLength > 0 && briefLength < 12;
-  const progressValue = sourceConfirmed ? 72 : 46;
+  const progressValue = sourceConfirmed ? 78 : 46;
   const createSteps = [
     {
       index: 1,
@@ -223,7 +244,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <span style={{ width: `${progressValue}%` }} />
             </div>
             <div className={styles.mutedText}>
-              {sourceConfirmed ? '剩余：确认执行方案后即可进入初读分析。' : '先确认素材参数，系统再生成 Agent 预分配。'}
+              {sourceConfirmed ? '已生成初步任务草案，等待你确认详细执行方案。' : '先确认素材参数，系统再生成 Agent 预分配。'}
             </div>
           </div>
 
@@ -313,9 +334,50 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <h2>定义产物、范围和本轮要求</h2>
               </div>
               <span className={sourceConfirmed ? styles.reviewPill : styles.mutedPill}>
-                {sourceConfirmed ? '等待确认' : '等待素材'}
+                {sourceConfirmed ? '初步分析已生成' : '等待素材'}
               </span>
             </div>
+
+            {sourceConfirmed ? (
+              <div className={styles.intakeResultPanel}>
+                <div className={styles.intakeResultHeader}>
+                  <div>
+                    <strong>AI 初步判断</strong>
+                    <span>任务安排 Agent 已完成轻量摄入分析，下面是给第 2 步的默认建议。</span>
+                  </div>
+                  <em>task.intake_planner@1.0</em>
+                </div>
+                <div className={styles.intakeInsightGrid}>
+                  {INTAKE_INSIGHTS.map((item) => (
+                    <div key={item.label} className={styles.intakeInsightCard}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                      <em>{item.desc}</em>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className={styles.intakeWaitingPanel}>
+                <strong>等待第 1 步确认后生成 AI 初步判断</strong>
+                <span>确认素材后，系统会先完成文件留存、文本标准化、轻量画像和任务草案生成，再进入这里让你调整。</span>
+              </div>
+            )}
+
+            {sourceConfirmed ? (
+              <div className={styles.recommendedPlanPanel}>
+                <div className={styles.taskFieldLabel}>推荐执行方案</div>
+                <div className={styles.recommendedPlanGrid}>
+                  {RECOMMENDED_PLAN.map((item) => (
+                    <div key={item.label} className={styles.recommendedPlanItem}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                      <em>{item.desc}</em>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className={styles.composerConfigGrid}>
               <div className={styles.composerConfigGroup}>
@@ -388,7 +450,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             <div className={styles.teamLockBox}>
               <div>
                 <strong>确认后锁定的 Agent 团队</strong>
-                <span>作品分析 Agent 先执行；场景拆分、文本改编、角色音标注和演播设计进入后续候选队列。</span>
+                <span>业务分析 Agent 先执行；场景拆分、文本改编、角色音标注和演播设计进入后续候选队列。</span>
               </div>
               <button
                 type="button"
@@ -418,6 +480,19 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <div><span>目标</span><strong>多人演播有声书</strong></div>
               <div><span>范围</span><strong>前1章</strong></div>
               <div><span>本轮</span><strong>先分析问题</strong></div>
+              <div><span>草案</span><strong>{sourceConfirmed ? '已生成 TaskDraft' : '等待生成'}</strong></div>
+            </div>
+          </div>
+
+          <div className={`${styles.card} ${styles.taskMapCard}`}>
+            <div className={styles.sidebarSectionLabel}>后台摄入链路</div>
+            <div className={styles.backgroundStepList}>
+              {BACKGROUND_INTAKE_STEPS.map((step, index) => (
+                <div key={step} className={sourceConfirmed ? styles.backgroundStepDone : styles.backgroundStepPending}>
+                  <span>{index + 1}</span>
+                  <strong>{step}</strong>
+                </div>
+              ))}
             </div>
           </div>
 

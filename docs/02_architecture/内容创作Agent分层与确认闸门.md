@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-- 版本：v1.0
+- 版本：v1.1
 - 状态：已定版，作为下一阶段后台业务逻辑设计起点
 - 范围：内容创作多 Agent 系统，不局限于有声书
 
@@ -33,15 +33,20 @@
 1. 文件解析 Agent
 2. 内容识别 Agent
 3. 章节识别 Agent
-4. 任务摘要 Agent
-5. 冲突检测 Agent
+4. 任务安排初步分析 Agent：`task.intake_planner@1.0`
+5. 任务摘要 Agent
+6. 冲突检测 Agent
 
 输出对象：
 
-1. `SourceDocument`
-2. `SourceProfile`
-3. `TaskBrief`
-4. `ExecutionBoundary`
+1. `RawAsset`
+2. `SourceDocument`
+3. `SourceProfile`
+4. `IntakeReport`
+5. `TaskDraft`
+6. `AgentPreAllocation`
+7. `TaskBrief`
+8. `ExecutionBoundary`
 
 ### 2.2 产物团队层
 
@@ -94,14 +99,17 @@
 
 系统动作：
 
-1. 解析素材。
-2. 生成素材参数。
-3. 给出 Agent 预分配。
+1. 保存原始文件为 `RawAsset`。
+2. 抽取、清洗和标准化文本，生成 `SourceDocument`。
+3. 建立章节、段落和轻量索引，生成 `SourceProfile`。
+4. 调用 `task.intake_planner@1.0`。
+5. 生成 `IntakeReport`、`TaskDraft`、`AgentPreAllocation` 和 `IntakeWarnings`。
 
 用户确认后：
 
 1. 素材进入任务草案。
-2. 系统允许进入产物定义。
+2. 初步分析结果回填第 2 步规划面板。
+3. 系统允许用户确认目标产物、处理范围和本轮要求。
 
 ### 3.2 执行确认闸门
 
@@ -118,7 +126,7 @@
 用户确认后：
 
 1. 锁定本轮执行方案。
-2. 进入 AI 初读分析。
+2. 进入业务分析 Agent。
 
 ---
 
@@ -129,6 +137,7 @@
 3. AgentPlan 必须由用户确认后的任务摘要生成。
 4. 任何会改变剧情事实、产物类型或执行范围的要求，都必须回到确认闸门。
 5. 后台应记录每次确认时的快照，方便回看、追责和版本比较。
+6. 任务安排初步分析 Agent 必须保持轻量，不能代替第二步之后的业务分析 Agent。
 
 ---
 
