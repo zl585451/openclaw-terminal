@@ -1,6 +1,7 @@
 # FEATURE_MAP 变更日志
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
+| 2026-04-26 | 网关：上下文预算改为按模型窗口动态计算，并在真正发请求前统一校验 `tool_calls` / `tool` 消息配对；同时补齐 multimodal 字符估算与调试日志 | `oct-gateway/ai.js`, `docs/05_changelog/2026-04-26-gateway-context-budget-and-tool-chain-validation.md` | 用于收口长调研任务中的上下文爆炸与 400 tool chain 错误 |
 | 2026-04-23 | 对齐 Kimi 官方开放平台：`moonshot` provider 控制台链接改为 `platform.kimi.com`，默认模型切到 `kimi-k2.6`，补齐官方 Kimi 模型并保留 `moonshot-v1-*` 兼容项；同步修正设置页推荐模型、fallback provider 与上下文窗口展示 | `oct-gateway/providers.js`, `oct-gateway/config.js`, `oct-gateway/ai.js`, `src/hooks/settings/recommendedModels.ts`, `src/hooks/settings/useApiKeys.ts`, `electron/main.ts`, `src/ui/chat/ChatTabRightPanel.tsx`, `docs/02_architecture/provider-system.md`, `docs/02_architecture/api-key-model-provider-unification-plan.md`, `docs/05_changelog/2026-04-23-kimi-official-platform-alignment.md` | 依据 Kimi 官方文档 `https://platform.kimi.com/docs/api/quickstart` 与 `https://platform.kimi.com/docs/models` |
 | 2026-04-23 | 修复 Document 长文本阅读 P0：正文改为仅渲染当前章节，章节目录/角色侧栏支持折叠并默认让出阅读空间 | `src/workbench/plugins/markdownPlugin.tsx`, `src/workbench/plugins/document/**`, `docs/05_changelog/2026-04-23-document-reader-focus-and-active-chapter-rendering.md` | 解决长篇正文阅读区过窄与全书一次性渲染导致后半段失效的问题 |
 | 2026-04-23 | Phase C 完成：`document` 模式接入章节目录与角色侧栏，正文视图正式开始复用公共解析层能力 | `src/workbench/plugins/markdownPlugin.tsx`, `src/workbench/plugins/document/**`, `src/utils/chapterParser.ts`, `src/utils/characterExtractor.ts`, `docs/05_changelog/2026-04-23-phase-c-document-outline-and-character-panel.md` | 长篇正文现在具备基础目录跳转与角色导航能力 |

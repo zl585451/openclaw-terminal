@@ -15,7 +15,6 @@ const { ProxyAgent } = require('undici');
 // AI 上下文截断优化
 // ═══════════════════════════════════════════════════════════════
 const MAX_HISTORY_ROUNDS = 12; // 最多保留最近 12 轮对话
-const MAX_CONTEXT_CHARS = 60000; // 上下文字符上限（约 15k tokens）
 const MAX_TOOL_ROUNDS = 8;
 const MAX_IDENTICAL_TOOL_SIGNATURES = 2;
 const providerRouter = new ProviderRouter({ config });
@@ -156,8 +155,132 @@ function createGoogleScopedDispatcher(url) {
   }
 }
 
-function truncateHistory(messages) {
+function estimateContentChars(content) {
+  if (typeof content === 'string') return content.length;
+  if (!Array.isArray(content)) return 0;
+
+  let total = 0;
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue;
+
+    if (part.type === 'text') {
+      total += String(part.text || '').length;
+      continue;
+    }
+
+    if (part.type === 'image_url') {
+      // 多模态图片粗略折算：按 1500 字符估算
+      total += 1500;
+      continue;
+    }
+  }
+  return total;
+}
+
+function estimateMessageChars(message) {
+  if (!message || typeof message !== 'object') return 0;
+  return estimateContentChars(message.content);
+}
+
+/**
+ * 防御性消息验证：移除孤立的 tool 消息和不完整的 assistant.tool_calls 组。
+ *
+ * 规则：
+ * - 每个 role='tool' 消息必须属于前面最近一个 assistant.tool_calls 组
+ * - 每个 assistant 消息如果带 tool_calls，则后面必须跟齐所有对应 tool_call_id 的 tool 消息
+ * - 不完整组直接丢弃，避免远端 API 因消息链不合法而报 400
+ *
+ * @param {Array} messages
+ * @returns {Array}
+ */
+function validateAndFixMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+
+  const result = [];
+  let i = 0;
+
+  while (i < messages.length) {
+    const msg = messages[i];
+
+    if (!msg || typeof msg !== 'object') {
+      i++;
+      continue;
+    }
+
+    // 孤立 tool：只允许作为 assistant.tool_calls 组的尾随响应存在
+    if (msg.role === 'tool') {
+      log.debug('validateAndFixMessages drop orphan tool message', {
+        tool_call_id: msg.tool_call_id || null,
+      });
+      i++;
+      continue;
+    }
+
+    // assistant + tool_calls：必须和紧随其后的 tool 消息组成完整组
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      const expectedIds = Array.from(new Set(
+        msg.tool_calls
+          .map((tc) => tc && tc.id)
+          .filter(Boolean)
+      ));
+      const expectedIdSet = new Set(expectedIds);
+
+      const trailing = [];
+      let j = i + 1;
+
+      while (j < messages.length) {
+        const next = messages[j];
+        if (!next || typeof next !== 'object' || next.role !== 'tool') break;
+        trailing.push(next);
+        j++;
+      }
+
+      const matched = [];
+      const seenIds = new Set();
+      const droppedTrailingToolIds = [];
+
+      for (const toolMsg of trailing) {
+        const toolCallId = toolMsg.tool_call_id;
+        if (expectedIdSet.has(toolCallId) && !seenIds.has(toolCallId)) {
+          matched.push(toolMsg);
+          seenIds.add(toolCallId);
+        } else {
+          droppedTrailingToolIds.push(toolCallId || null);
+        }
+      }
+
+      const missingIds = expectedIds.filter((id) => !seenIds.has(id));
+      if (missingIds.length === 0) {
+        result.push(msg);
+        result.push(...matched);
+        if (droppedTrailingToolIds.length > 0) {
+          log.debug('validateAndFixMessages drop unexpected trailing tool messages', {
+            droppedToolCallIds: droppedTrailingToolIds,
+            expectedIds,
+          });
+        }
+      } else {
+        log.debug('validateAndFixMessages drop incomplete tool_call group', {
+          expectedIds,
+          missingIds,
+          trailingToolCallIds: trailing.map((toolMsg) => toolMsg.tool_call_id || null),
+        });
+      }
+
+      i = j;
+      continue;
+    }
+
+    result.push(msg);
+    i++;
+  }
+
+  return result;
+}
+
+function truncateHistory(messages, modelId) {
   if (!messages || messages.length === 0) return messages;
+  const maxContextChars = getMaxContextCharsForModel(modelId);
 
   // 分离系统消息和对话消息
   const systemMsgs = messages.filter(m => m.role === 'system');
@@ -168,12 +291,11 @@ function truncateHistory(messages) {
 
   // 检查总字符数，超限时从最早的开始裁剪
   let combined = [...systemMsgs, ...recentChat];
-  let totalChars = combined.reduce((sum, m) =>
-    sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+  let totalChars = combined.reduce((sum, m) => sum + estimateMessageChars(m), 0);
 
-  while (totalChars > MAX_CONTEXT_CHARS && recentChat.length > 2) {
+  while (totalChars > maxContextChars && recentChat.length > 2) {
     const removed = recentChat.shift();
-    totalChars -= (typeof removed.content === 'string' ? removed.content.length : 0);
+    totalChars -= estimateMessageChars(removed);
     combined = [...systemMsgs, ...recentChat];
   }
 
@@ -183,8 +305,7 @@ function truncateHistory(messages) {
 function getContextUsageRatio(messages, modelId) {
   const limit = getModelContextLimit(modelId);
   // 粗估 token 数 ≈ 字符数 / 2（中文）或 / 4（英文）
-  const totalChars = messages.reduce((sum, m) =>
-    sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+  const totalChars = messages.reduce((sum, m) => sum + estimateMessageChars(m), 0);
   const estimatedTokens = totalChars / 2; // 偏保守（中文为主）
   const ratio = estimatedTokens / limit;
 
@@ -217,6 +338,18 @@ function getModelContextLimit(modelId) {
   const id = modelId.toLowerCase().replace(/\s/g, '');
   if (id.startsWith('gemini-')) return 1000000;
   return MODEL_CONTEXT_LIMITS[id] || MODEL_CONTEXT_LIMITS[modelId.split('/').pop()] || 128000;
+}
+
+function getMaxContextCharsForModel(modelId) {
+  let limit = 0;
+  try {
+    limit = Number(getModelContextLimit(modelId));
+  } catch {}
+  if (!Number.isFinite(limit) || limit <= 0) {
+    // 兼容保守兜底：适配 MiniMax-M2.7 等大窗口模型
+    limit = 200000;
+  }
+  return Math.floor(limit * 0.4);
 }
 
 function getMiniMaxTemperature() {
@@ -1390,7 +1523,7 @@ async function streamChat({
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 
   // 上下文截断优化：防止消息过长
-  const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages);
+  const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages, model);
   let effectiveMessages = provider.id === 'google'
     ? injectGoogleDiagramGuard(truncatedMessages)
     : truncatedMessages;
@@ -1466,8 +1599,17 @@ async function streamChat({
     const effectiveToolsSupport = caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown');
     effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveToolsSupport);
     effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
+    const validatedMessages = validateAndFixMessages(effectiveMessages);
+    const droppedCount = effectiveMessages.length - validatedMessages.length;
+    if (droppedCount > 0) {
+      log.info('validateAndFixMessages 丢弃孤立消息', {
+        droppedCount,
+        finalCount: validatedMessages.length,
+        turnId: turnId || null,
+      });
+    }
 
-    const hasImage = effectiveMessages.some(m =>
+    const hasImage = validatedMessages.some(m =>
       Array.isArray(m.content) &&
       m.content.some(c => c.type === 'image_url')
     );
@@ -1675,7 +1817,7 @@ async function streamChat({
 
     const requestBody = {
       model,
-      messages: effectiveMessages,
+      messages: validatedMessages,
       stream: true,
       max_tokens: caps.maxTokens || 4096,
     };
