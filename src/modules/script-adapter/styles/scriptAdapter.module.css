@@ -222,6 +222,274 @@
   min-height: 0;
 }
 
+.taskWorkbench {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
+  min-height: 0;
+}
+
+.taskRail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.taskProjectCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 253, 0.96), rgba(239, 246, 241, 0.96));
+}
+
+.taskProjectMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: #596165;
+  font-size: 13px;
+}
+
+.taskStepList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.taskStep {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(53, 64, 67, 0.11);
+  border-radius: 10px;
+  background: rgba(255, 255, 253, 0.88);
+}
+
+.taskStepActive {
+  border-color: rgba(30, 117, 91, 0.28);
+  background: rgba(230, 244, 236, 0.95);
+  box-shadow: 0 8px 22px rgba(30, 117, 91, 0.08);
+}
+
+.taskStepIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(53, 64, 67, 0.08);
+  color: #4f595c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.taskStepActive .taskStepIndex {
+  background: #1e755b;
+  color: #ffffff;
+}
+
+.taskStepText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.taskStepText strong {
+  color: #15191b;
+  font-size: 14px;
+}
+
+.taskStepText span {
+  color: #667075;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.secondaryWideButton {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(53, 64, 67, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 253, 0.92);
+  color: #1f2528;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.secondaryWideButton:hover {
+  border-color: rgba(30, 117, 91, 0.28);
+}
+
+.taskMain {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.heroTaskCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 22px;
+  border-color: rgba(30, 117, 91, 0.2);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 253, 0.98), rgba(234, 244, 239, 0.98));
+}
+
+.heroTaskCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heroTaskCopy h2 {
+  margin: 0;
+  color: #121819;
+  font-size: 26px;
+  line-height: 1.28;
+}
+
+.heroTaskCopy p {
+  max-width: 760px;
+  margin: 0;
+  color: #4f595c;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.heroTaskActions,
+.inlineActionRow,
+.directionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.heroTaskActions {
+  justify-content: flex-end;
+}
+
+.primaryButton {
+  padding: 9px 14px;
+  border: 1px solid rgba(30, 117, 91, 0.3);
+  border-radius: 9px;
+  background: #1e755b;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(30, 117, 91, 0.16);
+}
+
+.primaryButton:hover {
+  background: #176149;
+}
+
+.taskGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 14px;
+}
+
+.taskInputCard,
+.analysisCard,
+.compareCard,
+.directionCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.taskFieldLabel {
+  color: #596165;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.taskTextarea {
+  width: 100%;
+  min-height: 136px;
+  padding: 12px 13px;
+  border: 1px solid rgba(53, 64, 67, 0.14);
+  border-radius: 10px;
+  background: rgba(248, 249, 246, 0.94);
+  color: #1f2528;
+  font: inherit;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.taskTextarea:focus {
+  outline: 2px solid rgba(30, 117, 91, 0.18);
+  border-color: rgba(30, 117, 91, 0.38);
+}
+
+.analysisList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analysisList div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+}
+
+.analysisList strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.analysisList span {
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.compareGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.compareText {
+  min-height: 190px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 13px 14px;
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+  color: #263033;
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.directionCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.directionCard p {
+  margin: 8px 0 0;
+  color: #596165;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -772,6 +1040,19 @@
 
   .workbench {
     grid-template-columns: 1fr;
+  }
+
+  .taskWorkbench,
+  .taskGrid,
+  .compareGrid,
+  .heroTaskCard,
+  .directionCard {
+    grid-template-columns: 1fr;
+  }
+
+  .heroTaskActions,
+  .directionActions {
+    justify-content: flex-start;
   }
 
   .metricsGrid,
