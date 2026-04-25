@@ -33,12 +33,11 @@ const SOURCE_AGENT_PREVIEW = [
   { name: '作品分析 Agent', status: '候选', desc: '素材确认后进入第一轮初读分析。' },
 ];
 
-const EXECUTION_PREVIEW = [
-  { name: '作品分析 Agent', status: '即将执行', desc: '总结文本问题、结构风险和改编建议。' },
-  { name: '场景拆分 Agent', status: '暂不执行', desc: '待用户确认分析方向后再进入。' },
-  { name: '文本改编 Agent', status: '暂不执行', desc: '不会在初读分析阶段直接改稿。' },
-  { name: '角色音标注 Agent', status: '后续候选', desc: '改编方向确认后再标注角色音和未定声源。' },
-  { name: '人工确认', status: '需要', desc: '分析结果、冲突要求和执行方向需要用户确认。' },
+const AGENT_QUEUE_SUMMARY = [
+  { label: '已预分配', value: '3', desc: '文件解析、内容识别、作品分析' },
+  { label: '即将执行', value: '1', desc: '作品分析 Agent' },
+  { label: '后续候选', value: '3', desc: '场景拆分、文本改编、角色音标注' },
+  { label: '人工确认', value: '是', desc: '分析方向和冲突要求需要确认' },
 ];
 
 interface ScriptAdapterAppProps {
@@ -404,27 +403,52 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
         </section>
 
         <aside className={styles.composerSummary}>
-          <div className={`${styles.card} ${styles.summaryCard}`}>
-            <div className={styles.sidebarSectionLabel}>任务摘要</div>
+          <div className={`${styles.card} ${styles.taskMapCard}`}>
+            <div className={styles.composerSectionHeader}>
+              <div>
+                <div className={styles.sidebarSectionLabel}>任务地图</div>
+                <h3>系统理解结果</h3>
+              </div>
+              <span className={sourceConfirmed ? styles.reviewPill : styles.mutedPill}>
+                {sourceConfirmed ? '待执行确认' : '待素材确认'}
+              </span>
+            </div>
             <div className={styles.summaryList}>
               <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 等待解析接入' : '上传文件 · 待确认'}</strong></div>
               <div><span>目标</span><strong>多人演播有声书</strong></div>
               <div><span>范围</span><strong>前1章</strong></div>
               <div><span>本轮</span><strong>先分析问题</strong></div>
-              <div><span>闸门</span><strong>{sourceConfirmed ? '第 2 步待确认' : '第 1 步待确认'}</strong></div>
             </div>
           </div>
 
-          <div className={`${styles.card} ${styles.summaryCard}`}>
-            <div className={styles.sidebarSectionLabel}>即将执行</div>
-            <div className={styles.agentPreviewList}>
-              {EXECUTION_PREVIEW.map((item) => (
-                <div key={item.name} className={styles.agentPreviewItem}>
-                  <div>
-                    <strong>{item.name}</strong>
-                    <span>{item.desc}</span>
-                  </div>
-                  <em>{item.status}</em>
+          <div className={`${styles.card} ${styles.taskMapCard}`}>
+            <div className={styles.sidebarSectionLabel}>确认闸门</div>
+            <div className={styles.gateMapList}>
+              <div className={sourceConfirmed ? styles.gateMapItemDone : styles.gateMapItemActive}>
+                <span>1</span>
+                <div>
+                  <strong>素材确认</strong>
+                  <em>{sourceConfirmed ? '已通过' : '当前步骤'}</em>
+                </div>
+              </div>
+              <div className={sourceConfirmed ? styles.gateMapItemActive : styles.gateMapItemPending}>
+                <span>2</span>
+                <div>
+                  <strong>执行确认</strong>
+                  <em>{sourceConfirmed ? '等待确认方案' : '等待素材确认'}</em>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={`${styles.card} ${styles.taskMapCard}`}>
+            <div className={styles.sidebarSectionLabel}>Agent 队列总览</div>
+            <div className={styles.queueSummaryGrid}>
+              {AGENT_QUEUE_SUMMARY.map((item) => (
+                <div key={item.label} className={styles.queueSummaryItem}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <em>{item.desc}</em>
                 </div>
               ))}
             </div>

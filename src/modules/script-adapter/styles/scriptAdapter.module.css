@@ -488,7 +488,8 @@
 .composerCompactCard,
 .composerGateCard,
 .composerRequirementCard,
-.summaryCard {
+.summaryCard,
+.taskMapCard {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -505,6 +506,13 @@
   margin: 4px 0 0;
   color: #121819;
   font-size: 20px;
+  line-height: 1.3;
+}
+
+.composerSectionHeader h3 {
+  margin: 4px 0 0;
+  color: #121819;
+  font-size: 17px;
   line-height: 1.3;
 }
 
@@ -684,6 +692,119 @@
   font-style: normal;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.gateMapList {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.gateMapItemActive,
+.gateMapItemDone,
+.gateMapItemPending {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+}
+
+.gateMapItemActive {
+  border-color: rgba(239, 159, 39, 0.3);
+  background: rgba(255, 248, 232, 0.9);
+}
+
+.gateMapItemDone {
+  border-color: rgba(30, 117, 91, 0.18);
+  background: rgba(239, 247, 242, 0.92);
+}
+
+.gateMapItemPending {
+  opacity: 0.72;
+}
+
+.gateMapItemActive > span,
+.gateMapItemDone > span,
+.gateMapItemPending > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(53, 64, 67, 0.08);
+  color: #4f595c;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.gateMapItemActive > span {
+  background: #ef9f27;
+  color: #ffffff;
+}
+
+.gateMapItemDone > span {
+  background: #1e755b;
+  color: #ffffff;
+}
+
+.gateMapItemActive strong,
+.gateMapItemDone strong,
+.gateMapItemPending strong {
+  display: block;
+  color: #15191b;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.gateMapItemActive em,
+.gateMapItemDone em,
+.gateMapItemPending em {
+  display: block;
+  margin-top: 2px;
+  color: #667075;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.queueSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.queueSummaryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+}
+
+.queueSummaryItem span {
+  color: #667075;
+  font-size: 12px;
+}
+
+.queueSummaryItem strong {
+  color: #15191b;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.queueSummaryItem em {
+  color: #596165;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
 }
 
 .composerActionBar {
@@ -1806,7 +1927,8 @@
   .composerSectionHeader,
   .summaryList div,
   .agentPreviewItem,
-  .teamLockBox {
+  .teamLockBox,
+  .queueSummaryGrid {
     grid-template-columns: 1fr;
   }
 
