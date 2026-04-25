@@ -10,6 +10,23 @@ import styles from './styles/scriptAdapter.module.css';
 
 type ScriptAdapterScreen = 'home' | 'create' | 'workspace';
 
+const REQUIREMENT_PRESETS = [
+  '不要改剧情',
+  '提升听感',
+  '旁白更口语化',
+  '标注角色音',
+  '补充BGM和音效',
+  '补充CV情绪',
+  '先出样章',
+  '保留悬疑节奏',
+];
+
+const REQUIREMENT_HINTS = [
+  { title: '应该写', text: '改编目标、处理范围、风格要求、保留边界、需要输出什么。' },
+  { title: '不要写', text: '大段原文、无关聊天、账号密码、让 AI 改掉核心剧情事实。' },
+  { title: '系统会处理', text: '无关内容会降级为备注；冲突要求会在初读分析阶段提示用户确认。' },
+];
+
 interface ScriptAdapterAppProps {
   onBack?: () => void;
 }
@@ -143,6 +160,17 @@ interface WizardProps {
 
 function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [brief, setBrief] = useState('不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。');
+  const briefLength = brief.trim().length;
+  const isBriefLong = briefLength > 220;
+  const isBriefTooShort = briefLength > 0 && briefLength < 12;
+
+  const addRequirementPreset = (preset: string) => {
+    setBrief((current) => {
+      const trimmed = current.trim();
+      if (trimmed.includes(preset)) return current;
+      return trimmed ? `${trimmed}；${preset}` : preset;
+    });
+  };
 
   return (
     <div className={styles.createShell}>
@@ -216,14 +244,56 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             <span>4</span>
             <div>
               <strong>填写本轮要求</strong>
-              <p>这部分会成为 AI 初读分析和后续改写的任务说明。</p>
+              <p>先用标签帮用户圈定边界，自由输入只作为补充说明，不直接无条件执行。</p>
             </div>
           </div>
+
+          <div className={styles.requirementGuide}>
+            {REQUIREMENT_HINTS.map((hint) => (
+              <div key={hint.title} className={styles.requirementHintCard}>
+                <strong>{hint.title}</strong>
+                <span>{hint.text}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className={styles.requirementPresetBlock}>
+            <div className={styles.taskFieldLabel}>推荐要求标签</div>
+            <div className={styles.choiceGrid}>
+              {REQUIREMENT_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className={brief.includes(preset) ? styles.choiceCardActive : styles.choiceCard}
+                  onClick={() => addRequirementPreset(preset)}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.requirementBoundaryBox}>
+            <strong>执行边界</strong>
+            <span>AI 会把你的输入整理成“任务摘要”。与当前素材、目标产物无关的内容不会进入改写执行，只会作为备注保留；如果要求互相冲突，会先让你确认。</span>
+          </div>
+
           <textarea
             className={styles.taskTextarea}
+            aria-label="本轮任务补充要求"
+            placeholder="例：不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。"
             value={brief}
             onChange={(event) => setBrief(event.target.value)}
           />
+
+          <div className={styles.requirementMetaRow}>
+            <span className={isBriefLong || isBriefTooShort ? styles.requirementWarnText : styles.mutedText}>
+              {briefLength}/300 建议字数
+            </span>
+            {isBriefTooShort ? <span className={styles.requirementWarnText}>要求太短，建议至少说明目标或边界。</span> : null}
+            {isBriefLong ? <span className={styles.requirementWarnText}>要求偏长，AI 会先压缩成任务摘要再执行。</span> : null}
+          </div>
+
           <div className={styles.createFooterActions}>
             <button type="button" className={styles.primaryButton} onClick={onStart}>
               开始 AI 初读分析

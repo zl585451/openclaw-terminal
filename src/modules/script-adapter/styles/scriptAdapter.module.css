@@ -341,6 +341,75 @@
   gap: 10px;
 }
 
+.requirementGuide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.requirementHintCard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.9);
+}
+
+.requirementHintCard strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.requirementHintCard span {
+  color: #667075;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.requirementPresetBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.requirementBoundaryBox {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid rgba(239, 159, 39, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 248, 232, 0.9);
+}
+
+.requirementBoundaryBox strong {
+  color: #5f4512;
+  font-size: 13px;
+}
+
+.requirementBoundaryBox span {
+  color: #665431;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.requirementMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  color: #667075;
+  font-size: 12px;
+}
+
+.requirementWarnText {
+  color: #9b6206;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .layoutHeader {
   display: flex;
   align-items: center;
@@ -1273,6 +1342,10 @@
 
   .entryTemplateGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .requirementGuide {
+    grid-template-columns: 1fr;
   }
 
   .heroTaskActions,
