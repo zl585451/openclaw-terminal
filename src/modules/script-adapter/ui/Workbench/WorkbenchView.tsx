@@ -6,7 +6,6 @@ import {
   createExecutionPlan,
   runFullPipeline,
 } from '../../services/mockAgentExecution';
-import type { ArtifactEnvelope, TaskExecutionSheet } from '../../types/execution';
 import type { StageStatus } from '../../types/stage';
 import { StatusDot } from '../shared/StatusDot';
 import { ExecutionView } from './ExecutionView';
@@ -66,7 +65,6 @@ const TEAM_ROLE_COPY: Record<string, { title: string; shortDesc: string; promise
 
 export function WorkbenchView() {
   const [showTechDetails, setShowTechDetails] = useState(false);
-  const [executionSheet, setExecutionSheet] = useState<TaskExecutionSheet | null>(null);
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -79,6 +77,9 @@ export function WorkbenchView() {
   );
   const artifacts = useScriptAdapterStore((state) =>
     currentProjectId ? state.artifacts[currentProjectId] ?? [] : [],
+  );
+  const executionSheet = useScriptAdapterStore((state) =>
+    currentProjectId ? state.executionSheets[currentProjectId] ?? null : null,
   );
 
   const currentChapter = chapters.find((chapter) => chapter.id === project?.meta.currentChapterId) ?? chapters[0];
@@ -110,25 +111,26 @@ export function WorkbenchView() {
     const taskId = project?.id ?? 'demo-content-task';
     const taskTitle = `${project?.name ?? '长夜未瞑'} · 多人演播样章`;
     const sheet = createExecutionPlan(taskId, taskTitle);
-    setExecutionSheet(sheet);
+    scriptAdapterActions.setExecutionSheet(taskId, sheet);
 
     void runFullPipeline(sheet, {
-      onSheetCreated: setExecutionSheet,
+      onSheetCreated: (createdSheet) => scriptAdapterActions.setExecutionSheet(taskId, createdSheet),
       onAgentStart: (_agentId, run) => {
-        setExecutionSheet((current) => updateRunInSheet(current, run));
+        scriptAdapterActions.updateExecutionRun(taskId, run);
       },
       onAgentProgress: (agentId, stage, percent) => {
-        setExecutionSheet((current) => updateRunProgress(current, agentId, stage, percent));
+        scriptAdapterActions.updateExecutionProgress(taskId, agentId, stage, percent);
       },
       onAgentComplete: (_agentId, artifact, run) => {
-        setExecutionSheet((current) => addArtifactToSheet(updateRunInSheet(current, run), artifact));
+        scriptAdapterActions.updateExecutionRun(taskId, run);
+        scriptAdapterActions.addExecutionArtifact(taskId, artifact);
       },
       onGateReached: (gate) => {
-        setExecutionSheet((current) => markGatePending(current, gate.gateId));
+        scriptAdapterActions.updateExecutionGate(taskId, gate.gateId, { status: 'pending' });
       },
-      onAllComplete: setExecutionSheet,
+      onAllComplete: (completedSheet) => scriptAdapterActions.setExecutionSheet(taskId, completedSheet),
       onAgentFailed: (agentId, error) => {
-        setExecutionSheet((current) => updateRunFailure(current, agentId, error));
+        scriptAdapterActions.failExecutionRun(taskId, agentId, error);
       },
     });
   };
@@ -179,7 +181,12 @@ export function WorkbenchView() {
           </div>
         </aside>
 
-        <ExecutionView sheet={executionSheet} onBackToContract={() => setExecutionSheet(null)} />
+        <ExecutionView
+          sheet={executionSheet}
+          onBackToContract={() => {
+            if (currentProjectId) scriptAdapterActions.clearExecutionSheet(currentProjectId);
+          }}
+        />
       </div>
     );
   }
@@ -394,85 +401,4 @@ export function WorkbenchView() {
       </main>
     </div>
   );
-}
-
-function updateRunInSheet(sheet: TaskExecutionSheet | null, nextRun: TaskExecutionSheet['runs'][number]) {
-  if (!sheet) return sheet;
-  return {
-    ...sheet,
-    runs: sheet.runs.map((run) => (run.runId === nextRun.runId ? nextRun : run)),
-    overallStatus: sheet.overallStatus === 'pending' ? 'running' as const : sheet.overallStatus,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function updateRunProgress(
-  sheet: TaskExecutionSheet | null,
-  agentId: string,
-  progressSummary: string,
-  progressPercent: number,
-) {
-  if (!sheet) return sheet;
-  return {
-    ...sheet,
-    runs: sheet.runs.map((run) =>
-      run.agentId === agentId
-        ? {
-            ...run,
-            progressSummary,
-            progressPercent,
-            status: 'running' as const,
-          }
-        : run,
-    ),
-    overallStatus: 'running' as const,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function updateRunFailure(sheet: TaskExecutionSheet | null, agentId: string, error: string) {
-  if (!sheet) return sheet;
-  return {
-    ...sheet,
-    runs: sheet.runs.map((run) =>
-      run.agentId === agentId
-        ? {
-            ...run,
-            status: 'failed' as const,
-            error,
-            progressSummary: error,
-          }
-        : run,
-    ),
-    overallStatus: 'failed' as const,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function addArtifactToSheet(sheet: TaskExecutionSheet | null, artifact: ArtifactEnvelope) {
-  if (!sheet) return sheet;
-  return {
-    ...sheet,
-    artifacts: {
-      ...sheet.artifacts,
-      [artifact.artifactId]: artifact,
-    },
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function markGatePending(sheet: TaskExecutionSheet | null, gateId: string) {
-  if (!sheet) return sheet;
-  return {
-    ...sheet,
-    gates: sheet.gates.map((gate) =>
-      gate.gateId === gateId
-        ? {
-            ...gate,
-            status: 'pending' as const,
-          }
-        : gate,
-    ),
-    updatedAt: new Date().toISOString(),
-  };
 }

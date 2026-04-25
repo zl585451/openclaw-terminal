@@ -4,6 +4,7 @@ import type { Stage } from '../types/stage';
 import type { Artifact } from '../types/artifact';
 import type { AgentDef } from '../types/agent';
 import type { TeamTemplate } from '../types/template';
+import type { TaskExecutionSheet } from '../types/execution';
 
 export type ViewMode = 'workbench' | 'pipeline' | 'agents';
 
@@ -15,6 +16,7 @@ interface ScriptAdapterState {
   artifacts: Record<string, Artifact[]>;
   agents: AgentDef[];
   templates: Record<string, TeamTemplate>;
+  executionSheets: Record<string, TaskExecutionSheet>;
 
   viewMode: ViewMode;
   selectedStageIdx: number;
@@ -30,6 +32,7 @@ export const useScriptAdapterStore = create<ScriptAdapterState>((set) => ({
   artifacts: {},
   agents: [],
   templates: {},
+  executionSheets: {},
 
   viewMode: 'workbench',
   selectedStageIdx: 0,

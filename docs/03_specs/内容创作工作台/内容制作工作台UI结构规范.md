@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-- 版本：v1.14
+- 版本：v1.15
 - 状态：当前定版，可作为内容制作工作台 V2 前端结构基线
 - 生效方式：先用于 mock 工作台，不要求接入真实 AI、Gateway 或持久化
 - 修订原则：先固定信息结构，再逐步接真实能力
@@ -690,6 +690,43 @@ UI 规则：
 ---
 
 ## 26. 后续扩展
+
+## 26. V2.20 执行状态归一到 Zustand Store
+
+V2.20 将 V2.19 中临时放在 `WorkbenchView` 组件内的执行状态迁移到 `scriptAdapterStore`。
+
+迁移原因：
+
+1. 执行进度不应只属于工作台组件。
+2. 后续团队流程页、Agent 池、任务大厅和 Gateway 状态同步都需要读取同一份执行状态。
+3. 真实 Agent 是异步执行，不能依赖某个组件是否挂载。
+4. 迁移到 Store 后，前端 mock 执行链路更接近后续 Gateway 状态机。
+
+新增 Store 状态：
+
+1. `executionSheets: Record<string, TaskExecutionSheet>`
+
+新增 actions：
+
+1. `setExecutionSheet`
+2. `clearExecutionSheet`
+3. `updateExecutionRun`
+4. `updateExecutionProgress`
+5. `failExecutionRun`
+6. `addExecutionArtifact`
+7. `updateExecutionGate`
+
+行为规则：
+
+1. `WorkbenchView` 不再持有 `executionSheet` 局部状态。
+2. `确认开工` 后创建的 `TaskExecutionSheet` 写入 store。
+3. mock pipeline 回调只通过 `scriptAdapterActions` 更新状态。
+4. `ExecutionView` 继续只负责展示，不承担执行状态管理。
+5. 返回开工确认书时清除当前项目的执行单。
+
+---
+
+## 27. 后续扩展
 
 V2 稳定后，下一步建议按以下顺序推进：
 
