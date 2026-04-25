@@ -2095,9 +2095,12 @@ async function streamChat({
       log.warn('MiniMax API failed, fallback to Bailian MiniMax', { error: e?.message || String(e) });
       const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;
+      const originalModel = model;
+      const fallbackModel = 'MiniMax-M2.5';
       config.currentProvider = 'bailian-coding';
-      config.DASHSCOPE_MODEL = 'MiniMax-M2.5';
+      config.DASHSCOPE_MODEL = fallbackModel;
       try {
+        log.debug('streamChat fallback re-enter', { originalModel, fallbackModel });
         await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
       } finally {
         config.currentProvider = prevProvider;
@@ -2112,9 +2115,12 @@ async function streamChat({
       log.warn('primary provider failed, fallback to deepseek', { error: e?.message || String(e) });
       const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;
+      const originalModel = model;
+      const fallbackModel = 'deepseek-v4-flash';
       config.currentProvider = 'deepseek';
-      config.DASHSCOPE_MODEL = 'deepseek-v4-flash';
+      config.DASHSCOPE_MODEL = fallbackModel;
       try {
+        log.debug('streamChat fallback re-enter', { originalModel, fallbackModel });
         await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
       } finally {
         config.currentProvider = prevProvider;
