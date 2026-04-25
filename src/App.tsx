@@ -145,7 +145,7 @@ const App: React.FC = () => {
               </div>
             </>
           ) : (
-            <div className="app-shell-module-title">内容制作工作台 · V2</div>
+            <div className="app-shell-module-title">内容创作</div>
           )}
         </div>
 
