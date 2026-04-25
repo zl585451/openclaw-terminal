@@ -16,23 +16,6 @@ import styles from './styles/scriptAdapter.module.css';
 
 type ScriptAdapterScreen = 'home' | 'create' | 'workspace';
 
-const REQUIREMENT_PRESETS = [
-  '不要改剧情',
-  '提升听感',
-  '旁白更口语化',
-  '标注角色音',
-  '补充BGM和音效',
-  '补充CV情绪',
-  '先出样章',
-  '保留悬疑节奏',
-];
-
-const REQUIREMENT_HINTS = [
-  { title: '应该写', text: '改编目标、处理范围、风格要求、保留边界、需要输出什么。' },
-  { title: '不要写', text: '大段原文、无关聊天、账号密码、让 AI 改掉核心剧情事实。' },
-  { title: '系统会处理', text: '无关内容会降级为备注；冲突要求会在初读分析阶段提示用户确认。' },
-];
-
 const SOURCE_AGENT_PREVIEW = [
   { name: '文件解析 Agent', status: '预分配', desc: '识别文件类型、字数、章节边界和基础元数据。' },
   { name: '内容识别 Agent', status: '预分配', desc: '判断题材、文本形态和是否适合当前目标产物。' },
@@ -178,7 +161,7 @@ interface WizardProps {
 }
 
 function TaskCreateWizard({ onBack, onStart }: WizardProps) {
-  const [brief, setBrief] = useState('不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。');
+  const [brief, setBrief] = useState('');
   const [intakeStatus, setIntakeStatus] = useState<IntakeStatus>('idle');
   const [intakeStepIndex, setIntakeStepIndex] = useState(0);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
@@ -213,14 +196,6 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
       status: sourceConfirmed ? 'active' : 'pending',
     },
   ] as const;
-
-  const addRequirementPreset = (preset: string) => {
-    setBrief((current) => {
-      const trimmed = current.trim();
-      if (trimmed.includes(preset)) return current;
-      return trimmed ? `${trimmed}；${preset}` : preset;
-    });
-  };
 
   const handleConfirmSource = async () => {
     if (isIntakeRunning) return;
@@ -395,8 +370,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <div className={`${styles.card} ${styles.composerRequirementCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
-                <div className={styles.detailEyebrow}>第 2 步 · 产物确认</div>
-                <h2>定义产物、范围和本轮要求</h2>
+                <div className={styles.detailEyebrow}>第 2 步 · 执行确认</div>
+                <h2>确认 AI 推荐方案</h2>
               </div>
               <span className={sourceConfirmed ? styles.reviewPill : styles.mutedPill}>
                 {sourceConfirmed ? '初步分析已生成' : isIntakeRunning ? '生成中' : '等待素材'}
@@ -475,28 +450,15 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <div className={styles.supplementRequirementBlock}>
                   <div className={styles.composerSectionHeader}>
                     <div>
-                      <div className={styles.taskFieldLabel}>补充要求</div>
-                      <span className={styles.mutedText}>只写额外边界或偏好，不需要复述上面的方案。</span>
+                      <div className={styles.taskFieldLabel}>可选补充说明</div>
+                      <span className={styles.mutedText}>如果上面三项没有覆盖你的要求，再补一句。留空也可以继续。</span>
                     </div>
-                  </div>
-
-                  <div className={styles.choiceGrid}>
-                    {REQUIREMENT_PRESETS.map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        className={brief.includes(preset) ? styles.choiceCardActive : styles.choiceCard}
-                        onClick={() => addRequirementPreset(preset)}
-                      >
-                        {preset}
-                      </button>
-                    ))}
                   </div>
 
                   <textarea
                     className={styles.taskTextarea}
                     aria-label="本轮任务补充要求"
-                    placeholder="例：不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。"
+                    placeholder="例：人物名称和故事大纲不能变；如果要补 BGM 和角色音，先在分析里提示即可。"
                     value={brief}
                     onChange={(event) => setBrief(event.target.value)}
                   />
@@ -509,47 +471,6 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                     {isBriefLong ? <span className={styles.requirementWarnText}>要求偏长，AI 会先压缩成任务摘要再执行。</span> : null}
                   </div>
                 </div>
-
-                <details className={styles.advancedPlanDetails}>
-                  <summary>需要微调目标、范围或本轮动作</summary>
-                  <div className={styles.advancedPlanBody}>
-                    <div className={styles.composerConfigGrid}>
-                      <div className={styles.composerConfigGroup}>
-                        <strong>目标产物</strong>
-                        <div className={styles.choiceGrid}>
-                          <button type="button" className={styles.choiceCardActive}>多人演播有声书</button>
-                          <button type="button" className={styles.choiceCard}>广播剧</button>
-                          <button type="button" className={styles.choiceCard}>短剧脚本</button>
-                          <button type="button" className={styles.choiceCard}>只做作品分析</button>
-                        </div>
-                      </div>
-                      <div className={styles.composerConfigGroup}>
-                        <strong>处理范围</strong>
-                        <div className={styles.choiceGrid}>
-                          <button type="button" className={styles.choiceCardActive}>前1章</button>
-                          <button type="button" className={styles.choiceCard}>全文</button>
-                          <button type="button" className={styles.choiceCard}>自定义范围</button>
-                        </div>
-                      </div>
-                      <div className={styles.composerConfigGroup}>
-                        <strong>本轮目标</strong>
-                        <div className={styles.choiceGrid}>
-                          <button type="button" className={styles.choiceCardActive}>先分析问题</button>
-                          <button type="button" className={styles.choiceCard}>直接生成样章</button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={styles.requirementGuide}>
-                      {REQUIREMENT_HINTS.map((hint) => (
-                        <div key={hint.title} className={styles.requirementHintCard}>
-                          <strong>{hint.title}</strong>
-                          <span>{hint.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </details>
 
                 <div className={styles.teamLockBox}>
                   <div>
@@ -592,8 +513,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             </div>
             <div className={styles.summaryList}>
               <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 已完成解析' : isIntakeRunning ? '正在摄入 · 生成素材对象' : '上传文件 · 待确认'}</strong></div>
-              <div><span>目标</span><strong>{getDecisionSummaryValue('target_product', '多人演播有声书')}</strong></div>
-              <div><span>范围</span><strong>{getDecisionSummaryValue('scope', '前1章')}</strong></div>
+              <div><span>目标</span><strong>{getDecisionSummaryValue('work_goal', '多人演播有声书 · 先做业务分析')}</strong></div>
+              <div><span>范围</span><strong>{getDecisionSummaryValue('scope', '第 1 章')}</strong></div>
               <div><span>本轮</span><strong>先分析问题</strong></div>
               <div><span>草案</span><strong>{sourceConfirmed ? '已生成 TaskDraft' : isIntakeRunning ? '生成中' : '等待生成'}</strong></div>
             </div>
