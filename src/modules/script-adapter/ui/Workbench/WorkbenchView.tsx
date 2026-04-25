@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useScriptAdapterStore } from '../../store/scriptAdapterStore';
 import { scriptAdapterActions } from '../../store/actions';
 import type { StageStatus } from '../../types/stage';
@@ -28,7 +29,36 @@ const ARTIFACT_LABELS: Record<string, string> = {
   final_package: '交付包',
 };
 
+const TEAM_ROLE_COPY: Record<string, { title: string; shortDesc: string; promise: string }> = {
+  'stage-text-adaptation': {
+    title: '文本改编师',
+    shortDesc: '把原文改成更适合多人演播的口语化样章。',
+    promise: '保留剧情，只让旁白和对白更好听。',
+  },
+  'stage-voice-classification': {
+    title: '角色音统筹',
+    shortDesc: '标出谁在说话、哪些声音暂时未定、哪些需要后续分配 CV。',
+    promise: '不把文件记录、OS、未定声音硬塞给旁白。',
+  },
+  'stage-performance-design': {
+    title: '演播设计师',
+    shortDesc: '补充 BGM、音效、CV 情绪、气息和动作提示。',
+    promise: '让剧组拿到后能直接理解怎么演。',
+  },
+  'stage-quality-review': {
+    title: '质检审校',
+    shortDesc: '检查有没有改剧情、角色音是否混乱、演播提示是否可执行。',
+    promise: '发现风险会停下来提醒你确认。',
+  },
+  'stage-export': {
+    title: '交付打包员',
+    shortDesc: '整理成剧组能看的台本、角色音表和制作说明。',
+    promise: '把零散产物打包成清楚的交付件。',
+  },
+};
+
 export function WorkbenchView() {
+  const [showTechDetails, setShowTechDetails] = useState(false);
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -55,6 +85,15 @@ export function WorkbenchView() {
     .flatMap((stage) => stage.outputArtifactTypes)
     .filter((type, index, list) => list.indexOf(type) === index);
 
+  const teamStages = productionStages.map((stage) => ({
+    ...stage,
+    friendly: TEAM_ROLE_COPY[stage.id] ?? {
+      title: stage.name,
+      shortDesc: stage.description,
+      promise: '按确认策略完成对应制作任务。',
+    },
+  }));
+
   const openRunnableStage = () => {
     scriptAdapterActions.openStageInWorkbench(firstRunnableStage?.idx ?? 3);
   };
@@ -68,7 +107,7 @@ export function WorkbenchView() {
           <div className={styles.taskProjectMeta}>
             <span>{currentChapter ? `第${currentChapter.index}章：${currentChapter.title}` : '未选择章节'}</span>
             <span>{project?.meta.genre ?? '题材待确认'}</span>
-            <span>多人演播有声书样章</span>
+            <span>开工前确认</span>
           </div>
         </div>
 
@@ -94,142 +133,177 @@ export function WorkbenchView() {
           className={styles.secondaryWideButton}
           onClick={() => scriptAdapterActions.setViewMode('pipeline')}
         >
-          查看完整 Agent 流程
+          查看高级流程
         </button>
       </aside>
 
       <main className={styles.taskMain}>
-        <section className={`${styles.card} ${styles.executionHeroCard}`}>
-          <div className={styles.heroTaskCopy}>
-            <div className={styles.detailEyebrow}>任务执行单已生成</div>
-            <h2>下一步不是再选方向，而是按确认策略开始制作。</h2>
+        <section className={`${styles.card} ${styles.workOrderHeroCard}`}>
+          <div className={styles.workOrderHeroCopy}>
+            <div className={styles.workOrderKicker}>开工确认书</div>
+            <h2>已准备好开始制作第 1 章多人演播样章。</h2>
             <p>
-              系统已锁定素材、产品目标、处理范围和修改策略。现在工作台负责展示执行队列、
-              产物预期和人工复核点，方便你看到后台接下来怎么跑。
+              你前面确认的目标、范围和修改策略已经锁定。接下来系统会派出一支制作团队，
+              按约定开工；需要你确认的地方，会停下来问你。
             </p>
+            <div className={styles.workOrderSealRow}>
+              <span>不改剧情</span>
+              <span>先做样章</span>
+              <span>人工复核</span>
+            </div>
           </div>
-          <div className={styles.heroTaskActions}>
-            <button type="button" className={styles.primaryButton} onClick={openRunnableStage}>
-              启动第一轮制作
+          <div className={styles.workOrderHeroActions}>
+            <div className={styles.readyStamp}>READY</div>
+            <button type="button" className={styles.confirmStartButton} onClick={openRunnableStage}>
+              确认开工
             </button>
             <button
               type="button"
               className={styles.ghostButton}
               onClick={() => scriptAdapterActions.setViewMode('pipeline')}
             >
-              查看执行队列
+              查看高级流程
             </button>
           </div>
         </section>
 
-        <section className={styles.executionSummaryGrid}>
-          <div className={`${styles.card} ${styles.executionBriefCard}`}>
-            <div className={styles.sectionTitle}>本轮任务执行单</div>
-            <div className={styles.executionBriefGrid}>
-              <div>
-                <span>产品目标</span>
-                <strong>多人演播有声书样章</strong>
-              </div>
-              <div>
-                <span>处理范围</span>
-                <strong>{currentChapter ? `第${currentChapter.index}章 · 前半段试跑` : '第1章前半段试跑'}</strong>
-              </div>
-              <div>
-                <span>修改策略</span>
-                <strong>保留剧情，只提升听感和演播可执行性</strong>
-              </div>
-              <div>
-                <span>人工复核</span>
-                <strong>角色音回绑、演播标注、质检结论</strong>
-              </div>
-            </div>
+        <section className={styles.contractFocusGrid}>
+          <div className={styles.contractFocusCard}>
+            <span>做什么</span>
+            <strong>多人演播有声书样章</strong>
+            <em>给有声书团队试跑制作形态。</em>
           </div>
-
-          <div className={`${styles.card} ${styles.outputChecklistCard}`}>
-            <div className={styles.sectionTitle}>本轮会交付什么</div>
-            <div className={styles.outputChecklist}>
-              {expectedOutputs.map((type) => (
-                <div key={type}>
-                  <span>{ARTIFACT_LABELS[type] ?? type}</span>
-                  <strong>{type === 'final_package' ? '最终阶段生成' : '本轮链路产出'}</strong>
-                </div>
-              ))}
-            </div>
+          <div className={styles.contractFocusCard}>
+            <span>做哪里</span>
+            <strong>{currentChapter ? `第${currentChapter.index}章 · 前半段` : '第1章 · 前半段'}</strong>
+            <em>先小范围验证效果，不直接跑完整本。</em>
+          </div>
+          <div className={styles.contractFocusCard}>
+            <span>怎么改</span>
+            <strong>保留剧情，只提升听感</strong>
+            <em>不重写故事，只让它更适合演播。</em>
           </div>
         </section>
 
-        <section className={`${styles.card} ${styles.agentExecutionCard}`}>
-          <div className={styles.agentExecutionHeader}>
+        <section className={styles.contractReviewNotice}>
+          <strong>需要你之后确认的地方</strong>
+          <span>未定角色音是否独立锁 CV、演播提示是否继续扩到全章、质检结果是否允许进入打包。</span>
+        </section>
+
+        <section className={`${styles.card} ${styles.productionTeamCard}`}>
+          <div className={styles.productionTeamHeader}>
             <div>
-              <div className={styles.sectionTitle}>Agent 执行队列</div>
-              <p>用户不需要再手动分配 Agent。系统会按确认策略，把任务交给下面的制作队列。</p>
+              <div className={styles.sectionTitle}>谁在为你干活</div>
+              <p>不用理解技术队列。你只需要知道，这几位“制作角色”会按顺序帮你完成样章。</p>
             </div>
             <button type="button" className={styles.ghostButton} onClick={openRunnableStage}>
-              打开当前执行阶段
+              打开当前制作阶段
             </button>
           </div>
 
-          <div className={styles.agentExecutionList}>
-            {productionStages.map((stage) => (
-              <div key={stage.id} className={styles.agentExecutionItem}>
-                <div className={styles.agentExecutionIndex}>{stage.idx}</div>
-                <div className={styles.agentExecutionMain}>
-                  <div className={styles.agentExecutionTop}>
-                    <strong>{stage.name}</strong>
-                    <span>
-                      <StatusDot status={stage.status} />
-                      {STATUS_LABEL[stage.status]}
-                    </span>
-                  </div>
-                  <p>{stage.description}</p>
-                  <div className={styles.agentExecutionMeta}>
-                    <span>Agent：{stage.agentRef}</span>
-                    <span>输入：{stage.inputArtifactTypes.join(' / ') || '无'}</span>
-                    <span>输出：{stage.outputArtifactTypes.join(' / ')}</span>
-                    {stage.requiresHumanReview ? <span>需要人工复核</span> : null}
-                  </div>
+          <div className={styles.productionTeamGrid}>
+            {teamStages.map((stage) => (
+              <div key={stage.id} className={styles.productionTeamMember}>
+                <div className={styles.productionMemberTop}>
+                  <span>{stage.idx}</span>
+                  <em>{STATUS_LABEL[stage.status]}</em>
                 </div>
+                <strong>{stage.friendly.title}</strong>
+                <p>{stage.friendly.shortDesc}</p>
+                <small>{stage.friendly.promise}</small>
+                {stage.requiresHumanReview ? <b>需要你复核</b> : null}
               </div>
             ))}
           </div>
         </section>
 
-        <section className={styles.compareGrid}>
-          <div className={`${styles.card} ${styles.compareCard}`}>
-            <div className={styles.sectionTitle}>已锁定依据</div>
-            <div className={styles.lockedEvidenceList}>
-              <div>
-                <strong>剧情边界</strong>
-                <span>{plotLock?.contentPreview ?? '等待作品分析产物。'}</span>
-              </div>
-              <div>
-                <strong>场景依据</strong>
-                <span>{sceneBreakdown?.contentPreview ?? '等待场景拆分产物。'}</span>
-              </div>
-              <div>
-                <strong>风格画像</strong>
-                <span>{styleProfile?.contentPreview ?? '等待风格画像产物。'}</span>
-              </div>
+        <section className={styles.contractDeliveryGrid}>
+          <div className={`${styles.card} ${styles.deliveryChecklistCard}`}>
+            <div className={styles.sectionTitle}>开工后你会拿到什么</div>
+            <div className={styles.deliveryChecklist}>
+              {expectedOutputs.map((type, index) => (
+                <div key={type}>
+                  <span>{index + 1}</span>
+                  <div>
+                    <strong>{ARTIFACT_LABELS[type] ?? type}</strong>
+                    <em>{type === 'final_package' ? '最后统一整理给你' : '制作过程中逐步生成'}</em>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className={`${styles.card} ${styles.executionGuardCard}`}>
-            <div className={styles.sectionTitle}>执行边界</div>
-            <div className={styles.executionGuardList}>
+          <div className={`${styles.card} ${styles.contractGuardCard}`}>
+            <div className={styles.sectionTitle}>保护条款</div>
+            <div className={styles.contractGuardList}>
               <div>
-                <strong>不做</strong>
-                <span>不改核心剧情事实，不提前解释悬疑物件，不把未定来源声音强行归为旁白。</span>
+                <strong>不会改核心剧情</strong>
+                <span>只优化表达和演播可执行性，不改变人物关系和关键事件。</span>
               </div>
               <div>
-                <strong>重点做</strong>
-                <span>优化旁白口语流畅度，补齐角色音、OS 占位、BGM、SFX、CV 情绪和气息提示。</span>
+                <strong>不会提前解释悬疑</strong>
+                <span>旧物、对讲机和关键线索仍按原来的信息顺序出现。</span>
               </div>
               <div>
-                <strong>交给人工确认</strong>
-                <span>未定角色音是否独立锁 CV、样章是否继续扩到全章、质检是否允许进入打包。</span>
+                <strong>不会乱归角色音</strong>
+                <span>未定来源声音会保留为候选，交给你或统筹后续确认。</span>
               </div>
             </div>
           </div>
+        </section>
+
+        <section className={`${styles.card} ${styles.technicalDetailsCard}`}>
+          <button
+            type="button"
+            className={styles.technicalDetailsToggle}
+            onClick={() => setShowTechDetails((current) => !current)}
+          >
+            <span>{showTechDetails ? '收起技术细节' : '查看技术细节'}</span>
+            <em>Agent ID、输入产物、输出产物、锁定依据</em>
+          </button>
+
+          {showTechDetails ? (
+            <div className={styles.technicalDetailsBody}>
+              <div className={styles.agentExecutionList}>
+                {productionStages.map((stage) => (
+                  <div key={stage.id} className={styles.agentExecutionItem}>
+                    <div className={styles.agentExecutionIndex}>{stage.idx}</div>
+                    <div className={styles.agentExecutionMain}>
+                      <div className={styles.agentExecutionTop}>
+                        <strong>{stage.name}</strong>
+                        <span>
+                          <StatusDot status={stage.status} />
+                          {STATUS_LABEL[stage.status]}
+                        </span>
+                      </div>
+                      <p>{stage.description}</p>
+                      <div className={styles.agentExecutionMeta}>
+                        <span>Agent：{stage.agentRef}</span>
+                        <span>输入：{stage.inputArtifactTypes.join(' / ') || '无'}</span>
+                        <span>输出：{stage.outputArtifactTypes.join(' / ')}</span>
+                        {stage.requiresHumanReview ? <span>需要人工复核</span> : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className={styles.lockedEvidenceList}>
+                <div>
+                  <strong>剧情边界</strong>
+                  <span>{plotLock?.contentPreview ?? '等待作品分析产物。'}</span>
+                </div>
+                <div>
+                  <strong>场景依据</strong>
+                  <span>{sceneBreakdown?.contentPreview ?? '等待场景拆分产物。'}</span>
+                </div>
+                <div>
+                  <strong>风格画像</strong>
+                  <span>{styleProfile?.contentPreview ?? '等待风格画像产物。'}</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
       </main>
     </div>

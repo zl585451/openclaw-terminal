@@ -1983,6 +1983,111 @@
     linear-gradient(135deg, rgba(239, 247, 242, 0.98), rgba(255, 255, 253, 0.98));
 }
 
+.workOrderHeroCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 22px;
+  align-items: stretch;
+  padding: 24px;
+  overflow: hidden;
+  border-color: rgba(30, 117, 91, 0.24);
+  background:
+    radial-gradient(circle at 93% 18%, rgba(239, 159, 39, 0.2), transparent 28%),
+    radial-gradient(circle at 12% 0%, rgba(30, 117, 91, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(250, 253, 248, 0.98), rgba(255, 250, 238, 0.96));
+}
+
+.workOrderHeroCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.workOrderKicker {
+  color: #176149;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.workOrderHeroCopy h2 {
+  max-width: 820px;
+  margin: 0;
+  color: #101718;
+  font-size: 30px;
+  line-height: 1.24;
+}
+
+.workOrderHeroCopy p {
+  max-width: 860px;
+  margin: 0;
+  color: #4f595c;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.workOrderSealRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 4px;
+}
+
+.workOrderSealRow span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 12px;
+  border: 1px solid rgba(30, 117, 91, 0.24);
+  border-radius: 999px;
+  background: rgba(239, 247, 242, 0.92);
+  color: #176149;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.workOrderHeroActions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 10px;
+}
+
+.readyStamp {
+  align-self: center;
+  width: 86px;
+  height: 86px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(30, 117, 91, 0.45);
+  border-radius: 999px;
+  color: #176149;
+  font-size: 15px;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+  transform: rotate(-8deg);
+  background: rgba(255, 255, 253, 0.72);
+}
+
+.confirmStartButton {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid rgba(30, 117, 91, 0.3);
+  border-radius: 12px;
+  background: #1e755b;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(30, 117, 91, 0.2);
+}
+
+.confirmStartButton:hover {
+  background: #176149;
+}
+
 .heroTaskCopy {
   display: flex;
   flex-direction: column;
@@ -2131,6 +2236,263 @@
   color: #596165;
   font-size: 14px;
   line-height: 1.75;
+}
+
+.contractFocusGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.contractFocusCard {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px;
+  border: 1px solid rgba(30, 117, 91, 0.14);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 253, 0.96), rgba(241, 247, 242, 0.92));
+}
+
+.contractFocusCard span {
+  color: #667075;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.contractFocusCard strong {
+  color: #111819;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.contractFocusCard em {
+  color: #596165;
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.contractReviewNotice {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px;
+  padding: 13px 16px;
+  border: 1px solid rgba(239, 159, 39, 0.26);
+  border-radius: 12px;
+  background: rgba(255, 248, 232, 0.9);
+}
+
+.contractReviewNotice strong {
+  color: #5f4512;
+  font-size: 14px;
+}
+
+.contractReviewNotice span {
+  color: #665431;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.productionTeamCard,
+.deliveryChecklistCard,
+.contractGuardCard,
+.technicalDetailsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.productionTeamHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.productionTeamHeader p {
+  margin: 6px 0 0;
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.productionTeamGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.productionTeamMember {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-height: 210px;
+  padding: 14px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 14px;
+  background: rgba(250, 251, 248, 0.94);
+}
+
+.productionTeamMember:first-child {
+  border-color: rgba(239, 159, 39, 0.3);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.12), transparent 36%),
+    rgba(255, 255, 253, 0.96);
+}
+
+.productionMemberTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.productionMemberTop span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.12);
+  color: #176149;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.productionMemberTop em {
+  color: #667075;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.productionTeamMember strong {
+  color: #111819;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.productionTeamMember p {
+  flex: 1;
+  margin: 0;
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.productionTeamMember small {
+  color: #176149;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.productionTeamMember b {
+  align-self: flex-start;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(239, 159, 39, 0.13);
+  color: #8a5600;
+  font-size: 11px;
+}
+
+.contractDeliveryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.86fr);
+  gap: 14px;
+}
+
+.deliveryChecklist,
+.contractGuardList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.deliveryChecklist div,
+.contractGuardList div {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(244, 246, 241, 0.9);
+}
+
+.deliveryChecklist div > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #1e755b;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.deliveryChecklist strong,
+.contractGuardList strong {
+  display: block;
+  color: #15191b;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.deliveryChecklist em,
+.contractGuardList span {
+  display: block;
+  margin-top: 3px;
+  color: #596165;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.contractGuardList div {
+  grid-template-columns: 1fr;
+  border-color: rgba(239, 159, 39, 0.18);
+  background: rgba(255, 248, 232, 0.72);
+}
+
+.technicalDetailsToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.technicalDetailsToggle span {
+  color: #15191b;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.technicalDetailsToggle em {
+  color: #667075;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.technicalDetailsBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  gap: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(53, 64, 67, 0.1);
 }
 
 .executionSummaryGrid {
@@ -2873,7 +3235,12 @@
   .compareGrid,
   .heroTaskCard,
   .executionHeroCard,
+  .workOrderHeroCard,
   .executionSummaryGrid,
+  .contractFocusGrid,
+  .productionTeamGrid,
+  .contractDeliveryGrid,
+  .technicalDetailsBody,
   .directionCard,
   .entryHeroGrid,
   .createGrid,
@@ -2951,6 +3318,8 @@
   .agentPreviewItem,
   .agentExecutionHeader,
   .agentExecutionTop,
+  .productionTeamHeader,
+  .contractReviewNotice,
   .analysisHeroCard div,
   .evidenceItem,
   .planHeroHeader,
