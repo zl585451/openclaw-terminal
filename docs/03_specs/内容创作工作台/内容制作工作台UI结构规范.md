@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-- 版本：v1.13
+- 版本：v1.14
 - 状态：当前定版，可作为内容制作工作台 V2 前端结构基线
 - 生效方式：先用于 mock 工作台，不要求接入真实 AI、Gateway 或持久化
 - 修订原则：先固定信息结构，再逐步接真实能力
@@ -643,6 +643,53 @@ V2.18 将第三步确认后的默认工作台入口，从“执行总览页”�
 ---
 
 ## 25. 后续扩展
+
+## 25. V2.19 前端 mock 执行链路规则
+
+V2.19 将开工确认书后的静态占位升级为前端 mock 执行链路。用户点击“确认开工”后，应进入制作执行视图，看到 5 个制作角色按顺序执行，并逐步生成 mock 产物。
+
+新增前端协议对象：
+
+1. `AgentExecutionPlan`
+   描述本轮执行计划、Agent 顺序和确认闸门。
+2. `AgentRun`
+   描述单个 Agent 的执行状态、进度和产物引用。
+3. `ArtifactEnvelope`
+   包装每个 Agent 生成的结构化产物。
+4. `ReviewGate`
+   描述人工确认闸门，MVP 前端 mock 阶段可自动通过。
+5. `TaskExecutionSheet`
+   工作台执行视图的主数据对象。
+
+执行链路：
+
+1. 文本改编师生成 `AdaptedScript`。
+2. 角色音统筹生成 `VoiceRoleMarkers`。
+3. 演播设计师生成 `PerformanceDesign`。
+4. 质检审校生成 `ReviewReport`。
+5. 交付打包员生成 `DeliveryPackage`。
+
+UI 规则：
+
+1. 开工确认书仍是默认入口。
+2. 点击“确认开工”后切换到执行进度视图。
+3. 执行进度视图必须展示当前 Agent、整体完成度、每个 Agent 的状态和进度条。
+4. 产物预览应随 Agent 完成逐步出现。
+5. 用户第一层只看制作角色和产物标题，不直接暴露 Agent 技术输入输出。
+6. mock 阶段允许确认闸门自动通过，但 UI 必须保留闸门状态展示。
+
+当前实现文件：
+
+1. `src/modules/script-adapter/types/execution.ts`
+2. `src/modules/script-adapter/services/mockAgentExecution.ts`
+3. `src/modules/script-adapter/ui/Workbench/ExecutionView.tsx`
+4. `src/modules/script-adapter/ui/Workbench/AgentRunCard.tsx`
+5. `src/modules/script-adapter/ui/Workbench/ArtifactPreview.tsx`
+6. `src/modules/script-adapter/ui/Workbench/WorkbenchView.tsx`
+
+---
+
+## 26. 后续扩展
 
 V2 稳定后，下一步建议按以下顺序推进：
 

@@ -56,6 +56,8 @@
 
 ## 目标
 
+状态：已执行，前端 mock 执行链路已接入。后续如继续优化，以 `src/modules/script-adapter/types/execution.ts` 和 `src/modules/script-adapter/services/mockAgentExecution.ts` 为当前实现基线。
+
 让当前工作台从“开工确认书”继续往下走，形成可演示的完整前端闭环。
 
 完成后应能演示：

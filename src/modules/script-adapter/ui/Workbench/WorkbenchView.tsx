@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useScriptAdapterStore } from '../../store/scriptAdapterStore';
 import { scriptAdapterActions } from '../../store/actions';
+import {
+  abortPipeline,
+  createExecutionPlan,
+  runFullPipeline,
+} from '../../services/mockAgentExecution';
+import type { ArtifactEnvelope, TaskExecutionSheet } from '../../types/execution';
 import type { StageStatus } from '../../types/stage';
 import { StatusDot } from '../shared/StatusDot';
+import { ExecutionView } from './ExecutionView';
 import styles from '../../styles/scriptAdapter.module.css';
 
 const TASK_STEPS = [
@@ -59,6 +66,7 @@ const TEAM_ROLE_COPY: Record<string, { title: string; shortDesc: string; promise
 
 export function WorkbenchView() {
   const [showTechDetails, setShowTechDetails] = useState(false);
+  const [executionSheet, setExecutionSheet] = useState<TaskExecutionSheet | null>(null);
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -97,6 +105,84 @@ export function WorkbenchView() {
   const openRunnableStage = () => {
     scriptAdapterActions.openStageInWorkbench(firstRunnableStage?.idx ?? 3);
   };
+
+  const startMockExecution = () => {
+    const taskId = project?.id ?? 'demo-content-task';
+    const taskTitle = `${project?.name ?? '长夜未瞑'} · 多人演播样章`;
+    const sheet = createExecutionPlan(taskId, taskTitle);
+    setExecutionSheet(sheet);
+
+    void runFullPipeline(sheet, {
+      onSheetCreated: setExecutionSheet,
+      onAgentStart: (_agentId, run) => {
+        setExecutionSheet((current) => updateRunInSheet(current, run));
+      },
+      onAgentProgress: (agentId, stage, percent) => {
+        setExecutionSheet((current) => updateRunProgress(current, agentId, stage, percent));
+      },
+      onAgentComplete: (_agentId, artifact, run) => {
+        setExecutionSheet((current) => addArtifactToSheet(updateRunInSheet(current, run), artifact));
+      },
+      onGateReached: (gate) => {
+        setExecutionSheet((current) => markGatePending(current, gate.gateId));
+      },
+      onAllComplete: setExecutionSheet,
+      onAgentFailed: (agentId, error) => {
+        setExecutionSheet((current) => updateRunFailure(current, agentId, error));
+      },
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      abortPipeline();
+    };
+  }, []);
+
+  if (executionSheet) {
+    return (
+      <div className={styles.taskWorkbench}>
+        <aside className={styles.taskRail}>
+          <div className={`${styles.card} ${styles.taskProjectCard}`}>
+            <div className={styles.sidebarSectionLabel}>正在制作</div>
+            <div className={styles.projectCardTitle}>{project?.name ?? '未命名项目'}</div>
+            <div className={styles.taskProjectMeta}>
+              <span>{currentChapter ? `第${currentChapter.index}章：${currentChapter.title}` : '未选择章节'}</span>
+              <span>多人演播样章</span>
+              <span>{executionSheet.overallStatus === 'completed' ? '已完成' : '执行中'}</span>
+            </div>
+          </div>
+
+          <div className={styles.taskStepList}>
+            {TASK_STEPS.map((step, index) => {
+              const isDone = index < 4 || executionSheet.overallStatus === 'completed';
+              const isRunning = index === 3 && executionSheet.overallStatus === 'running';
+              return (
+                <div
+                  key={step.label}
+                  className={`${styles.taskStep} ${
+                    isRunning ? styles.taskStepActive : ''
+                  } ${isDone ? styles.taskStepDone : ''}`}
+                >
+                  <span className={styles.taskStepIndex}>{index + 1}</span>
+                  <div className={styles.taskStepText}>
+                    <strong>{step.label}</strong>
+                    <span>
+                      {index === 3
+                        ? `${executionSheet.runs.filter((run) => run.status === 'completed').length}/${executionSheet.runs.length} 已完成`
+                        : step.desc}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+
+        <ExecutionView sheet={executionSheet} onBackToContract={() => setExecutionSheet(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className={styles.taskWorkbench}>
@@ -154,7 +240,7 @@ export function WorkbenchView() {
           </div>
           <div className={styles.workOrderHeroActions}>
             <div className={styles.readyStamp}>READY</div>
-            <button type="button" className={styles.confirmStartButton} onClick={openRunnableStage}>
+            <button type="button" className={styles.confirmStartButton} onClick={startMockExecution}>
               确认开工
             </button>
             <button
@@ -308,4 +394,85 @@ export function WorkbenchView() {
       </main>
     </div>
   );
+}
+
+function updateRunInSheet(sheet: TaskExecutionSheet | null, nextRun: TaskExecutionSheet['runs'][number]) {
+  if (!sheet) return sheet;
+  return {
+    ...sheet,
+    runs: sheet.runs.map((run) => (run.runId === nextRun.runId ? nextRun : run)),
+    overallStatus: sheet.overallStatus === 'pending' ? 'running' as const : sheet.overallStatus,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function updateRunProgress(
+  sheet: TaskExecutionSheet | null,
+  agentId: string,
+  progressSummary: string,
+  progressPercent: number,
+) {
+  if (!sheet) return sheet;
+  return {
+    ...sheet,
+    runs: sheet.runs.map((run) =>
+      run.agentId === agentId
+        ? {
+            ...run,
+            progressSummary,
+            progressPercent,
+            status: 'running' as const,
+          }
+        : run,
+    ),
+    overallStatus: 'running' as const,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function updateRunFailure(sheet: TaskExecutionSheet | null, agentId: string, error: string) {
+  if (!sheet) return sheet;
+  return {
+    ...sheet,
+    runs: sheet.runs.map((run) =>
+      run.agentId === agentId
+        ? {
+            ...run,
+            status: 'failed' as const,
+            error,
+            progressSummary: error,
+          }
+        : run,
+    ),
+    overallStatus: 'failed' as const,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function addArtifactToSheet(sheet: TaskExecutionSheet | null, artifact: ArtifactEnvelope) {
+  if (!sheet) return sheet;
+  return {
+    ...sheet,
+    artifacts: {
+      ...sheet.artifacts,
+      [artifact.artifactId]: artifact,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function markGatePending(sheet: TaskExecutionSheet | null, gateId: string) {
+  if (!sheet) return sheet;
+  return {
+    ...sheet,
+    gates: sheet.gates.map((gate) =>
+      gate.gateId === gateId
+        ? {
+            ...gate,
+            status: 'pending' as const,
+          }
+        : gate,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
 }

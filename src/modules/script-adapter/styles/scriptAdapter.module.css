@@ -2678,6 +2678,303 @@
   white-space: pre-wrap;
 }
 
+.executionHeroCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 20px;
+  align-items: center;
+  padding: 24px;
+  border-color: rgba(30, 117, 91, 0.22);
+  background:
+    radial-gradient(circle at 92% 18%, rgba(239, 159, 39, 0.16), transparent 28%),
+    linear-gradient(135deg, rgba(249, 253, 249, 0.98), rgba(255, 255, 253, 0.96));
+}
+
+.executionHeroCard h2 {
+  margin: 6px 0 8px;
+  color: #111819;
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+.executionHeroCard p {
+  max-width: 840px;
+  margin: 0;
+  color: #596165;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.executionHeroActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.executionHeroActions strong,
+.executionCompletionPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.11);
+  color: #176149;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.executionQueueCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.executionAgentList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.executionAgentCard {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(250, 251, 248, 0.94);
+}
+
+.executionAgentCard-running {
+  border-color: rgba(239, 159, 39, 0.34);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.12), transparent 30%),
+    rgba(255, 255, 253, 0.96);
+}
+
+.executionAgentCard-completed {
+  border-color: rgba(30, 117, 91, 0.22);
+}
+
+.executionAgentCard-failed {
+  border-color: rgba(226, 75, 74, 0.26);
+}
+
+.executionAgentOrder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.12);
+  color: #176149;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.executionAgentMain {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.executionAgentHeader,
+.executionAgentFooter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.executionAgentHeader div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.executionAgentHeader strong {
+  color: #111819;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.executionAgentHeader span,
+.executionAgentFooter span {
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.executionAgentHeader em {
+  flex-shrink: 0;
+  color: #176149;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.executionProgressTrack {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(53, 64, 67, 0.08);
+}
+
+.executionProgressTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1e755b, #ef9f27);
+  transition: width 240ms ease;
+}
+
+.executionAgentFooter b {
+  color: #176149;
+  font-size: 12px;
+}
+
+.executionResultGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.44fr);
+  gap: 14px;
+}
+
+.artifactDeckCard,
+.executionGateCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artifactDeck {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artifactPreviewCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(250, 251, 248, 0.94);
+}
+
+.artifactPreviewHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.artifactPreviewHeader div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.artifactPreviewHeader span,
+.artifactPreviewHeader em {
+  color: #667075;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.artifactPreviewHeader strong {
+  color: #111819;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.artifactPreviewCard > p {
+  margin: 0;
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.scriptSegmentList,
+.voiceRoleGrid,
+.performancePreviewList,
+.reviewIssueList,
+.deliveryManifestList,
+.gateList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scriptSegmentList div,
+.voiceRoleGrid div,
+.performancePreviewList div,
+.reviewIssueList div,
+.deliveryManifestList div,
+.gateList div {
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+}
+
+.scriptSegmentList span,
+.voiceRoleGrid span,
+.performancePreviewList span,
+.reviewIssueList span,
+.deliveryManifestList span,
+.gateList span {
+  display: block;
+  color: #176149;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.scriptSegmentList p,
+.voiceRoleGrid p,
+.reviewIssueList p,
+.gateList p {
+  margin: 4px 0 0;
+  color: #4f595c;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.voiceRoleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.voiceRoleGrid strong,
+.performancePreviewList strong,
+.reviewIssueList strong,
+.deliveryManifestList strong,
+.gateList strong {
+  display: block;
+  color: #111819;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.emptyArtifactState {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(30, 117, 91, 0.22);
+  border-radius: 12px;
+  background: rgba(244, 246, 241, 0.72);
+  color: #667075;
+  font-size: 13px;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;
