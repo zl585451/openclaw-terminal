@@ -14,9 +14,16 @@ export interface SourceDocumentDraft {
 }
 
 export interface TaskDraftConfirmItem {
+  id: string;
   label: string;
   value: string;
   desc: string;
+  options: Array<{
+    value: string;
+    desc: string;
+    source: 'recommended' | 'preset' | 'agent';
+  }>;
+  customHint: string;
 }
 
 export interface IntakeResult {
@@ -88,24 +95,58 @@ export async function runMockTaskIntake(onStepDone: (stepIndex: number) => void)
     taskDraft: {
       confirmItems: [
         {
+          id: 'target_product',
           label: '目标产物',
           value: '多人演播有声书',
           desc: '按有声书团队模板生成分析和后续制作链路。',
+          customHint: '如果目标不在列表里，可以写成“我要把它做成……”。系统会判断是否需要切换 Agent 团队。',
+          options: [
+            { value: '多人演播有声书', desc: '适合小说口语化、角色音、演播提示和音效设计。', source: 'recommended' },
+            { value: '小说润色', desc: '保留小说文本形态，只优化语言、节奏和可读性。', source: 'preset' },
+            { value: '剧情重写', desc: '允许重构篇章、冲突和人物动机，需要更强人工确认。', source: 'preset' },
+            { value: '作品分析', desc: '只输出问题、风险和修改建议，不直接改稿。', source: 'preset' },
+          ],
         },
         {
+          id: 'scope',
           label: '处理范围',
           value: '第 1 章',
           desc: '先跑样章范围，避免第一次任务过大。',
+          customHint: '可以写具体章节、段落或页码，例如“第1章前半段”或“从雨夜开场到第一次对话”。',
+          options: [
+            { value: '第 1 章', desc: '适合样章试跑，能快速验证流程和效果。', source: 'recommended' },
+            { value: '第 1 章前半段', desc: '更小范围，适合先看演播标注样式。', source: 'preset' },
+            { value: '全文', desc: '适合素材较短或已经确认方案后批量处理。', source: 'preset' },
+            { value: '自定义范围', desc: '由用户指定章节、段落或文件片段。', source: 'preset' },
+          ],
         },
         {
+          id: 'edit_permission',
           label: '改动权限',
           value: '不改剧情，只提升听感',
           desc: '保护剧情事实，先聚焦听感、角色音和演播可执行性。',
+          customHint: '这里最好写清楚“哪些不能动”。例如事实、结论、人物关系、核心观点或剧情事件。',
+          options: [
+            { value: '不改剧情，只提升听感', desc: '适合有声书改编，保护剧情事实和人物关系。', source: 'recommended' },
+            { value: '轻度润色', desc: '只改语言表达，不动结构和事实。', source: 'preset' },
+            { value: '中度改写', desc: '允许重排句子和段落，让表达更顺。', source: 'preset' },
+            { value: '重度重写', desc: '允许重建篇章表达，需要明确人工确认。', source: 'preset' },
+            { value: '只分析不改', desc: '只生成问题清单和修改建议。', source: 'preset' },
+          ],
         },
         {
+          id: 'next_agent',
           label: '下一步 Agent',
           value: '业务分析 Agent',
           desc: '先输出问题和方向，不直接进入改稿。',
+          customHint: '通常不建议手写 Agent 名称。自定义内容会作为调度备注，由任务安排 Agent 判断是否可用。',
+          options: [
+            { value: '业务分析 Agent', desc: '先分析作品问题、目标匹配和执行风险。', source: 'recommended' },
+            { value: '文本润色 Agent', desc: '直接进入语言层优化，适合低风险短文本。', source: 'agent' },
+            { value: '结构诊断 Agent', desc: '适合论文、演讲稿、长文章的结构问题分析。', source: 'agent' },
+            { value: '剧情重写 Agent', desc: '适合小说剧情、人物动机和篇章重构。', source: 'agent' },
+            { value: '学术规范 Agent', desc: '适合论文润色、摘要、引言和投稿规范检查。', source: 'agent' },
+          ],
         },
       ],
     },

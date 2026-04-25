@@ -183,6 +183,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [intakeStepIndex, setIntakeStepIndex] = useState(0);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
   const [intakeError, setIntakeError] = useState('');
+  const [editingDecisionId, setEditingDecisionId] = useState<string | null>(null);
+  const [decisionOverrides, setDecisionOverrides] = useState<Record<string, { value: string; desc: string; customNote: string }>>({});
   const sourceConfirmed = intakeStatus === 'completed' && Boolean(intakeResult);
   const isIntakeRunning = intakeStatus === 'running';
   const briefLength = brief.trim().length;
@@ -233,6 +235,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
         setIntakeStepIndex(stepIndex);
       });
       setIntakeResult(result);
+      setDecisionOverrides({});
+      setEditingDecisionId(null);
       setIntakeStatus('completed');
     } catch (error) {
       setIntakeStatus('failed');
@@ -244,6 +248,37 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     if (intakeStatus === 'completed' || intakeStepIndex > stepIndex) return styles.backgroundStepDone;
     if (isIntakeRunning && intakeStepIndex === stepIndex) return styles.backgroundStepRunning;
     return styles.backgroundStepPending;
+  };
+
+  const getDecisionView = (item: IntakeResult['taskDraft']['confirmItems'][number]) => {
+    return decisionOverrides[item.id] ?? { value: item.value, desc: item.desc, customNote: '' };
+  };
+
+  const updateDecision = (itemId: string, value: string, desc: string) => {
+    setDecisionOverrides((current) => ({
+      ...current,
+      [itemId]: {
+        value,
+        desc,
+        customNote: current[itemId]?.customNote ?? '',
+      },
+    }));
+  };
+
+  const updateDecisionNote = (itemId: string, customNote: string) => {
+    setDecisionOverrides((current) => ({
+      ...current,
+      [itemId]: {
+        value: current[itemId]?.value ?? intakeResult?.taskDraft.confirmItems.find((item) => item.id === itemId)?.value ?? '',
+        desc: current[itemId]?.desc ?? intakeResult?.taskDraft.confirmItems.find((item) => item.id === itemId)?.desc ?? '',
+        customNote,
+      },
+    }));
+  };
+
+  const getDecisionSummaryValue = (itemId: string, fallback: string) => {
+    const sourceItem = intakeResult?.taskDraft.confirmItems.find((item) => item.id === itemId);
+    return decisionOverrides[itemId]?.value ?? sourceItem?.value ?? fallback;
   };
 
   return (
@@ -387,15 +422,52 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
                 <div className={styles.planDecisionList}>
                   {intakeResult.taskDraft.confirmItems.map((item) => (
-                    <div key={item.label} className={styles.planDecisionItem}>
-                      <div>
-                        <span>{item.label}</span>
-                        <strong>{item.value}</strong>
-                        <em>{item.desc}</em>
+                    <div key={item.id} className={styles.planDecisionItem}>
+                      <div className={styles.planDecisionTop}>
+                        <div>
+                          <span>{item.label}</span>
+                          <strong>{getDecisionView(item).value}</strong>
+                          <em>{getDecisionView(item).desc}</em>
+                          {getDecisionView(item).customNote ? <small>补充：{getDecisionView(item).customNote}</small> : null}
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.tinyEditButton}
+                          onClick={() => setEditingDecisionId(editingDecisionId === item.id ? null : item.id)}
+                        >
+                          {editingDecisionId === item.id ? '收起' : '修改'}
+                        </button>
                       </div>
-                      <button type="button" className={styles.tinyEditButton}>
-                        修改
-                      </button>
+                      {editingDecisionId === item.id ? (
+                        <div className={styles.decisionEditPanel}>
+                          <div className={styles.decisionEditHint}>
+                            <strong>系统建议优先选候选项</strong>
+                            <span>自定义内容只作为补充约束，后续会交给任务安排 Agent 判断是否需要切换团队或人工确认。</span>
+                          </div>
+                          <div className={styles.decisionOptionList}>
+                            {item.options.map((option) => (
+                              <button
+                                key={option.value}
+                                type="button"
+                                className={getDecisionView(item).value === option.value ? styles.decisionOptionActive : styles.decisionOption}
+                                onClick={() => updateDecision(item.id, option.value, option.desc)}
+                              >
+                                <span>{option.source === 'recommended' ? 'AI 推荐' : option.source === 'agent' ? 'Agent 候选' : '同类预设'}</span>
+                                <strong>{option.value}</strong>
+                                <em>{option.desc}</em>
+                              </button>
+                            ))}
+                          </div>
+                          <label className={styles.decisionCustomNote}>
+                            <span>自定义补充</span>
+                            <textarea
+                              value={getDecisionView(item).customNote}
+                              placeholder={item.customHint}
+                              onChange={(event) => updateDecisionNote(item.id, event.target.value)}
+                            />
+                          </label>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -520,8 +592,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             </div>
             <div className={styles.summaryList}>
               <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 已完成解析' : isIntakeRunning ? '正在摄入 · 生成素材对象' : '上传文件 · 待确认'}</strong></div>
-              <div><span>目标</span><strong>多人演播有声书</strong></div>
-              <div><span>范围</span><strong>前1章</strong></div>
+              <div><span>目标</span><strong>{getDecisionSummaryValue('target_product', '多人演播有声书')}</strong></div>
+              <div><span>范围</span><strong>{getDecisionSummaryValue('scope', '前1章')}</strong></div>
               <div><span>本轮</span><strong>先分析问题</strong></div>
               <div><span>草案</span><strong>{sourceConfirmed ? '已生成 TaskDraft' : isIntakeRunning ? '生成中' : '等待生成'}</strong></div>
             </div>
