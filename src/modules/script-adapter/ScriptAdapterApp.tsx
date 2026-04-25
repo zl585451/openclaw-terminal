@@ -27,17 +27,17 @@ const REQUIREMENT_HINTS = [
   { title: '系统会处理', text: '无关内容会降级为备注；冲突要求会在初读分析阶段提示用户确认。' },
 ];
 
-const CREATE_STEPS = [
-  { index: 1, title: '素材来源', desc: '上传文件', status: 'done' },
-  { index: 2, title: '目标产物', desc: '多人演播有声书', status: 'done' },
-  { index: 3, title: '范围和目标', desc: '前1章 · 先分析问题', status: 'done' },
-  { index: 4, title: '本轮要求', desc: '等待确认', status: 'active' },
-] as const;
+const SOURCE_AGENT_PREVIEW = [
+  { name: '文件解析 Agent', status: '预分配', desc: '识别文件类型、字数、章节边界和基础元数据。' },
+  { name: '内容识别 Agent', status: '预分配', desc: '判断题材、文本形态和是否适合当前目标产物。' },
+  { name: '作品分析 Agent', status: '候选', desc: '素材确认后进入第一轮初读分析。' },
+];
 
 const EXECUTION_PREVIEW = [
   { name: '作品分析 Agent', status: '即将执行', desc: '总结文本问题、结构风险和改编建议。' },
   { name: '场景拆分 Agent', status: '暂不执行', desc: '待用户确认分析方向后再进入。' },
   { name: '文本改编 Agent', status: '暂不执行', desc: '不会在初读分析阶段直接改稿。' },
+  { name: '角色音标注 Agent', status: '后续候选', desc: '改编方向确认后再标注角色音和未定声源。' },
   { name: '人工确认', status: '需要', desc: '分析结果、冲突要求和执行方向需要用户确认。' },
 ];
 
@@ -174,9 +174,25 @@ interface WizardProps {
 
 function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [brief, setBrief] = useState('不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。');
+  const [sourceConfirmed, setSourceConfirmed] = useState(false);
   const briefLength = brief.trim().length;
   const isBriefLong = briefLength > 220;
   const isBriefTooShort = briefLength > 0 && briefLength < 12;
+  const progressValue = sourceConfirmed ? 72 : 46;
+  const createSteps = [
+    {
+      index: 1,
+      title: '确认素材',
+      desc: sourceConfirmed ? '参数已确认 · 已生成预分配' : '上传原始文本 · 生成预分配',
+      status: sourceConfirmed ? 'done' : 'active',
+    },
+    {
+      index: 2,
+      title: '确认执行',
+      desc: sourceConfirmed ? '定义产物 · 锁定团队结构' : '等待素材确认',
+      status: sourceConfirmed ? 'active' : 'pending',
+    },
+  ] as const;
 
   const addRequirementPreset = (preset: string) => {
     setBrief((current) => {
@@ -203,19 +219,23 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
         <aside className={styles.composerRail}>
           <div className={`${styles.card} ${styles.composerProgressCard}`}>
             <div className={styles.sidebarSectionLabel}>任务完整度</div>
-            <div className={styles.composerProgressValue}>80%</div>
+            <div className={styles.composerProgressValue}>{progressValue}%</div>
             <div className={styles.composerProgressTrack}>
-              <span style={{ width: '80%' }} />
+              <span style={{ width: `${progressValue}%` }} />
             </div>
-            <div className={styles.mutedText}>剩余：确认本轮要求后即可开始初读分析。</div>
+            <div className={styles.mutedText}>
+              {sourceConfirmed ? '剩余：确认执行方案后即可进入初读分析。' : '先确认素材参数，系统再生成 Agent 预分配。'}
+            </div>
           </div>
 
           <div className={styles.composerStepList}>
-            {CREATE_STEPS.map((step) => (
+            {createSteps.map((step) => (
               <div
                 key={step.index}
                 className={`${styles.composerStepItem} ${
                   step.status === 'active' ? styles.composerStepItemActive : ''
+                } ${
+                  step.status === 'done' ? styles.composerStepItemDone : ''
                 }`}
               >
                 <span className={styles.composerStepIndex}>{step.index}</span>
@@ -229,25 +249,76 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
         </aside>
 
         <section className={styles.composerMain}>
-          <div className={`${styles.card} ${styles.composerCompactCard}`}>
+          <div className={`${styles.card} ${styles.composerGateCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
-                <div className={styles.detailEyebrow}>基础配置</div>
-                <h2>素材、目标和处理范围</h2>
+                <div className={styles.detailEyebrow}>第 1 步 · 输入确认</div>
+                <h2>提交原始文本，确认素材参数</h2>
               </div>
-              <span className={styles.composerStatePill}>已预配置</span>
+              <span className={sourceConfirmed ? styles.composerStatePill : styles.reviewPill}>
+                {sourceConfirmed ? '已确认' : '待确认'}
+              </span>
             </div>
 
-            <div className={styles.composerConfigGrid}>
-              <div className={styles.composerConfigGroup}>
-                <strong>素材来源</strong>
+            <div className={styles.sourceGateLayout}>
+              <div className={styles.sourcePrimaryColumn}>
+                <div className={styles.sourceModeHeader}>
+                  <strong>素材来源</strong>
+                  <span>第一版以上传原始文本为主，粘贴和已有文档先作为轻量入口保留。</span>
+                </div>
                 <div className={styles.choiceGrid}>
                   <button type="button" className={styles.choiceCardActive}>上传文件</button>
-                  <button type="button" className={styles.choiceCard}>粘贴文本</button>
+                  <button type="button" className={styles.choiceCard}>粘贴试跑</button>
                   <button type="button" className={styles.choiceCard}>已有文档</button>
+                </div>
+                <div className={styles.mockUploadBox}>
+                  <strong>拖拽小说原文到这里，或点击选择文件</strong>
+                  <span>支持 .txt / .md / .docx / 小说章节文本。确认后才会进入文件解析和 Agent 预分配。</span>
                 </div>
               </div>
 
+              <div className={styles.sourceInspectPanel}>
+                <div className={styles.taskFieldLabel}>确认后生成的素材参数</div>
+                <div className={styles.sourceParamGrid}>
+                  <div><span>文件</span><strong>长夜未瞑_第1章.txt</strong></div>
+                  <div><span>类型</span><strong>小说正文</strong></div>
+                  <div><span>章节</span><strong>识别第 1 章</strong></div>
+                  <div><span>字数</span><strong>待真实解析</strong></div>
+                </div>
+                <div className={styles.agentPreviewList}>
+                  {SOURCE_AGENT_PREVIEW.map((item) => (
+                    <div key={item.name} className={styles.agentPreviewItem}>
+                      <div>
+                        <strong>{item.name}</strong>
+                        <span>{item.desc}</span>
+                      </div>
+                      <em>{item.status}</em>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => setSourceConfirmed(true)}
+                >
+                  确认素材，生成任务方案
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className={`${styles.card} ${styles.composerRequirementCard}`}>
+            <div className={styles.composerSectionHeader}>
+              <div>
+                <div className={styles.detailEyebrow}>第 2 步 · 产物确认</div>
+                <h2>定义产物、范围和本轮要求</h2>
+              </div>
+              <span className={sourceConfirmed ? styles.reviewPill : styles.mutedPill}>
+                {sourceConfirmed ? '等待确认' : '等待素材'}
+              </span>
+            </div>
+
+            <div className={styles.composerConfigGrid}>
               <div className={styles.composerConfigGroup}>
                 <strong>目标产物</strong>
                 <div className={styles.choiceGrid}>
@@ -257,7 +328,6 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   <button type="button" className={styles.choiceCard}>只做作品分析</button>
                 </div>
               </div>
-
               <div className={styles.composerConfigGroup}>
                 <strong>处理范围</strong>
                 <div className={styles.choiceGrid}>
@@ -266,7 +336,6 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   <button type="button" className={styles.choiceCard}>自定义范围</button>
                 </div>
               </div>
-
               <div className={styles.composerConfigGroup}>
                 <strong>本轮目标</strong>
                 <div className={styles.choiceGrid}>
@@ -274,21 +343,6 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   <button type="button" className={styles.choiceCard}>直接生成样章</button>
                 </div>
               </div>
-            </div>
-
-            <div className={styles.mockUploadBox}>
-              <strong>拖拽文件到这里，或点击选择文件</strong>
-              <span>支持 .txt / .md / .docx / 小说章节文本。当前版本为交互占位。</span>
-            </div>
-          </div>
-
-          <div className={`${styles.card} ${styles.composerRequirementCard}`}>
-            <div className={styles.composerSectionHeader}>
-              <div>
-                <div className={styles.detailEyebrow}>当前配置步骤</div>
-                <h2>本轮要求</h2>
-              </div>
-              <span className={styles.composerStatePill}>需要确认</span>
             </div>
 
             <div className={styles.requirementGuide}>
@@ -331,6 +385,21 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               {isBriefTooShort ? <span className={styles.requirementWarnText}>要求太短，建议至少说明目标或边界。</span> : null}
               {isBriefLong ? <span className={styles.requirementWarnText}>要求偏长，AI 会先压缩成任务摘要再执行。</span> : null}
             </div>
+
+            <div className={styles.teamLockBox}>
+              <div>
+                <strong>确认后锁定的 Agent 团队</strong>
+                <span>作品分析 Agent 先执行；场景拆分、文本改编、角色音标注和演播设计进入后续候选队列。</span>
+              </div>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={!sourceConfirmed}
+                onClick={onStart}
+              >
+                确认方案，开始 AI 初读分析
+              </button>
+            </div>
           </div>
         </section>
 
@@ -338,10 +407,11 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <div className={`${styles.card} ${styles.summaryCard}`}>
             <div className={styles.sidebarSectionLabel}>任务摘要</div>
             <div className={styles.summaryList}>
-              <div><span>素材</span><strong>上传文件 · 待接入</strong></div>
+              <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 等待解析接入' : '上传文件 · 待确认'}</strong></div>
               <div><span>目标</span><strong>多人演播有声书</strong></div>
               <div><span>范围</span><strong>前1章</strong></div>
               <div><span>本轮</span><strong>先分析问题</strong></div>
+              <div><span>闸门</span><strong>{sourceConfirmed ? '第 2 步待确认' : '第 1 步待确认'}</strong></div>
             </div>
           </div>
 
@@ -369,8 +439,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
       <footer className={styles.composerActionBar}>
         <div>
-          <strong>准备开始初读分析</strong>
-          <span>不会直接改稿，分析完成后仍需用户确认方向。</span>
+          <strong>{sourceConfirmed ? '等待确认执行方案' : '等待确认素材参数'}</strong>
+          <span>每一步确认都会沉淀成后台任务对象，方便后续 Agent 分配和人工复核。</span>
         </div>
         <div className={styles.createFooterActions}>
           <button type="button" className={styles.ghostButton} onClick={onBack}>
@@ -379,8 +449,13 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <button type="button" className={styles.ghostButton}>
             保存草稿
           </button>
-          <button type="button" className={styles.primaryButton} onClick={onStart}>
-            开始 AI 初读分析
+          <button
+            type="button"
+            className={styles.primaryButton}
+            disabled={!sourceConfirmed}
+            onClick={onStart}
+          >
+            确认方案，开始分析
           </button>
         </div>
       </footer>

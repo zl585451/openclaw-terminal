@@ -310,6 +310,15 @@
   color: #176149;
 }
 
+.choiceCard:disabled,
+.choiceCardActive:disabled,
+.primaryButton:disabled,
+.ghostButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  box-shadow: none;
+}
+
 .mockUploadBox {
   display: flex;
   flex-direction: column;
@@ -433,6 +442,11 @@
   background: rgba(230, 244, 236, 0.94);
 }
 
+.composerStepItemDone {
+  border-color: rgba(30, 117, 91, 0.18);
+  background: rgba(255, 255, 253, 0.94);
+}
+
 .composerStepIndex {
   display: inline-flex;
   align-items: center;
@@ -451,6 +465,11 @@
   color: #ffffff;
 }
 
+.composerStepItemDone .composerStepIndex {
+  background: rgba(30, 117, 91, 0.13);
+  color: #176149;
+}
+
 .composerStepItem strong {
   display: block;
   color: #15191b;
@@ -467,6 +486,7 @@
 }
 
 .composerCompactCard,
+.composerGateCard,
 .composerRequirementCard,
 .summaryCard {
   display: flex;
@@ -502,6 +522,20 @@
   white-space: nowrap;
 }
 
+.mutedPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid rgba(53, 64, 67, 0.12);
+  border-radius: 999px;
+  background: rgba(244, 246, 241, 0.9);
+  color: #667075;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .composerConfigGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -518,6 +552,64 @@
 .composerConfigGroup strong {
   color: #15191b;
   font-size: 13px;
+}
+
+.sourceGateLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  gap: 14px;
+}
+
+.sourcePrimaryColumn,
+.sourceInspectPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sourceModeHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sourceModeHeader strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.sourceModeHeader span {
+  color: #667075;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.sourceParamGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sourceParamGrid div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(244, 246, 241, 0.92);
+}
+
+.sourceParamGrid span {
+  color: #667075;
+  font-size: 12px;
+}
+
+.sourceParamGrid strong {
+  color: #15191b;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .summaryList {
@@ -687,6 +779,34 @@
   align-items: center;
   color: #667075;
   font-size: 12px;
+}
+
+.teamLockBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid rgba(30, 117, 91, 0.18);
+  border-radius: 12px;
+  background: rgba(239, 247, 242, 0.9);
+}
+
+.teamLockBox div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.teamLockBox strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.teamLockBox span {
+  color: #596165;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .requirementWarnText {
@@ -959,6 +1079,10 @@
 
 .primaryButton:hover {
   background: #176149;
+}
+
+.primaryButton:disabled:hover {
+  background: #1e755b;
 }
 
 .taskGrid {
@@ -1618,7 +1742,8 @@
   .entryHeroGrid,
   .createGrid,
   .composerGrid,
-  .composerConfigGrid {
+  .composerConfigGrid,
+  .sourceGateLayout {
     grid-template-columns: 1fr;
   }
 
@@ -1680,8 +1805,13 @@
 
   .composerSectionHeader,
   .summaryList div,
-  .agentPreviewItem {
+  .agentPreviewItem,
+  .teamLockBox {
     grid-template-columns: 1fr;
+  }
+
+  .teamLockBox {
+    align-items: stretch;
   }
 
   .summaryList div {
