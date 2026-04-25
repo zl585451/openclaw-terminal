@@ -18,6 +18,7 @@ import {
 import styles from './styles/scriptAdapter.module.css';
 
 type ScriptAdapterScreen = 'home' | 'create' | 'workspace';
+type WizardStep = 1 | 2 | 3;
 
 const SOURCE_AGENT_PREVIEW = [
   { name: '文件解析 Agent', status: '预分配', desc: '识别文件类型、字数、章节边界和基础元数据。' },
@@ -164,6 +165,7 @@ interface WizardProps {
 }
 
 function TaskCreateWizard({ onBack, onStart }: WizardProps) {
+  const [activeStep, setActiveStep] = useState<WizardStep>(1);
   const [intakeStatus, setIntakeStatus] = useState<IntakeStatus>('idle');
   const [intakeStepIndex, setIntakeStepIndex] = useState(0);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
@@ -193,21 +195,31 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
       index: 1,
       title: '确认素材',
       desc: sourceConfirmed ? '参数已确认 · 已生成预分配' : isIntakeRunning ? '正在生成素材对象' : '上传原始文本 · 生成预分配',
-      status: sourceConfirmed ? 'done' : 'active',
+      status: activeStep === 1 ? 'active' : sourceConfirmed ? 'done' : 'pending',
     },
     {
       index: 2,
       title: '确认目标和范围',
       desc: analysisStatus !== 'idle' ? '已确认 · 正在分析' : sourceConfirmed ? '定义产物 · 工作范围' : '等待素材确认',
-      status: analysisStatus !== 'idle' ? 'done' : sourceConfirmed ? 'active' : 'pending',
+      status: activeStep === 2 ? 'active' : analysisStatus !== 'idle' ? 'done' : sourceConfirmed ? 'done' : 'pending',
     },
     {
       index: 3,
       title: '确认修改策略',
       desc: analysisCompleted ? '选择怎么改 · 锁定制作队列' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围',
-      status: analysisCompleted ? 'active' : isAnalysisRunning ? 'active' : 'pending',
+      status: activeStep === 3 ? 'active' : analysisCompleted ? 'done' : 'pending',
     },
   ] as const;
+
+  const canOpenStep = (step: WizardStep) => {
+    if (step === 1) return true;
+    if (step === 2) return sourceConfirmed;
+    return analysisCompleted || isAnalysisRunning;
+  };
+
+  const openStep = (step: WizardStep) => {
+    if (canOpenStep(step)) setActiveStep(step);
+  };
 
   const handleConfirmSource = async () => {
     if (isIntakeRunning) return;
@@ -229,6 +241,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
       setAnalysisError('');
       setSelectedStrategyId('');
       setIntakeStatus('completed');
+      setActiveStep(2);
     } catch (error) {
       setIntakeStatus('failed');
       setIntakeError(error instanceof Error ? error.message : '素材摄入失败，请重试。');
@@ -279,16 +292,58 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     setAnalysisReport(null);
     setAnalysisError('');
     setSelectedStrategyId('');
+    setActiveStep(3);
 
     try {
       const report = await runMockInitialAnalysis();
       setAnalysisReport(report);
       setSelectedStrategyId(report.recommendedStrategyId);
       setAnalysisStatus('completed');
+      setActiveStep(3);
     } catch (error) {
       setAnalysisStatus('failed');
       setAnalysisError(error instanceof Error ? error.message : 'AI 初读分析失败，请重试。');
     }
+  };
+
+  const getFooterTitle = () => {
+    if (activeStep === 1) {
+      return isIntakeRunning ? '正在确认素材并生成任务方案' : sourceConfirmed ? '素材已确认，可进入目标和范围确认' : '等待确认素材参数';
+    }
+    if (activeStep === 2) {
+      return isAnalysisRunning ? 'AI 初读分析中' : sourceConfirmed ? '等待确认目标和范围' : '请先完成素材确认';
+    }
+    return analysisCompleted ? '等待确认修改策略' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围确认';
+  };
+
+  const getFooterDesc = () => {
+    if (activeStep === 1) return '确认后会生成素材对象、轻量画像和 Agent 预分配，并自动进入第 2 步。';
+    if (activeStep === 2) return '确认后只进入 AI 初读分析，不会直接改稿；分析完成会自动进入第 3 步。';
+    return '确认策略后才进入制作 Agent，并生成工作台执行单。';
+  };
+
+  const getFooterButtonText = () => {
+    if (activeStep === 1) return isIntakeRunning ? '正在生成任务方案' : sourceConfirmed ? '重新确认素材' : '确认素材，进入第 2 步';
+    if (activeStep === 2) return isAnalysisRunning ? 'AI 初读分析中' : analysisCompleted ? '重新分析并进入第 3 步' : '确认目标和范围，进入第 3 步';
+    return '确认策略，进入工作台';
+  };
+
+  const isFooterButtonDisabled = () => {
+    if (activeStep === 1) return isIntakeRunning;
+    if (activeStep === 2) return !sourceConfirmed || isAnalysisRunning;
+    return !analysisCompleted || !selectedStrategyId;
+  };
+
+  const handleFooterAction = () => {
+    if (activeStep === 1) {
+      void handleConfirmSource();
+      return;
+    }
+    if (activeStep === 2) {
+      void handleRunAnalysis();
+      return;
+    }
+    onStart();
   };
 
   return (
@@ -327,25 +382,29 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
           <div className={styles.composerStepList}>
             {createSteps.map((step) => (
-              <div
+              <button
+                type="button"
                 key={step.index}
                 className={`${styles.composerStepItem} ${
                   step.status === 'active' ? styles.composerStepItemActive : ''
                 } ${
                   step.status === 'done' ? styles.composerStepItemDone : ''
                 }`}
+                disabled={!canOpenStep(step.index as WizardStep)}
+                onClick={() => openStep(step.index as WizardStep)}
               >
                 <span className={styles.composerStepIndex}>{step.index}</span>
                 <div>
                   <strong>{step.title}</strong>
                   <span>{step.desc}</span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </aside>
 
         <section className={styles.composerMain}>
+          {activeStep === 1 ? (
           <div className={`${styles.card} ${styles.composerGateCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
@@ -412,7 +471,9 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               </div>
             </div>
           </div>
+          ) : null}
 
+          {activeStep === 2 ? (
           <div className={`${styles.card} ${styles.composerRequirementCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
@@ -542,7 +603,9 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               </div>
             )}
           </div>
+          ) : null}
 
+          {activeStep === 3 ? (
           <div className={`${styles.card} ${styles.composerRequirementCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
@@ -644,6 +707,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               </div>
             ) : null}
           </div>
+          ) : null}
         </section>
 
         <aside className={styles.composerSummary}>
@@ -731,8 +795,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
       <footer className={styles.composerActionBar}>
         <div>
-          <strong>{analysisCompleted ? '等待确认修改策略' : isAnalysisRunning ? 'AI 初读分析中' : sourceConfirmed ? '等待确认目标和范围' : '等待确认素材参数'}</strong>
-          <span>{analysisCompleted ? '确认策略后才进入制作 Agent。' : '确认目标和范围后只进入 AI 初读分析，不会直接改稿。'}</span>
+          <strong>{getFooterTitle()}</strong>
+          <span>{getFooterDesc()}</span>
         </div>
         <div className={styles.createFooterActions}>
           <button type="button" className={styles.ghostButton} onClick={onBack}>
@@ -744,10 +808,10 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={!sourceConfirmed || isAnalysisRunning}
-            onClick={analysisCompleted ? onStart : handleRunAnalysis}
+            disabled={isFooterButtonDisabled()}
+            onClick={handleFooterAction}
           >
-            {analysisCompleted ? '确认策略，进入工作台' : isAnalysisRunning ? 'AI 初读分析中' : '确认目标和范围，开始分析'}
+            {getFooterButtonText()}
           </button>
         </div>
       </footer>

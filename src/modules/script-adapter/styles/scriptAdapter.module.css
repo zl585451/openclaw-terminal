@@ -431,10 +431,18 @@
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 10px;
+  width: 100%;
   padding: 11px 12px;
   border: 1px solid rgba(53, 64, 67, 0.12);
   border-radius: 10px;
   background: rgba(255, 255, 253, 0.9);
+  text-align: left;
+  cursor: pointer;
+}
+
+.composerStepItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
 }
 
 .composerStepItemActive {
