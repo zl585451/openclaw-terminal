@@ -139,13 +139,13 @@ const App: React.FC = () => {
                   data-temp-entry="script-adapter"
                   onClick={() => setAppView('script-adapter')}
                 >
-                  打开小说改编模块
+                  内容制作工作台
                 </button>
                 <div id="chat-header-portal" />
               </div>
             </>
           ) : (
-            <div className="app-shell-module-title">小说改编模块 · 骨架 v1</div>
+            <div className="app-shell-module-title">内容制作工作台 · V2</div>
           )}
         </div>
 

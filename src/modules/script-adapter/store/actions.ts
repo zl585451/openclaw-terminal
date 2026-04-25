@@ -3,16 +3,27 @@ import type { Project, Chapter } from '../types/project';
 import type { Stage } from '../types/stage';
 import type { Artifact } from '../types/artifact';
 import type { AgentDef } from '../types/agent';
+import type { TeamTemplate } from '../types/template';
 import type { ViewMode } from './scriptAdapterStore';
 
 export const scriptAdapterActions = {
-  loadProject(project: Project, chapters: Chapter[], stages: Stage[], artifacts: Artifact[]) {
+  loadProject(
+    project: Project,
+    chapters: Chapter[],
+    stages: Stage[],
+    artifacts: Artifact[],
+    templates: TeamTemplate[] = [],
+  ) {
     useScriptAdapterStore.getState()._set((state) => ({
       currentProjectId: project.id,
       projects: { ...state.projects, [project.id]: project },
       chapters: { ...state.chapters, [project.id]: chapters },
       stages: { ...state.stages, [project.id]: stages },
       artifacts: { ...state.artifacts, [project.id]: artifacts },
+      templates: {
+        ...state.templates,
+        ...Object.fromEntries(templates.map((template) => [template.id, template])),
+      },
     }));
     console.log('[ScriptAdapter] loaded project', project.id);
   },

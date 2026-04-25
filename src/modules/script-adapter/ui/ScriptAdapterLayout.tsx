@@ -7,8 +7,8 @@ import styles from '../styles/scriptAdapter.module.css';
 
 const VIEW_LABEL: Record<ViewMode, string> = {
   workbench: '工作台',
-  pipeline: '流程总览',
-  agents: 'Agent 清单',
+  pipeline: '团队流程',
+  agents: 'Agent 池',
 };
 
 interface ScriptAdapterLayoutProps {
@@ -21,6 +21,9 @@ export function ScriptAdapterLayout({ onBack }: ScriptAdapterLayoutProps) {
     currentProjectId ? state.projects[currentProjectId] : null,
   );
   const viewMode = useScriptAdapterStore((state) => state.viewMode);
+  const template = useScriptAdapterStore((state) =>
+    project ? state.templates[project.templateId] : null,
+  );
 
   return (
     <div className={styles.layout}>
@@ -32,7 +35,7 @@ export function ScriptAdapterLayout({ onBack }: ScriptAdapterLayoutProps) {
             </button>
           ) : null}
 
-          <div className={styles.tabList} role="tablist" aria-label="Script Adapter Views">
+          <div className={styles.tabList} role="tablist" aria-label="Content Workbench Views">
             {(Object.keys(VIEW_LABEL) as ViewMode[]).map((mode) => (
               <button
                 key={mode}
@@ -49,9 +52,11 @@ export function ScriptAdapterLayout({ onBack }: ScriptAdapterLayoutProps) {
         </div>
 
         <div className={styles.projectMeta}>
-          <div className={styles.projectName}>{project?.name ?? '未加载项目'}</div>
+          <div className={styles.projectName}>内容制作工作台</div>
           <div className={styles.projectSub}>
-            {project ? `模板：${project.templateId} · v${project.templateVersion}` : '等待项目数据'}
+            {project && template
+              ? `${project.name} · ${template.name} · v${project.templateVersion}`
+              : '等待项目数据'}
           </div>
         </div>
       </div>

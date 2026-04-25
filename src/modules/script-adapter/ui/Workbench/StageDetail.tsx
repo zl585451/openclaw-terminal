@@ -13,13 +13,20 @@ type DisplayArtifact = Artifact & {
 const PLACEHOLDER_STAGE_SET = new Set([2, 3, 5, 7]);
 
 const ARTIFACT_LABEL: Record<ArtifactType, string> = {
+  team_template: '团队模板',
+  project_context: '项目上下文',
   chapter_index: '章节索引',
+  plot_lock: '剧情锁定表',
   character_profile: '人物档案',
   artifact_tracker: '物件追踪表',
   timeline: '时间线',
   style_profile: '风格画像',
   scene_breakdown: '场景拆解',
   distilled_content: '提炼内容',
+  adapted_script: '改编台本',
+  voice_registry: '角色音表',
+  performance_design: '演播设计',
+  review_report: '质检报告',
   scene_script: '场景台本',
   consistency_report: '一致性报告',
   final_package: '交付包',
@@ -47,6 +54,7 @@ function buildVirtualArtifact(
 
 function getDisplayArtifacts(
   stageIdx: number,
+  stageOutputTypes: string[],
   artifacts: Artifact[],
   chapters: Chapter[],
 ): DisplayArtifact[] {
@@ -56,20 +64,20 @@ function getDisplayArtifacts(
   );
   const latestSceneScript = artifacts.find((item) => item.type === 'scene_script');
 
-  if (stageIdx === 0 && chapterIndex) {
-    return [
-      {
-        ...chapterIndex,
-        displayTitle: '章节切分索引',
-      },
-    ];
-  }
-
-  if (stageIdx === 1) {
-    return projectArtifacts.map((artifact) => ({
+  const directMatches = artifacts.filter((artifact) => stageOutputTypes.includes(artifact.type));
+  if (directMatches.length > 0) {
+    return directMatches.map((artifact) => ({
       ...artifact,
       displayTitle: ARTIFACT_LABEL[artifact.type],
     }));
+  }
+
+  if (stageIdx === 0 && chapterIndex) {
+    return [{ ...chapterIndex, displayTitle: '章节切分索引' }];
+  }
+
+  if (stageIdx === 1) {
+    return projectArtifacts.map((artifact) => ({ ...artifact, displayTitle: ARTIFACT_LABEL[artifact.type] }));
   }
 
   if (stageIdx === 4 && latestSceneScript) {
@@ -145,7 +153,7 @@ export function StageDetail() {
     return <div className={`${styles.card} ${styles.placeholderCard}`}>等待阶段数据加载。</div>;
   }
 
-  const displayArtifacts = getDisplayArtifacts(stage.idx, artifacts, chapters);
+  const displayArtifacts = getDisplayArtifacts(stage.idx, stage.outputArtifactTypes, artifacts, chapters);
 
   return (
     <section className={styles.detailPanel}>
@@ -158,6 +166,7 @@ export function StageDetail() {
 
         <div className={styles.detailActionRow}>
           <StatusBadge status={stage.status} />
+          {stage.requiresHumanReview ? <span className={styles.reviewPill}>需人工确认</span> : null}
           {stage.status === 'running' ? (
             <button
               type="button"
@@ -177,7 +186,28 @@ export function StageDetail() {
         <MetricCard label="产物数量" value={stage.artifactCount} sub="阶段产出" />
       </div>
 
-      {PLACEHOLDER_STAGE_SET.has(stage.idx) ? (
+      <div className={styles.contractGrid}>
+        <div className={`${styles.card} ${styles.contractCard}`}>
+          <div className={styles.sectionTitleSmall}>输入产物</div>
+          <div className={styles.tagList}>
+            {stage.inputArtifactTypes.length > 0
+              ? stage.inputArtifactTypes.map((type) => <span key={type} className={styles.agentMetaTag}>{type}</span>)
+              : <span className={styles.mutedText}>无前置输入</span>}
+          </div>
+        </div>
+        <div className={`${styles.card} ${styles.contractCard}`}>
+          <div className={styles.sectionTitleSmall}>输出产物</div>
+          <div className={styles.tagList}>
+            {stage.outputArtifactTypes.map((type) => <span key={type} className={styles.agentMetaTag}>{type}</span>)}
+          </div>
+        </div>
+        <div className={`${styles.card} ${styles.contractCard}`}>
+          <div className={styles.sectionTitleSmall}>规则文档</div>
+          <div className={styles.ruleDocText}>{stage.ruleDocPath ?? '规则驱动 / 暂无专属规则文档'}</div>
+        </div>
+      </div>
+
+      {PLACEHOLDER_STAGE_SET.has(stage.idx) && displayArtifacts.length === 0 ? (
         <div className={`${styles.card} ${styles.placeholderCard}`}>
           <div className={styles.sectionTitle}>详情占位</div>
           <div className={styles.mutedText}>（此阶段骨架阶段未实现详情视图）</div>

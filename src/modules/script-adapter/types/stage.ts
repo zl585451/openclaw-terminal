@@ -7,6 +7,10 @@ export interface Stage {
   description: string;
   agentRef: string;
   status: StageStatus;
+  inputArtifactTypes: string[];
+  outputArtifactTypes: string[];
+  ruleDocPath?: string;
+  requiresHumanReview?: boolean;
   tokensUsed: number;
   runtimeSeconds: number;
   artifactCount: number;

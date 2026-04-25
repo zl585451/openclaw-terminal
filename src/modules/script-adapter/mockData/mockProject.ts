@@ -2,10 +2,10 @@ import type { Project, Chapter } from '../types/project';
 
 export const MOCK_PROJECT: Project = {
   id: 'proj-changye-weiming',
-  name: '长夜未瞑 · 有声书改编',
+  name: '长夜未瞑 · 内容制作项目',
   sourceType: 'novel',
-  targetType: 'audiobook',
-  templateId: 'novel_to_audiobook.suspense',
+  templateType: 'audiobook_multicast',
+  templateId: 'audiobook_multicast.v1',
   templateVersion: '1.0',
   status: 'running',
   createdAt: '2026-04-20T09:00:00Z',
@@ -14,6 +14,8 @@ export const MOCK_PROJECT: Project = {
     totalChars: 83420,
     totalChapters: 28,
     genre: '悬疑刑侦',
+    currentChapterId: 'ch-01',
+    currentStageId: 'stage-voice-classification',
   },
 };
 

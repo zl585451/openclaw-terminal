@@ -1,13 +1,20 @@
-# Script Adapter Module
+# 内容制作工作台模块
 
 ## 状态
 
-当前模块处于“骨架 v1”阶段，所有数据均为 mock，不连接任何 AI、Gateway 或持久化层。
+当前模块处于“工作台 V2”阶段，所有数据均为 mock，不连接任何 AI、Gateway 或持久化层。
+
+V2 的产品定位是“内容制作多 Agent 工作台”，有声小说只是第一套团队模板。
 
 ## 如何进入
 
-- 在 OCT 主界面顶部右侧点击“打开小说改编模块”
+- 在 OCT 主界面顶部右侧点击“内容制作工作台”
 - 进入后可通过左上角“← 返回 Chat”回到主 Chat 视图
+
+## 当前模板
+
+- `audiobook_multicast.v1`：多人演播有声小说
+- `radiodrama.v1`：广播剧改编预留模板
 
 ## State 访问约定
 
@@ -19,6 +26,13 @@
   - `setViewMode`
   - `selectStage`
   - `openStageInWorkbench`
+
+## 当前 V2 展示结构
+
+- 项目与章节：展示《长夜未瞑》项目、章节列表、当前模板。
+- 团队流程：展示项目摄入、作品分析、场景拆分、文本改编、角色音标注、演播设计、质检审核、打包交付。
+- Agent 池：展示每个 Agent 的输入产物、输出产物、规则文档和人工确认要求。
+- 阶段详情：展示当前阶段的输入、输出、规则文档、产物预览和占位操作按钮。
 
 ## 调试接口
 
@@ -32,9 +46,7 @@ window.__scriptAdapter.openStageInWorkbench(4);
 
 ## 下一阶段 TODO
 
-- 不接 AI 调用（Gateway、LLM Provider、Nocturne）
-- 不做真实章节切分 / 分析 / 改写
-- 不做数据库持久化（SQLite 只写 DDL，不建表）
-- 不做真实的打回 / 重跑逻辑
-- 不做场景列表、双栏对比、打回弹窗等复杂子组件
-- 正式入口位置待产品确认，当前为骨架阶段临时入口
+- 定义最小真实 schema：`ProjectContext`、`TeamTemplate`、`VoiceRegistry`、`ReviewReport`。
+- 接入第一个真实能力：章节切分。
+- 预留 Gateway 工具：打开工作台、运行阶段、保存产物。
+- 增加人工确认节点和打回理由弹窗。

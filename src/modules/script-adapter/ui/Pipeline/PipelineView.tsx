@@ -18,6 +18,12 @@ export function PipelineView() {
   );
   const selectedStageIdx = useScriptAdapterStore((state) => state.selectedStageIdx);
   const selectedStage = stages.find((stage) => stage.idx === selectedStageIdx) ?? stages[0];
+  const project = useScriptAdapterStore((state) =>
+    currentProjectId ? state.projects[currentProjectId] : null,
+  );
+  const template = useScriptAdapterStore((state) =>
+    project ? state.templates[project.templateId] : null,
+  );
 
   if (!currentProjectId || stages.length === 0 || !selectedStage) {
     return <div className={`${styles.card} ${styles.placeholderCard}`}>等待流程数据加载。</div>;
@@ -25,6 +31,18 @@ export function PipelineView() {
 
   return (
     <section className={styles.pipeline}>
+      <div className={`${styles.card} ${styles.templateBanner}`}>
+        <div>
+          <div className={styles.detailEyebrow}>Team Template</div>
+          <div className={styles.detailTitle}>{template?.name ?? '未选择团队模板'}</div>
+          <div className={styles.detailDesc}>{template?.description ?? '等待模板数据加载。'}</div>
+        </div>
+        <div className={styles.templateMeta}>
+          <span className={styles.agentMetaTag}>{project?.templateType ?? 'unknown'}</span>
+          <span className={styles.agentMetaTag}>{template?.id ?? 'no-template'}</span>
+        </div>
+      </div>
+
       <div className={styles.legend}>
         {LEGEND_ITEMS.map((item) => (
           <div key={item.status} className={styles.legendItem}>
@@ -73,6 +91,14 @@ export function PipelineView() {
             <div className={styles.pipelineDetailLabel}>Agent</div>
             <div className={styles.pipelineDetailValue}>{selectedStage.agentRef}</div>
           </div>
+        </div>
+
+        <div className={styles.tagList}>
+          {selectedStage.outputArtifactTypes.map((type) => (
+            <span key={type} className={styles.agentMetaTag}>
+              {type}
+            </span>
+          ))}
         </div>
 
         <div className={styles.detailActionRow}>

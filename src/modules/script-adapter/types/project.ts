@@ -1,12 +1,17 @@
 export type SourceType = 'novel' | 'screenplay' | 'other';
-export type TargetType = 'audiobook' | 'radiodrama';
+export type ContentTemplateType =
+  | 'audiobook_multicast'
+  | 'radiodrama'
+  | 'short_drama'
+  | 'comic_storyboard'
+  | 'custom';
 export type ProjectStatus = 'draft' | 'running' | 'paused' | 'done' | 'archived';
 
 export interface Project {
   id: string;
   name: string;
   sourceType: SourceType;
-  targetType: TargetType;
+  templateType: ContentTemplateType;
   templateId: string;
   templateVersion: string;
   status: ProjectStatus;
@@ -16,6 +21,8 @@ export interface Project {
     totalChars: number;
     totalChapters: number;
     genre?: string;
+    currentChapterId?: string;
+    currentStageId?: string;
   };
 }
 

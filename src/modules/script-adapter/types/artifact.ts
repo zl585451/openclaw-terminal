@@ -1,11 +1,18 @@
 export type ArtifactType =
+  | 'team_template'
+  | 'project_context'
   | 'chapter_index'
+  | 'plot_lock'
   | 'character_profile'
   | 'artifact_tracker'
   | 'timeline'
   | 'style_profile'
   | 'scene_breakdown'
   | 'distilled_content'
+  | 'adapted_script'
+  | 'voice_registry'
+  | 'performance_design'
+  | 'review_report'
   | 'scene_script'
   | 'consistency_report'
   | 'final_package';
