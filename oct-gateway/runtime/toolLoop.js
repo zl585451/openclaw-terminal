@@ -1,3 +1,8 @@
+const {
+  archiveToolResult,
+  truncateToolResult,
+} = require('./toolResultArchive');
+
 class ToolLoop {
   constructor({
     toolLoader,
@@ -138,10 +143,41 @@ class ToolLoop {
         } catch {}
       }
 
+      // 1. 先把完整结果归档
+      try {
+        archiveToolResult({
+          callId: toolCall.id,
+          toolName,
+          args,
+          result,
+          turnId: turnId || null,
+        });
+      } catch (e) {
+        this.log.warn('archiveToolResult 失败', { error: e?.message });
+      }
+
+      // 2. 截断后再放进 messages
+      const { truncated, value: truncatedResult, originalSize } = truncateToolResult(
+        toolName,
+        result,
+        toolCall.id,
+      );
+
+      if (truncated) {
+        this.log.info('工具结果已截断', {
+          tool: toolName,
+          callId: toolCall.id,
+          originalSize,
+          turnId: turnId || null,
+        });
+      }
+
       toolResults.push({
         tool_call_id: toolCall.id,
         role: 'tool',
-        content: JSON.stringify(result),
+        content: typeof truncatedResult === 'string'
+          ? truncatedResult
+          : JSON.stringify(truncatedResult),
       });
     }
 
