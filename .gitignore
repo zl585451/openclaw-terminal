@@ -30,6 +30,7 @@ resources/vault.enc
 *.db
 *.sqlite
 oct-gateway/runtime_data/
+oct-gateway/data/
 oct-gateway/resources/vectors.db*
 resources/vectors.db*
 
@@ -40,6 +41,7 @@ logs/
 
 # 备份与临时文件
 backups/
+.tmp/
 .tmp.driveupload/
 .tmp.drivedownload/
 .DS_Store
