@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useScriptAdapterStore } from '../../store/scriptAdapterStore';
 import { scriptAdapterActions } from '../../store/actions';
 import {
@@ -6,6 +6,10 @@ import {
   createExecutionPlan,
   runFullPipeline,
 } from '../../services/mockAgentExecution';
+import {
+  startGatewayExecution,
+  subscribeGatewayExecutionEvents,
+} from '../../services/gatewayExecution';
 import type { StageStatus } from '../../types/stage';
 import { StatusDot } from '../shared/StatusDot';
 import { ExecutionView } from './ExecutionView';
@@ -81,6 +85,8 @@ export function WorkbenchView() {
   const executionSheet = useScriptAdapterStore((state) =>
     currentProjectId ? state.executionSheets[currentProjectId] ?? null : null,
   );
+  const executionSheetRef = useRef(executionSheet);
+  executionSheetRef.current = executionSheet;
 
   const currentChapter = chapters.find((chapter) => chapter.id === project?.meta.currentChapterId) ?? chapters[0];
   const sceneBreakdown = artifacts.find((artifact) => artifact.type === 'scene_breakdown');
@@ -135,11 +141,71 @@ export function WorkbenchView() {
     });
   };
 
+  const startExecution = async () => {
+    const taskId = project?.id ?? 'demo-content-task';
+    const taskTitle = `${project?.name ?? '长夜未瞑'} · 多人演播样章`;
+    scriptAdapterActions.setExecutionSheet(taskId, createExecutionPlan(taskId, taskTitle));
+
+    const result = await startGatewayExecution({
+      taskId,
+      taskTitle,
+      source: 'content-workbench',
+    });
+
+    if (!result?.success) {
+      console.warn('[ScriptAdapter] Gateway execution unavailable, fallback to frontend mock:', result?.error);
+      startMockExecution();
+    }
+  };
+
   useEffect(() => {
+    const unsubscribe = subscribeGatewayExecutionEvents((event) => {
+      if (currentProjectId && event.taskId !== currentProjectId) return;
+
+      if (event.event === 'sheet_created' || event.event === 'all_completed') {
+        scriptAdapterActions.setExecutionSheet(event.taskId, event.sheet);
+        return;
+      }
+
+      if (event.event === 'agent_started') {
+        scriptAdapterActions.updateExecutionRun(event.taskId, event.run);
+        return;
+      }
+
+      if (event.event === 'agent_progress') {
+        scriptAdapterActions.updateExecutionProgress(
+          event.taskId,
+          event.agentId,
+          event.progressSummary,
+          event.progressPercent,
+        );
+        return;
+      }
+
+      if (event.event === 'artifact_created') {
+        scriptAdapterActions.updateExecutionRun(event.taskId, event.run);
+        scriptAdapterActions.addExecutionArtifact(event.taskId, event.artifact);
+        return;
+      }
+
+      if (event.event === 'gate_reached' || event.event === 'gate_updated') {
+        scriptAdapterActions.updateExecutionGate(event.taskId, event.gate.gateId, event.gate);
+        return;
+      }
+
+      if (event.event === 'run_failed') {
+        const firstRunning = executionSheetRef.current?.runs.find((run) => run.status === 'running');
+        if (firstRunning) {
+          scriptAdapterActions.failExecutionRun(event.taskId, firstRunning.agentId, event.error);
+        }
+      }
+    });
+
     return () => {
+      unsubscribe();
       abortPipeline();
     };
-  }, []);
+  }, [currentProjectId]);
 
   if (executionSheet) {
     return (
@@ -247,7 +313,7 @@ export function WorkbenchView() {
           </div>
           <div className={styles.workOrderHeroActions}>
             <div className={styles.readyStamp}>READY</div>
-            <button type="button" className={styles.confirmStartButton} onClick={startMockExecution}>
+            <button type="button" className={styles.confirmStartButton} onClick={startExecution}>
               确认开工
             </button>
             <button

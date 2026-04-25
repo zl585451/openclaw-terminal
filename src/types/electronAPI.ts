@@ -210,6 +210,13 @@ export interface ElectronAPI {
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
+  startScriptAdapterRun?: (payload: {
+    taskId: string;
+    taskTitle: string;
+    source?: string;
+    useMock?: boolean;
+  }) => Promise<ApiResult & { taskId?: string; planId?: string }>;
+  onScriptAdapterEvent?: (callback: (payload: UnknownRecord) => void) => (() => void);
   chatHistoryLoad?: () => Promise<ChatHistoryItem[]>;
   chatHistorySave?: (items: ChatHistoryItem[]) => Promise<void>;
   imageGenerate?: (payload: ImageGeneratePayload) => Promise<ApiResult>;

@@ -104,6 +104,7 @@ const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
 const { handleImageGenerate } = require('./image_gen');
+const { startMockScriptAdapterRun } = require('./script_adapter/mock_execution');
 const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const { startScheduler, stopScheduler } = require('./summarizer/scheduler');
@@ -452,6 +453,21 @@ async function handleChatRequest(request, connection) {
 }
 
 async function handleTransportMessage(msg, connection) {
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.start') {
+    const run = startMockScriptAdapterRun(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: true,
+      method: msg.method,
+      payload: {
+        type: 'script-adapter-run-started',
+        ...run,
+      },
+    });
+    return true;
+  }
+
   if (msg?.type === 'req' && msg?.method === 'image.generate') {
     const imgProvider = String(config.getEnvOrConfig('IMAGE_PROVIDER') || 'minimax').trim().toLowerCase();
     const imgBaseRaw = String(config.getEnvOrConfig('IMAGE_BASE_URL') || '').trim();

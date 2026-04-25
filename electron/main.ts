@@ -1265,6 +1265,11 @@ function sendImageResult(payload: any) {
   mainWindow.webContents.send('image-result', payload);
 }
 
+function sendScriptAdapterEvent(payload: any) {
+  if (appQuitting || !mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send('script-adapter-event', payload);
+}
+
 function floatFlash() {
   if (floatWindow && !floatWindow.isDestroyed()) {
     floatWindow.webContents.send('float-flash');
@@ -1467,6 +1472,8 @@ function handleMessage(msg: any) {
       } else if (msg.event === 'task-board-update') {
         mainWindow?.webContents.send('task-board-update');
         mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
+      } else if (msg.event === 'script-adapter') {
+        sendScriptAdapterEvent(msg.payload || {});
       } else if (msg.event === 'tool' || msg.event === 'agent-phase') {
         // 工具调用事件和 agent 阶段事件：直接透传，不经过 forwardChatToFrontend（避免 state:'done' 被误判为 chat done）
         sendMessage(msg);
@@ -4183,6 +4190,38 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
   }
 
   return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext, requestId);
+});
+
+ipcMain.handle('script-adapter-run-start', (_event, payload: {
+  taskId: string;
+  taskTitle: string;
+  source?: string;
+  useMock?: boolean;
+}) => {
+  if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
+    return { success: false, error: 'Gateway 未连接，请先启动 Gateway' };
+  }
+
+  const taskId = String(payload?.taskId || `script-adapter-${Date.now()}`);
+  const requestId = `script_adapter_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const msg = {
+    type: 'req',
+    id: requestId,
+    method: 'scriptAdapter.run.start',
+    params: {
+      taskId,
+      taskTitle: String(payload?.taskTitle || '多人演播有声书样章'),
+      source: String(payload?.source || 'content-workbench'),
+      useMock: payload?.useMock !== false,
+    },
+  };
+
+  try {
+    openclawWs.send(JSON.stringify(msg));
+    return { success: true, taskId };
+  } catch (err: any) {
+    return { success: false, error: err?.message || '发送失败' };
+  }
 });
 
 ipcMain.handle('image-generate', async (_event, payload: {

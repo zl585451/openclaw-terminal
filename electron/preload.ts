@@ -14,6 +14,17 @@ const electronAPI = {
   // OpenClaw WebSocket 连接
   connectOpenClaw: () => ipcRenderer.invoke('openclaw-connect'),
   sendOpenClawMessage: (content: string) => ipcRenderer.invoke('openclaw-send', content),
+  startScriptAdapterRun: (payload: {
+    taskId: string;
+    taskTitle: string;
+    source?: string;
+    useMock?: boolean;
+  }) => ipcRenderer.invoke('script-adapter-run-start', payload),
+  onScriptAdapterEvent: (callback: (payload: any) => void) => {
+    const handler = (_event: any, payload: any) => callback(payload);
+    ipcRenderer.on('script-adapter-event', handler);
+    return () => ipcRenderer.removeListener('script-adapter-event', handler);
+  },
   getOpenClawStatus: () => ipcRenderer.invoke('openclaw-status'),
   chatHistoryLoad: () => ipcRenderer.invoke('chat-history-load'),
   chatHistorySave: (items: Array<{ role: string; content: string; timestamp: string }>) =>

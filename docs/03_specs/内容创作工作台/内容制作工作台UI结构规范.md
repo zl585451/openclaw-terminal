@@ -2,9 +2,9 @@
 
 ## 文档状态
 
-- 版本：v1.15
+- 版本：v1.16
 - 状态：当前定版，可作为内容制作工作台 V2 前端结构基线
-- 生效方式：先用于 mock 工作台，不要求接入真实 AI、Gateway 或持久化
+- 生效方式：先用于工作台 MVP；当前已接入 Gateway mock 执行桥，真实 AI 和持久化后续接入
 - 修订原则：先固定信息结构，再逐步接真实能力
 
 ---
@@ -19,7 +19,7 @@
 
 ## 2. 当前 V2 范围
 
-V2 只做前端骨架升级：
+V2 先做前端骨架升级，并逐步接入 Gateway mock 执行桥：
 
 1. 显示项目。
 2. 显示团队模板。
@@ -32,7 +32,7 @@ V2 只做前端骨架升级：
 V2 不做：
 
 1. 真实 AI 调用。
-2. Gateway 接口。
+2. 真实 AI Gateway 调用。
 3. 数据库持久化。
 4. 真实打回和重跑。
 5. 最终 CV 分配。
@@ -687,10 +687,6 @@ UI 规则：
 5. `src/modules/script-adapter/ui/Workbench/ArtifactPreview.tsx`
 6. `src/modules/script-adapter/ui/Workbench/WorkbenchView.tsx`
 
----
-
-## 26. 后续扩展
-
 ## 26. V2.20 执行状态归一到 Zustand Store
 
 V2.20 将 V2.19 中临时放在 `WorkbenchView` 组件内的执行状态迁移到 `scriptAdapterStore`。
@@ -726,13 +722,43 @@ V2.20 将 V2.19 中临时放在 `WorkbenchView` 组件内的执行状态迁移�
 
 ---
 
-## 27. 后续扩展
+## 27. V2.21 Gateway Mock 执行桥
+
+V2.21 将“确认开工”从纯前端 mock 升级为优先走 Gateway mock runner。
+
+新增链路：
+
+1. 用户点击“确认开工”。
+2. 前端先创建本地 `TaskExecutionSheet`，让用户立即进入执行视图。
+3. 前端通过 Electron IPC 调用 `startScriptAdapterRun`。
+4. Electron 主进程向 Gateway 发送 `scriptAdapter.run.start`。
+5. Gateway mock runner 按 Agent 队列推送 `script-adapter` 事件。
+6. Electron 将事件转发给前端。
+7. 前端更新 Zustand `executionSheets`。
+8. Gateway 不可用时降级到前端 `mockAgentExecution`。
+
+新增文件：
+
+1. `src/modules/script-adapter/services/gatewayExecution.ts`
+2. `oct-gateway/script_adapter/mock_execution.js`
+3. `docs/03_specs/内容创作工作台/内容创作Gateway执行桥接协议.md`
+
+UI 行为：
+
+1. 用户仍只看到“制作角色在干活”，不暴露 WebSocket、IPC 或消息协议。
+2. Gateway 事件应驱动同一个执行视图，不另起一套页面。
+3. 降级到前端 mock 时，用户体验保持一致。
+4. 技术细节继续默认折叠。
+
+---
+
+## 28. 后续扩展
 
 V2 稳定后，下一步建议按以下顺序推进：
 
-1. 定义 `SourceDocument`、`TaskBrief`、`AgentPlan`、`ExecutionGate` 等后台对象。
-2. 接入真实上传、文件解析和章节切分。
-3. 增加项目上下文和产物版本管理。
-4. 接入角色音分类真实 Agent。
-5. 增加人工确认和打回弹窗。
-6. 接入 Gateway 工具和持久化。
+1. 为 Gateway 执行桥补执行记录持久化。
+2. 增加任务取消、恢复和失败重试。
+3. 接入真实上传、文件解析和章节切分。
+4. 优先替换文本改编 Agent 为真实模型调用。
+5. 增加项目上下文和产物版本管理。
+6. 增加人工确认和打回弹窗。
