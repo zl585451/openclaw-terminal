@@ -13,6 +13,21 @@ export interface SourceDocumentDraft {
   wordCountLabel: string;
 }
 
+export interface SourceProfileDraft {
+  contentCategory: string;
+  structureSummary: string;
+  confidenceLabel: string;
+  recommendedDirections: Array<{
+    name: string;
+    reason: string;
+    level: 'recommended' | 'available';
+  }>;
+  unsupportedDirections: Array<{
+    name: string;
+    reason: string;
+  }>;
+}
+
 export interface TaskDraftConfirmItem {
   id: string;
   label: string;
@@ -29,6 +44,7 @@ export interface TaskDraftConfirmItem {
 export interface IntakeResult {
   rawAssetId: string;
   sourceDocument: SourceDocumentDraft;
+  sourceProfile: SourceProfileDraft;
   intakeSummary: string;
   recommendedAction: string;
   recommendedReason: string;
@@ -88,7 +104,22 @@ export async function runMockTaskIntake(onStepDone: (stepIndex: number) => void)
       chapterHint: '识别第 1 章',
       wordCountLabel: '约 3,200 字',
     },
-    intakeSummary: '系统判断：小说正文 / 已识别第 1 章 / 适合多人演播 / 轻风险',
+    sourceProfile: {
+      contentCategory: '小说正文',
+      structureSummary: '已识别第 1 章，旁白和对白混合，具备场景化改编基础。',
+      confidenceLabel: '高可信',
+      recommendedDirections: [
+        { name: '多人演播有声书 · 先做业务分析', reason: '适合听感、角色音和演播风险分析。', level: 'recommended' },
+        { name: '广播剧 · 先做可行性分析', reason: '可以改造，但需要更强场景重构。', level: 'available' },
+        { name: '小说润色 · 先做问题分析', reason: '适合保留小说形态，先判断语言和节奏问题。', level: 'available' },
+        { name: '只做作品分析', reason: '低风险，只输出问题和建议。', level: 'available' },
+      ],
+      unsupportedDirections: [
+        { name: '论文润色', reason: '当前素材不是论文结构。' },
+        { name: '演讲稿优化', reason: '当前文本不是演讲或口播稿。' },
+      ],
+    },
+    intakeSummary: '系统判断：小说正文 / 已识别第 1 章 / 可做多人演播或广播剧方向 / 轻风险',
     recommendedAction: '确认多人演播有声书目标，并先分析第 1 章。',
     recommendedReason: '文本为小说正文，旁白和对白混合，适合先锁定产物和范围，再进入听感、结构和角色音风险分析。',
     plannerAgent: 'task.intake_planner@1.0',
@@ -102,8 +133,8 @@ export async function runMockTaskIntake(onStepDone: (stepIndex: number) => void)
           customHint: '如果目标不准确，可以补一句你真正想要的产物，例如“只想做小说润色”或“只帮我判断文章问题”。',
           options: [
             { value: '多人演播有声书 · 先做业务分析', desc: '适合先检查听感、结构、角色音和演播风险。', source: 'recommended' },
+            { value: '广播剧 · 先做可行性分析', desc: '适合小说场景化改造，但需要先判断改造成本。', source: 'preset' },
             { value: '小说润色 · 先做问题分析', desc: '保留小说文本形态，先找语言和节奏问题。', source: 'preset' },
-            { value: '剧情重写 · 先做结构诊断', desc: '只确认目标为重写方向，具体重写权限等 AI 分析后再确认。', source: 'preset' },
             { value: '只做作品分析', desc: '只输出问题清单和修改建议，不进入改稿。', source: 'preset' },
           ],
         },

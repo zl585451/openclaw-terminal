@@ -620,6 +620,40 @@
   line-height: 1.45;
 }
 
+.sourceProfileSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  padding: 10px;
+  border: 1px solid rgba(30, 117, 91, 0.16);
+  border-radius: 10px;
+  background: rgba(239, 247, 242, 0.9);
+}
+
+.sourceProfileSummary strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.sourceProfileSummary span {
+  grid-column: 1 / -1;
+  color: #596165;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sourceProfileSummary em {
+  align-self: start;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.12);
+  color: #176149;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .summaryList {
   display: flex;
   flex-direction: column;
@@ -995,6 +1029,81 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.directionFitPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(244, 246, 241, 0.82);
+}
+
+.directionFitGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.directionFitItem,
+.directionFitRecommended {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.directionFitItem {
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  background: rgba(255, 255, 253, 0.84);
+}
+
+.directionFitRecommended {
+  border: 1px solid rgba(30, 117, 91, 0.28);
+  background: rgba(230, 244, 236, 0.96);
+}
+
+.directionFitItem span,
+.directionFitRecommended span {
+  color: #667075;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.directionFitItem strong,
+.directionFitRecommended strong {
+  color: #15191b;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.directionFitItem em,
+.directionFitRecommended em {
+  color: #596165;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.unsupportedDirectionList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  color: #667075;
+  font-size: 12px;
+}
+
+.unsupportedDirectionList em {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(53, 64, 67, 0.08);
+  color: #596165;
+  font-style: normal;
 }
 
 .planDecisionItem {
@@ -2331,6 +2440,7 @@
   .composerConfigGrid,
   .sourceGateLayout,
   .planDecisionList,
+  .directionFitGrid,
   .intakeInsightGrid,
   .recommendedPlanGrid {
     grid-template-columns: 1fr;

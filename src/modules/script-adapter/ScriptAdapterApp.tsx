@@ -161,7 +161,6 @@ interface WizardProps {
 }
 
 function TaskCreateWizard({ onBack, onStart }: WizardProps) {
-  const [brief, setBrief] = useState('');
   const [intakeStatus, setIntakeStatus] = useState<IntakeStatus>('idle');
   const [intakeStepIndex, setIntakeStepIndex] = useState(0);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
@@ -170,9 +169,6 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [decisionOverrides, setDecisionOverrides] = useState<Record<string, { value: string; desc: string; customNote: string }>>({});
   const sourceConfirmed = intakeStatus === 'completed' && Boolean(intakeResult);
   const isIntakeRunning = intakeStatus === 'running';
-  const briefLength = brief.trim().length;
-  const isBriefLong = briefLength > 220;
-  const isBriefTooShort = briefLength > 0 && briefLength < 12;
   const progressValue = sourceConfirmed ? 78 : isIntakeRunning ? 58 : 46;
   const agentQueueSummary = intakeResult
     ? [
@@ -339,10 +335,17 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <div className={styles.taskFieldLabel}>确认后生成的素材参数</div>
                 <div className={styles.sourceParamGrid}>
                   <div><span>文件</span><strong>{intakeResult?.sourceDocument.fileName ?? '长夜未瞑_第1章.txt'}</strong></div>
-                  <div><span>类型</span><strong>{intakeResult?.sourceDocument.sourceType ?? '待识别'}</strong></div>
+                  <div><span>类型</span><strong>{intakeResult?.sourceProfile.contentCategory ?? intakeResult?.sourceDocument.sourceType ?? '待识别'}</strong></div>
                   <div><span>章节</span><strong>{intakeResult?.sourceDocument.chapterHint ?? '待解析'}</strong></div>
                   <div><span>字数</span><strong>{intakeResult?.sourceDocument.wordCountLabel ?? '待真实解析'}</strong></div>
                 </div>
+                {intakeResult ? (
+                  <div className={styles.sourceProfileSummary}>
+                    <strong>AI 已识别素材归属：{intakeResult.sourceProfile.contentCategory}</strong>
+                    <span>{intakeResult.sourceProfile.structureSummary}</span>
+                    <em>{intakeResult.sourceProfile.confidenceLabel}</em>
+                  </div>
+                ) : null}
                 <div className={styles.agentPreviewList}>
                   {SOURCE_AGENT_PREVIEW.map((item) => (
                     <div key={item.name} className={styles.agentPreviewItem}>
@@ -392,6 +395,28 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                     <span>建议方案</span>
                     <strong>{intakeResult.recommendedAction}</strong>
                     <p>{intakeResult.recommendedReason}确认后只进入 AI 初读分析，不会直接改稿。</p>
+                  </div>
+                </div>
+
+                <div className={styles.directionFitPanel}>
+                  <div className={styles.taskFieldLabel}>基于素材归属生成的可选方向</div>
+                  <div className={styles.directionFitGrid}>
+                    {intakeResult.sourceProfile.recommendedDirections.map((direction) => (
+                      <div
+                        key={direction.name}
+                        className={direction.level === 'recommended' ? styles.directionFitRecommended : styles.directionFitItem}
+                      >
+                        <span>{direction.level === 'recommended' ? 'AI 推荐' : '可选'}</span>
+                        <strong>{direction.name}</strong>
+                        <em>{direction.reason}</em>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={styles.unsupportedDirectionList}>
+                    <span>不会在第二步提供：</span>
+                    {intakeResult.sourceProfile.unsupportedDirections.map((direction) => (
+                      <em key={direction.name}>{direction.name}，{direction.reason}</em>
+                    ))}
                   </div>
                 </div>
 
@@ -447,31 +472,6 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   ))}
                 </div>
 
-                <div className={styles.supplementRequirementBlock}>
-                  <div className={styles.composerSectionHeader}>
-                    <div>
-                      <div className={styles.taskFieldLabel}>可选补充说明</div>
-                      <span className={styles.mutedText}>这里只补充产品目标或处理范围，改动深度等 AI 分析后再选。留空也可以继续。</span>
-                    </div>
-                  </div>
-
-                  <textarea
-                    className={styles.taskTextarea}
-                    aria-label="目标和范围补充说明"
-                    placeholder="例：先分析第1章前半段；产物按多人演播有声书方向判断；暂时不要进入改稿。"
-                    value={brief}
-                    onChange={(event) => setBrief(event.target.value)}
-                  />
-
-                  <div className={styles.requirementMetaRow}>
-                    <span className={isBriefLong || isBriefTooShort ? styles.requirementWarnText : styles.mutedText}>
-                      {briefLength}/300 建议字数
-                    </span>
-                    {isBriefTooShort ? <span className={styles.requirementWarnText}>要求太短，建议至少说明目标或边界。</span> : null}
-                    {isBriefLong ? <span className={styles.requirementWarnText}>要求偏长，AI 会先压缩成任务摘要再执行。</span> : null}
-                  </div>
-                </div>
-
                 <div className={styles.teamLockBox}>
                   <div>
                     <strong>确认后锁定的 Agent 团队</strong>
@@ -513,6 +513,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             </div>
             <div className={styles.summaryList}>
               <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 已完成解析' : isIntakeRunning ? '正在摄入 · 生成素材对象' : '上传文件 · 待确认'}</strong></div>
+              <div><span>归属</span><strong>{intakeResult?.sourceProfile.contentCategory ?? '待识别'}</strong></div>
               <div><span>目标</span><strong>{getDecisionSummaryValue('work_goal', '多人演播有声书 · 先做业务分析')}</strong></div>
               <div><span>范围</span><strong>{getDecisionSummaryValue('scope', '第 1 章')}</strong></div>
               <div><span>本轮</span><strong>先分析问题</strong></div>
