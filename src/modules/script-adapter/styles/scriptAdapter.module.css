@@ -1333,6 +1333,232 @@
   line-height: 1.6;
 }
 
+.analysisRunningPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid rgba(239, 159, 39, 0.24);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.14), transparent 36%),
+    rgba(255, 248, 232, 0.9);
+}
+
+.analysisRunningPanel strong {
+  color: #15191b;
+  font-size: 15px;
+}
+
+.analysisRunningPanel span {
+  color: #665431;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.analysisHeroCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px;
+  border: 1px solid rgba(30, 117, 91, 0.2);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(30, 117, 91, 0.12), transparent 34%),
+    rgba(239, 247, 242, 0.94);
+}
+
+.analysisHeroCard div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.analysisHeroCard strong {
+  color: #15191b;
+  font-size: 15px;
+}
+
+.analysisHeroCard span {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.12);
+  color: #176149;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.analysisHeroCard p {
+  margin: 0;
+  color: #263033;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.analysisIssueGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.analysisIssueCard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 253, 0.9);
+}
+
+.analysisIssueCard span {
+  color: #8a5600;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.analysisIssueCard strong {
+  color: #15191b;
+  font-size: 14px;
+}
+
+.analysisIssueCard em {
+  color: #596165;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.evidencePanel,
+.strategyPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(244, 246, 241, 0.84);
+}
+
+.evidenceItem {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 253, 0.88);
+}
+
+.evidenceItem div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.evidenceItem strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.evidenceItem span {
+  color: #667075;
+  font-size: 12px;
+}
+
+.evidenceItem p {
+  margin: 0;
+  color: #263033;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.strategyGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.strategyCard,
+.strategyCardActive {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.strategyCard {
+  border: 1px solid rgba(53, 64, 67, 0.12);
+  background: rgba(255, 255, 253, 0.9);
+}
+
+.strategyCardActive {
+  border: 1px solid rgba(30, 117, 91, 0.34);
+  background: rgba(230, 244, 236, 0.96);
+  box-shadow: 0 8px 22px rgba(30, 117, 91, 0.08);
+}
+
+.strategyCard span,
+.strategyCardActive span {
+  color: #667075;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.strategyCard strong,
+.strategyCardActive strong {
+  color: #15191b;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.strategyCard em,
+.strategyCardActive em,
+.strategyCard small,
+.strategyCardActive small {
+  color: #596165;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.strategyCardActive small {
+  color: #176149;
+  font-weight: 700;
+}
+
+.executionImpactBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px;
+  border: 1px solid rgba(30, 117, 91, 0.2);
+  border-radius: 12px;
+  background: rgba(239, 247, 242, 0.92);
+}
+
+.executionImpactBox div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.executionImpactBox strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.executionImpactBox span {
+  color: #596165;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .intakeResultHeader {
   display: flex;
   align-items: flex-start;
@@ -2441,6 +2667,8 @@
   .sourceGateLayout,
   .planDecisionList,
   .directionFitGrid,
+  .analysisIssueGrid,
+  .strategyGrid,
   .intakeInsightGrid,
   .recommendedPlanGrid {
     grid-template-columns: 1fr;
@@ -2505,11 +2733,14 @@
   .composerSectionHeader,
   .summaryList div,
   .agentPreviewItem,
+  .analysisHeroCard div,
+  .evidenceItem,
   .planHeroHeader,
   .planDecisionItem,
   .planDecisionTop,
   .decisionOptionList,
   .teamLockBox,
+  .executionImpactBox,
   .queueSummaryGrid,
   .intakeResultHeader {
     grid-template-columns: 1fr;

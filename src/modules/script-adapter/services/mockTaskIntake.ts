@@ -1,4 +1,5 @@
 export type IntakeStatus = 'idle' | 'running' | 'completed' | 'failed';
+export type AnalysisStatus = 'idle' | 'running' | 'completed' | 'failed';
 
 export interface IntakeStep {
   id: string;
@@ -57,6 +58,35 @@ export interface IntakeResult {
     nextAgent: string;
     candidateCount: number;
     requiresHumanConfirm: boolean;
+  };
+}
+
+export interface AnalysisReport {
+  agentName: string;
+  summary: string;
+  diagnosis: Array<{
+    title: string;
+    detail: string;
+    severity: '轻' | '中' | '高';
+  }>;
+  evidence: Array<{
+    location: string;
+    issue: string;
+    quote: string;
+  }>;
+  strategyOptions: Array<{
+    id: string;
+    title: string;
+    desc: string;
+    editDepth: string;
+    impact: string;
+    recommended?: boolean;
+  }>;
+  recommendedStrategyId: string;
+  executionImpact: {
+    nextAgents: string[];
+    outputs: string[];
+    requiresReview: boolean;
   };
 }
 
@@ -158,6 +188,86 @@ export async function runMockTaskIntake(onStepDone: (stepIndex: number) => void)
       nextAgent: '业务分析 Agent',
       candidateCount: 3,
       requiresHumanConfirm: true,
+    },
+  };
+}
+
+export async function runMockInitialAnalysis(): Promise<AnalysisReport> {
+  await wait(900);
+
+  return {
+    agentName: '业务分析 Agent',
+    summary: '第 1 章适合做多人演播方向试跑，但建议先处理旁白听感、对白可演性和角色音区分问题，不建议直接进入全章重改。',
+    diagnosis: [
+      {
+        title: '旁白书面感偏重',
+        detail: '部分叙述句信息密度较高，直接朗读时容易显得硬，需要转成更顺耳的口播表达。',
+        severity: '中',
+      },
+      {
+        title: '对白归属需要确认',
+        detail: '部分台词或文件记录类内容可能不是现场对白，需要标注为回忆、文件声或待定角色音。',
+        severity: '高',
+      },
+      {
+        title: '场景衔接可强化',
+        detail: '章节内存在调查、翻阅资料和情绪转折，适合补充停顿、声场或 BGM 进入点。',
+        severity: '轻',
+      },
+    ],
+    evidence: [
+      {
+        location: '第 1 章 · 开场段',
+        issue: '旁白信息密度偏高',
+        quote: '周佳宁推门进去的时候，屋里还残留着潮湿的木头气味。',
+      },
+      {
+        location: '第 1 章 · 文件翻阅段',
+        issue: '声音主体不明确',
+        quote: '“老马说，别查了。”',
+      },
+      {
+        location: '第 1 章 · 调查推进段',
+        issue: '转场缺少听觉提示',
+        quote: '她继续往后翻，年份一点点往前推。',
+      },
+    ],
+    strategyOptions: [
+      {
+        id: 'analysis_only',
+        title: '只保留分析结果',
+        desc: '暂不改稿，只输出问题清单和后续制作建议。',
+        editDepth: '不改原文',
+        impact: '适合先让统筹确认方向。',
+      },
+      {
+        id: 'light_listening_polish',
+        title: '轻度听感润色',
+        desc: '只处理不顺口的旁白和句式，不改变剧情、人物关系和信息顺序。',
+        editDepth: '轻度',
+        impact: '会进入文本听感优化 Agent。',
+      },
+      {
+        id: 'audiobook_sample',
+        title: '有声书样章制作',
+        desc: '在轻度听感润色基础上，补充角色音、BGM、音效和 CV 情绪提示。',
+        editDepth: '中度',
+        impact: '会进入文本改编、角色音标注和演播设计 Agent。',
+        recommended: true,
+      },
+      {
+        id: 'drama_feasibility',
+        title: '广播剧可行性拆解',
+        desc: '不直接改成广播剧，先判断场景重构、对白增强和音效成本。',
+        editDepth: '分析优先',
+        impact: '会进入场景拆分和广播剧可行性分析。',
+      },
+    ],
+    recommendedStrategyId: 'audiobook_sample',
+    executionImpact: {
+      nextAgents: ['文本改编 Agent', '角色音标注 Agent', '演播设计 Agent'],
+      outputs: ['有声书样章文本', '角色音标注表', '演播设计提示'],
+      requiresReview: true,
     },
   };
 }

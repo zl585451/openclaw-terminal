@@ -7,9 +7,12 @@ import { MOCK_ARTIFACTS } from './mockData/mockArtifacts';
 import { MOCK_AGENTS } from './mockData/mockAgents';
 import { MOCK_TEAM_TEMPLATES } from './mockData/mockTemplates';
 import {
+  type AnalysisReport,
+  type AnalysisStatus,
   MOCK_INTAKE_STEPS,
   type IntakeResult,
   type IntakeStatus,
+  runMockInitialAnalysis,
   runMockTaskIntake,
 } from './services/mockTaskIntake';
 import styles from './styles/scriptAdapter.module.css';
@@ -165,17 +168,24 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [intakeStepIndex, setIntakeStepIndex] = useState(0);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
   const [intakeError, setIntakeError] = useState('');
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
+  const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
+  const [analysisError, setAnalysisError] = useState('');
+  const [selectedStrategyId, setSelectedStrategyId] = useState('');
   const [editingDecisionId, setEditingDecisionId] = useState<string | null>(null);
   const [decisionOverrides, setDecisionOverrides] = useState<Record<string, { value: string; desc: string; customNote: string }>>({});
   const sourceConfirmed = intakeStatus === 'completed' && Boolean(intakeResult);
   const isIntakeRunning = intakeStatus === 'running';
-  const progressValue = sourceConfirmed ? 78 : isIntakeRunning ? 58 : 46;
+  const isAnalysisRunning = analysisStatus === 'running';
+  const analysisCompleted = analysisStatus === 'completed' && Boolean(analysisReport);
+  const selectedStrategy = analysisReport?.strategyOptions.find((option) => option.id === selectedStrategyId);
+  const progressValue = analysisCompleted ? 96 : isAnalysisRunning ? 86 : sourceConfirmed ? 72 : isIntakeRunning ? 48 : 34;
   const agentQueueSummary = intakeResult
     ? [
         { label: '已预分配', value: String(intakeResult.agentPreAllocation.assignedCount), desc: '文件解析、内容识别、任务安排' },
-        { label: '即将执行', value: '1', desc: intakeResult.agentPreAllocation.nextAgent },
-        { label: '后续候选', value: String(intakeResult.agentPreAllocation.candidateCount), desc: '场景拆分、文本改编、角色音标注' },
-        { label: '人工确认', value: intakeResult.agentPreAllocation.requiresHumanConfirm ? '是' : '否', desc: '分析方向和冲突要求需要确认' },
+        { label: '即将执行', value: analysisCompleted ? String(analysisReport?.executionImpact.nextAgents.length ?? 0) : '1', desc: analysisCompleted ? (analysisReport?.executionImpact.nextAgents.join('、') ?? '') : intakeResult.agentPreAllocation.nextAgent },
+        { label: '后续候选', value: String(intakeResult.agentPreAllocation.candidateCount), desc: analysisCompleted ? '按策略进入制作队列' : '场景拆分、文本改编、角色音标注' },
+        { label: '人工确认', value: analysisReport?.executionImpact.requiresReview ? '是' : intakeResult.agentPreAllocation.requiresHumanConfirm ? '是' : '否', desc: analysisCompleted ? '修改策略已待确认' : '分析方向和冲突要求需要确认' },
       ]
     : AGENT_QUEUE_SUMMARY;
   const createSteps = [
@@ -188,8 +198,14 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     {
       index: 2,
       title: '确认目标和范围',
-      desc: sourceConfirmed ? '定义产物 · 工作范围' : '等待素材确认',
-      status: sourceConfirmed ? 'active' : 'pending',
+      desc: analysisStatus !== 'idle' ? '已确认 · 正在分析' : sourceConfirmed ? '定义产物 · 工作范围' : '等待素材确认',
+      status: analysisStatus !== 'idle' ? 'done' : sourceConfirmed ? 'active' : 'pending',
+    },
+    {
+      index: 3,
+      title: '确认修改策略',
+      desc: analysisCompleted ? '选择怎么改 · 锁定制作队列' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围',
+      status: analysisCompleted ? 'active' : isAnalysisRunning ? 'active' : 'pending',
     },
   ] as const;
 
@@ -208,6 +224,10 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
       setIntakeResult(result);
       setDecisionOverrides({});
       setEditingDecisionId(null);
+      setAnalysisStatus('idle');
+      setAnalysisReport(null);
+      setAnalysisError('');
+      setSelectedStrategyId('');
       setIntakeStatus('completed');
     } catch (error) {
       setIntakeStatus('failed');
@@ -252,6 +272,25 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     return decisionOverrides[itemId]?.value ?? sourceItem?.value ?? fallback;
   };
 
+  const handleRunAnalysis = async () => {
+    if (!sourceConfirmed || isAnalysisRunning) return;
+
+    setAnalysisStatus('running');
+    setAnalysisReport(null);
+    setAnalysisError('');
+    setSelectedStrategyId('');
+
+    try {
+      const report = await runMockInitialAnalysis();
+      setAnalysisReport(report);
+      setSelectedStrategyId(report.recommendedStrategyId);
+      setAnalysisStatus('completed');
+    } catch (error) {
+      setAnalysisStatus('failed');
+      setAnalysisError(error instanceof Error ? error.message : 'AI 初读分析失败，请重试。');
+    }
+  };
+
   return (
     <div className={styles.createShell}>
       <header className={styles.createComposerHeader}>
@@ -274,7 +313,11 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <span style={{ width: `${progressValue}%` }} />
             </div>
             <div className={styles.mutedText}>
-              {sourceConfirmed
+              {analysisCompleted
+                ? 'AI 初读分析完成，等待你确认修改策略。'
+                : isAnalysisRunning
+                  ? '业务分析 Agent 正在输出问题、证据和修改策略。'
+                  : sourceConfirmed
                 ? '已生成初步任务草案，等待你确认详细执行方案。'
                 : isIntakeRunning
                   ? `正在执行第 ${Math.min(intakeStepIndex + 1, MOCK_INTAKE_STEPS.length)} 步素材摄入。`
@@ -481,10 +524,11 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                     type="button"
                     className={styles.primaryButton}
                     disabled={!sourceConfirmed}
-                    onClick={onStart}
+                    onClick={handleRunAnalysis}
                   >
-                    确认目标和范围，开始 AI 初读分析
+                    {isAnalysisRunning ? 'AI 初读分析中' : analysisCompleted ? '重新生成 AI 初读分析' : '确认目标和范围，开始 AI 初读分析'}
                   </button>
+                  {analysisError ? <div className={styles.inlineErrorText}>{analysisError}</div> : null}
                 </div>
               </>
             ) : (
@@ -497,6 +541,108 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 </span>
               </div>
             )}
+          </div>
+
+          <div className={`${styles.card} ${styles.composerRequirementCard}`}>
+            <div className={styles.composerSectionHeader}>
+              <div>
+                <div className={styles.detailEyebrow}>第 3 步 · 修改策略确认</div>
+                <h2>基于 AI 初读结果，选择怎么改</h2>
+              </div>
+              <span className={analysisCompleted ? styles.reviewPill : styles.mutedPill}>
+                {analysisCompleted ? '待确认策略' : isAnalysisRunning ? '分析中' : '等待分析'}
+              </span>
+            </div>
+
+            {isAnalysisRunning ? (
+              <div className={styles.analysisRunningPanel}>
+                <strong>业务分析 Agent 正在初读文本</strong>
+                <span>正在生成文本问题、证据片段、可修改方向、推荐策略和执行影响。这里不会改稿，只做决策前分析。</span>
+              </div>
+            ) : null}
+
+            {analysisCompleted && analysisReport ? (
+              <>
+                <div className={styles.analysisHeroCard}>
+                  <div>
+                    <strong>AI 初读结论</strong>
+                    <span>{analysisReport.agentName}</span>
+                  </div>
+                  <p>{analysisReport.summary}</p>
+                </div>
+
+                <div className={styles.analysisIssueGrid}>
+                  {analysisReport.diagnosis.map((item) => (
+                    <div key={item.title} className={styles.analysisIssueCard}>
+                      <span>风险：{item.severity}</span>
+                      <strong>{item.title}</strong>
+                      <em>{item.detail}</em>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={styles.evidencePanel}>
+                  <div className={styles.taskFieldLabel}>问题证据</div>
+                  {analysisReport.evidence.map((item) => (
+                    <div key={`${item.location}-${item.issue}`} className={styles.evidenceItem}>
+                      <div>
+                        <strong>{item.location}</strong>
+                        <span>{item.issue}</span>
+                      </div>
+                      <p>{item.quote}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={styles.strategyPanel}>
+                  <div className={styles.composerSectionHeader}>
+                    <div>
+                      <div className={styles.taskFieldLabel}>选择修改策略</div>
+                      <span className={styles.mutedText}>这里才决定“怎么改、改多深”。</span>
+                    </div>
+                  </div>
+                  <div className={styles.strategyGrid}>
+                    {analysisReport.strategyOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={selectedStrategyId === option.id ? styles.strategyCardActive : styles.strategyCard}
+                        onClick={() => setSelectedStrategyId(option.id)}
+                      >
+                        <span>{option.recommended ? 'AI 推荐' : option.editDepth}</span>
+                        <strong>{option.title}</strong>
+                        <em>{option.desc}</em>
+                        <small>{option.impact}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className={styles.executionImpactBox}>
+                  <div>
+                    <strong>确认后将进入制作队列</strong>
+                    <span>下一步 Agent：{analysisReport.executionImpact.nextAgents.join('、')}</span>
+                    <span>预计产物：{analysisReport.executionImpact.outputs.join('、')}</span>
+                    {selectedStrategy ? <span>当前策略：{selectedStrategy.title}，{selectedStrategy.impact}</span> : null}
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    disabled={!selectedStrategyId}
+                    onClick={onStart}
+                  >
+                    确认修改策略，进入制作工作台
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {!analysisCompleted && !isAnalysisRunning ? (
+              <div className={styles.intakeWaitingPanel}>
+                <strong>等待第 2 步确认后生成 AI 初读分析</strong>
+                <span>确认产品方向和工作范围后，这里会展示文本问题、证据、可修改建议和策略选择。</span>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -516,7 +662,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <div><span>归属</span><strong>{intakeResult?.sourceProfile.contentCategory ?? '待识别'}</strong></div>
               <div><span>目标</span><strong>{getDecisionSummaryValue('work_goal', '多人演播有声书 · 先做业务分析')}</strong></div>
               <div><span>范围</span><strong>{getDecisionSummaryValue('scope', '第 1 章')}</strong></div>
-              <div><span>本轮</span><strong>先分析问题</strong></div>
+              <div><span>本轮</span><strong>{analysisCompleted ? selectedStrategy?.title ?? '待选择策略' : isAnalysisRunning ? 'AI 初读分析中' : '先分析问题'}</strong></div>
               <div><span>草案</span><strong>{sourceConfirmed ? '已生成 TaskDraft' : isIntakeRunning ? '生成中' : '等待生成'}</strong></div>
             </div>
           </div>
@@ -553,6 +699,13 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   <em>{sourceConfirmed ? '等待确认目标和范围' : isIntakeRunning ? '等待摄入完成' : '等待素材确认'}</em>
                 </div>
               </div>
+              <div className={analysisCompleted ? styles.gateMapItemActive : isAnalysisRunning ? styles.gateMapItemActive : styles.gateMapItemPending}>
+                <span>3</span>
+                <div>
+                  <strong>修改策略确认</strong>
+                  <em>{analysisCompleted ? '等待确认策略' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围'}</em>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -578,8 +731,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
       <footer className={styles.composerActionBar}>
         <div>
-          <strong>{sourceConfirmed ? '等待确认目标和范围' : '等待确认素材参数'}</strong>
-          <span>确认后只进入 AI 初读分析，不会直接改稿；修改策略会在分析结果后单独选择。</span>
+          <strong>{analysisCompleted ? '等待确认修改策略' : isAnalysisRunning ? 'AI 初读分析中' : sourceConfirmed ? '等待确认目标和范围' : '等待确认素材参数'}</strong>
+          <span>{analysisCompleted ? '确认策略后才进入制作 Agent。' : '确认目标和范围后只进入 AI 初读分析，不会直接改稿。'}</span>
         </div>
         <div className={styles.createFooterActions}>
           <button type="button" className={styles.ghostButton} onClick={onBack}>
@@ -591,10 +744,10 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={!sourceConfirmed}
-            onClick={onStart}
+            disabled={!sourceConfirmed || isAnalysisRunning}
+            onClick={analysisCompleted ? onStart : handleRunAnalysis}
           >
-            确认目标和范围，开始分析
+            {analysisCompleted ? '确认策略，进入工作台' : isAnalysisRunning ? 'AI 初读分析中' : '确认目标和范围，开始分析'}
           </button>
         </div>
       </footer>
