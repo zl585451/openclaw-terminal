@@ -27,6 +27,20 @@ const REQUIREMENT_HINTS = [
   { title: '系统会处理', text: '无关内容会降级为备注；冲突要求会在初读分析阶段提示用户确认。' },
 ];
 
+const CREATE_STEPS = [
+  { index: 1, title: '素材来源', desc: '上传文件', status: 'done' },
+  { index: 2, title: '目标产物', desc: '多人演播有声书', status: 'done' },
+  { index: 3, title: '范围和目标', desc: '前1章 · 先分析问题', status: 'done' },
+  { index: 4, title: '本轮要求', desc: '等待确认', status: 'active' },
+] as const;
+
+const EXECUTION_PREVIEW = [
+  { name: '作品分析 Agent', status: '即将执行', desc: '总结文本问题、结构风险和改编建议。' },
+  { name: '场景拆分 Agent', status: '暂不执行', desc: '待用户确认分析方向后再进入。' },
+  { name: '文本改编 Agent', status: '暂不执行', desc: '不会在初读分析阶段直接改稿。' },
+  { name: '人工确认', status: '需要', desc: '分析结果、冲突要求和执行方向需要用户确认。' },
+];
+
 interface ScriptAdapterAppProps {
   onBack?: () => void;
 }
@@ -174,136 +188,202 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
   return (
     <div className={styles.createShell}>
-      <header className={styles.createHeader}>
+      <header className={styles.createComposerHeader}>
         <div>
-          <div className={styles.detailEyebrow}>新建内容制作任务</div>
-          <h1>先告诉 AI：素材从哪来，要做成什么。</h1>
-          <p>第一版先用前端 mock 跑通创建体验，真实上传、文件解析和 Gateway 执行会在下一步接入。</p>
+          <div className={styles.detailEyebrow}>后台任务编排</div>
+          <h1>配置内容制作任务</h1>
+          <p>先安排素材、目标、范围和要求。当前只定 UI，不接真实上传、文件解析或 Gateway 执行。</p>
         </div>
         <button type="button" className={styles.backButton} onClick={onBack}>
           ← 返回任务大厅
         </button>
       </header>
 
-      <main className={styles.createGrid}>
-        <section className={`${styles.card} ${styles.createMainCard}`}>
-          <div className={styles.createStepHeader}>
-            <span>1</span>
-            <div>
-              <strong>选择素材来源</strong>
-              <p>用户可以上传文件、粘贴文本，或未来从已有文档中选择。</p>
+      <main className={styles.composerGrid}>
+        <aside className={styles.composerRail}>
+          <div className={`${styles.card} ${styles.composerProgressCard}`}>
+            <div className={styles.sidebarSectionLabel}>任务完整度</div>
+            <div className={styles.composerProgressValue}>80%</div>
+            <div className={styles.composerProgressTrack}>
+              <span style={{ width: '80%' }} />
             </div>
-          </div>
-          <div className={styles.choiceGrid}>
-            <button type="button" className={styles.choiceCardActive}>上传文件</button>
-            <button type="button" className={styles.choiceCard}>粘贴文本</button>
-            <button type="button" className={styles.choiceCard}>已有文档</button>
+            <div className={styles.mutedText}>剩余：确认本轮要求后即可开始初读分析。</div>
           </div>
 
-          <div className={styles.mockUploadBox}>
-            <strong>拖拽文件到这里，或点击选择文件</strong>
-            <span>支持 .txt / .md / .docx / 小说章节文本。当前版本为交互占位。</span>
-          </div>
-        </section>
-
-        <section className={`${styles.card} ${styles.createMainCard}`}>
-          <div className={styles.createStepHeader}>
-            <span>2</span>
-            <div>
-              <strong>选择目标产物</strong>
-              <p>用户选目标，系统再决定调用哪套 Agent 团队。</p>
-            </div>
-          </div>
-          <div className={styles.choiceGrid}>
-            <button type="button" className={styles.choiceCardActive}>多人演播有声书</button>
-            <button type="button" className={styles.choiceCard}>广播剧</button>
-            <button type="button" className={styles.choiceCard}>短剧脚本</button>
-            <button type="button" className={styles.choiceCard}>只做作品分析</button>
-          </div>
-        </section>
-
-        <section className={`${styles.card} ${styles.createMainCard}`}>
-          <div className={styles.createStepHeader}>
-            <span>3</span>
-            <div>
-              <strong>确认处理范围和本轮目标</strong>
-              <p>避免一上来跑全书，先把样章闭环跑顺。</p>
-            </div>
-          </div>
-          <div className={styles.choiceGrid}>
-            <button type="button" className={styles.choiceCardActive}>前1章</button>
-            <button type="button" className={styles.choiceCard}>全文</button>
-            <button type="button" className={styles.choiceCard}>自定义范围</button>
-            <button type="button" className={styles.choiceCardActive}>先分析问题</button>
-            <button type="button" className={styles.choiceCard}>直接生成样章</button>
-          </div>
-        </section>
-
-        <section className={`${styles.card} ${styles.createMainCard}`}>
-          <div className={styles.createStepHeader}>
-            <span>4</span>
-            <div>
-              <strong>填写本轮要求</strong>
-              <p>先用标签帮用户圈定边界，自由输入只作为补充说明，不直接无条件执行。</p>
-            </div>
-          </div>
-
-          <div className={styles.requirementGuide}>
-            {REQUIREMENT_HINTS.map((hint) => (
-              <div key={hint.title} className={styles.requirementHintCard}>
-                <strong>{hint.title}</strong>
-                <span>{hint.text}</span>
+          <div className={styles.composerStepList}>
+            {CREATE_STEPS.map((step) => (
+              <div
+                key={step.index}
+                className={`${styles.composerStepItem} ${
+                  step.status === 'active' ? styles.composerStepItemActive : ''
+                }`}
+              >
+                <span className={styles.composerStepIndex}>{step.index}</span>
+                <div>
+                  <strong>{step.title}</strong>
+                  <span>{step.desc}</span>
+                </div>
               </div>
             ))}
           </div>
+        </aside>
 
-          <div className={styles.requirementPresetBlock}>
-            <div className={styles.taskFieldLabel}>推荐要求标签</div>
-            <div className={styles.choiceGrid}>
-              {REQUIREMENT_PRESETS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  className={brief.includes(preset) ? styles.choiceCardActive : styles.choiceCard}
-                  onClick={() => addRequirementPreset(preset)}
-                >
-                  {preset}
-                </button>
+        <section className={styles.composerMain}>
+          <div className={`${styles.card} ${styles.composerCompactCard}`}>
+            <div className={styles.composerSectionHeader}>
+              <div>
+                <div className={styles.detailEyebrow}>基础配置</div>
+                <h2>素材、目标和处理范围</h2>
+              </div>
+              <span className={styles.composerStatePill}>已预配置</span>
+            </div>
+
+            <div className={styles.composerConfigGrid}>
+              <div className={styles.composerConfigGroup}>
+                <strong>素材来源</strong>
+                <div className={styles.choiceGrid}>
+                  <button type="button" className={styles.choiceCardActive}>上传文件</button>
+                  <button type="button" className={styles.choiceCard}>粘贴文本</button>
+                  <button type="button" className={styles.choiceCard}>已有文档</button>
+                </div>
+              </div>
+
+              <div className={styles.composerConfigGroup}>
+                <strong>目标产物</strong>
+                <div className={styles.choiceGrid}>
+                  <button type="button" className={styles.choiceCardActive}>多人演播有声书</button>
+                  <button type="button" className={styles.choiceCard}>广播剧</button>
+                  <button type="button" className={styles.choiceCard}>短剧脚本</button>
+                  <button type="button" className={styles.choiceCard}>只做作品分析</button>
+                </div>
+              </div>
+
+              <div className={styles.composerConfigGroup}>
+                <strong>处理范围</strong>
+                <div className={styles.choiceGrid}>
+                  <button type="button" className={styles.choiceCardActive}>前1章</button>
+                  <button type="button" className={styles.choiceCard}>全文</button>
+                  <button type="button" className={styles.choiceCard}>自定义范围</button>
+                </div>
+              </div>
+
+              <div className={styles.composerConfigGroup}>
+                <strong>本轮目标</strong>
+                <div className={styles.choiceGrid}>
+                  <button type="button" className={styles.choiceCardActive}>先分析问题</button>
+                  <button type="button" className={styles.choiceCard}>直接生成样章</button>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.mockUploadBox}>
+              <strong>拖拽文件到这里，或点击选择文件</strong>
+              <span>支持 .txt / .md / .docx / 小说章节文本。当前版本为交互占位。</span>
+            </div>
+          </div>
+
+          <div className={`${styles.card} ${styles.composerRequirementCard}`}>
+            <div className={styles.composerSectionHeader}>
+              <div>
+                <div className={styles.detailEyebrow}>当前配置步骤</div>
+                <h2>本轮要求</h2>
+              </div>
+              <span className={styles.composerStatePill}>需要确认</span>
+            </div>
+
+            <div className={styles.requirementGuide}>
+              {REQUIREMENT_HINTS.map((hint) => (
+                <div key={hint.title} className={styles.requirementHintCard}>
+                  <strong>{hint.title}</strong>
+                  <span>{hint.text}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className={styles.requirementPresetBlock}>
+              <div className={styles.taskFieldLabel}>推荐要求标签</div>
+              <div className={styles.choiceGrid}>
+                {REQUIREMENT_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    className={brief.includes(preset) ? styles.choiceCardActive : styles.choiceCard}
+                    onClick={() => addRequirementPreset(preset)}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <textarea
+              className={styles.taskTextarea}
+              aria-label="本轮任务补充要求"
+              placeholder="例：不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。"
+              value={brief}
+              onChange={(event) => setBrief(event.target.value)}
+            />
+
+            <div className={styles.requirementMetaRow}>
+              <span className={isBriefLong || isBriefTooShort ? styles.requirementWarnText : styles.mutedText}>
+                {briefLength}/300 建议字数
+              </span>
+              {isBriefTooShort ? <span className={styles.requirementWarnText}>要求太短，建议至少说明目标或边界。</span> : null}
+              {isBriefLong ? <span className={styles.requirementWarnText}>要求偏长，AI 会先压缩成任务摘要再执行。</span> : null}
+            </div>
+          </div>
+        </section>
+
+        <aside className={styles.composerSummary}>
+          <div className={`${styles.card} ${styles.summaryCard}`}>
+            <div className={styles.sidebarSectionLabel}>任务摘要</div>
+            <div className={styles.summaryList}>
+              <div><span>素材</span><strong>上传文件 · 待接入</strong></div>
+              <div><span>目标</span><strong>多人演播有声书</strong></div>
+              <div><span>范围</span><strong>前1章</strong></div>
+              <div><span>本轮</span><strong>先分析问题</strong></div>
+            </div>
+          </div>
+
+          <div className={`${styles.card} ${styles.summaryCard}`}>
+            <div className={styles.sidebarSectionLabel}>即将执行</div>
+            <div className={styles.agentPreviewList}>
+              {EXECUTION_PREVIEW.map((item) => (
+                <div key={item.name} className={styles.agentPreviewItem}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <span>{item.desc}</span>
+                  </div>
+                  <em>{item.status}</em>
+                </div>
               ))}
             </div>
           </div>
 
           <div className={styles.requirementBoundaryBox}>
             <strong>执行边界</strong>
-            <span>AI 会把你的输入整理成“任务摘要”。与当前素材、目标产物无关的内容不会进入改写执行，只会作为备注保留；如果要求互相冲突，会先让你确认。</span>
+            <span>AI 会把输入整理成“任务摘要”。与当前素材、目标产物无关的内容不会进入改写执行，只会作为备注保留；如果要求互相冲突，会先让你确认。</span>
           </div>
-
-          <textarea
-            className={styles.taskTextarea}
-            aria-label="本轮任务补充要求"
-            placeholder="例：不要改剧情，只提升听感；先做第1章前半段样章；需要标注角色音、BGM、音效和CV情绪。"
-            value={brief}
-            onChange={(event) => setBrief(event.target.value)}
-          />
-
-          <div className={styles.requirementMetaRow}>
-            <span className={isBriefLong || isBriefTooShort ? styles.requirementWarnText : styles.mutedText}>
-              {briefLength}/300 建议字数
-            </span>
-            {isBriefTooShort ? <span className={styles.requirementWarnText}>要求太短，建议至少说明目标或边界。</span> : null}
-            {isBriefLong ? <span className={styles.requirementWarnText}>要求偏长，AI 会先压缩成任务摘要再执行。</span> : null}
-          </div>
-
-          <div className={styles.createFooterActions}>
-            <button type="button" className={styles.primaryButton} onClick={onStart}>
-              开始 AI 初读分析
-            </button>
-            <button type="button" className={styles.ghostButton} onClick={onBack}>
-              稍后再建
-            </button>
-          </div>
-        </section>
+        </aside>
       </main>
+
+      <footer className={styles.composerActionBar}>
+        <div>
+          <strong>准备开始初读分析</strong>
+          <span>不会直接改稿，分析完成后仍需用户确认方向。</span>
+        </div>
+        <div className={styles.createFooterActions}>
+          <button type="button" className={styles.ghostButton} onClick={onBack}>
+            稍后再建
+          </button>
+          <button type="button" className={styles.ghostButton}>
+            保存草稿
+          </button>
+          <button type="button" className={styles.primaryButton} onClick={onStart}>
+            开始 AI 初读分析
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }
