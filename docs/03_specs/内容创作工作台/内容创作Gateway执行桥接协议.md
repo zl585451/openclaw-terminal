@@ -31,6 +31,8 @@ window.electronAPI.startScriptAdapterRun({
   taskTitle: string,
   source?: 'content-workbench' | string,
   useMock?: boolean,
+  /** 可选；非空且 Gateway 启用 SCRIPT_ADAPTER_REAL_AGENTS 时供文本改编师真实 LLM 使用 */
+  sourceText?: string,
 })
 ```
 
@@ -45,7 +47,8 @@ Electron 主进程转发为 Gateway WebSocket 请求：
     "taskId": "content-task-demo",
     "taskTitle": "长夜未瞑 · 多人演播样章",
     "source": "content-workbench",
-    "useMock": true
+    "useMock": true,
+    "sourceText": ""
   }
 }
 ```

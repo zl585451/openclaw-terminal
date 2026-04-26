@@ -20,11 +20,13 @@
 
 1. `oct-gateway/services/chunker.js`
    纯规则文本切分，不调用模型。
-2. `oct-gateway/services/summarizer.js`
-   OpenAI Chat Completions 兼容摘要服务。
-3. `oct-gateway/tools/summarize_text.js`
+2. `oct-gateway/services/llmClient.js`
+   非流式 OpenAI Chat Completions 兼容 HTTP 客户端；`summarizer` 与内容创作 `textRewriterAgent` 共用。`resolveProviderFor('script_adapter')` 在解析 `SCRIPT_ADAPTER` 专用端点时优先读运行时 `config.scriptAdapter`（与 `config.json` 嵌套及 env 合并结果一致），再回退顶层 `SCRIPT_ADAPTER_*`。
+3. `oct-gateway/services/summarizer.js`
+   摘要服务（内部通过 `llmClient.chatCompletion` 调模型）。
+4. `oct-gateway/tools/summarize_text.js`
    暴露给 AMY / Agent 的工具入口。
-4. `oct-gateway/test/summarizer.test.js`
+5. `oct-gateway/test/summarizer.test.js`
    无测试框架的基础验证脚本。
 
 已有但用途不同的模块：

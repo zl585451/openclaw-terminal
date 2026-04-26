@@ -19,6 +19,7 @@ const electronAPI = {
     taskTitle: string;
     source?: string;
     useMock?: boolean;
+    sourceText?: string;
   }) => ipcRenderer.invoke('script-adapter-run-start', payload),
   cancelScriptAdapterRun: (payload: { taskId: string; reason?: string }) =>
     ipcRenderer.invoke('script-adapter-run-cancel', payload),

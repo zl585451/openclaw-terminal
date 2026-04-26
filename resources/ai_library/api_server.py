@@ -22,19 +22,24 @@ AI.library API Server
 import os
 import sys
 import json
+import uuid
 import logging
 import threading
 from typing import List, Dict, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # FastAPI
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query, Body, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # 导入知识库核心模块
 from audio_knowledge_base import KnowledgeBaseAPI, Config
+
+# 书库 Phase 2（追加模块，不影响检索核心）
+import library_db
+from chapter_splitter import split_into_chapters
 
 # 日志配置
 logging.basicConfig(
@@ -92,6 +97,11 @@ app.add_middleware(
 @app.on_event("startup")
 async def _startup_ensure_ai_library_dirs() -> None:
     ensure_data_dirs()
+    try:
+        library_db.ensure_schema()
+        logger.info("书库 Phase 2: SQLite 已就绪 %s", library_db.get_db_path())
+    except Exception as e:
+        logger.exception("书库 Phase 2: schema 初始化失败: %s", e)
 
 
 # 全局知识库实例（单例模式）
@@ -300,6 +310,141 @@ async def refresh_documents():
     except Exception as e:
         logger.error(f"刷新文档失败：{e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============== 书库 Phase 2：/api/library/*（与 /api/search 独立） ==============
+
+
+def _utc_upload_ts() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+@app.post("/api/library/upload", tags=["书库"])
+async def library_upload(
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    author: str = Form(""),
+    source_type: str = Form("novel"),
+):
+    """上传一本书（.txt / .md），自动切章并入库。"""
+    book_id = uuid.uuid4().hex[:12]
+    suffix = Path(file.filename or "").suffix.lower().lstrip(".") or "txt"
+    if suffix not in ("txt", "md"):
+        raise HTTPException(status_code=400, detail=f"暂不支持 .{suffix}，Phase 2 只支持 .txt / .md")
+
+    raw_bytes = await file.read()
+    try:
+        text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = raw_bytes.decode("gbk")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="文件编码无法识别，请用 UTF-8 / GBK")
+
+    sources_dir = os.path.join(Config.LIBRARY_DATA_ROOT, "sources")
+    os.makedirs(sources_dir, exist_ok=True)
+    source_rel = os.path.join("sources", f"{book_id}.{suffix}")
+    full_source_path = os.path.join(Config.LIBRARY_DATA_ROOT, source_rel)
+    with open(full_source_path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+    chapters = split_into_chapters(text, book_id)
+    uploaded_at = _utc_upload_ts()
+    try:
+        library_db.insert_book(
+            book_id=book_id,
+            title=title,
+            author=author or None,
+            source_type=source_type,
+            source_format=suffix,
+            source_path=source_rel,
+            total_chars=len(text),
+            chapter_count=len(chapters),
+            uploaded_at=uploaded_at,
+            metadata={},
+        )
+        library_db.insert_chapters(chapters)
+    except Exception as e:
+        try:
+            if os.path.exists(full_source_path):
+                os.remove(full_source_path)
+        except OSError:
+            pass
+        logger.exception("书库入库失败，已回滚源文件: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "success": True,
+        "book_id": book_id,
+        "title": title,
+        "total_chars": len(text),
+        "chapter_count": len(chapters),
+    }
+
+
+@app.get("/api/library/list", tags=["书库"])
+def library_list(limit: int = 50, offset: int = 0):
+    books = library_db.list_books(limit=limit, offset=offset)
+    return {"success": True, "books": books, "total": len(books)}
+
+
+@app.get("/api/library/{book_id}/chapters", tags=["书库"])
+def library_chapters(book_id: str):
+    book = library_db.get_book(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail=f"Book {book_id} not found")
+    chapters = library_db.list_chapters(book_id)
+    return {"success": True, "book_id": book_id, "chapters": chapters}
+
+
+@app.get("/api/library/{book_id}/chapter/{chapter_index}", tags=["书库"])
+def library_chapter_text(book_id: str, chapter_index: int):
+    """返回指定章节的完整文本（从源文件按 start_char/end_char 切片）。"""
+    book = library_db.get_book(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail=f"Book {book_id} not found")
+    chapters = library_db.list_chapters(book_id)
+    target = next((c for c in chapters if c["chapter_index"] == chapter_index), None)
+    if not target:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chapter {chapter_index} not found in book {book_id}",
+        )
+    full_path = os.path.join(Config.LIBRARY_DATA_ROOT, book["source_path"])
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=500, detail=f"Source file missing: {book['source_path']}")
+    with open(full_path, "r", encoding="utf-8") as f:
+        text = f.read()
+    start = int(target["start_char"] or 0)
+    end = int(target["end_char"] if target["end_char"] is not None else len(text))
+    chapter_text = text[start:end]
+    return {"success": True, "book_id": book_id, "chapter": target, "text": chapter_text}
+
+
+@app.get("/api/library/{book_id}", tags=["书库"])
+def library_get(book_id: str):
+    book = library_db.get_book(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail=f"Book {book_id} not found")
+    return {"success": True, "book": book}
+
+
+@app.delete("/api/library/{book_id}", tags=["书库"])
+def library_delete(book_id: str):
+    book = library_db.get_book(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail=f"Book {book_id} not found")
+    # 先删库记录（外键级联删 chapters），再删源文件，避免仅存孤儿文件
+    deleted = library_db.delete_book(book_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Book {book_id} not found")
+    full_path = os.path.join(Config.LIBRARY_DATA_ROOT, book["source_path"])
+    if os.path.exists(full_path):
+        try:
+            os.remove(full_path)
+        except OSError as e:
+            logger.warning("书库删除：源文件删除失败 %s: %s", full_path, e)
+    return {"success": True, "deleted": book_id}
 
 
 # ============== 主程序入口 ==============

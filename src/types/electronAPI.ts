@@ -215,6 +215,7 @@ export interface ElectronAPI {
     taskTitle: string;
     source?: string;
     useMock?: boolean;
+    sourceText?: string;
   }) => Promise<ApiResult & { taskId?: string; planId?: string }>;
   cancelScriptAdapterRun?: (payload: { taskId: string; reason?: string }) => Promise<ApiResult & { taskId?: string; status?: string }>;
   listScriptAdapterRuns?: () => Promise<ApiResult & {

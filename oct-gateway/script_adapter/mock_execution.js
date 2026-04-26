@@ -93,6 +93,8 @@ function createExecutionPlan(taskId, taskTitle) {
 function startMockScriptAdapterRun(params, connection, logger) {
   const taskId = String(params?.taskId || `script-adapter-${Date.now()}`);
   const taskTitle = String(params?.taskTitle || '多人演播有声书样章');
+  const sourceText = String(params?.sourceText || '');
+  logger?.info?.('script adapter run start', { taskId, sourceTextLen: sourceText.length });
   let sheet = createExecutionPlan(taskId, taskTitle);
   const abortController = new AbortController();
   const emit = createScriptAdapterEmitter(connection, taskId);
@@ -115,6 +117,7 @@ function startMockScriptAdapterRun(params, connection, logger) {
         sheet = nextSheet;
         runRegistry.updateRun(taskId, { sheet, status: sheet.overallStatus });
       },
+      ctx: { sourceText },
     })
       .then((completedSheet) => {
         runRegistry.updateRun(taskId, {

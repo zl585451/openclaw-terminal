@@ -1,6 +1,205 @@
-// artifact 类型沿用 src/modules/script-adapter/types/artifact.ts 的 snake_case 命名,
-// 确保 Gateway 推送的 artifactType 与前端 ArtifactPreview / store 的判断分支可以对上。
-function createArtifactForAgent(agentId, displayName) {
+'use strict';
+
+const config = require('../config');
+const { runTextRewriterAgent } = require('./agents/textRewriterAgent');
+
+const REAL_AGENTS_FLAG = 'SCRIPT_ADAPTER_REAL_AGENTS';
+
+/** 与 `config.js` 中 `scriptAdapter` 合并对象一致：嵌套 `config.json` 与顶层 env 均已并入 */
+function getScriptAdapterRealAgentsRaw() {
+  const fromMerged = config.scriptAdapter && typeof config.scriptAdapter === 'object'
+    ? String(config.scriptAdapter.realAgents ?? '').trim()
+    : '';
+  if (fromMerged) return fromMerged;
+  return String(config.getEnvOrConfig?.(REAL_AGENTS_FLAG) || '').trim();
+}
+
+function isRealAgentEnabled(agentId) {
+  const flag = getScriptAdapterRealAgentsRaw().toLowerCase();
+  if (!flag || flag === 'off' || flag === 'false' || flag === '0') return false;
+  if (flag === '1' || flag === 'true' || flag === 'on' || flag === 'all') return true;
+  return flag.split(',').map((s) => s.trim()).includes(agentId);
+}
+
+async function createArtifactForAgent(agentId, displayName, ctx = {}) {
+  const sourceText = String(ctx?.sourceText || '').trim();
+
+  if (
+    agentId === 'adapter.audiobook_text_rewriter@1.0'
+    && isRealAgentEnabled(agentId)
+    && sourceText
+  ) {
+    try {
+      const { payload, latencyMs, model } = await runTextRewriterAgent({ ...ctx, sourceText });
+      return envelope(
+        'adapted_script',
+        agentId,
+        displayName,
+        '多人演播样章台本',
+        `已用 ${model} 改编完成,耗时 ${latencyMs}ms`,
+        payload,
+        { segments: payload.segments.length, chars: payload.totalCharCount, latencyMs },
+      );
+    } catch (error) {
+      return envelope(
+        'adapted_script',
+        agentId,
+        displayName,
+        '改编失败',
+        `真实 LLM 调用失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
+        {
+          chapterTitle: '改编失败',
+          totalCharCount: 0,
+          segments: [
+            {
+              segmentId: 'seg-001',
+              type: 'narration',
+              text: '[改编失败,请检查模型配置后重试]',
+              rewriteNote: String(error?.message || 'unknown').slice(0, 200),
+            },
+          ],
+        },
+        { error: 1 },
+      );
+    }
+  }
+
+  return createMockArtifact(agentId, displayName, ctx);
+}
+
+function findAdaptedScriptPayload(artifacts) {
+  if (!artifacts || typeof artifacts !== 'object') return null;
+  for (const art of Object.values(artifacts)) {
+    if (!art || art.artifactType !== 'adapted_script') continue;
+    const payload = art.payload;
+    if (payload && Array.isArray(payload.segments) && payload.segments.length > 0) return payload;
+  }
+  return null;
+}
+
+function buildVoiceRegistryFromAdapted(adapted, agentId, displayName) {
+  const segments = adapted.segments;
+  const narratorCount = segments.filter((s) => s.type === 'narration').length;
+  const registry = [
+    {
+      roleName: '旁白',
+      category: 'narrator',
+      voiceHint: '冷静克制，随场景收紧或放松',
+      appearanceCount: Math.max(1, narratorCount || 1),
+    },
+  ];
+  const speakerCounts = new Map();
+  for (const seg of segments) {
+    if (seg.type !== 'dialogue' && seg.type !== 'inner_monologue') continue;
+    const name = String(seg.speaker || '').trim();
+    if (!name) continue;
+    speakerCounts.set(name, (speakerCounts.get(name) || 0) + 1);
+  }
+  const sorted = [...speakerCounts.entries()].sort((a, b) => b[1] - a[1]);
+  for (const [roleName, appearanceCount] of sorted) {
+    registry.push({
+      roleName,
+      category: 'main',
+      voiceHint: '按对白密度与情绪起伏分配',
+      appearanceCount,
+    });
+  }
+  const unresolved = sorted.filter(([, c]) => c === 1).map(([n]) => n).slice(0, 2);
+  return envelope(
+    'voice_registry',
+    agentId,
+    displayName,
+    '角色音标注表',
+    `已根据上游台本 ${segments.length} 段提取 ${registry.length - 1} 个对白/独白声线（旁白单独统计）。`,
+    { registry, unresolved },
+    { roles: registry.length, unresolved: unresolved.length },
+  );
+}
+
+function buildPerformanceDesignFromAdapted(adapted, agentId, displayName) {
+  const segs = adapted.segments;
+  const first = segs[0];
+  const second = segs[1] || segs[0];
+  const dialogueSeg = segs.find((s) => s.type === 'dialogue') || segs[0];
+  const id0 = String(first?.segmentId || 'seg-001');
+  const id1 = String(second?.segmentId || id0);
+  const idCv = String(dialogueSeg?.segmentId || id0);
+  return envelope(
+    'performance_design',
+    agentId,
+    displayName,
+    '演播设计提示',
+    '已按上游 segmentId 绑定底噪、音效与对白情绪占位。',
+    {
+      bgmTrack: { mood: '随样章场景', suggestion: '保持人声清晰，底噪随段切换微调。' },
+      sfxList: [
+        { atSegmentId: id0, sfxType: 'AMB', description: '环境铺底（绑定当前段）。' },
+        { atSegmentId: id1, sfxType: 'SFX', description: '动作/细节音效占位。' },
+      ],
+      cvDirections: [
+        { atSegmentId: idCv, emotion: '随段调整', pace: dialogueSeg?.type === 'dialogue' ? '对白节奏跟读' : '旁白平稳推进' },
+      ],
+    },
+    { sfx: 2, directions: 1 },
+  );
+}
+
+function buildReviewFromAdapted(adapted, agentId, displayName) {
+  const segs = adapted.segments;
+  const speakers = [...new Set(
+    segs.filter((s) => s.type === 'dialogue' || s.type === 'inner_monologue').map((s) => String(s.speaker || '').trim()).filter(Boolean),
+  )];
+  const loc = speakers.length ? speakers.slice(0, 3).join('、') : '当前样章';
+  return envelope(
+    'review_report',
+    agentId,
+    displayName,
+    '质检问题清单',
+    `已对照上游 ${segs.length} 段、约 ${adapted.totalCharCount ?? 0} 字台本做占位质检。`,
+    {
+      conclusion: 'pass_with_changes',
+      issues: [
+        {
+          severity: 'P1',
+          category: '一致性',
+          location: loc,
+          description: `样章共 ${segs.length} 段，涉及说话人：${speakers.length ? speakers.join('、') : '（以旁白为主）'}，交付前请与角色音表再对一遍。`,
+          suggestion: '锁定 CV 后再进入打包。',
+        },
+      ],
+    },
+    { issues: 1, p1: 1 },
+  );
+}
+
+function buildFinalPackageFromAdapted(adapted, agentId, displayName) {
+  const segs = adapted.segments;
+  const rawTitle = String(adapted.chapterTitle || '样章').trim() || '样章';
+  const safe = rawTitle.replace(/[/\\?%*:|"<>]/g, '_').slice(0, 36);
+  const tag = `segments-${segs.length}`;
+  return envelope(
+    'final_package',
+    agentId,
+    displayName,
+    '制作交付包',
+    `已按「${rawTitle}」${segs.length} 段台本整理 mock 交付清单。`,
+    {
+      manifest: [
+        { name: `${safe}_多人演播样章.md`, type: '台本', size: `${Math.max(1, Math.ceil((adapted.totalCharCount || 0) / 512))} KB` },
+        { name: `${safe}_角色音标注表.json`, type: '角色音', size: '—' },
+        { name: `${safe}_演播设计稿.md`, type: '演播设计', size: '—' },
+        { name: `${safe}_质检报告.md`, type: '质检', size: '—' },
+      ],
+      versionTag: `audiobook-mvp-${tag}`,
+      notes: `本包为 Gateway mock 预览；头部台本共 ${segs.length} 段，与上游 adapted_script 对齐。`,
+    },
+    { files: 4, segments: segs.length },
+  );
+}
+
+function createMockArtifact(agentId, displayName, ctx = {}) {
+  const adapted = findAdaptedScriptPayload(ctx.artifacts);
+
   if (agentId === 'adapter.audiobook_text_rewriter@1.0') {
     return envelope('adapted_script', agentId, displayName, '多人演播样章台本', '已完成第1章前半段的听感改编样稿。', {
       chapterTitle: '第1章 · 樟木箱',
@@ -24,6 +223,7 @@ function createArtifactForAgent(agentId, displayName) {
   }
 
   if (agentId === 'classifier.voice_role_marker@1.0') {
+    if (adapted) return buildVoiceRegistryFromAdapted(adapted, agentId, displayName);
     return envelope('voice_registry', agentId, displayName, '角色音标注表', '已标出旁白、主要角色和一个待确认来源声音。', {
       registry: [
         { roleName: '旁白', category: 'narrator', voiceHint: '冷静克制，悬疑感轻压', appearanceCount: 2 },
@@ -36,6 +236,7 @@ function createArtifactForAgent(agentId, displayName) {
   }
 
   if (agentId === 'designer.performance_audio@1.0') {
+    if (adapted) return buildPerformanceDesignFromAdapted(adapted, agentId, displayName);
     return envelope('performance_design', agentId, displayName, '演播设计提示', '已补充场景底噪、关键音效和 CV 情绪方向。', {
       bgmTrack: { mood: '空屋静场', suggestion: '低频稀疏铺底，保持人声清楚，进入阁楼前轻微收紧。' },
       sfxList: [
@@ -49,6 +250,7 @@ function createArtifactForAgent(agentId, displayName) {
   }
 
   if (agentId === 'reviewer.production_quality@1.0') {
+    if (adapted) return buildReviewFromAdapted(adapted, agentId, displayName);
     return envelope('review_report', agentId, displayName, '质检问题清单', '未发现 P0，建议带一条角色音复核进入交付。', {
       conclusion: 'pass_with_changes',
       issues: [
@@ -63,6 +265,7 @@ function createArtifactForAgent(agentId, displayName) {
     }, { issues: 1, p1: 1 });
   }
 
+  if (adapted) return buildFinalPackageFromAdapted(adapted, agentId, displayName);
   return envelope('final_package', agentId, displayName, '制作交付包', '样章台本、角色音表、演播设计和质检报告已整理完成。', {
     manifest: [
       { name: '第1章前半段_多人演播样章.md', type: '台本', size: '3.2 KB' },
@@ -90,4 +293,5 @@ function envelope(artifactType, producedBy, displayName, title, summary, payload
 
 module.exports = {
   createArtifactForAgent,
+  findAdaptedScriptPayload,
 };

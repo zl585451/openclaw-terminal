@@ -1,7 +1,7 @@
 # FEATURE_MAP.md — OCT 项目功能活地图
 
 > **维护规则**：每次新增/修改功能后，必须更新此文件。  
-> **最后更新**：2026-04-21（补齐 runtime / transport 分层，清理 `main_utf8.ts` 与 ASR 残影）  
+> **最后更新**：2026-04-26（Week 3 Track 2：AI.library `/api/library/*` 书库 Phase 2）  
 > **AI 入口**：先看 `docs/00_ai_entry/README.md`，再按问题类型进入链路文档。
 
 ---
@@ -28,7 +28,7 @@
 | 第九层 | 工具系统 | [`09-tools.md`](./09-tools.md) |
 | 附录 | 数据流向 | [`98_data_flow.md`](./98_data_flow.md) |
 | 附录 | Provider 系统 | [`provider-system.md`](./provider-system.md) |
-| 附录 | AI.library 集成 | [`AI_LIBRARY_OCT.md`](./AI_LIBRARY_OCT.md) |
+| 附录 | AI.library 集成（检索 + 书库 Phase 2） | [`AI_LIBRARY_OCT.md`](./AI_LIBRARY_OCT.md) |
 | **AI 协作** | 项目总览 | [`AI_PROJECT_OVERVIEW.md`](./AI_PROJECT_OVERVIEW.md) |
 | **AI 协作** | IPC 通道 | [`../03_specs/ELECTRON_IPC_CHANNELS.md`](../03_specs/ELECTRON_IPC_CHANNELS.md) |
 | **AI 协作** | WebSocket 协议 | [`../03_specs/WEBSOCKET_PROTOCOL.md`](../03_specs/WEBSOCKET_PROTOCOL.md) |
@@ -46,7 +46,7 @@
 - **Transport 辅助**：`transport/helpers.js` 负责 workbench/canvas 事件发送辅助
 - **Gateway 分层**：`gateway/router.js` / `gateway/slash.js` 承接请求路由与稳定 Slash 命令
 - **Runtime 分层**：`runtime/chatEngine.js` / `contextBuilder.js` / `streamController.js` / `providerRouter.js` / `toolLoop.js`
-- **Service 分层**：`services/postProcessor.js` / `imageService.js`
+- **Service 分层**：`services/postProcessor.js` / `imageService.js` / `services/llmClient.js`（非流式 chat completion，供 `summarizer` 与 `script_adapter/agents/textRewriterAgent.js` 使用）/ `script_adapter/*`（Gateway mock 执行链；可选 `SCRIPT_ADAPTER_REAL_AGENTS` 真实改编第一个 Agent）
 - **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由
 - **Agent 层**（新）：`agents/base_agent.js`（基类）/ `agents/agent_runner.js`（执行引擎）；独立会话、非流式工具循环、工具白名单隔离
 - **后台任务队列**：task_queue + worker，持久化、60s 超时

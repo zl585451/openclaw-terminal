@@ -1,6 +1,6 @@
 # AI.library 与 OCT 集成指南
 
-> **最后更新**：2026-04-26 | **状态**：✅ 已集成（P0+P1+P2 + 书库 Phase 1 内嵌与 userData 数据根）
+> **最后更新**：2026-04-26 | **状态**：✅ 已集成（P0+P1+P2 + 书库 Phase 1 内嵌与 userData 数据根 + **Phase 2 书库 HTTP 接口**）
 
 ---
 
@@ -18,6 +18,30 @@ OCT 仓库内提供 **`resources/ai_library/`**（`api_server.py`、`audio_knowl
 仍可通过在 shell 中导出上述变量，在未经 OCT 启动时本地调试 Python 服务。
 
 **CORS**：`api_server.py` 已允许 OCT 前端开发端口 **5176**。
+
+---
+
+## 书库 Phase 2 — 上传 / 列表 / 章节接口
+
+与 **知识检索**（`/api/search`、`/api/qa/search`）并行；实现位于同进程 `api_server.py`，**不修改** `audio_knowledge_base.py` 中现有 `Config` 类语义及检索路由逻辑。
+
+| Method | Path | 用途 |
+|--------|------|------|
+| POST | `/api/library/upload` | 上传 `.txt`/`.md`，UTF-8 优先、失败尝试 GBK；自动切章写入 SQLite + `sources/` |
+| GET | `/api/library/list` | 列表藏书（`limit`/`offset`） |
+| GET | `/api/library/{id}` | 单本书元数据 |
+| DELETE | `/api/library/{id}` | 删除书籍：先删 `books`（`chapters` 外键 **ON DELETE CASCADE**，连接层 `PRAGMA foreign_keys = ON`），再删源文件 |
+| GET | `/api/library/{id}/chapters` | 列出章节元数据（含 `preview`） |
+| GET | `/api/library/{id}/chapter/{index}` | 按 `start_char`/`end_char` 从源文件切片返回正文 |
+
+数据存储：
+
+- `${LIBRARY_DATA_ROOT}/library.sqlite3` — 表 `books`、`chapters`
+- `${LIBRARY_DATA_ROOT}/sources/<book_id>.<ext>` — 上传原文
+
+模块：`library_db.py`（SQLite）、`chapter_splitter.py`（章节规则）。自测：`python test_chapter_splitter.py`、`python test_library_phase2_smoke.py`（临时数据根，不污染默认目录）。
+
+第三方（Gateway / 内容创作工作台）在 **Phase 3** 再对接；本轮无前端 UI。
 
 ---
 

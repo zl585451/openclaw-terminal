@@ -1150,6 +1150,18 @@ const config = {
     return { ...def, ...fromFile };
   })(),
 
+  /** 内容创作 script_adapter：真实 LLM 开关与专用端点（空则走 SUMMARIZER_* / 当前 provider） */
+  scriptAdapter: (() => {
+    const def = {
+      realAgents: String(getEnvOrConfig('SCRIPT_ADAPTER_REAL_AGENTS') || '').trim(),
+      baseUrl: String(getEnvOrConfig('SCRIPT_ADAPTER_BASE_URL') || '').trim(),
+      apiKey: String(getEnvOrConfig('SCRIPT_ADAPTER_API_KEY') || '').trim(),
+      model: String(getEnvOrConfig('SCRIPT_ADAPTER_MODEL') || '').trim(),
+    };
+    const fromFile = _fileConfig.scriptAdapter && typeof _fileConfig.scriptAdapter === 'object' ? _fileConfig.scriptAdapter : {};
+    return { ...def, ...fromFile };
+  })(),
+
   // MCP Server 配置（由前端设置面板写入 config.json）
   MCP_SERVERS: _fileConfig.mcpServers || {},
   AGENT_PERMISSIONS: normalizeAgentPermissions(_fileConfig.AGENT_PERMISSIONS || defaultAgentPermissions),

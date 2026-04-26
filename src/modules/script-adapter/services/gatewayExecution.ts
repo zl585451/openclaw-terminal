@@ -15,6 +15,7 @@ export interface StartGatewayExecutionPayload {
   taskId: string;
   taskTitle: string;
   source?: string;
+  sourceText?: string;
 }
 
 export async function startGatewayExecution(payload: StartGatewayExecutionPayload) {
@@ -26,6 +27,7 @@ export async function startGatewayExecution(payload: StartGatewayExecutionPayloa
     return await window.electronAPI.startScriptAdapterRun({
       ...payload,
       useMock: true,
+      sourceText: payload.sourceText,
     });
   } catch (error) {
     return {

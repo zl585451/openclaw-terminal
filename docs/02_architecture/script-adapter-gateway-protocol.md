@@ -1,6 +1,6 @@
 # Script Adapter Gateway Protocol
 
-更新时间：2026-04-26
+更新时间：2026-04-26（补充真实文本改编师、`sourceText`、下游 mock 对齐与 `config.scriptAdapter` 运行时）
 
 本文记录内容制作工作台 Week 2 Track C 的 Gateway 状态机骨架。当前实现仍是 mock agent pipeline，但 transport、registry、cancel/list 入口已经按后续真实 agent runner 的形状拆开。
 
@@ -14,12 +14,18 @@
   - 顶层 run status 支持 `running`、`completed`、`failed`、`cancelled`。
   - 对前端 sheet 仍保持现有 `pending/running/completed/failed/awaiting_review` 状态集合，避免扩大 UI 类型面。
 - `oct-gateway/script_adapter/agentRunner.js`
-  - 顺序执行 mock agents。
+  - 顺序执行 mock agents；每步将当前 `sheet.artifacts` 传入工厂，供下游 mock 读取已产出的 `adapted_script`。
   - 接收 `AbortSignal`，取消时抛出 `AbortError`。
 - `oct-gateway/script_adapter/eventEmitter.js`
   - 将 runner 事件包装为 Gateway transport event：`{ type: 'event', event: 'script-adapter', payload }`。
 - `oct-gateway/script_adapter/mockArtifactFactory.js`
-  - 只负责 mock artifact envelope 生成。
+  - 默认生成 mock artifact；在真实改编开关启用且开工传入非空 `sourceText` 时，`adapter.audiobook_text_rewriter@1.0` 走 `agents/textRewriterAgent.js` 真实 LLM，失败则回退占位产物（pipeline 不中断）。
+  - 若 `artifacts` 内已有 `adapted_script`，后续四个 Agent 的 mock 产物从该 payload 推导 speaker、`segmentId`、段数与 manifest 命名，避免与真实头部穿帮。
+  - 真实改编开关读取顺序：`config.scriptAdapter.realAgents`（`config.json` 嵌套 `scriptAdapter` 与 env 已在 `config.js` 合并）→ 顶层 `SCRIPT_ADAPTER_REAL_AGENTS` env/配置键。
+- `oct-gateway/script_adapter/agents/textRewriterAgent.js`
+  - 文本改编师真实调用（JSON 台本结构）。
+- `oct-gateway/services/llmClient.js`
+  - 与 `summarizer` 共用的非流式 chat completion 客户端；`resolveProviderFor('script_adapter')` 在 `SCRIPT_ADAPTER` 三元组上优先读 `config.scriptAdapter.baseUrl|apiKey|model`，再回退 `SCRIPT_ADAPTER_*`，其次 `SUMMARIZER_*`（含 memory），再降级当前 Gateway provider。
 
 ## Transport Methods
 
@@ -36,7 +42,8 @@
     "taskId": "task-id",
     "taskTitle": "多人演播有声书样章",
     "source": "content-workbench",
-    "useMock": true
+    "useMock": true,
+    "sourceText": ""
   }
 }
 ```

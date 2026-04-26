@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useScriptAdapterStore } from '../../store/scriptAdapterStore';
 import { scriptAdapterActions } from '../../store/actions';
 import {
@@ -67,6 +67,7 @@ const TEAM_ROLE_COPY: Record<string, { title: string; shortDesc: string; promise
 };
 
 export function WorkbenchView() {
+  const [sourceText, setSourceText] = useState('');
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -142,6 +143,7 @@ export function WorkbenchView() {
       taskId,
       taskTitle,
       source: 'content-workbench',
+      sourceText,
     });
 
     if (!result?.success) {
@@ -310,6 +312,20 @@ export function WorkbenchView() {
               <span>先做样章</span>
               <span>人工复核</span>
             </div>
+          </div>
+          <div className={styles.testInputArea}>
+            <label htmlFor="script-adapter-source-text">测试原文（粘贴 200-500 字小说原文）</label>
+            <textarea
+              id="script-adapter-source-text"
+              value={sourceText}
+              onChange={(e) => setSourceText(e.target.value)}
+              placeholder="先粘贴一段小说原文；启用 Gateway 的 SCRIPT_ADAPTER_REAL_AGENTS 后文本改编师会真实改编…"
+              rows={6}
+              maxLength={4000}
+            />
+            <small>
+              {sourceText.length} / 4000 字
+            </small>
           </div>
           <div className={styles.workOrderHeroActions}>
             <div className={styles.readyStamp}>READY</div>

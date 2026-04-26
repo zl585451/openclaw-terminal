@@ -1,6 +1,6 @@
 const { createArtifactForAgent } = require('./mockArtifactFactory');
 
-async function runMockAgentPipeline({ sheet, emit, signal, onSheetUpdate }) {
+async function runMockAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx = {} }) {
   let currentSheet = { ...sheet, overallStatus: 'running', updatedAt: new Date().toISOString() };
   onSheetUpdate?.(currentSheet);
   emit('sheet_created', { sheet: currentSheet });
@@ -40,7 +40,11 @@ async function runMockAgentPipeline({ sheet, emit, signal, onSheetUpdate }) {
     }
 
     await wait(360, signal);
-    const artifact = createArtifactForAgent(agent.agentId, agent.displayName);
+    const artifact = await createArtifactForAgent(agent.agentId, agent.displayName, {
+      sourceText: ctx.sourceText,
+      agent,
+      artifacts: currentSheet.artifacts || {},
+    });
     const completedAt = new Date().toISOString();
     run = {
       ...run,

@@ -1,6 +1,7 @@
 'use strict';
 
 const config = require('../config');
+const { chatCompletion, LlmClientTimeoutError, LlmClientHttpError } = require('./llmClient');
 
 const MAX_SINGLE_INPUT_CHARS = 8000;
 const DEFAULT_TIMEOUT_MS = 20000;
@@ -51,12 +52,28 @@ async function summarize(text, options = {}) {
     language,
   });
 
-  const resultText = await callChatCompletion({
-    provider,
-    messages,
-    targetLength,
-    timeoutMs: positiveInt(options.timeoutMs, DEFAULT_TIMEOUT_MS),
-  });
+  const timeoutMs = positiveInt(options.timeoutMs, DEFAULT_TIMEOUT_MS);
+  let resultText;
+  try {
+    const result = await chatCompletion({
+      provider,
+      messages,
+      maxTokens: estimateMaxTokens(targetLength),
+      temperature: 0.2,
+      timeoutMs,
+    });
+    resultText = result.content;
+  } catch (error) {
+    if (error?.name === 'LlmClientTimeoutError') {
+      throw new SummarizerTimeoutError(`摘要请求超时：${timeoutMs}ms`);
+    }
+    if (error?.name === 'LlmClientHttpError') {
+      const body = String(error.message || '').replace(/^LLM_HTTP_\d+:\s*/i, '');
+      throw new Error(`SUMMARIZER_HTTP_${error.status}: ${body.slice(0, 400)}`);
+    }
+    throw error;
+  }
+  if (!resultText) throw new SummarizerEmptyError();
 
   return {
     summary: resultText,
@@ -178,59 +195,6 @@ function chooseFastModel(providerId, currentModel) {
   if (provider.includes('google')) return 'google/gemini-2.5-flash';
   if (provider.includes('minimax')) return 'MiniMax-M2.7-highspeed';
   return currentModel || 'qwen-turbo';
-}
-
-async function callChatCompletion({ provider, messages, targetLength, timeoutMs }) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const url = `${provider.baseUrl}/chat/completions`;
-  const headers = buildHeaders(provider.baseUrl, provider.apiKey);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: provider.model,
-        messages,
-        stream: false,
-        temperature: 0.2,
-        max_tokens: estimateMaxTokens(targetLength),
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`SUMMARIZER_HTTP_${response.status}: ${body.slice(0, 400)}`);
-    }
-
-    const data = await response.json();
-    const content = String(data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '').trim();
-    if (!content) throw new SummarizerEmptyError();
-    return content;
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      throw new SummarizerTimeoutError(`摘要请求超时：${timeoutMs}ms`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function buildHeaders(baseUrl, apiKey) {
-  const target = String(baseUrl || '').toLowerCase();
-  if (target.includes('generativelanguage.googleapis.com') || target.includes('aiplatform.googleapis.com')) {
-    return {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    };
-  }
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
-  };
 }
 
 function estimateMaxTokens(targetLength) {

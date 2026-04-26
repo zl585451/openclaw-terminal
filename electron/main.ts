@@ -4267,6 +4267,7 @@ ipcMain.handle('script-adapter-run-start', (_event, payload: {
   taskTitle: string;
   source?: string;
   useMock?: boolean;
+  sourceText?: string;
 }) => {
   const taskId = String(payload?.taskId || `script-adapter-${Date.now()}`);
   return sendScriptAdapterRunRequest('scriptAdapter.run.start', {
@@ -4274,6 +4275,7 @@ ipcMain.handle('script-adapter-run-start', (_event, payload: {
     taskTitle: String(payload?.taskTitle || '多人演播有声书样章'),
     source: String(payload?.source || 'content-workbench'),
     useMock: payload?.useMock !== false,
+    sourceText: String(payload?.sourceText || ''),
   });
 });
 

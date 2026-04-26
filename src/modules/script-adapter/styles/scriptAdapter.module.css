@@ -1990,6 +1990,40 @@
   gap: 10px;
 }
 
+.testInputArea {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(125, 132, 142, 0.06);
+  border: 1px dashed rgba(125, 132, 142, 0.3);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.testInputArea label {
+  font-size: 12px;
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.testInputArea textarea {
+  width: 100%;
+  border: 1px solid rgba(125, 132, 142, 0.32);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.testInputArea small {
+  align-self: flex-end;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
 .readyStamp {
   align-self: center;
   width: 86px;
