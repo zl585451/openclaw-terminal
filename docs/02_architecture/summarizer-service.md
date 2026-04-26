@@ -181,15 +181,64 @@ Map-Reduce 式摘要：
 
 ---
 
-## 8. 与 ToolLoop 的集成点
+## 8. ToolLoop 集成
 
-Week 1 只注册工具，不改主工具循环。
+Week 2 已将 summarizer 接入 Gateway 主工具循环。接入位置在 `oct-gateway/runtime/toolLoop.js` 中：
 
-后续可接入：
+1. 工具完整结果先通过 `archiveToolResult(...)` 归档。
+2. 工具结果再通过 `truncateToolResult(...)` 做 Week 0 硬截断。
+3. 写回 `messages` 之前，调用 `summarizeToolResult(toolName, contentForModel)`。
+4. 最终只有 `role: 'tool'` 的 `content` 会被摘要层影响，UI `tool_result` preview 不变。
 
-1. 工具结果超过阈值时自动调用 `summarize_text`。
-2. 长网页、长文件读取结果自动生成摘要和 recall key。
-3. 对话历史超预算时用 `purpose=scroll` 生成滚动摘要。
+### 8.1 触发条件
+
+摘要层默认关闭，必须满足以下条件才会调用模型摘要：
+
+1. `TOOL_RESULT_SUMMARIZER_ENABLED` 已设置为 `1` / `true` / `on`。
+2. 写回模型上下文的工具结果字符串长度超过 `TOOL_RESULT_SUMMARIZER_TRIGGER_CHARS`，默认 2400。
+3. `TOOL_RESULT_SUMMARIZER_TOOLS` 为空，或当前工具名在白名单内。
+
+### 8.2 配置项
+
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `TOOL_RESULT_SUMMARIZER_ENABLED` | 关 | 总开关，设为 `1` 启用 |
+| `TOOL_RESULT_SUMMARIZER_TRIGGER_CHARS` | `2400` | 工具结果超过此长度才触发摘要 |
+| `TOOL_RESULT_SUMMARIZER_TARGET_CHARS` | `600` | 摘要目标长度 |
+| `TOOL_RESULT_SUMMARIZER_FALLBACK_KEEP` | `1500` | 降级时保留原文长度 |
+| `TOOL_RESULT_SUMMARIZER_TOOLS` | 空 | 工具白名单，逗号分隔；空表示全部允许 |
+
+### 8.3 失败降级
+
+1. summarizer 调用失败、超时或返回异常时，不中断工具循环。
+2. 降级文本以 `[summarizer fallback: ...]` 开头。
+3. 降级文本保留原工具结果前 `TOOL_RESULT_SUMMARIZER_FALLBACK_KEEP` 字符，并在超长时追加 `...(truncated)`。
+
+### 8.4 Tool Loop 集成中的安全网层级
+
+工具结果在写回模型上下文之前，经过三层处理，任何一层失败都不影响下一层：
+
+1. **归档层**（Week 0，默认开，无法关闭）
+   - `oct-gateway/runtime/toolResultArchive.js`
+   - 保存完整工具结果到 JSONL 归档。
+   - 模型可调用 `recall_tool_result` 取回完整结果。
+
+2. **硬截断层**（Week 0，默认开，无法关闭）
+   - 同上文件，`truncateToolResult(...)`
+   - 普通工具阈值 3750 字符，高产出工具（`web_search` 等）阈值 2500。
+   - 截断后保留头 60% 尾 30%，中段插入“完整结果已归档”提示。
+
+3. **摘要层**（Week 2，默认关，需手动开启）
+   - `oct-gateway/runtime/toolResultSummarizer.js`
+   - 阈值、工具白名单、失败 fallback 全部可配。
+   - 失败时退化为 1500 字硬截断，文本以 `[summarizer fallback: ...]` 开头便于排查。
+
+### 8.5 与 `recall_tool_result` 的关系
+
+1. summarizer 不改变完整结果归档。
+2. summarizer 不改变 `recall_tool_result` 工具定义。
+3. 如果摘要层压缩了硬截断文本，摘要正文不强制保留截断提示行；完整结果仍可通过已注册工具按 `callId` 取回。
+4. 第一版只压缩写回模型的工具消息，不压缩前端工具事件 preview。
 
 ---
 
@@ -203,4 +252,3 @@ Week 1 只注册工具，不改主工具循环。
 4. `summarizeChunks(..., { purpose: 'chapter' })` 生成章节剧情摘要。
 5. 将摘要作为 `SourceProfile` / `AnalysisReport` 的输入。
 6. 文本改编 Agent 只拿目标片段全文 + 上下文摘要，避免一次塞入整本小说。
-
