@@ -80,6 +80,35 @@ describe('ScrollAnchor', () => {
     expect(container.scrollTop).toBe(30);
   });
 
+  it('keeps anchor lock for minor user scroll noise', () => {
+    const msg = mockAnchor(50, container);
+    anchor.anchorToUserMessage(msg);
+
+    anchor.onUserScroll(300, -12);
+
+    expect(anchor.isLocked()).toBe(true);
+  });
+
+  it('releases anchor lock when user intentionally scrolls up', () => {
+    const initialOffset = 50;
+    let currentTop = initialOffset;
+    const msg = {
+      getBoundingClientRect: () => ({
+        top: currentTop, bottom: currentTop + 40,
+        left: 0, right: 800, width: 800, height: 40, x: 0, y: currentTop,
+        toJSON: () => ({}),
+      }),
+    } as unknown as HTMLElement;
+
+    anchor.anchorToUserMessage(msg);
+    anchor.onUserScroll(300, -30);
+    expect(anchor.isLocked()).toBe(false);
+
+    currentTop = 90;
+    anchor.reconcile();
+    expect(container.scrollTop).toBe(0);
+  });
+
   it('does not reconcile when unlocked', () => {
     anchor.reconcile();
     expect(container.scrollTop).toBe(0);

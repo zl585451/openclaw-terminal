@@ -7,6 +7,9 @@ const MAX_VISIBLE_MESSAGES = 50;
 const VISIBLE_MESSAGES_STEP = 30;
 const SHOW_SCROLL_BUTTON_THRESHOLD = 300;
 
+/** 在列表头部「多挂」历史消息前后记录尺寸，用于 useLayoutEffect 内补偿 scrollTop，避免视口跳变 */
+type HistoryExpandScrollSnapshot = { scrollTop: number; scrollHeight: number };
+
 export interface UseScrollManagerOptions {
   fsm: TurnFSM;
   isStreaming: boolean;
@@ -41,16 +44,19 @@ export function useScrollManager({
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const userScrolledUp = useRef<boolean>(false);
+  const lastScrollTopRef = useRef<number | null>(null);
   const snapJustFiredRef = useRef<boolean>(false);
   const pendingSnapMsgIdRef = useRef<number | null>(null);
   const scrollAnchorRef = useRef(new ScrollAnchor());
   const scheduleScrollAfterLayoutRef = useRef<((force?: boolean) => void) | null>(null);
+  const pendingHistoryExpandPreserveRef = useRef<HistoryExpandScrollSnapshot | null>(null);
 
   const scrollToBottom = useCallback(
     (force = false) => {
       if (snapJustFiredRef.current) return;
       const el = messagesContainerRef.current;
       if (!el) return;
+      if (force) userScrolledUp.current = false;
       if (!force && !scrollAnchorRef.current.isLocked()) return;
       // TOP_ANCHORED（locked）+ 流式：不主动改 scrollTop，让内容在视口内自然向下增长
       if (!force && isStreaming && scrollAnchorRef.current.isLocked()) return;
@@ -118,6 +124,7 @@ export function useScrollManager({
     const el = messagesContainerRef.current;
     if (el) {
       scrollAnchorRef.current.attach(el);
+      lastScrollTopRef.current = el.scrollTop;
     }
   }, []);
 
@@ -164,27 +171,61 @@ export function useScrollManager({
     requestAnimationFrame(checkRelease);
   }, [messagesLength]);
 
-  // 新消息时确保可见窗口覆盖最新的 MAX_VISIBLE_MESSAGES
-  useEffect(() => {
-    setVisibleCount((prev) => Math.max(prev, Math.min(messagesLength, MAX_VISIBLE_MESSAGES)));
+  // 消息总数变多时抬升 visibleCount 上限；若变大会在列表顶部多渲染更早的消息，需保留滚动位置
+  useLayoutEffect(() => {
+    setVisibleCount((prev) => {
+      const cap = Math.min(messagesLength, MAX_VISIBLE_MESSAGES);
+      const next = Math.max(prev, cap);
+      if (next > prev && messagesContainerRef.current) {
+        const el = messagesContainerRef.current;
+        pendingHistoryExpandPreserveRef.current = {
+          scrollTop: el.scrollTop,
+          scrollHeight: el.scrollHeight,
+        };
+      }
+      return next;
+    });
   }, [messagesLength]);
+
+  // visibleCount 变大导致 DOM 增高后，按增高量平移 scrollTop，使视口内内容不跳
+  useLayoutEffect(() => {
+    const pending = pendingHistoryExpandPreserveRef.current;
+    if (!pending) return;
+    pendingHistoryExpandPreserveRef.current = null;
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const delta = el.scrollHeight - pending.scrollHeight;
+    if (delta > 0) {
+      el.scrollTop = pending.scrollTop + delta;
+    }
+  }, [visibleCount]);
 
   const handleChatScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
       const el = e.currentTarget;
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowScrollBtn(distFromBottom > SHOW_SCROLL_BUTTON_THRESHOLD);
+      const previousScrollTop = lastScrollTopRef.current;
+      const scrollDelta = previousScrollTop == null ? 0 : el.scrollTop - previousScrollTop;
+      lastScrollTopRef.current = el.scrollTop;
 
       if (scrollAnchorRef.current.isProgrammatic()) return;
 
-      scrollAnchorRef.current.onUserScroll(distFromBottom);
-      userScrolledUp.current = !scrollAnchorRef.current.isLocked();
+      scrollAnchorRef.current.onUserScroll(distFromBottom, scrollDelta);
+      userScrolledUp.current = isStreaming && !scrollAnchorRef.current.isLocked();
+      if (distFromBottom <= 48) {
+        userScrolledUp.current = false;
+      }
+      setShowScrollBtn(userScrolledUp.current || distFromBottom > SHOW_SCROLL_BUTTON_THRESHOLD);
 
       if (el.scrollTop < 120 && messagesLength > visibleCount) {
+        pendingHistoryExpandPreserveRef.current = {
+          scrollTop: el.scrollTop,
+          scrollHeight: el.scrollHeight,
+        };
         setVisibleCount((prev) => Math.min(prev + VISIBLE_MESSAGES_STEP, messagesLength));
       }
     },
-    [messagesLength, visibleCount]
+    [isStreaming, messagesLength, visibleCount]
   );
 
   const reconcile = useCallback(() => {
