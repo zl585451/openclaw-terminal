@@ -210,7 +210,7 @@
   flex-direction: column;
   gap: 0;
   /* 居中显示 */
-  max-width: 860px;
+  max-width: 780px;
   margin: 0 auto;
   width: 100%;
   padding: 0 32px;
@@ -312,6 +312,22 @@
 
 .chat-message.assistant {
   align-self: stretch;
+  --chat-copy: rgba(235, 232, 224, 0.78);
+  --chat-copy-muted: rgba(235, 232, 224, 0.62);
+  --chat-heading: rgba(250, 246, 235, 0.94);
+  --chat-heading-subtle: rgba(244, 236, 220, 0.88);
+  --chat-strong: rgba(248, 241, 226, 0.92);
+  --chat-marker: rgba(196, 112, 72, 0.78);
+  --chat-summary-line: rgba(89, 171, 142, 0.65);
+  --chat-summary-bg: rgba(89, 171, 142, 0.07);
+  --chat-code-fg: #e3b16d;
+  --chat-code-bg: rgba(196, 112, 72, 0.11);
+  --chat-code-border: rgba(196, 112, 72, 0.24);
+  --chat-table-bg: rgba(255, 252, 242, 0.035);
+  --chat-table-bg-alt: rgba(255, 252, 242, 0.055);
+  --chat-table-border: rgba(235, 232, 224, 0.12);
+  --chat-table-head-bg: rgba(227, 177, 109, 0.075);
+  --chat-table-head-fg: rgba(250, 246, 235, 0.9);
   background: transparent;
   border: none;
   border-radius: 0;
@@ -519,16 +535,17 @@
   height: auto;
   min-height: auto;
   overflow: visible;
-  color: var(--text-primary);
+  color: var(--chat-copy, var(--text-primary));
 }
 
 /* Markdown 渲染样式 - OCT 双色调护眼风格 */
 .msg-content.markdown-body {
   white-space: normal;
-  color: var(--text-primary);
+  color: var(--chat-copy, var(--text-primary));
   font-family: var(--font-sans);
   font-size: var(--text-md);           /* 15px */
   line-height: var(--leading-relaxed); /* 1.8 */
+  font-weight: 400;
   display: block;
   height: auto;
   min-height: auto;
@@ -544,7 +561,7 @@
 /* 流式输出时表格以纯文本展示，避免反复重排导致跳动；样式与最终表格接近以减小结束时的高度差 */
 .msg-content-streaming-root {
   display: block;
-  color: var(--text-primary);
+  color: var(--chat-copy, var(--text-primary));
 }
 
 .msg-streaming-raw-table {
@@ -560,9 +577,9 @@
 }
 
 .msg-content.markdown-body p {
-  margin: 0 0 12px;
+  margin: 0 0 13px;
   line-height: var(--leading-relaxed);
-  color: var(--text-primary) !important;
+  color: var(--chat-copy, var(--text-primary));
 }
 
 .msg-content.markdown-body p:last-child {
@@ -573,33 +590,75 @@
 .msg-content.markdown-body h2,
 .msg-content.markdown-body h3,
 .msg-content.markdown-body h4 {
-  font-weight: 600;
-  color: var(--accent-primary);
+  position: relative;
+  font-weight: 700;
+  color: var(--chat-heading);
+  letter-spacing: 0;
+  line-height: 1.45;
 }
 
-.msg-content.markdown-body h1 { font-size: 1.4em; margin: 16px 0 8px; }
-.msg-content.markdown-body h2 { font-size: 1.25em; margin: 14px 0 8px; }
-.msg-content.markdown-body h3 { font-size: 1.1em; margin: 12px 0 6px; }
-.msg-content.markdown-body h4 { font-size: 1em; font-weight: 600; margin: 10px 0 6px; }
+.msg-content.markdown-body h1,
+.msg-content.markdown-body h2 {
+  padding-left: 12px;
+  border-left: 3px solid var(--chat-summary-line, var(--accent-primary));
+}
+
+.msg-content.markdown-body h1 { font-size: 1.36em; margin: 26px 0 12px; }
+.msg-content.markdown-body h2 { font-size: 1.2em; margin: 24px 0 11px; }
+.msg-content.markdown-body h3 {
+  font-size: 1.08em;
+  margin: 21px 0 9px;
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--chat-marker) 70%, transparent 30%);
+  color: var(--chat-heading-subtle);
+}
+.msg-content.markdown-body h4 {
+  font-size: 1em;
+  font-weight: 650;
+  margin: 16px 0 8px;
+  color: var(--chat-heading-subtle);
+}
+
+.msg-content.markdown-body h1:first-child,
+.msg-content.markdown-body h2:first-child,
+.msg-content.markdown-body h3:first-child,
+.msg-content.markdown-body h4:first-child {
+  margin-top: 0;
+}
 
 .msg-content.markdown-body strong {
-  font-weight: 600;
-  color: var(--text-primary);
+  font-weight: 700;
+  color: var(--chat-strong, var(--text-primary));
+}
+
+.msg-content.markdown-body > p:has(> strong:first-child) {
+  margin: 14px 0 16px;
+  padding: 10px 14px 10px 16px;
+  border-left: 3px solid var(--chat-summary-line, var(--accent-primary));
+  border-radius: 0 8px 8px 0;
+  background: var(--chat-summary-bg, transparent);
+  color: var(--chat-copy-muted, var(--text-secondary));
+}
+
+.msg-content.markdown-body > p:has(> strong:first-child) strong {
+  color: var(--chat-heading, var(--text-primary));
 }
 
 .msg-content.markdown-body em {
-  color: var(--text-secondary);
+  color: var(--chat-copy-muted, var(--text-secondary));
 }
 
 .msg-content.markdown-body ul,
 .msg-content.markdown-body ol {
-  margin: 8px 0;
+  margin: 10px 0 14px;
   padding-left: 1.5em;
   line-height: var(--leading-relaxed);
 }
 
 .msg-content.markdown-body li {
-  margin: 4px 0;
+  margin: 6px 0;
+  color: var(--chat-copy, var(--text-primary));
+  font-weight: 400;
 }
 
 .msg-content.markdown-body ul {
@@ -607,8 +666,8 @@
 }
 
 .msg-content.markdown-body ul li {
-  margin: 4px 0;
-  color: var(--text-primary) !important;
+  margin: 7px 0;
+  color: var(--chat-copy, var(--text-primary));
 }
 
 .msg-content.markdown-body ol {
@@ -616,23 +675,54 @@
 }
 
 .msg-content.markdown-body ol li {
-  margin: 4px 0;
-  color: var(--text-primary) !important;
+  margin: 7px 0;
+  color: var(--chat-copy, var(--text-primary));
 }
 
 .msg-content.markdown-body li::marker {
-  color: var(--accent-primary);
+  color: var(--chat-marker, var(--accent-primary));
+  font-size: 0.86em;
+}
+
+.msg-content.markdown-body li > p {
+  margin: 0 0 6px;
+}
+
+.msg-content.markdown-body li > p:last-child {
+  margin-bottom: 0;
+}
+
+.msg-content.markdown-body li strong:first-child {
+  color: var(--chat-strong, var(--text-primary));
+}
+
+.msg-content.markdown-body li ul,
+.msg-content.markdown-body li ol {
+  margin: 6px 0 8px;
+  padding-left: 1.35em;
+}
+
+.msg-content.markdown-body li li {
+  margin: 4px 0;
+  color: var(--chat-copy-muted, var(--text-secondary));
+  font-size: 0.96em;
+}
+
+.msg-content.markdown-body li li::marker {
+  color: color-mix(in srgb, var(--chat-marker) 60%, transparent 40%);
 }
 
 .msg-content.markdown-body code {
-  background: var(--bg-code) !important;
-  padding: 2px 6px;
+  background: var(--chat-code-bg, var(--bg-code)) !important;
+  padding: 2px 6px 3px;
   border-radius: 6px;
   font-size: 0.88em;  /* 相对正文缩小 */
   font-family: var(--font-mono);
   line-height: inherit;
-  color: var(--text-code-color) !important;
-  border: 1px solid var(--border-subtle);
+  color: var(--chat-code-fg, var(--text-code-color)) !important;
+  border: 1px solid var(--chat-code-border, var(--border-subtle));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  white-space: break-spaces;
 }
 
 .msg-content.markdown-body pre:not(.md-codeblock-pre) {
@@ -650,6 +740,7 @@
   color: var(--text-code-color) !important;
   background: transparent !important;
   border: none;
+  box-shadow: none;
   display: block;
   padding: 14px;
 }
@@ -750,25 +841,30 @@
 }
 
 .msg-content.markdown-body blockquote {
-  margin: 8px 0;
-  padding-left: 12px;
-  border-left: 3px solid var(--accent-primary);
-  color: var(--text-secondary);
+  margin: 12px 0 16px;
+  padding: 10px 14px 10px 16px;
+  border-left: 3px solid var(--chat-summary-line, var(--accent-primary));
+  border-radius: 0 8px 8px 0;
+  background: var(--chat-summary-bg, transparent);
+  color: var(--chat-copy-muted, var(--text-secondary));
 }
 
 /* GFM 表格：边框、表头、对齐、间距，流式时不错位 */
 .msg-content.markdown-body table,
 .msg-content.markdown-body .md-table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: auto;
   max-width: 100%;
   min-width: 320px;
-  margin: 8px 0;
+  margin: 14px 0 18px;
   font-size: var(--text-code);
-  font-family: var(--font-mono);
-  border: 1px solid var(--border-subtle);
+  font-family: var(--font-sans);
+  border: 1px solid var(--chat-table-border, var(--border-subtle));
+  border-radius: 8px;
   display: table;
-  background: var(--bg-surface);
+  background: var(--chat-table-bg, var(--bg-surface));
+  overflow: hidden;
 }
 
 .msg-content.markdown-body thead {
@@ -791,39 +887,55 @@
 .msg-content.markdown-body .table-wrapper {
   overflow-x: auto;
   max-width: 100%;
-  margin: 8px 0;
+  margin: 14px 0 18px;
   contain: paint;
 }
 
 .msg-content.markdown-body th,
 .msg-content.markdown-body td {
   border: none;
-  padding: 6px 12px;
+  padding: 9px 12px;
   text-align: left;
   white-space: normal;
   word-break: break-word;
   color: var(--text-primary);
   display: table-cell;
   vertical-align: top;
+  border-right: 1px solid var(--chat-table-border, var(--border-subtle));
+}
+
+.msg-content.markdown-body th:last-child,
+.msg-content.markdown-body td:last-child {
+  border-right: none;
 }
 
 .msg-content.markdown-body th {
   font-size: var(--text-sm);  /* 12px */
-  background: var(--bg-surface);
-  color: var(--accent-primary);
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border-subtle);
+  background: var(--chat-table-head-bg, var(--bg-surface));
+  color: var(--chat-table-head-fg, var(--accent-primary));
+  font-weight: 650;
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--chat-table-border, var(--border-subtle));
 }
 
 .msg-content.markdown-body td {
   font-size: var(--text-md);  /* 15px 和正文一致 */
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-subtle);
+  color: var(--chat-copy, var(--text-primary));
+  border-bottom: 1px solid var(--chat-table-border, var(--border-subtle));
 }
 
 .msg-content.markdown-body tr:nth-child(even) {
-  background: var(--bg-surface);
+  background: var(--chat-table-bg-alt, var(--bg-surface));
+}
+
+.msg-content.markdown-body tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.msg-content.markdown-body td code,
+.msg-content.markdown-body th code {
+  font-size: 0.9em;
+  white-space: nowrap;
 }
 
 .chat-tab .msg-content.markdown-body tbody tr:hover td,
@@ -959,23 +1071,32 @@
 }
 
 .chat-message.assistant .msg-content {
-  color: var(--text-primary);
+  color: var(--chat-copy, var(--text-primary));
 }
 
-/* AMY 气泡内 markdown 文字提升对比度 */
+/* AMY 气泡内 markdown 文字分层：正文降噪，标题/强调保留抓手 */
 .chat-message.assistant .msg-content.markdown-body,
 .chat-message.assistant .msg-content.markdown-body p,
+.chat-message.assistant .msg-content.markdown-body li,
+.chat-message.assistant .msg-content.markdown-body td {
+  color: var(--chat-copy, var(--text-primary));
+}
+
 .chat-message.assistant .msg-content.markdown-body h1,
-.chat-message.assistant .msg-content.markdown-body h2,
+.chat-message.assistant .msg-content.markdown-body h2 {
+  color: var(--chat-heading, var(--text-primary));
+}
+
 .chat-message.assistant .msg-content.markdown-body h3,
 .chat-message.assistant .msg-content.markdown-body h4,
 .chat-message.assistant .msg-content.markdown-body strong,
+.chat-message.assistant .msg-content.markdown-body th {
+  color: var(--chat-strong, var(--text-primary));
+}
+
 .chat-message.assistant .msg-content.markdown-body em,
-.chat-message.assistant .msg-content.markdown-body li,
-.chat-message.assistant .msg-content.markdown-body td,
-.chat-message.assistant .msg-content.markdown-body th,
 .chat-message.assistant .msg-content.markdown-body blockquote {
-  color: var(--text-primary) !important;
+  color: var(--chat-copy-muted, var(--text-secondary));
 }
 
 .chat-message.assistant .cursor-blink {
