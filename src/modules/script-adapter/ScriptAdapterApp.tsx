@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScriptAdapterLayout } from './ui/ScriptAdapterLayout';
 import { scriptAdapterActions } from './store/actions';
 import { MOCK_PROJECT, MOCK_CHAPTERS } from './mockData/mockProject';
@@ -39,6 +39,7 @@ interface ScriptAdapterAppProps {
 
 export function ScriptAdapterApp({ onBack }: ScriptAdapterAppProps) {
   const [screen, setScreen] = useState<ScriptAdapterScreen>('home');
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     scriptAdapterActions.loadProject(
@@ -53,8 +54,12 @@ export function ScriptAdapterApp({ onBack }: ScriptAdapterAppProps) {
     scriptAdapterActions.selectStage(3);
   }, []);
 
+  useEffect(() => {
+    rootRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [screen]);
+
   return (
-    <div className={styles.root}>
+    <div className={styles.root} ref={rootRef}>
       {screen === 'home' ? (
         <ContentCreationHome
           onBack={onBack}
@@ -688,14 +693,6 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                     <span>预计产物：{analysisReport.executionImpact.outputs.join('、')}</span>
                     {selectedStrategy ? <span>当前策略：{selectedStrategy.title}，{selectedStrategy.impact}</span> : null}
                   </div>
-                  <button
-                    type="button"
-                    className={styles.primaryButton}
-                    disabled={!selectedStrategyId}
-                    onClick={onStart}
-                  >
-                    确认修改策略，进入制作工作台
-                  </button>
                 </div>
               </>
             ) : null}
