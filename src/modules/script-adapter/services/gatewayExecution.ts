@@ -8,7 +8,8 @@ export type ScriptAdapterGatewayEvent =
   | { event: 'gate_reached'; taskId: string; gate: ReviewGate }
   | { event: 'gate_updated'; taskId: string; gate: ReviewGate }
   | { event: 'all_completed'; taskId: string; sheet: TaskExecutionSheet }
-  | { event: 'run_failed'; taskId: string; error: string };
+  | { event: 'run_failed'; taskId: string; error: string; sheet?: TaskExecutionSheet }
+  | { event: 'run_cancelled'; taskId: string; error: string; sheet?: TaskExecutionSheet };
 
 export interface StartGatewayExecutionPayload {
   taskId: string;
@@ -30,6 +31,40 @@ export async function startGatewayExecution(payload: StartGatewayExecutionPayloa
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Gateway 执行入口调用失败',
+    };
+  }
+}
+
+export async function cancelGatewayExecution(taskId: string) {
+  if (!window.electronAPI?.cancelScriptAdapterRun) {
+    return { success: false, error: '当前环境未暴露 Gateway 取消入口' };
+  }
+
+  try {
+    return await window.electronAPI.cancelScriptAdapterRun({
+      taskId,
+      reason: 'cancelled_by_user',
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Gateway 取消入口调用失败',
+    };
+  }
+}
+
+export async function listGatewayExecutions() {
+  if (!window.electronAPI?.listScriptAdapterRuns) {
+    return { success: false, error: '当前环境未暴露 Gateway 运行列表入口', runs: [] };
+  }
+
+  try {
+    return await window.electronAPI.listScriptAdapterRuns();
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Gateway 运行列表调用失败',
+      runs: [],
     };
   }
 }

@@ -104,7 +104,11 @@ const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
 const { handleImageGenerate } = require('./image_gen');
-const { startMockScriptAdapterRun } = require('./script_adapter/mock_execution');
+const {
+  startMockScriptAdapterRun,
+  cancelMockScriptAdapterRun,
+  listMockScriptAdapterRuns,
+} = require('./script_adapter/mock_execution');
 const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const { startScheduler, stopScheduler } = require('./summarizer/scheduler');
@@ -463,6 +467,36 @@ async function handleTransportMessage(msg, connection) {
       payload: {
         type: 'script-adapter-run-started',
         ...run,
+      },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.cancel') {
+    const result = cancelMockScriptAdapterRun(msg.params?.taskId, msg.params?.reason);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: {
+        type: 'script-adapter-run-cancelled',
+        ...result,
+      },
+      error: result.success ? undefined : { message: result.error || 'cancel failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.list') {
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: true,
+      method: msg.method,
+      payload: {
+        type: 'script-adapter-run-list',
+        runs: listMockScriptAdapterRuns(),
       },
     });
     return true;

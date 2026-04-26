@@ -216,6 +216,19 @@ export interface ElectronAPI {
     source?: string;
     useMock?: boolean;
   }) => Promise<ApiResult & { taskId?: string; planId?: string }>;
+  cancelScriptAdapterRun?: (payload: { taskId: string; reason?: string }) => Promise<ApiResult & { taskId?: string; status?: string }>;
+  listScriptAdapterRuns?: () => Promise<ApiResult & {
+    runs?: Array<{
+      taskId: string;
+      planId?: string;
+      taskTitle?: string;
+      status?: string;
+      createdAt?: string;
+      updatedAt?: string;
+      completedAt?: string;
+      error?: string;
+    }>;
+  }>;
   onScriptAdapterEvent?: (callback: (payload: UnknownRecord) => void) => (() => void);
   chatHistoryLoad?: () => Promise<ChatHistoryItem[]>;
   chatHistorySave?: (items: ChatHistoryItem[]) => Promise<void>;

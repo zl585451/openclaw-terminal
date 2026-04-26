@@ -22,6 +22,11 @@ let terminalWindow: BrowserWindow | null = null;
 let terminalPty: pty.IPty | null = null;
 let openclawWs: WebSocket | null = null;
 let requestId = 0;
+const SCRIPT_ADAPTER_REQUEST_TIMEOUT_MS = 10000;
+const scriptAdapterPendingRequests = new Map<string, {
+  resolve: (value: any) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}>();
 const MAX_RECONNECT_RETRIES = 999; // 增加重连次数上限
 let reconnectRetryCount = 0;
 /** 应用/主窗口正在关闭，避免 WebSocket 断开回调里向已销毁的窗口 send 导致报错 */
@@ -1510,7 +1515,18 @@ function handleMessage(msg: any) {
       
     case 'res':
       console.log('[OCT] Response: ok=', msg.ok, 'payload=', msg.payload ? JSON.stringify(msg.payload).slice(0, 200) : null);
-      if (msg.method === 'image.generate') {
+      if (typeof msg.method === 'string' && msg.method.startsWith('scriptAdapter.run.')) {
+        const pending = scriptAdapterPendingRequests.get(String(msg.id || ''));
+        if (pending) {
+          clearTimeout(pending.timeout);
+          scriptAdapterPendingRequests.delete(String(msg.id || ''));
+          pending.resolve({
+            success: Boolean(msg.ok),
+            ...(msg.payload || {}),
+            error: msg.ok ? undefined : (msg.error?.message || msg.payload?.error || 'Gateway 请求失败'),
+          });
+        }
+      } else if (msg.method === 'image.generate') {
         sendImageResult(msg.payload || {});
       } else if (msg.ok && (msg.payload?.type === 'hello-ok' || msg.method === 'connect')) {
         const model = msg.payload?.model || msg.payload?.agent?.model || undefined;
@@ -4192,36 +4208,60 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
   return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext, requestId);
 });
 
+function sendScriptAdapterRunRequest(method: string, params: Record<string, unknown>) {
+  if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
+    return Promise.resolve({ success: false, error: 'Gateway 未连接，请先启动 Gateway' });
+  }
+
+  const reqId = `script_adapter_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const msg = {
+    type: 'req',
+    id: reqId,
+    method,
+    params,
+  };
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      scriptAdapterPendingRequests.delete(reqId);
+      resolve({ success: false, error: 'Gateway 请求超时' });
+    }, SCRIPT_ADAPTER_REQUEST_TIMEOUT_MS);
+    scriptAdapterPendingRequests.set(reqId, { resolve, timeout });
+
+    try {
+      openclawWs?.send(JSON.stringify(msg));
+    } catch (err: any) {
+      clearTimeout(timeout);
+      scriptAdapterPendingRequests.delete(reqId);
+      resolve({ success: false, error: err?.message || '发送失败' });
+    }
+  });
+}
+
 ipcMain.handle('script-adapter-run-start', (_event, payload: {
   taskId: string;
   taskTitle: string;
   source?: string;
   useMock?: boolean;
 }) => {
-  if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
-    return { success: false, error: 'Gateway 未连接，请先启动 Gateway' };
-  }
-
   const taskId = String(payload?.taskId || `script-adapter-${Date.now()}`);
-  const requestId = `script_adapter_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const msg = {
-    type: 'req',
-    id: requestId,
-    method: 'scriptAdapter.run.start',
-    params: {
-      taskId,
-      taskTitle: String(payload?.taskTitle || '多人演播有声书样章'),
-      source: String(payload?.source || 'content-workbench'),
-      useMock: payload?.useMock !== false,
-    },
-  };
+  return sendScriptAdapterRunRequest('scriptAdapter.run.start', {
+    taskId,
+    taskTitle: String(payload?.taskTitle || '多人演播有声书样章'),
+    source: String(payload?.source || 'content-workbench'),
+    useMock: payload?.useMock !== false,
+  });
+});
 
-  try {
-    openclawWs.send(JSON.stringify(msg));
-    return { success: true, taskId };
-  } catch (err: any) {
-    return { success: false, error: err?.message || '发送失败' };
-  }
+ipcMain.handle('script-adapter-run-cancel', (_event, payload: { taskId: string; reason?: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.run.cancel', {
+    taskId: String(payload?.taskId || ''),
+    reason: String(payload?.reason || 'cancelled_by_user'),
+  });
+});
+
+ipcMain.handle('script-adapter-run-list', () => {
+  return sendScriptAdapterRunRequest('scriptAdapter.run.list', {});
 });
 
 ipcMain.handle('image-generate', async (_event, payload: {
