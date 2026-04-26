@@ -561,11 +561,21 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
 
       if (!resp.ok) {
         const errText = await resp.text().catch(() => '');
-        throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+        const error = new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+        error.status = resp.status;
+        error.responseText = errText;
+        throw error;
       }
       return resp;
     } catch (e) {
       lastError = e;
+      if (Number(e?.status) >= 400 && Number(e?.status) < 500) {
+        log.warn('客户端/配额类错误不重试', {
+          status: e.status,
+          url: url.replace(/\/v1.*/, '/v1/...'),
+        });
+        break;
+      }
       if (e.name === 'AbortError') {
         log.error('请求被中止（超时）', { url: url.replace(/\/v1.*/, '/v1/...') });
         break;
@@ -1502,6 +1512,69 @@ function normalizeMessagesForProvider(messages, providerId) {
   });
 }
 
+function mergePlainObject(target, source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return target;
+  const out = target && typeof target === 'object' && !Array.isArray(target) ? { ...target } : {};
+  for (const [key, value] of Object.entries(source)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      out[key] = mergePlainObject(out[key], value);
+    } else if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function applyToolCallDelta(existing, delta) {
+  const next = existing || { id: '', type: 'function', function: { name: '', arguments: '' } };
+  if (delta.id) next.id = delta.id;
+  if (delta.type) next.type = delta.type;
+  if (!next.function) next.function = { name: '', arguments: '' };
+  if (delta.function?.name) next.function.name += delta.function.name;
+  if (delta.function?.arguments) next.function.arguments += delta.function.arguments;
+  if (delta.extra_content) {
+    next.extra_content = mergePlainObject(next.extra_content, delta.extra_content);
+  }
+  return next;
+}
+
+function isProtocolOrRateLimitError(error) {
+  const status = Number(error?.status);
+  const message = String(error?.message || '');
+  return status === 429
+    || /thought_signature/i.test(message)
+    || /reasoning_content/i.test(message)
+    || /thinking mode/i.test(message)
+    || /function call .* missing/i.test(message);
+}
+
+function shouldForceFinalFromToolResults(providerId, preserveToolChain, toolRound) {
+  return providerId === 'google' && preserveToolChain && Number(toolRound) >= 1;
+}
+
+function buildToolResultFallbackReply(messages, error) {
+  const toolMessages = Array.isArray(messages)
+    ? messages.filter((message) => message?.role === 'tool' && String(message.content || '').trim())
+    : [];
+  if (toolMessages.length === 0) return '';
+
+  const snippets = toolMessages.slice(-3).map((message, index) => {
+    const raw = String(message.content || '').replace(/\s+/g, ' ').trim();
+    const text = raw.length > 900 ? `${raw.slice(0, 900)}...` : raw;
+    return `${index + 1}. ${text}`;
+  }).join('\n\n');
+
+  return [
+    '⚠️ Gemini 已完成工具检索，但在最终续写时触发 Vertex 429（资源耗尽 / 配额限制），本轮没有继续跨模型 fallback。',
+    '',
+    '已拿到的工具结果摘要如下，你可以稍后发送“基于上面的结果继续总结”继续：',
+    '',
+    snippets,
+    '',
+    `原始错误：${String(error?.message || error || '').slice(0, 240)}`,
+  ].join('\n');
+}
+
 async function streamChat({
   messages,
   onDelta,
@@ -1551,7 +1624,7 @@ async function streamChat({
 
   let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用
   let assistantResponseContent = '';
-  /** DeepSeek V4 等：思考流片段，工具轮次必须原样回传，否则 API 400 */
+  /** Thinking-mode providers may require this field to be echoed on tool continuation. */
   let assistantReasoningContent = '';
   const _thinkState = {
     inThink: false,
@@ -1829,16 +1902,23 @@ async function streamChat({
       requestBody.stream_options = { include_usage: true };
     }
     const effectiveSupportsTools = caps.supportsTools && caps.toolReliability !== 'none';
+    const forceFinalFromToolResults = shouldForceFinalFromToolResults(provider.id, preserveToolChain, toolRound);
     const shouldInjectTools = effectiveSupportsTools && !hasImage;
     if (shouldInjectTools) {
       requestBody.tools = toolLoader.getDefinitions();
       // 部分 OpenAI 兼容服务商（如硅基流动）不支持 tool_choice 指定具体函数名，
       // 只允许 'auto' / 'none'。仅在 provider 明确声明支持时才发对象形式。
       const isObjectToolChoice = toolChoice && typeof toolChoice === 'object';
-      requestBody.tool_choice = (isObjectToolChoice && !provider.supportsToolChoiceFunction)
-        ? 'auto'
-        : toolChoice;
-      if (isObjectToolChoice && !provider.supportsToolChoiceFunction) {
+      requestBody.tool_choice = forceFinalFromToolResults
+        ? 'none'
+        : ((isObjectToolChoice && !provider.supportsToolChoiceFunction) ? 'auto' : toolChoice);
+      if (forceFinalFromToolResults) {
+        log.info('Google 工具续轮强制收束为最终回答', {
+          turnId: turnId || null,
+          toolRound,
+        });
+      }
+      if (!forceFinalFromToolResults && isObjectToolChoice && !provider.supportsToolChoiceFunction) {
         log.warn('tool_choice 对象形式降级为 auto（provider 不支持指定函数）', { provider: provider.id, requested: JSON.stringify(toolChoice) });
       }
     }
@@ -1911,12 +1991,7 @@ async function streamChat({
         if (delta.tool_calls) {
           for (const tc of delta.tool_calls) {
             const idx = tc.index || 0;
-            if (!toolCalls[idx]) {
-              toolCalls[idx] = { id: tc.id || '', type: 'function', function: { name: '', arguments: '' } };
-            }
-            if (tc.id) toolCalls[idx].id = tc.id;
-            if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
-            if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+            toolCalls[idx] = applyToolCallDelta(toolCalls[idx], tc);
           }
         }
 
@@ -1938,7 +2013,7 @@ async function streamChat({
             assistantResponseMessage: {
               role: 'assistant',
               content: assistantResponseContent || '',
-              ...(provider.id === 'deepseek' && assistantReasoningContent
+              ...(assistantReasoningContent
                 ? { reasoning_content: assistantReasoningContent }
                 : {}),
               tool_calls: toolCalls.filter(Boolean),
@@ -2032,7 +2107,7 @@ async function streamChat({
         assistantResponseMessage: {
           role: 'assistant',
           content: '',
-          ...(provider.id === 'deepseek' && assistantReasoningContent
+          ...(assistantReasoningContent
             ? { reasoning_content: assistantReasoningContent }
             : {}),
           tool_calls: pseudoToolCalls,
@@ -2079,14 +2154,35 @@ async function streamChat({
     const isToolError = e?.message && (
       e.message.includes('tool id') ||
       e.message.includes('tool_call_id') ||
+      e.message.includes('thought_signature') ||
+      e.message.includes('reasoning_content') ||
       e.message.includes('invalid params') ||
       (e.message.includes('HTTP 400') && e.message.includes('tool')) ||
+      (e.message.includes('HTTP 400') && e.message.includes('thinking')) ||
       (e.message.includes('HTTP 401') && e.message.includes('tool')) ||
       (e.message.includes('HTTP 403'))
     );
 
-    if (isToolError) {
-      log.error('工具调用错误，不进行 fallback', { error: e?.message || String(e) });
+    if (Number(e?.status) === 429 && preserveToolChain && toolRound > 0) {
+      const fallbackReply = buildToolResultFallbackReply(effectiveMessages, e);
+      if (fallbackReply) {
+        log.warn('工具续轮 429，返回已取得的工具结果摘要', {
+          turnId: turnId || null,
+          toolRound,
+        });
+        flushThinkAtEnd();
+        onDone(fallbackReply, null, null);
+        return;
+      }
+    }
+
+    if (isToolError || isProtocolOrRateLimitError(e) || preserveToolChain || toolRound > 0) {
+      log.error('工具/协议/配额错误或工具续轮错误，不进行 fallback', {
+        error: e?.message || String(e),
+        status: e?.status || null,
+        preserveToolChain,
+        toolRound,
+      });
       onError(e);
       return;
     }
@@ -2133,4 +2229,16 @@ async function streamChat({
   }
 }
 
-module.exports = { streamChat, loadSystemPrompt, truncateHistory, getContextUsageRatio };
+module.exports = {
+  streamChat,
+  loadSystemPrompt,
+  truncateHistory,
+  getContextUsageRatio,
+  _internals: {
+    applyToolCallDelta,
+    mergePlainObject,
+    isProtocolOrRateLimitError,
+    shouldForceFinalFromToolResults,
+    buildToolResultFallbackReply,
+  },
+};

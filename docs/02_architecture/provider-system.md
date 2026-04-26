@@ -1,6 +1,6 @@
 # Provider 系统 — AI 服务商市场化
 
-> **最后更新**：2026-04-22（含 Google Base URL 清洗 `oct-gateway/shared/googleBaseUrl.js`） | **状态**：✅ 正常
+> **最后更新**：2026-04-26（含 thinking-mode 工具续轮 `reasoning_content` 回传） | **状态**：✅ 正常
 
 ---
 
@@ -85,6 +85,12 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 ## 能力声明
 每个 provider 的 models 声明 `tools`、`thinking`。仅 `tools: true` 的模型才会传 `tools`/`tool_choice`，避免 deepseek-v3 等报错。
 
+### Thinking 模型 + 工具调用续轮
+
+当 OpenAI 兼容流式响应在 `delta.reasoning_content` 中返回思考片段，并且同一轮触发 `tool_calls` 时，Gateway 会把该 `reasoning_content` 写回随后追加的 `assistant` 工具调用消息，再与 `tool` 结果一起发起续轮请求。
+
+这条规则不限定 DeepSeek；Google Gemini 3.x 预览等 thinking-mode 模型也可能要求工具续轮原样回传该字段，否则会返回 `HTTP 400`：`The reasoning_content in the thinking mode must be passed back to the API.`。
+
 从 2026-04-17 起，网关内部能力升级为三态：
 
 - `supported`：允许工具执行（`supportsTools=true`）
@@ -131,6 +137,7 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-04-26 | thinking-mode 工具续轮不再只对 DeepSeek 回传 `reasoning_content`；凡流式响应实际返回该字段，Gateway 都会在 assistant tool-call 消息中原样带回，修复 Google Gemini 3.x 预览工具调用后的 400 |
 | 2026-04-23 | `moonshot` provider 对齐 Kimi 官方平台：控制台链接改为 `platform.kimi.com`，默认模型切到 `kimi-k2.6`，并补齐 `kimi-k2.5 / kimi-k2-turbo-preview` 等官方模型；`moonshot-v1-*` 仅作为兼容选项保留 |
 | 2026-04-22 | 连接页新增 beginner / advanced 两层：新手模式只暴露 3 个默认 provider 卡片与单一 Key 入口；不改 Gateway provider 注册与能力声明 |
 | 2026-04-21 | MiniMax 独立接口不接受 `role=system`，Gateway 改为仅对 `provider=minimax` 将 system 内容并入第一条 user 消息，避免 400 invalid params |

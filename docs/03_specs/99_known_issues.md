@@ -1,6 +1,6 @@
 # 已知问题汇总
 
-> 最后更新：2026-04-21
+> 最后更新：2026-04-26
 
 当前测试基线：7 个测试文件，79 个用例（截至 2026-04-21）
 
@@ -24,10 +24,16 @@
 | 14 | 🟡 中等 | 设置页样式体系分裂 | 已整合 | ✅ 阶段 3B 完成 (2026-04-21) |
 | 15 | 🟡 中等 | Electron 28 → 41、Vite 5 → 8 大版本滞后 | 安全性与生态兼容风险 | 🚧 清理完成后单独 sprint |
 | 16 | 🟢 已完成 | electronAPI 类型收口 | any 使用大幅下降，类型安全性提升 | ✅ 阶段 3C 完成 (2026-04-21) |
+| 17 | 🔴 致命 | Google Gemini thinking-mode 工具续轮缺少 `reasoning_content` | 工具调用后 API 返回 400，会话中断并可能污染 fallback 消息链 | ✅ 已修复 (2026-04-26，按实际返回字段跨 provider 回传) |
 
 ---
 
 ## 修复记录
+
+### 2026-04-26 Google Gemini 工具续轮 `reasoning_content`
+- **问题**：`google/gemini-3.1-pro-preview` 等 thinking-mode 模型触发工具调用后，续轮请求返回 `HTTP 400: The reasoning_content in the thinking mode must be passed back to the API.`
+- **原因**：Gateway 只在 DeepSeek provider 下回传 `delta.reasoning_content`，漏掉了 Google Gemini 3.x 预览模型的同类协议要求。
+- **修复**：`oct-gateway/ai.js` 改为只要流式响应实际返回 `assistantReasoningContent`，就写入 assistant tool-call 消息；`oct-gateway/test/toolLoopReasoningContent.test.js` 增加离线回归测试。
 
 ### 2026-03-22 Gateway 稳定性修复
 - **问题 1**：复杂调研时 API 返回 400 错误 "messages with role 'tool' must be a response to a preceeding message with 'tool_calls'"
