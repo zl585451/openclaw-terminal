@@ -263,6 +263,21 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     return decisionOverrides[item.id] ?? { value: item.value, desc: item.desc, customNote: '' };
   };
 
+  const getDecisionSourceLabel = (item: IntakeResult['taskDraft']['confirmItems'][number]) => {
+    const currentValue = getDecisionView(item).value;
+    const source = item.options.find((option) => option.value === currentValue)?.source;
+    if (source === 'recommended') return 'AI 推荐';
+    if (source === 'agent') return 'Agent 候选';
+    return '同类预设';
+  };
+
+  const getDecisionEditButtonText = (item: IntakeResult['taskDraft']['confirmItems'][number]) => {
+    if (editingDecisionId === item.id) return '完成修改';
+    if (item.id === 'work_goal') return '修改目标';
+    if (item.id === 'scope') return '修改范围';
+    return '修改';
+  };
+
   const updateDecision = (itemId: string, value: string, desc: string) => {
     setDecisionOverrides((current) => ({
       ...current,
@@ -507,34 +522,15 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   </div>
                 </div>
 
-                <div className={styles.directionFitPanel}>
-                  <div className={styles.taskFieldLabel}>基于素材归属生成的可选方向</div>
-                  <div className={styles.directionFitGrid}>
-                    {intakeResult.sourceProfile.recommendedDirections.map((direction) => (
-                      <div
-                        key={direction.name}
-                        className={direction.level === 'recommended' ? styles.directionFitRecommended : styles.directionFitItem}
-                      >
-                        <span>{direction.level === 'recommended' ? 'AI 推荐' : '可选'}</span>
-                        <strong>{direction.name}</strong>
-                        <em>{direction.reason}</em>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={styles.unsupportedDirectionList}>
-                    <span>不会在第二步提供：</span>
-                    {intakeResult.sourceProfile.unsupportedDirections.map((direction) => (
-                      <em key={direction.name}>{direction.name}，{direction.reason}</em>
-                    ))}
-                  </div>
-                </div>
-
                 <div className={styles.planDecisionList}>
                   {intakeResult.taskDraft.confirmItems.map((item) => (
                     <div key={item.id} className={styles.planDecisionItem}>
                       <div className={styles.planDecisionTop}>
                         <div>
-                          <span>{item.label}</span>
+                          <div className={styles.decisionLabelRow}>
+                            <span>{item.label}</span>
+                            <b>{getDecisionSourceLabel(item)}</b>
+                          </div>
                           <strong>{getDecisionView(item).value}</strong>
                           <em>{getDecisionView(item).desc}</em>
                           {getDecisionView(item).customNote ? <small>补充：{getDecisionView(item).customNote}</small> : null}
@@ -544,7 +540,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                           className={styles.tinyEditButton}
                           onClick={() => setEditingDecisionId(editingDecisionId === item.id ? null : item.id)}
                         >
-                          {editingDecisionId === item.id ? '收起' : '修改'}
+                          {getDecisionEditButtonText(item)}
                         </button>
                       </div>
                       {editingDecisionId === item.id ? (
