@@ -2,6 +2,7 @@ const {
   archiveToolResult,
   truncateToolResult,
 } = require('./toolResultArchive');
+const { summarizeToolResult } = require('./toolResultSummarizer');
 
 class ToolLoop {
   constructor({
@@ -172,12 +173,30 @@ class ToolLoop {
         });
       }
 
+      const contentForModel = typeof truncatedResult === 'string'
+        ? truncatedResult
+        : JSON.stringify(truncatedResult);
+      const summarized = await summarizeToolResult(toolName, contentForModel);
+
+      if (summarized.mode === 'noop') {
+        this.log.debug?.('tool result summarizer noop', {
+          toolName,
+          reason: summarized.reason,
+        });
+      } else {
+        this.log.info('tool result summarizer', {
+          toolName,
+          mode: summarized.mode,
+          latencyMs: summarized.latencyMs,
+          originalChars: contentForModel.length,
+          finalChars: summarized.text.length,
+        });
+      }
+
       toolResults.push({
         tool_call_id: toolCall.id,
         role: 'tool',
-        content: typeof truncatedResult === 'string'
-          ? truncatedResult
-          : JSON.stringify(truncatedResult),
+        content: summarized.text,
       });
     }
 
