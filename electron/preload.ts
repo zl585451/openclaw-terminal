@@ -24,6 +24,14 @@ const electronAPI = {
   cancelScriptAdapterRun: (payload: { taskId: string; reason?: string }) =>
     ipcRenderer.invoke('script-adapter-run-cancel', payload),
   listScriptAdapterRuns: () => ipcRenderer.invoke('script-adapter-run-list'),
+  library: {
+    list: (params?: { limit?: number; offset?: number }) =>
+      ipcRenderer.invoke('library:list', params || {}),
+    get: (bookId: string) => ipcRenderer.invoke('library:get', { bookId }),
+    chapters: (bookId: string) => ipcRenderer.invoke('library:chapters', { bookId }),
+    chapter: (bookId: string, chapterIndex: number) =>
+      ipcRenderer.invoke('library:chapter', { bookId, chapterIndex }),
+  },
   onScriptAdapterEvent: (callback: (payload: any) => void) => {
     const handler = (_event: any, payload: any) => callback(payload);
     ipcRenderer.on('script-adapter-event', handler);

@@ -37,5 +37,5 @@
 3. 创建任务 schema。
 4. ExecutionGate 状态机。
 5. Gateway 执行任务。
-   - 开工确认书可传 `sourceText` 到 Gateway；开关与专用端点可用顶层 `SCRIPT_ADAPTER_*` 或 `config.json` 嵌套 `scriptAdapter`（运行时读 `config.scriptAdapter`）。首个 Agent 可走真实 LLM 时，后续四个 mock 会读取已产出的 `adapted_script` 对齐 speaker 与 `segmentId`。详见 `docs/02_architecture/script-adapter-gateway-protocol.md` 与 `docs/05_changelog/` 下 Track 1 相关 changelog。
+   - 开工确认书可传 `sourceText` 到 Gateway；开关与专用端点可用顶层 `SCRIPT_ADAPTER_*` 或 `config.json` 嵌套 `scriptAdapter`（运行时读 `config.scriptAdapter`）。首个 Agent 可走真实 LLM 时，后续四个 mock 会读取已产出的 `adapted_script` 对齐 speaker 与 `segmentId`。Week 4 Track 1：可从 AI.library 书库选章经 **Electron `window.electronAPI.library.*`** 填入 `sourceText`（不经 Gateway）。详见 `docs/02_architecture/script-adapter-gateway-protocol.md` 与 `docs/05_changelog/` 下相关 changelog。
 6. 任务持久化和最近任务列表。

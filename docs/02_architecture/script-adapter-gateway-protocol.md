@@ -1,8 +1,8 @@
 # Script Adapter Gateway Protocol
 
-更新时间：2026-04-26（补充真实文本改编师、`sourceText`、下游 mock 对齐与 `config.scriptAdapter` 运行时）
+更新时间：2026-04-26（补充真实角色音统筹 `voiceClassifierAgent`、双 Agent 真实分支）
 
-本文记录内容制作工作台 Week 2 Track C 的 Gateway 状态机骨架。当前实现仍是 mock agent pipeline，但 transport、registry、cancel/list 入口已经按后续真实 agent runner 的形状拆开。
+本文记录内容制作工作台 Week 2 Track C 起的 Gateway 状态机骨架。当前为「前两步可选真实 LLM + 后三步 mock」的混合 pipeline；transport、registry、cancel/list 入口已按后续真实 agent runner 的形状拆开。
 
 ## 模块边界
 
@@ -19,11 +19,13 @@
 - `oct-gateway/script_adapter/eventEmitter.js`
   - 将 runner 事件包装为 Gateway transport event：`{ type: 'event', event: 'script-adapter', payload }`。
 - `oct-gateway/script_adapter/mockArtifactFactory.js`
-  - 默认生成 mock artifact；在真实改编开关启用且开工传入非空 `sourceText` 时，`adapter.audiobook_text_rewriter@1.0` 走 `agents/textRewriterAgent.js` 真实 LLM，失败则回退占位产物（pipeline 不中断）。
-  - 若 `artifacts` 内已有 `adapted_script`，后续四个 Agent 的 mock 产物从该 payload 推导 speaker、`segmentId`、段数与 manifest 命名，避免与真实头部穿帮。
-  - 真实改编开关读取顺序：`config.scriptAdapter.realAgents`（`config.json` 嵌套 `scriptAdapter` 与 env 已在 `config.js` 合并）→ 顶层 `SCRIPT_ADAPTER_REAL_AGENTS` env/配置键。
+  - 默认生成 mock artifact；在 `SCRIPT_ADAPTER_REAL_AGENTS`（见 `isRealAgentEnabled`）启用时：`adapter.audiobook_text_rewriter@1.0` 在开工传入非空 `sourceText` 时走 `agents/textRewriterAgent.js` 真实 LLM，失败则回退占位产物（pipeline 不中断）；`classifier.voice_role_marker@1.0` 走 `agents/voiceClassifierAgent.js` 消费上游 `adapted_script.segments`，失败则回退空 `voice_registry` 占位（pipeline 不中断）。
+  - 若 `artifacts` 内已有 `adapted_script`，后续三个 Agent 的 mock 产物从该 payload 推导 speaker、`segmentId`、段数与 manifest 命名，避免与真实头部穿帮。
+  - 真实 Agent 开关读取顺序：`config.scriptAdapter.realAgents`（`config.json` 嵌套 `scriptAdapter` 与 env 已在 `config.js` 合并）→ 顶层 `SCRIPT_ADAPTER_REAL_AGENTS` env/配置键。
 - `oct-gateway/script_adapter/agents/textRewriterAgent.js`
   - 文本改编师真实调用（JSON 台本结构）。
+- `oct-gateway/script_adapter/agents/voiceClassifierAgent.js`
+  - 角色音统筹真实调用：本地聚合出场统计 + LLM 输出类别与声线建议。
 - `oct-gateway/services/llmClient.js`
   - 与 `summarizer` 共用的非流式 chat completion 客户端；`resolveProviderFor('script_adapter')` 在 `SCRIPT_ADAPTER` 三元组上优先读 `config.scriptAdapter.baseUrl|apiKey|model`，再回退 `SCRIPT_ADAPTER_*`，其次 `SUMMARIZER_*`（含 memory），再降级当前 Gateway provider。
 
@@ -102,6 +104,12 @@
   - `window.electronAPI.onScriptAdapterEvent(callback)`
 
 Electron main process now tracks pending script adapter request ids, so start/cancel/list can receive Gateway `res` payloads instead of being fire-and-forget.
+
+### 书库（Week 4 Track 1，不经 Gateway）
+
+- IPC：`library:list`（`{ limit?, offset? }`）、`library:get`（`{ bookId }`）、`library:chapters`（`{ bookId }`）、`library:chapter`（`{ bookId, chapterIndex }`）。main 使用 `fetch` 访问 `resolvedAiLibraryUrlForGateway`（缺省 `http://127.0.0.1:8001`）下的 `/api/library/*`。
+- Preload：`window.electronAPI.library.list|get|chapters|chapter`。
+- 工作台封装：`src/modules/script-adapter/services/aiLibraryClient.ts`。
 
 ## Frontend Service
 

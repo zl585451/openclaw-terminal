@@ -12,6 +12,7 @@ import {
 } from '../../services/gatewayExecution';
 import type { StageStatus } from '../../types/stage';
 import { ExecutionView } from './ExecutionView';
+import { LibrarySelector } from './LibrarySelector';
 import styles from '../../styles/scriptAdapter.module.css';
 
 const TASK_STEPS = [
@@ -68,6 +69,7 @@ const TEAM_ROLE_COPY: Record<string, { title: string; shortDesc: string; promise
 
 export function WorkbenchView() {
   const [sourceText, setSourceText] = useState('');
+  const [pickedMeta, setPickedMeta] = useState<{ bookTitle: string; chapterTitle: string } | null>(null);
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -104,6 +106,11 @@ export function WorkbenchView() {
 
   const openRunnableStage = () => {
     scriptAdapterActions.openStageInWorkbench(firstRunnableStage?.idx ?? 3);
+  };
+
+  const handleLibraryPick = (text: string, meta: { bookTitle: string; chapterTitle: string; chars: number }) => {
+    setSourceText(text);
+    setPickedMeta({ bookTitle: meta.bookTitle, chapterTitle: meta.chapterTitle });
   };
 
   const startMockExecution = () => {
@@ -300,32 +307,43 @@ export function WorkbenchView() {
 
       <main className={styles.taskMain}>
         <section className={`${styles.card} ${styles.workOrderHeroCard}`}>
-          <div className={styles.workOrderHeroCopy}>
-            <div className={styles.workOrderKicker}>开工确认书</div>
-            <h2>已准备好开始制作第 1 章多人演播样章。</h2>
-            <p>
-              你前面确认的目标、范围和修改策略已经锁定。接下来系统会派出一支制作团队，
-              按约定开工；需要你确认的地方，会停下来问你。
-            </p>
-            <div className={styles.workOrderSealRow}>
-              <span>不改剧情</span>
-              <span>先做样章</span>
-              <span>人工复核</span>
+          <div className={styles.workOrderHeroMain}>
+            <div className={styles.workOrderHeroCopy}>
+              <div className={styles.workOrderKicker}>开工确认书</div>
+              <h2>已准备好开始制作第 1 章多人演播样章。</h2>
+              <p>
+                你前面确认的目标、范围和修改策略已经锁定。接下来系统会派出一支制作团队，
+                按约定开工；需要你确认的地方，会停下来问你。
+              </p>
+              <div className={styles.workOrderSealRow}>
+                <span>不改剧情</span>
+                <span>先做样章</span>
+                <span>人工复核</span>
+              </div>
             </div>
-          </div>
-          <div className={styles.testInputArea}>
-            <label htmlFor="script-adapter-source-text">测试原文（粘贴 200-500 字小说原文）</label>
-            <textarea
-              id="script-adapter-source-text"
-              value={sourceText}
-              onChange={(e) => setSourceText(e.target.value)}
-              placeholder="先粘贴一段小说原文；启用 Gateway 的 SCRIPT_ADAPTER_REAL_AGENTS 后文本改编师会真实改编…"
-              rows={6}
-              maxLength={4000}
-            />
-            <small>
-              {sourceText.length} / 4000 字
-            </small>
+            <LibrarySelector onPick={handleLibraryPick} disabled={!!executionSheet} />
+            <div className={styles.testInputArea}>
+              <label htmlFor="script-adapter-source-text">测试原文（可粘贴，或从上方书库取章）</label>
+              {pickedMeta ? (
+                <small className={styles.librarySourceBadge}>
+                  来自：《{pickedMeta.bookTitle}》· {pickedMeta.chapterTitle}
+                </small>
+              ) : null}
+              <textarea
+                id="script-adapter-source-text"
+                value={sourceText}
+                onChange={(e) => {
+                  setSourceText(e.target.value);
+                  setPickedMeta(null);
+                }}
+                placeholder="粘贴小说原文，或从书库选章填入。启用 SCRIPT_ADAPTER_REAL_AGENTS 后文本改编师可真实改编；单段超过约 4000 字会走改编失败占位（Week 5 再切片）。"
+                rows={8}
+              />
+              <small className={sourceText.length > 4000 ? styles.sourceLengthWarn : undefined}>
+                {sourceText.length} 字
+                {sourceText.length > 4000 ? '（超过约 4000 字时真实改编师可能返回占位，pipeline 不中断）' : ''}
+              </small>
+            </div>
           </div>
           <div className={styles.workOrderHeroActions}>
             <div className={styles.readyStamp}>READY</div>

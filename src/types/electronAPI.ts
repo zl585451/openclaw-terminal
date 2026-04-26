@@ -231,6 +231,18 @@ export interface ElectronAPI {
     }>;
   }>;
   onScriptAdapterEvent?: (callback: (payload: UnknownRecord) => void) => (() => void);
+  /** AI.library 书库 Phase 2：main 进程 fetch 代理，不经 Gateway */
+  library?: {
+    list: (params?: { limit?: number; offset?: number }) => Promise<
+      { success: true; data: unknown } | { success: false; error: string }
+    >;
+    get: (bookId: string) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    chapters: (bookId: string) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    chapter: (
+      bookId: string,
+      chapterIndex: number,
+    ) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+  };
   chatHistoryLoad?: () => Promise<ChatHistoryItem[]>;
   chatHistorySave?: (items: ChatHistoryItem[]) => Promise<void>;
   imageGenerate?: (payload: ImageGeneratePayload) => Promise<ApiResult>;

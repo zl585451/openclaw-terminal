@@ -2,6 +2,7 @@
 
 const config = require('../config');
 const { runTextRewriterAgent } = require('./agents/textRewriterAgent');
+const { runVoiceClassifierAgent } = require('./agents/voiceClassifierAgent');
 
 const REAL_AGENTS_FLAG = 'SCRIPT_ADAPTER_REAL_AGENTS';
 
@@ -59,6 +60,35 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
             },
           ],
         },
+        { error: 1 },
+      );
+    }
+  }
+
+  if (agentId === 'classifier.voice_role_marker@1.0' && isRealAgentEnabled(agentId)) {
+    try {
+      const { payload, latencyMs, model } = await runVoiceClassifierAgent(ctx);
+      return envelope(
+        'voice_registry',
+        agentId,
+        displayName,
+        '角色音标注表',
+        `已用 ${model} 分类完成,${payload.registry.length} 个角色,耗时 ${latencyMs}ms`,
+        payload,
+        {
+          roles: payload.registry.length,
+          unresolved: (payload.unresolved || []).length,
+          latencyMs,
+        },
+      );
+    } catch (error) {
+      return envelope(
+        'voice_registry',
+        agentId,
+        displayName,
+        '分类失败',
+        `角色音真实分类失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
+        { registry: [], unresolved: [] },
         { error: 1 },
       );
     }

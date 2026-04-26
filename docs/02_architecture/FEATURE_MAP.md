@@ -46,7 +46,7 @@
 - **Transport 辅助**：`transport/helpers.js` 负责 workbench/canvas 事件发送辅助
 - **Gateway 分层**：`gateway/router.js` / `gateway/slash.js` 承接请求路由与稳定 Slash 命令
 - **Runtime 分层**：`runtime/chatEngine.js` / `contextBuilder.js` / `streamController.js` / `providerRouter.js` / `toolLoop.js`
-- **Service 分层**：`services/postProcessor.js` / `imageService.js` / `services/llmClient.js`（非流式 chat completion，供 `summarizer` 与 `script_adapter/agents/textRewriterAgent.js` 使用）/ `script_adapter/*`（Gateway mock 执行链；可选 `SCRIPT_ADAPTER_REAL_AGENTS` 真实改编第一个 Agent）
+- **Service 分层**：`services/postProcessor.js` / `imageService.js` / `services/llmClient.js`（非流式 chat completion，供 `summarizer` 与 `script_adapter/agents/textRewriterAgent.js`、`voiceClassifierAgent.js` 使用）/ `script_adapter/*`（Gateway mock 执行链；可选 `SCRIPT_ADAPTER_REAL_AGENTS` 启用文本改编师与角色音统筹两条真实分支）
 - **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由
 - **Agent 层**（新）：`agents/base_agent.js`（基类）/ `agents/agent_runner.js`（执行引擎）；独立会话、非流式工具循环、工具白名单隔离
 - **后台任务队列**：task_queue + worker，持久化、60s 超时

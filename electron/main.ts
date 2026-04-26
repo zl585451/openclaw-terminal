@@ -4290,6 +4290,65 @@ ipcMain.handle('script-adapter-run-list', () => {
   return sendScriptAdapterRunRequest('scriptAdapter.run.list', {});
 });
 
+// ── AI.library 书库 Phase 2：main 进程直连 fetch（不经 Gateway）────────────────
+function getAiLibraryBase(): string {
+  syncAiLibraryPluginConfigFromDisk();
+  return (resolvedAiLibraryUrlForGateway || 'http://127.0.0.1:8001').replace(/\/$/, '');
+}
+
+async function aiLibraryFetch<T = unknown>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ success: true; data: T } | { success: false; error: string }> {
+  try {
+    const url = `${getAiLibraryBase()}${path}`;
+    const resp = await fetch(url, {
+      ...init,
+      headers: {
+        ...(init?.method && init.method !== 'GET' && init.method !== 'HEAD'
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...(init?.headers || {}),
+      },
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      return { success: false, error: `AI_LIBRARY_HTTP_${resp.status}: ${body.slice(0, 200)}` };
+    }
+    const data = (await resp.json()) as T;
+    return { success: true, data };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `AI_LIBRARY_FETCH_FAILED: ${msg}` };
+  }
+}
+
+ipcMain.handle('library:list', async (_event, payload: { limit?: number; offset?: number }) => {
+  const limit = Number(payload?.limit) > 0 ? Math.floor(Number(payload.limit)) : 50;
+  const offset = Number(payload?.offset) >= 0 ? Math.floor(Number(payload.offset)) : 0;
+  return aiLibraryFetch(`/api/library/list?limit=${limit}&offset=${offset}`);
+});
+
+ipcMain.handle('library:get', async (_event, payload: { bookId: string }) => {
+  if (!payload?.bookId) return { success: false, error: 'bookId required' };
+  return aiLibraryFetch(`/api/library/${encodeURIComponent(payload.bookId)}`);
+});
+
+ipcMain.handle('library:chapters', async (_event, payload: { bookId: string }) => {
+  if (!payload?.bookId) return { success: false, error: 'bookId required' };
+  return aiLibraryFetch(`/api/library/${encodeURIComponent(payload.bookId)}/chapters`);
+});
+
+ipcMain.handle('library:chapter', async (_event, payload: { bookId: string; chapterIndex: number }) => {
+  if (!payload?.bookId) return { success: false, error: 'bookId required' };
+  if (typeof payload?.chapterIndex !== 'number' || Number.isNaN(payload.chapterIndex)) {
+    return { success: false, error: 'chapterIndex required' };
+  }
+  return aiLibraryFetch(
+    `/api/library/${encodeURIComponent(payload.bookId)}/chapter/${payload.chapterIndex}`,
+  );
+});
+
 ipcMain.handle('image-generate', async (_event, payload: {
   requestId: string;
   prompt: string;
