@@ -76,7 +76,7 @@ npm run start
 ## 关联
 
 - Week 1 双线 Cowork 交接包:`docs/03_specs/Week1-Dual-Track-Cowork-Handoff.md`(计划文件)
-- Week 2 双线 Cowork 交接包:`docs/03_specs/Week2-Dual-Track-Cowork-Handoff.md`(本次同步新增)
+- Week 2 双线 Cowork 交接包（后已归档）:`docs/_archive/process_handoffs/cowork-week2/Week2-Dual-Track-Cowork-Handoff.md`
 - Week 1 主交付 changelog:
   - `2026-04-26-内容创作前端Mock执行链路.md`
   - `2026-04-26-内容创作执行状态迁移Store.md`

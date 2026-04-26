@@ -36,7 +36,7 @@ src/core/
  * OCT v2 Architecture - Placeholder
  * 
  * This module will be implemented in a later migration phase.
- * See docs/03_migration/architecture-blueprint.md for design details.
+ * See docs/_archive/migration/v2-and-gateway/OCT-v2-Architecture-Blueprint.md for design details.
  */
 
 // TODO: Implement in Phase {对应的 Phase 编号}
@@ -293,7 +293,7 @@ export interface RenderSegmentV1 {
 
 ## 任务 0.4：更新 migration-status.md
 
-打开 `docs/03_migration/migration-status.md`，将 Phase 0 的所有 checkbox 从 `[ ]` 改为 `[x]`，并更新当前阶段为：
+打开 `docs/_archive/migration/v2-and-gateway/migration-status.md`（或占位说明 `docs/03_migration/README.md`），将 Phase 0 的所有 checkbox 从 `[ ]` 改为 `[x]`，并更新当前阶段为：
 
 ```markdown
 ## 当前阶段

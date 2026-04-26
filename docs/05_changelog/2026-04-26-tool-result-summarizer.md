@@ -70,4 +70,4 @@ ToolLoop 写回模型上下文前保留三层保护：
 ## Related
 
 1. `docs/07_research/2026-04-26-toolloop-pre-summarizer.md`
-2. `docs/03_specs/Week2-Track-B-Followup-After-B1.md`
+2. `docs/_archive/process_handoffs/cowork-week2/Week2-Track-B-Followup-After-B1.md`

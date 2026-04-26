@@ -693,13 +693,13 @@ main().catch(console.error);
 - [ ] 全量回归测试
 - [x] 更新 FEATURE_MAP.md
 - [x] 更新 README.md
-- [x] 更新 `docs/03_migration/migration-status.md`
+- [x] 更新 `docs/_archive/migration/v2-and-gateway/migration-status.md`
 
 ### Phase 5 验收记录（2026-04-09）
 
 | 项 | 状态 |
 |----|------|
-| 文档同步 | 已更新 `oct-gateway/README.md`、`docs/02_architecture/FEATURE_MAP.md`、`docs/03_migration/migration-status.md`、本计划书与执行书，使其与当前实现一致 |
+| 文档同步 | 已更新 `oct-gateway/README.md`、`docs/02_architecture/FEATURE_MAP.md`、`docs/_archive/migration/v2-and-gateway/migration-status.md`、本计划书与执行书，使其与当前实现一致 |
 | 重复代码收敛 | 已新增 `transport/connection.js`，统一新传输层与 legacy WS 分支的 `connection` 适配结构，降低后续删旧代码风险 |
 | 联调修复 | 已修复 `MAX_TOOL_ROUNDS` 初始化顺序、legacy `WebSocketServer/http` 导入缺失、`node:crypto` challenge 握手、系统消息与正文串流、`/think off` 的 CoT 展示、普通 AI 回复误进 system bubble、图片 analyzer/MCP 参数兼容、任务看板重复添加与 hover 详情、右栏 `TOK/CTX` 多 provider 显示、记忆更新假成功 |
 | 入口瘦身 | 已新增 `services/opsScheduler.js`、`services/startupHealth.js`、`runtime/contextHelpers.js`、`runtime/streamUtils.js`、`transport/helpers.js`、`transport/httpRoutes.js`、`transport/legacyTransport.js`；`index.js` 已从 2172 行降到 **1196 行** 左右的接线层 |

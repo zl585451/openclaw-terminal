@@ -54,7 +54,7 @@ v1.0 (2026-03-27) — 见 OCT-v2-Architecture-Blueprint.md
 
 ## Phase 0：准备工作
 
-- [x] 0.1 创建 `docs/03_migration/` 目录和状态文件
+- [x] 0.1 创建 `docs/03_migration/` 目录和状态文件（目录后迁至 `docs/_archive/migration/v2-and-gateway/`，见 `docs/03_migration/README.md`）
 - [x] 0.2 备份 `ChatTab.tsx` → `ChatTab.v1.tsx`
 - [x] 0.3 创建 `src/core/` 目录
 - [x] 0.4 创建核心类型定义 `src/core/types.ts`

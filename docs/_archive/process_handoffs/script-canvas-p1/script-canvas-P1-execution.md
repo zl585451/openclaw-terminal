@@ -1,6 +1,6 @@
 # 剧本 Canvas P1 功能执行方案
 
-> 文件路径：`docs/03_specs/script-canvas-P1-execution.md`  
+> 文件路径（归档）：`docs/_archive/process_handoffs/script-canvas-p1/script-canvas-P1-execution.md`  
 > 前置条件：P0 已完成（剧本上传、解析、染色渲染已可用）  
 > 执行顺序：P1-5 → P1-1 → P1-4 → P1-2 → P1-3（按依赖和风险排序）
 

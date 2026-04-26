@@ -16,12 +16,12 @@ Claude 每次对话有 token 上限，长工程跨多个会话时容易丢上下
 
 在项目根目录维护一个状态文件，**每完成一个步骤就更新它**。每次开新 Claude 会话时，上传这个文件 + 架构蓝图，Claude 就能立刻知道当前进度。
 
-**文件路径**：`docs/03_migration/migration-status.md`
+**文件路径**：`docs/_archive/migration/v2-and-gateway/migration-status.md`
 
 ```
 每次和 Claude 开新会话时，上传这两个文件：
-1. docs/03_migration/migration-status.md    ← 当前进度
-2. docs/03_migration/architecture-blueprint.md  ← 架构蓝图
+1. docs/_archive/migration/v2-and-gateway/migration-status.md    ← 当前进度
+2. docs/_archive/migration/v2-and-gateway/OCT-v2-Architecture-Blueprint.md  ← 架构蓝图
 
 Claude 会根据这两个文件知道：
 - 哪些 Phase 已完成
@@ -88,7 +88,7 @@ git checkout v2-phase{N}-baseline      # 回到基线
 > 每完成一项，把 ⬜ 改为 ✅，记录日期
 
 ### Phase 0：准备工作（预计 0.5 天）✅ 已完成
-- [x] 0.1 创建 `docs/03_migration/` 目录和状态文件
+- [x] 0.1 创建 `docs/_archive/migration/v2-and-gateway/` 目录和状态文件
 - [x] 0.2 备份 `ChatTab.tsx` → `ChatTab.v1.tsx`
 - [x] 0.3 创建 `src/core/` 目录
 - [x] 0.4 创建核心类型定义 `src/core/types.ts`
@@ -150,7 +150,7 @@ Step 1: 【Zilong】 打 Git 基线标签
         执行 Phase 开始前的 git 命令
 
 Step 2: 【Zilong → Claude】 开新会话（如需要）
-        上传 migration-status.md + architecture-blueprint.md
+        上传 migration-status.md + OCT-v2-Architecture-Blueprint.md
         告诉 Claude "我要开始 Phase N"
 
 Step 3: 【Claude】 输出该 Phase 的 Cursor Prompt
@@ -352,7 +352,7 @@ v1.0 (2026-03-27)
 
 上传了两个文件：
 1. migration-status.md — 当前进度
-2. architecture-blueprint.md — 架构蓝图
+2. OCT-v2-Architecture-Blueprint.md — 架构蓝图
 
 当前状态：Phase {N}，具体进展见 migration-status.md
 
@@ -376,13 +376,13 @@ mkdir E:\windows-window\OpenClaw-Terminal\docs\03_migration
 2. 把本文件保存为：
 
 ```
-docs/03_migration/execution-plan.md
+docs/_archive/migration/v2-and-gateway/OCT-v2-Execution-Plan.md
 ```
 
 3. 把架构蓝图保存为：
 
 ```
-docs/03_migration/architecture-blueprint.md
+docs/_archive/migration/v2-and-gateway/OCT-v2-Architecture-Blueprint.md
 ```
 
 4. 创建 migration-status.md（用上面的模板）
