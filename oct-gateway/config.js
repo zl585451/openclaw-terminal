@@ -758,6 +758,12 @@ function readBoolConfig(key, fallback = false) {
   return /^(1|true|yes|on)$/i.test(String(raw).trim());
 }
 
+function readPositiveIntConfig(key, fallback) {
+  const parsed = Number(getEnvOrConfig(key));
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
 function readOptionalBoolConfig(key) {
   const raw = getEnvOrConfig(key);
   if (raw === '' || raw === null || raw === undefined) return null;
@@ -1065,6 +1071,13 @@ function normalizeAgentPermissions(raw) {
 const config = {
   PORT: parseInt(process.env.OCT_GATEWAY_PORT || '18789', 10),
   ENABLE_BACKGROUND_TASK_DISPATCH: readBoolConfig('ENABLE_BACKGROUND_TASK_DISPATCH', false),
+  toolResultSummarizer: {
+    enabled: readBoolConfig('TOOL_RESULT_SUMMARIZER_ENABLED', false),
+    triggerChars: readPositiveIntConfig('TOOL_RESULT_SUMMARIZER_TRIGGER_CHARS', 2400),
+    targetChars: readPositiveIntConfig('TOOL_RESULT_SUMMARIZER_TARGET_CHARS', 600),
+    fallbackKeepChars: readPositiveIntConfig('TOOL_RESULT_SUMMARIZER_FALLBACK_KEEP', 1500),
+    tools: String(getEnvOrConfig('TOOL_RESULT_SUMMARIZER_TOOLS') || '').trim(),
+  },
 
   DASHSCOPE_API_KEY: pickKey(process.env.DASHSCOPE_API_KEY, _fileConfig.DASHSCOPE_API_KEY, legacyConfig.DASHSCOPE_API_KEY),
   DASHSCOPE_BASE_URL: process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1',
