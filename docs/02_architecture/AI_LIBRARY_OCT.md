@@ -41,6 +41,8 @@ OCT 仓库内提供 **`resources/ai_library/`**（`api_server.py`、`audio_knowl
 
 模块：`library_db.py`（SQLite）、`chapter_splitter.py`（章节规则）。自测：`python test_chapter_splitter.py`、`python test_library_phase2_smoke.py`（临时数据根，不污染默认目录）。
 
+章节切分器当前额外处理两类真实文本问题：首字符 BOM 导致的首章漏匹配，以及文末/文中目录式章节清单导致的批量空壳伪章节；策略是跳过前置区伪命中、移除标题整行后计算正文信号，并过滤仅含标题与分隔线的候选章。
+
 第三方（Gateway / 内容创作工作台）在 **Phase 3** 再对接；本轮无前端 UI。
 
 ---
