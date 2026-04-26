@@ -252,6 +252,14 @@ export function WorkbenchView() {
           onBackToContract={() => {
             if (currentProjectId) scriptAdapterActions.clearExecutionSheet(currentProjectId);
           }}
+          onRetry={() => {
+            if (currentProjectId) {
+              scriptAdapterActions.clearExecutionSheet(currentProjectId);
+            }
+            window.setTimeout(() => {
+              void startExecution();
+            }, 0);
+          }}
         />
       </div>
     );

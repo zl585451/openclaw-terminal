@@ -37,6 +37,12 @@ export interface AgentRun {
   error?: string;
 }
 
+// 复用现有 types/artifact.ts 的 ArtifactType（snake_case），避免两套 ArtifactType 同名歧义。
+// Week 5 真实 Agent 接入时,store 的 stage / artifact 与 execution 链路共用同一个枚举。
+import type { ArtifactType } from './artifact';
+
+export type { ArtifactType };
+
 export interface ArtifactEnvelope<T = unknown> {
   artifactId: string;
   artifactType: ArtifactType;
@@ -47,13 +53,6 @@ export interface ArtifactEnvelope<T = unknown> {
   payload: T;
   metrics?: Record<string, number>;
 }
-
-export type ArtifactType =
-  | 'AdaptedScript'
-  | 'VoiceRoleMarkers'
-  | 'PerformanceDesign'
-  | 'ReviewReport'
-  | 'DeliveryPackage';
 
 export interface ReviewGate {
   gateId: string;

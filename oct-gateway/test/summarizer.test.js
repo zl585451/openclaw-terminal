@@ -1,5 +1,17 @@
 'use strict';
 
+/**
+ * Summarizer 单元测试。
+ *
+ * 默认只跑离线测试(chunker 三种切分 + summarize 超长输入校验),不消耗 API 配额。
+ * 想要跑真实 LLM 调用(预计 ~0.05 元/次):
+ *   PowerShell:  $env:RUN_LIVE_TESTS=1; node oct-gateway/test/summarizer.test.js
+ *   bash:        RUN_LIVE_TESTS=1 node oct-gateway/test/summarizer.test.js
+ * 跑 live 之前,请先确保以下任一组配置已就绪:
+ *   - SUMMARIZER_BASE_URL / SUMMARIZER_API_KEY / SUMMARIZER_MODEL
+ *   - 或当前 Gateway provider 的 baseUrl / apiKey 已通过设置面板配置好
+ */
+
 const assert = require('node:assert');
 const { chunkByChars, chunkByParagraphs, chunkByChapters } = require('../services/chunker');
 const { summarize, summarizeChunks } = require('../services/summarizer');
@@ -52,9 +64,10 @@ async function main() {
     await assert.rejects(() => summarize(makeText(9000)), /SUMMARIZER_INPUT_TOO_LONG/);
   });
 
-  const skipLive = process.env.SKIP_LIVE_TESTS === '1' || process.env.SKIP_LIVE_TESTS === 'true';
-  if (skipLive) {
-    console.log('SKIP live summarizer tests because SKIP_LIVE_TESTS=1');
+  // 默认 SKIP live 测试,避免无心消耗 API 配额。设 RUN_LIVE_TESTS=1 才跑。
+  const runLive = process.env.RUN_LIVE_TESTS === '1' || process.env.RUN_LIVE_TESTS === 'true';
+  if (!runLive) {
+    console.log('SKIP live summarizer tests. Set RUN_LIVE_TESTS=1 to enable real LLM calls.');
   } else {
     await test('summarize returns non-empty summary', async () => {
       const result = await summarize(makeText(2000), { targetLength: 200, purpose: 'general' });

@@ -1971,17 +1971,7 @@
     linear-gradient(135deg, rgba(255, 255, 253, 0.98), rgba(234, 244, 239, 0.98));
 }
 
-.executionHeroCard {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
-  align-items: center;
-  padding: 22px;
-  border-color: rgba(30, 117, 91, 0.22);
-  background:
-    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.14), transparent 34%),
-    linear-gradient(135deg, rgba(239, 247, 242, 0.98), rgba(255, 255, 253, 0.98));
-}
+/* .executionHeroCard 早期定义已合并到 2680 行附近的最终版本 */
 
 .workOrderHeroCard {
   display: grid;
@@ -2727,6 +2717,15 @@
   letter-spacing: 0.06em;
 }
 
+.executionElapsed {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
 .executionQueueCard {
   display: flex;
   flex-direction: column;
@@ -2737,6 +2736,56 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.gateBanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  margin: 6px 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.gateBanner span {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.gateBanner strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.gateBanner em {
+  margin-left: auto;
+  color: #6b7280;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.gateBanner--pending {
+  background: rgba(239, 159, 39, 0.10);
+  border-color: rgba(239, 159, 39, 0.32);
+  animation: gateBannerPulse 1.6s ease-in-out infinite;
+}
+
+.gateBanner--approved {
+  background: rgba(30, 117, 91, 0.10);
+  border-color: rgba(30, 117, 91, 0.32);
+}
+
+.gateBanner--rejected {
+  background: rgba(190, 56, 56, 0.10);
+  border-color: rgba(190, 56, 56, 0.32);
+}
+
+@keyframes gateBannerPulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
 }
 
 .executionAgentCard {
@@ -2771,10 +2820,11 @@
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  background: rgba(30, 117, 91, 0.12);
-  color: #176149;
-  font-size: 12px;
+  background: rgba(53, 64, 67, 0.06);
+  color: #596165;
+  font-size: 15px;
   font-weight: 900;
+  flex-shrink: 0;
 }
 
 .executionAgentMain {
@@ -2838,6 +2888,235 @@
 .executionAgentFooter b {
   color: #176149;
   font-size: 12px;
+}
+
+/* ---- status icon in order badge ---- */
+
+.executionStatusIcon-pending,
+.executionStatusIcon-awaiting_review {
+  color: #99a0a3;
+}
+
+.executionStatusIcon-running {
+  color: #ef9f27;
+  animation: executionSpin 1.2s linear infinite;
+}
+
+.executionStatusIcon-completed {
+  color: #1e755b;
+}
+
+.executionStatusIcon-failed {
+  color: #e24b4a;
+}
+
+@keyframes executionSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ---- header expand row ---- */
+
+.executionAgentHeader {
+  cursor: pointer;
+  user-select: none;
+}
+
+.executionAgentStatusGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.executionAgentStatusGroup small {
+  color: #99a0a3;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.expandArrow {
+  display: inline-block;
+  font-size: 9px;
+  color: #99a0a3;
+  transition: transform 180ms ease;
+}
+
+.expandArrowOpen {
+  composes: expandArrow;
+  transform: rotate(180deg);
+}
+
+/* ---- expanded detail ---- */
+
+.executionAgentDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(53, 64, 67, 0.08);
+  animation: detailSlideIn 200ms ease;
+}
+
+@keyframes detailSlideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.executionAgentTechInfo {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.techLabel {
+  color: #99a0a3;
+  white-space: nowrap;
+}
+
+.techValue {
+  color: #41474a;
+  word-break: break-all;
+}
+
+.executionAgentRoleSummary {
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.executionAgentArtifact {
+  margin-top: 4px;
+}
+
+/* ---- expand prompt button ---- */
+
+.expandPromptButton {
+  display: block;
+  width: 100%;
+  padding: 8px 0 2px;
+  border: 0;
+  background: none;
+  color: #1e755b;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.expandPromptButton:hover {
+  color: #176149;
+  text-decoration: underline;
+}
+
+/* ---- artifact preview modes ---- */
+
+.artifactPreview--compact .scriptSegmentList,
+.artifactPreview--compact .voiceRoleGrid,
+.artifactPreview--compact .performancePreviewList,
+.artifactPreview--compact .reviewIssueList,
+.artifactPreview--compact .deliveryManifestList {
+  max-height: 320px;
+  overflow: hidden;
+}
+
+/* ---- review conclusion badge ---- */
+
+.reviewConclusionBadge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.reviewConclusionBadge[data-conclusion='pass'] {
+  background: rgba(30, 117, 91, 0.12);
+  color: #176149;
+}
+
+.reviewConclusionBadge[data-conclusion='pass_with_changes'] {
+  background: rgba(239, 159, 39, 0.12);
+  color: #b06d1c;
+}
+
+.reviewConclusionBadge[data-conclusion='reject'] {
+  background: rgba(226, 75, 74, 0.12);
+  color: #b52c2b;
+}
+
+.reviewIssueList .severityBadge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.reviewIssueList .severityBadge--p0 {
+  background: rgba(190, 56, 56, 0.12);
+  color: #be3838;
+  border-color: rgba(190, 56, 56, 0.30);
+}
+
+.reviewIssueList .severityBadge--p1 {
+  background: rgba(239, 159, 39, 0.14);
+  color: #b16a00;
+  border-color: rgba(239, 159, 39, 0.30);
+}
+
+.reviewIssueList .severityBadge--p2 {
+  background: rgba(125, 132, 142, 0.12);
+  color: #4b5563;
+  border-color: rgba(125, 132, 142, 0.28);
+}
+
+.voiceRoleGrid .roleCategory {
+  display: inline-flex;
+  width: fit-content;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.voiceRoleGrid .roleCategory--narrator {
+  background: rgba(125, 132, 142, 0.12);
+  color: #4b5563;
+  border-color: rgba(125, 132, 142, 0.30);
+}
+
+.voiceRoleGrid .roleCategory--main {
+  background: rgba(38, 99, 209, 0.12);
+  color: #1d4ed8;
+  border-color: rgba(38, 99, 209, 0.30);
+}
+
+.voiceRoleGrid .roleCategory--support {
+  background: rgba(30, 117, 91, 0.12);
+  color: #1e755b;
+  border-color: rgba(30, 117, 91, 0.30);
+}
+
+.voiceRoleGrid .roleCategory--unresolved {
+  background: rgba(190, 56, 56, 0.12);
+  color: #be3838;
+  border-color: rgba(190, 56, 56, 0.30);
+}
+
+.voiceRoleGrid .roleCategory--sfx {
+  background: rgba(120, 76, 200, 0.12);
+  color: #6d4cb8;
+  border-color: rgba(120, 76, 200, 0.30);
 }
 
 .executionResultGrid {

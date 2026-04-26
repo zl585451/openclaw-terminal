@@ -12,41 +12,45 @@ import type {
   VoiceRoleMarkersPayload,
 } from '../types/execution';
 
+// 注意：artifact 类型名沿用 src/modules/script-adapter/types/artifact.ts 的 snake_case 命名,
+// 与 store / stage / mockData 体系保持一致。
+// inputArtifactTypes 中的 source_document / analysis_report / modification_strategy
+// 是 Week 4+ 才会接入的上游产物名称,目前仅作展示用,未在 ArtifactType 枚举内。
 const AGENTS = [
   {
     agentId: 'adapter.audiobook_text_rewriter@1.0',
     displayName: '文本改编师',
     roleSummary: '把原文改成更适合多人演播的口语化样章。',
-    inputArtifactTypes: ['SourceDocument', 'AnalysisReport', 'ModificationStrategy'],
-    outputArtifactTypes: ['AdaptedScript'],
+    inputArtifactTypes: ['source_document', 'analysis_report', 'modification_strategy'],
+    outputArtifactTypes: ['adapted_script'],
   },
   {
     agentId: 'classifier.voice_role_marker@1.0',
     displayName: '角色音统筹',
     roleSummary: '标出旁白、明确角色音、未定来源声音和占位。',
-    inputArtifactTypes: ['AdaptedScript'],
-    outputArtifactTypes: ['VoiceRoleMarkers'],
+    inputArtifactTypes: ['adapted_script'],
+    outputArtifactTypes: ['voice_registry'],
   },
   {
     agentId: 'designer.performance_audio@1.0',
     displayName: '演播设计师',
     roleSummary: '补充 BGM、音效、CV 情绪、气息和动作提示。',
-    inputArtifactTypes: ['AdaptedScript', 'VoiceRoleMarkers'],
-    outputArtifactTypes: ['PerformanceDesign'],
+    inputArtifactTypes: ['adapted_script', 'voice_registry'],
+    outputArtifactTypes: ['performance_design'],
   },
   {
     agentId: 'reviewer.production_quality@1.0',
     displayName: '质检审校',
     roleSummary: '检查剧情忠实度、角色音合理性和演播提示可执行性。',
-    inputArtifactTypes: ['AdaptedScript', 'VoiceRoleMarkers', 'PerformanceDesign'],
-    outputArtifactTypes: ['ReviewReport'],
+    inputArtifactTypes: ['adapted_script', 'voice_registry', 'performance_design'],
+    outputArtifactTypes: ['review_report'],
   },
   {
     agentId: 'packager.content_delivery@1.0',
     displayName: '交付打包员',
     roleSummary: '把样章台本、角色音表、演播设计和质检报告整理成交付包。',
-    inputArtifactTypes: ['AdaptedScript', 'VoiceRoleMarkers', 'PerformanceDesign', 'ReviewReport'],
-    outputArtifactTypes: ['DeliveryPackage'],
+    inputArtifactTypes: ['adapted_script', 'voice_registry', 'performance_design', 'review_report'],
+    outputArtifactTypes: ['final_package'],
   },
 ];
 
@@ -280,7 +284,7 @@ function createArtifactForAgent(agentId: string, displayName: string): ArtifactE
         },
       ],
     };
-    return envelope('AdaptedScript', agentId, displayName, '多人演播样章台本', '已完成第1章前半段的听感改编样稿。', payload, {
+    return envelope('adapted_script', agentId, displayName, '多人演播样章台本', '已完成第1章前半段的听感改编样稿。', payload, {
       segments: payload.segments.length,
       chars: payload.totalCharCount,
     });
@@ -296,7 +300,7 @@ function createArtifactForAgent(agentId: string, displayName: string): ArtifactE
       ],
       unresolved: ['未定记录者A'],
     };
-    return envelope('VoiceRoleMarkers', agentId, displayName, '角色音标注表', '已标出旁白、主要角色和一个待确认来源声音。', payload, {
+    return envelope('voice_registry', agentId, displayName, '角色音标注表', '已标出旁白、主要角色和一个待确认来源声音。', payload, {
       roles: payload.registry.length,
       unresolved: payload.unresolved.length,
     });
@@ -315,7 +319,7 @@ function createArtifactForAgent(agentId: string, displayName: string): ArtifactE
         { atSegmentId: 'seg-004', emotion: '迟疑/2级 -> 紧绷/3级', pace: '前半句放慢，尾句留半拍。' },
       ],
     };
-    return envelope('PerformanceDesign', agentId, displayName, '演播设计提示', '已补充场景底噪、关键音效和 CV 情绪方向。', payload, {
+    return envelope('performance_design', agentId, displayName, '演播设计提示', '已补充场景底噪、关键音效和 CV 情绪方向。', payload, {
       sfx: payload.sfxList.length,
       directions: payload.cvDirections.length,
     });
@@ -348,7 +352,7 @@ function createArtifactForAgent(agentId: string, displayName: string): ArtifactE
         },
       ],
     };
-    return envelope('ReviewReport', agentId, displayName, '质检问题清单', '未发现 P0，建议带一条角色音复核进入交付。', payload, {
+    return envelope('review_report', agentId, displayName, '质检问题清单', '未发现 P0，建议带一条角色音复核进入交付。', payload, {
       issues: payload.issues.length,
       p1: 1,
       p2: 2,
@@ -366,7 +370,7 @@ function createArtifactForAgent(agentId: string, displayName: string): ArtifactE
     versionTag: 'audiobook-mvp-sample-v0.1',
     notes: '本包为 mock 交付预览，用于验证执行链路和 UI 行为。',
   };
-  return envelope('DeliveryPackage', agentId, displayName, '制作交付包', '样章台本、角色音表、演播设计和质检报告已整理完成。', payload, {
+  return envelope('final_package', agentId, displayName, '制作交付包', '样章台本、角色音表、演播设计和质检报告已整理完成。', payload, {
     files: payload.manifest.length,
   });
 }

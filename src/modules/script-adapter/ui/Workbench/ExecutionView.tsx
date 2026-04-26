@@ -1,21 +1,45 @@
+import { Fragment, useEffect, useState } from 'react';
 import type { TaskExecutionSheet } from '../../types/execution';
 import { abortPipeline } from '../../services/mockAgentExecution';
 import { AgentRunCard } from './AgentRunCard';
 import { ArtifactPreview } from './ArtifactPreview';
 import styles from '../../styles/scriptAdapter.module.css';
 
+const GATE_TYPE_LABEL: Record<string, string> = {
+  strategy_confirmation: '修改策略',
+  quality_review: '质检结果',
+  target_scope_confirmation: '目标范围',
+};
+
 interface ExecutionViewProps {
   sheet: TaskExecutionSheet;
   onBackToContract: () => void;
+  onRetry?: () => void;
 }
 
-export function ExecutionView({ sheet, onBackToContract }: ExecutionViewProps) {
+export function ExecutionView({ sheet, onBackToContract, onRetry }: ExecutionViewProps) {
+  const [now, setNow] = useState(() => Date.now());
   const artifacts = Object.values(sheet.artifacts);
   const completedCount = sheet.runs.filter((run) => run.status === 'completed').length;
   const currentRun = sheet.runs.find((run) => run.status === 'running');
   const currentAgent = currentRun
     ? sheet.plan.agents.find((agent) => agent.agentId === currentRun.agentId)
     : null;
+  const elapsedMs = sheet.overallStatus === 'running'
+    ? now - new Date(sheet.createdAt).getTime()
+    : new Date(sheet.updatedAt).getTime() - new Date(sheet.createdAt).getTime();
+  const elapsedLabel = formatElapsed(elapsedMs);
+  const statusLabel = sheet.overallStatus === 'completed'
+    ? 'COMPLETE'
+    : sheet.overallStatus === 'failed'
+      ? 'FAILED'
+      : 'RUNNING';
+
+  useEffect(() => {
+    if (sheet.overallStatus !== 'running') return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [sheet.overallStatus]);
 
   return (
     <main className={styles.taskMain}>
@@ -34,13 +58,18 @@ export function ExecutionView({ sheet, onBackToContract }: ExecutionViewProps) {
           </p>
         </div>
         <div className={styles.executionHeroActions}>
-          <strong>{sheet.overallStatus === 'completed' ? 'COMPLETE' : 'RUNNING'}</strong>
+          <strong>{statusLabel}</strong>
+          <small className={styles.executionElapsed}>{elapsedLabel}</small>
           <button type="button" className={styles.ghostButton} onClick={onBackToContract}>
             返回开工确认书
           </button>
           {sheet.overallStatus === 'running' ? (
             <button type="button" className={styles.ghostButton} onClick={abortPipeline}>
               取消执行
+            </button>
+          ) : sheet.overallStatus === 'failed' ? (
+            <button type="button" className={styles.confirmStartButton} onClick={onRetry}>
+              重试
             </button>
           ) : null}
         </div>
@@ -59,14 +88,36 @@ export function ExecutionView({ sheet, onBackToContract }: ExecutionViewProps) {
           {sheet.plan.agents.map((agent) => {
             const run = sheet.runs.find((item) => item.agentId === agent.agentId);
             const artifact = run?.outputArtifactIds[0] ? sheet.artifacts[run.outputArtifactIds[0]] : undefined;
-            return run ? (
-              <AgentRunCard
-                key={agent.agentId}
-                agent={agent}
-                run={run}
-                artifactTitle={artifact?.title}
-              />
-            ) : null;
+            const gate = sheet.gates.find((item) => item.afterAgentId === agent.agentId);
+            return (
+              <Fragment key={agent.agentId}>
+                {run ? (
+                  <AgentRunCard
+                    agent={agent}
+                    run={run}
+                    artifact={artifact}
+                  />
+                ) : null}
+                {gate ? (
+                  <div
+                    className={`${styles.gateBanner} ${
+                      gate.status === 'approved'
+                        ? styles['gateBanner--approved']
+                        : gate.status === 'rejected'
+                          ? styles['gateBanner--rejected']
+                          : styles['gateBanner--pending']
+                    }`}
+                  >
+                    <span>{gate.status === 'approved' ? '✓' : gate.status === 'rejected' ? '✗' : '⏸'}</span>
+                    <strong>
+                      {GATE_TYPE_LABEL[gate.gateType] ?? gate.gateType}
+                      {gate.status === 'approved' ? ' 已通过' : gate.status === 'rejected' ? ' 未通过' : ' 确认'}
+                    </strong>
+                    <em>{gate.status === 'pending' ? '自动通过中...' : gate.description}</em>
+                  </div>
+                ) : null}
+              </Fragment>
+            );
           })}
         </div>
       </section>
@@ -100,4 +151,13 @@ export function ExecutionView({ sheet, onBackToContract }: ExecutionViewProps) {
       </section>
     </main>
   );
+}
+
+function formatElapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '0s';
+  const totalSec = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }

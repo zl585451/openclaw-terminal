@@ -1,38 +1,40 @@
+// artifact 类型沿用 src/modules/script-adapter/types/artifact.ts 的 snake_case 命名,
+// 确保 Gateway 推送的 artifactType 与前端 ArtifactPreview / store 的判断分支可以对上。
 const AGENTS = [
   {
     agentId: 'adapter.audiobook_text_rewriter@1.0',
     displayName: '文本改编师',
     roleSummary: '把原文改成更适合多人演播的口语化样章。',
-    inputArtifactTypes: ['SourceDocument', 'AnalysisReport', 'ModificationStrategy'],
-    outputArtifactTypes: ['AdaptedScript'],
+    inputArtifactTypes: ['source_document', 'analysis_report', 'modification_strategy'],
+    outputArtifactTypes: ['adapted_script'],
   },
   {
     agentId: 'classifier.voice_role_marker@1.0',
     displayName: '角色音统筹',
     roleSummary: '标出旁白、明确角色音、未定来源声音和占位。',
-    inputArtifactTypes: ['AdaptedScript'],
-    outputArtifactTypes: ['VoiceRoleMarkers'],
+    inputArtifactTypes: ['adapted_script'],
+    outputArtifactTypes: ['voice_registry'],
   },
   {
     agentId: 'designer.performance_audio@1.0',
     displayName: '演播设计师',
     roleSummary: '补充 BGM、音效、CV 情绪、气息和动作提示。',
-    inputArtifactTypes: ['AdaptedScript', 'VoiceRoleMarkers'],
-    outputArtifactTypes: ['PerformanceDesign'],
+    inputArtifactTypes: ['adapted_script', 'voice_registry'],
+    outputArtifactTypes: ['performance_design'],
   },
   {
     agentId: 'reviewer.production_quality@1.0',
     displayName: '质检审校',
     roleSummary: '检查剧情忠实度、角色音合理性和演播提示可执行性。',
-    inputArtifactTypes: ['AdaptedScript', 'VoiceRoleMarkers', 'PerformanceDesign'],
-    outputArtifactTypes: ['ReviewReport'],
+    inputArtifactTypes: ['adapted_script', 'voice_registry', 'performance_design'],
+    outputArtifactTypes: ['review_report'],
   },
   {
     agentId: 'packager.content_delivery@1.0',
     displayName: '交付打包员',
     roleSummary: '把样章台本、角色音表、演播设计和质检报告整理成交付包。',
-    inputArtifactTypes: ['AdaptedScript', 'VoiceRoleMarkers', 'PerformanceDesign', 'ReviewReport'],
-    outputArtifactTypes: ['DeliveryPackage'],
+    inputArtifactTypes: ['adapted_script', 'voice_registry', 'performance_design', 'review_report'],
+    outputArtifactTypes: ['final_package'],
   },
 ];
 
@@ -193,7 +195,7 @@ function startMockScriptAdapterRun(params, connection, logger) {
 
 function createArtifactForAgent(agentId, displayName) {
   if (agentId === 'adapter.audiobook_text_rewriter@1.0') {
-    return envelope('AdaptedScript', agentId, displayName, '多人演播样章台本', '已完成第1章前半段的听感改编样稿。', {
+    return envelope('adapted_script', agentId, displayName, '多人演播样章台本', '已完成第1章前半段的听感改编样稿。', {
       chapterTitle: '第1章 · 樟木箱',
       totalCharCount: 286,
       segments: [
@@ -215,7 +217,7 @@ function createArtifactForAgent(agentId, displayName) {
   }
 
   if (agentId === 'classifier.voice_role_marker@1.0') {
-    return envelope('VoiceRoleMarkers', agentId, displayName, '角色音标注表', '已标出旁白、主要角色和一个待确认来源声音。', {
+    return envelope('voice_registry', agentId, displayName, '角色音标注表', '已标出旁白、主要角色和一个待确认来源声音。', {
       registry: [
         { roleName: '旁白', category: 'narrator', voiceHint: '冷静克制，悬疑感轻压', appearanceCount: 2 },
         { roleName: '周佳宁', category: 'main', voiceHint: '年轻女性，压抑、少话，反应慢半拍', appearanceCount: 2 },
@@ -227,7 +229,7 @@ function createArtifactForAgent(agentId, displayName) {
   }
 
   if (agentId === 'designer.performance_audio@1.0') {
-    return envelope('PerformanceDesign', agentId, displayName, '演播设计提示', '已补充场景底噪、关键音效和 CV 情绪方向。', {
+    return envelope('performance_design', agentId, displayName, '演播设计提示', '已补充场景底噪、关键音效和 CV 情绪方向。', {
       bgmTrack: { mood: '空屋静场', suggestion: '低频稀疏铺底，保持人声清楚，进入阁楼前轻微收紧。' },
       sfxList: [
         { atSegmentId: 'seg-001', sfxType: 'AMB', description: '老楼道空旷底噪，轻微风声，持续但弱。' },
@@ -240,7 +242,7 @@ function createArtifactForAgent(agentId, displayName) {
   }
 
   if (agentId === 'reviewer.production_quality@1.0') {
-    return envelope('ReviewReport', agentId, displayName, '质检问题清单', '未发现 P0，建议带一条角色音复核进入交付。', {
+    return envelope('review_report', agentId, displayName, '质检问题清单', '未发现 P0，建议带一条角色音复核进入交付。', {
       conclusion: 'pass_with_changes',
       issues: [
         {
@@ -254,7 +256,7 @@ function createArtifactForAgent(agentId, displayName) {
     }, { issues: 1, p1: 1 });
   }
 
-  return envelope('DeliveryPackage', agentId, displayName, '制作交付包', '样章台本、角色音表、演播设计和质检报告已整理完成。', {
+  return envelope('final_package', agentId, displayName, '制作交付包', '样章台本、角色音表、演播设计和质检报告已整理完成。', {
     manifest: [
       { name: '第1章前半段_多人演播样章.md', type: '台本', size: '3.2 KB' },
       { name: '第1章前半段_角色音标注表.json', type: '角色音', size: '1.1 KB' },

@@ -752,7 +752,48 @@ UI 行为：
 
 ---
 
-## 28. 后续扩展
+## 28. V2.22 执行视图视觉规范
+
+V2.22 补齐开工后的执行视图视觉反馈，让 mock 执行链路可用于正式演示。
+
+闸门 banner 规则：
+
+1. `ReviewGate` 应在对应 `afterAgentId` 的 Agent 卡片之后以内联横条展示。
+2. `pending` 使用暖橙色半透明背景，文案为等待对应闸门确认并提示自动通过中。
+3. `approved` 使用绿色半透明背景，文案为对应闸门已通过。
+4. `rejected` 使用红色半透明背景，文案为对应闸门未通过。
+5. 当前中文标签映射为：`strategy_confirmation` = 修改策略，`quality_review` = 质检结果，`target_scope_confirmation` = 目标范围。
+
+计时器规则：
+
+1. 执行页头部应显示本轮总耗时。
+2. `running` 状态每秒刷新，起点为 `sheet.createdAt`。
+3. `completed` / `failed` 状态停止刷新，显示 `sheet.updatedAt - sheet.createdAt` 的最终耗时。
+4. 时间文本使用 tabular number，避免数字跳动造成按钮区宽度变化。
+
+失败重试规则：
+
+1. `running` 状态展示取消执行。
+2. `failed` 状态展示重试按钮。
+3. 重试必须清空当前 `TaskExecutionSheet` 后重新走确认开工同一路径。
+4. Gateway cancel 完整接入前，取消按钮只保证前端 mock 路径可中断；Gateway 路径的取消由后续协议补齐。
+
+产物色块规则：
+
+1. `ReviewReport` 的 `severity` 应显示为 badge：P0 红色、P1 橙色、P2 灰色。
+2. `VoiceRoleMarkers` 的 `category` 应显示为 chip：narrator 灰色、main 蓝色、support 绿色、unresolved 红色、sfx 紫色。
+3. compact 和 full 两种产物预览模式都应沿用同一套色块。
+
+新增 CSS 类：
+
+1. `gateBanner` / `gateBanner--pending` / `gateBanner--approved` / `gateBanner--rejected`
+2. `executionElapsed`
+3. `severityBadge` / `severityBadge--p0` / `severityBadge--p1` / `severityBadge--p2`
+4. `roleCategory` / `roleCategory--narrator` / `roleCategory--main` / `roleCategory--support` / `roleCategory--unresolved` / `roleCategory--sfx`
+
+---
+
+## 29. 后续扩展
 
 V2 稳定后，下一步建议按以下顺序推进：
 
