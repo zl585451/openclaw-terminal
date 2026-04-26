@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useScriptAdapterStore } from '../../store/scriptAdapterStore';
 import { scriptAdapterActions } from '../../store/actions';
 import {
@@ -11,7 +11,6 @@ import {
   subscribeGatewayExecutionEvents,
 } from '../../services/gatewayExecution';
 import type { StageStatus } from '../../types/stage';
-import { StatusDot } from '../shared/StatusDot';
 import { ExecutionView } from './ExecutionView';
 import styles from '../../styles/scriptAdapter.module.css';
 
@@ -68,7 +67,6 @@ const TEAM_ROLE_COPY: Record<string, { title: string; shortDesc: string; promise
 };
 
 export function WorkbenchView() {
-  const [showTechDetails, setShowTechDetails] = useState(false);
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -79,9 +77,6 @@ export function WorkbenchView() {
   const stages = useScriptAdapterStore((state) =>
     currentProjectId ? state.stages[currentProjectId] ?? [] : [],
   );
-  const artifacts = useScriptAdapterStore((state) =>
-    currentProjectId ? state.artifacts[currentProjectId] ?? [] : [],
-  );
   const executionSheet = useScriptAdapterStore((state) =>
     currentProjectId ? state.executionSheets[currentProjectId] ?? null : null,
   );
@@ -89,9 +84,6 @@ export function WorkbenchView() {
   executionSheetRef.current = executionSheet;
 
   const currentChapter = chapters.find((chapter) => chapter.id === project?.meta.currentChapterId) ?? chapters[0];
-  const sceneBreakdown = artifacts.find((artifact) => artifact.type === 'scene_breakdown');
-  const plotLock = artifacts.find((artifact) => artifact.type === 'plot_lock');
-  const styleProfile = artifacts.find((artifact) => artifact.type === 'style_profile');
   const productionStages = stages.filter((stage) => stage.idx >= 3);
   const firstRunnableStage = productionStages.find((stage) => stage.status === 'running')
     ?? productionStages.find((stage) => stage.status === 'pending')
@@ -419,59 +411,6 @@ export function WorkbenchView() {
           </div>
         </section>
 
-        <section className={`${styles.card} ${styles.technicalDetailsCard}`}>
-          <button
-            type="button"
-            className={styles.technicalDetailsToggle}
-            onClick={() => setShowTechDetails((current) => !current)}
-          >
-            <span>{showTechDetails ? '收起技术细节' : '查看技术细节'}</span>
-            <em>Agent ID、输入产物、输出产物、锁定依据</em>
-          </button>
-
-          {showTechDetails ? (
-            <div className={styles.technicalDetailsBody}>
-              <div className={styles.agentExecutionList}>
-                {productionStages.map((stage) => (
-                  <div key={stage.id} className={styles.agentExecutionItem}>
-                    <div className={styles.agentExecutionIndex}>{stage.idx}</div>
-                    <div className={styles.agentExecutionMain}>
-                      <div className={styles.agentExecutionTop}>
-                        <strong>{stage.name}</strong>
-                        <span>
-                          <StatusDot status={stage.status} />
-                          {STATUS_LABEL[stage.status]}
-                        </span>
-                      </div>
-                      <p>{stage.description}</p>
-                      <div className={styles.agentExecutionMeta}>
-                        <span>Agent：{stage.agentRef}</span>
-                        <span>输入：{stage.inputArtifactTypes.join(' / ') || '无'}</span>
-                        <span>输出：{stage.outputArtifactTypes.join(' / ')}</span>
-                        {stage.requiresHumanReview ? <span>需要人工复核</span> : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className={styles.lockedEvidenceList}>
-                <div>
-                  <strong>剧情边界</strong>
-                  <span>{plotLock?.contentPreview ?? '等待作品分析产物。'}</span>
-                </div>
-                <div>
-                  <strong>场景依据</strong>
-                  <span>{sceneBreakdown?.contentPreview ?? '等待场景拆分产物。'}</span>
-                </div>
-                <div>
-                  <strong>风格画像</strong>
-                  <span>{styleProfile?.contentPreview ?? '等待风格画像产物。'}</span>
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </section>
       </main>
     </div>
   );

@@ -79,7 +79,7 @@ export function ExecutionView({ sheet, onBackToContract, onRetry }: ExecutionVie
         <div className={styles.productionTeamHeader}>
           <div>
             <div className={styles.sectionTitle}>Agent 制作进度</div>
-            <p>这里展示的是用户可理解的制作角色，技术输入输出仍保留在下方细节里。</p>
+            <p>这里展示的是用户可理解的制作角色和关键产物。</p>
           </div>
           <span className={styles.executionCompletionPill}>{completedCount}/{sheet.plan.agents.length}</span>
         </div>

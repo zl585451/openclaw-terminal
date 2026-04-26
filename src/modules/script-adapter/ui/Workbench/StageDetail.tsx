@@ -40,6 +40,14 @@ const ARTIFACT_STATUS_LABEL: Record<ArtifactStatus, string> = {
   superseded: '已被替代',
 };
 
+const STAGE_STATUS_LABEL: Record<string, string> = {
+  done: '已完成',
+  running: '进行中',
+  review: '待复核',
+  pending: '待执行',
+  failed: '失败',
+};
+
 function getArtifactLabel(type: string): string {
   return ARTIFACT_LABEL[type as ArtifactType] ?? type;
 }
@@ -187,38 +195,26 @@ export function StageDetail() {
       </div>
 
       <div className={styles.metricsGrid}>
-        <MetricCard label="负责 Agent" value={agent?.role ?? stage.name} sub={stage.agentRef} />
+        <MetricCard label="负责角色" value={agent?.role ?? stage.name} sub="制作团队成员" />
         <MetricCard label="当前产物" value={stage.artifactCount} sub="本阶段已产出" />
-        <MetricCard label="运行时长" value={`${stage.runtimeSeconds}s`} sub="开发指标" />
-        <MetricCard label="Token 消耗" value={stage.tokensUsed} sub="开发指标" />
+        <MetricCard label="当前状态" value={STAGE_STATUS_LABEL[stage.status] ?? '待执行'} sub={stage.status === 'running' ? '正在处理' : '等待推进'} />
+        <MetricCard label="人工复核" value={stage.requiresHumanReview ? '需要' : '不需要'} sub="进入下一步前" />
       </div>
 
       <div className={styles.contractGrid}>
         <div className={`${styles.card} ${styles.contractCard}`}>
-          <div className={styles.sectionTitleSmall}>输入产物</div>
-          <div className={styles.tagList}>
-            {stage.inputArtifactTypes.length > 0
-              ? stage.inputArtifactTypes.map((type) => (
-                  <span key={type} className={styles.agentMetaTag} title={type}>
-                    {getArtifactLabel(type)}
-                  </span>
-                ))
-              : <span className={styles.mutedText}>无前置输入</span>}
-          </div>
+          <div className={styles.sectionTitleSmall}>本阶段会做什么</div>
+          <div className={styles.ruleDocText}>{stage.description}</div>
         </div>
         <div className={`${styles.card} ${styles.contractCard}`}>
-          <div className={styles.sectionTitleSmall}>输出产物</div>
+          <div className={styles.sectionTitleSmall}>会交付什么</div>
           <div className={styles.tagList}>
             {stage.outputArtifactTypes.map((type) => (
-              <span key={type} className={styles.agentMetaTag} title={type}>
+              <span key={type} className={styles.agentMetaTag}>
                 {getArtifactLabel(type)}
               </span>
             ))}
           </div>
-        </div>
-        <div className={`${styles.card} ${styles.contractCard}`}>
-          <div className={styles.sectionTitleSmall}>规则文档</div>
-          <div className={styles.ruleDocText}>{stage.ruleDocPath ?? '规则驱动 / 暂无专属规则文档'}</div>
         </div>
       </div>
 

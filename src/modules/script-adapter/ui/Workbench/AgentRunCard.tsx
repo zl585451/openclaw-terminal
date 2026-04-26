@@ -84,16 +84,6 @@ export function AgentRunCard({ agent, run, artifact }: AgentRunCardProps) {
 
         {expanded ? (
           <div className={styles.executionAgentDetail}>
-            <div className={styles.executionAgentTechInfo}>
-              <span className={styles.techLabel}>Agent ID</span>
-              <span className={styles.techValue}>{agent.agentId}</span>
-              <span className={styles.techLabel}>Run ID</span>
-              <span className={styles.techValue}>{run.runId}</span>
-              <span className={styles.techLabel}>输入产物</span>
-              <span className={styles.techValue}>{agent.inputArtifactTypes.join(' / ') || '无'}</span>
-              <span className={styles.techLabel}>输出产物</span>
-              <span className={styles.techValue}>{agent.outputArtifactTypes.join(' / ')}</span>
-            </div>
             <p className={styles.executionAgentRoleSummary}>{agent.roleSummary}</p>
             {artifact ? (
               <div className={styles.executionAgentArtifact}>
