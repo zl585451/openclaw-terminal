@@ -91,6 +91,21 @@
         ]
       },
       {
+        "from": "resources/ai_library",
+        "to": "ai_library",
+        "filter": [
+          "**/*",
+          "!**/data/**",
+          "!**/documents/**",
+          "!**/__pycache__/**",
+          "!**/.venv/**",
+          "!**/venv/**",
+          "!**/.env",
+          "!**/.env.*",
+          "!**/*.pyc"
+        ]
+      },
+      {
         "from": "docs/01_system_prompts",
         "to": "prompts",
         "filter": [

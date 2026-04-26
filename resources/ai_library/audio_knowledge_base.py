@@ -1,0 +1,2057 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+音频专业知识库系统
+功能：
+1. 读取Markdown/PDF文件
+2. 文档分块（500字符，80字符重叠）
+3. 向量化存储（ChromaDB）
+4. 增量更新（SQLite记录文件状态）
+5. QA对生成器 - 为文档块生成预设问答对
+"""
+
+import os
+import sqlite3
+import hashlib
+import json
+import time
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Optional, Tuple, Any
+from dataclasses import dataclass, field
+import warnings
+warnings.filterwarnings('ignore')
+
+# 文档处理
+import fitz  # PyMuPDF
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# 向量数据库
+import chromadb
+from chromadb.config import Settings
+
+# Embedding & LLM
+try:
+    from openai import OpenAI
+    HAS_OPENAI = True
+except ImportError:
+    HAS_OPENAI = False
+
+try:
+    from sentence_transformers import SentenceTransformer
+    HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAS_SENTENCE_TRANSFORMERS = False
+
+try:
+    import cv2
+    import numpy as np
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+
+try:
+    from pdf2image import convert_from_path
+    HAS_PDF2IMAGE = True
+except ImportError:
+    HAS_PDF2IMAGE = False
+
+try:
+    import pytesseract
+    HAS_TESSERACT = True
+except ImportError:
+    HAS_TESSERACT = False
+
+HAS_PADDLEOCR = None
+
+def check_paddleocr():
+    global HAS_PADDLEOCR
+    if HAS_PADDLEOCR is None:
+        try:
+            from paddleocr import PaddleOCR
+            HAS_PADDLEOCR = True
+        except ImportError:
+            HAS_PADDLEOCR = False
+    return HAS_PADDLEOCR
+
+
+class Config:
+    """配置类 — 数据根目录可由 OCT 子进程注入 AI_LIBRARY_DATA_ROOT / AI_LIBRARY_DOCS_ROOT。"""
+    _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+    _DATA_ROOT = os.environ.get(
+        "AI_LIBRARY_DATA_ROOT",
+        os.path.join(_MODULE_DIR, "data"),
+    )
+    _DOCS_ROOT = os.environ.get(
+        "AI_LIBRARY_DOCS_ROOT",
+        os.path.join(_MODULE_DIR, "documents"),
+    )
+
+    # 文档目录（与 _DOCS_ROOT 一致，保留原名供现有代码引用）
+    DOCUMENTS_DIR = _DOCS_ROOT
+
+    # 数据库路径（均在 _DATA_ROOT 下，便于与源码目录分离）
+    SQLITE_DB_PATH = os.path.join(_DATA_ROOT, "file_records.db")
+    CHROMA_DB_PATH = os.path.join(_DATA_ROOT, "chroma_db")
+    QA_SQLITE_DB_PATH = os.path.join(_DATA_ROOT, "qa_records.db")
+    QA_CHROMA_DB_PATH = os.path.join(_DATA_ROOT, "qa_chroma_db")
+    QA_JSON_OUTPUT_PATH = os.path.join(_DATA_ROOT, "qa_pairs.json")
+
+    # 书库向量（Phase 2+）；目录在启动时由 api_server.ensure_data_dirs 创建
+    LIBRARY_DATA_ROOT = os.path.join(_DATA_ROOT, "library")
+    
+    # 分块配置
+    CHUNK_SIZE = 500
+    CHUNK_OVERLAP = 80
+    
+    # Embedding配置
+    EMBEDDING_TYPE = os.getenv("EMBEDDING_TYPE", "local")
+    
+    # DeepSeek API配置
+    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+    DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+    
+    # OpenAI API配置
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    
+    # 本地模型配置
+    LOCAL_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+    
+    # LLM配置（用于QA生成）
+    LLM_TYPE = "deepseek"
+    LLM_MODEL = "deepseek-chat"
+    LLM_MAX_TOKENS = 2000
+    LLM_TEMPERATURE = 0.7
+    
+    # QA生成配置
+    QA_MIN_COUNT = 3
+    QA_MAX_COUNT = 5
+    QA_BATCH_SIZE = 5
+    
+    # OCR配置
+    OCR_ENABLED = True
+    OCR_ENGINE = "paddleocr"
+    OCR_LANGUAGE = "ch"
+    OCR_USE_GPU = False
+    
+    # 智能OCR配置
+    OCR_MODE = "smart"
+    OCR_QUALITY_THRESHOLD = 0.85
+    OCR_API_FALLBACK = True
+    OCR_SAVE_STATS = True
+    OCR_STATS_PATH = os.path.join(_DATA_ROOT, "ocr_stats.json")
+    
+    # 图像增强配置
+    IMAGE_ENHANCE_ENABLED = True
+    IMAGE_DENOISE_STRENGTH = 10
+    IMAGE_SHARPEN_KERNEL = [[-1,-1,-1], [-1,9,-1], [-1,-1,-1]]
+    IMAGE_CONTRAST_ALPHA = 1.5
+    IMAGE_CONTRAST_BETA = 0
+    IMAGE_CLAHE_CLIP_LIMIT = 2.0
+    IMAGE_BINARY_THRESHOLD = 127
+    
+    # PDF转图像配置
+    PDF_DPI = 200
+    
+    # 支持的文件扩展名
+    SUPPORTED_EXTENSIONS = {'.md', '.markdown', '.pdf'}
+
+
+class ImageEnhancer:
+    """扫描件图像增强处理器"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self._check_dependencies()
+    
+    def _check_dependencies(self):
+        if not HAS_CV2:
+            print("警告: cv2未安装，图像增强功能不可用")
+    
+    def enhance(self, image: 'np.ndarray') -> 'np.ndarray':
+        if not HAS_CV2:
+            return image
+        
+        img = image.copy()
+        
+        if self.config.IMAGE_ENHANCE_ENABLED:
+            img = self._apply_contrast(img)
+            img = self._apply_denoise(img)
+            img = self._apply_sharpen(img)
+            img = self._apply_clahe(img)
+        
+        return img
+    
+    def _apply_contrast(self, img: 'np.ndarray') -> 'np.ndarray':
+        alpha = self.config.IMAGE_CONTRAST_ALPHA
+        beta = self.config.IMAGE_CONTRAST_BETA
+        return cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
+    
+    def _apply_denoise(self, img: 'np.ndarray') -> 'np.ndarray':
+        strength = self.config.IMAGE_DENOISE_STRENGTH
+        if len(img.shape) == 3:
+            return cv2.fastNlMeansDenoisingColored(img, None, strength, strength, 7, 21)
+        else:
+            return cv2.fastNlMeansDenoising(img, None, strength, 7, 21)
+    
+    def _apply_sharpen(self, img: 'np.ndarray') -> 'np.ndarray':
+        kernel = np.array(self.config.IMAGE_SHARPEN_KERNEL, dtype=np.float32)
+        return cv2.filter2D(img, -1, kernel)
+    
+    def _apply_clahe(self, img: 'np.ndarray') -> 'np.ndarray':
+        if len(img.shape) == 3:
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=self.config.IMAGE_CLAHE_CLIP_LIMIT)
+            l = clahe.apply(l)
+            lab = cv2.merge([l, a, b])
+            return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        else:
+            clahe = cv2.createCLAHE(clipLimit=self.config.IMAGE_CLAHE_CLIP_LIMIT)
+            return clahe.apply(img)
+    
+    def apply_binary(self, img: 'np.ndarray') -> 'np.ndarray':
+        if len(img.shape) == 3:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = img
+        _, binary = cv2.threshold(gray, self.config.IMAGE_BINARY_THRESHOLD, 255, cv2.THRESH_BINARY)
+        return binary
+    
+    def enhance_for_ocr(self, image: 'np.ndarray', use_binary: bool = False) -> 'np.ndarray':
+        img = self.enhance(image)
+        if use_binary:
+            img = self.apply_binary(img)
+        return img
+
+
+class SmartOCR:
+    """智能OCR处理器 - 免费优先，API保底"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self._paddle_ocr = None
+        self._openai_client = None
+        
+        self.quality_threshold = config.OCR_QUALITY_THRESHOLD
+        self.use_api_fallback = config.OCR_API_FALLBACK
+        
+        self.stats = {
+            'total_pages': 0,
+            'paddle_success': 0,
+            'api_fallback': 0,
+            'low_quality': 0,
+            'total_cost': 0.0
+        }
+        
+        self._check_dependencies()
+    
+    def _check_dependencies(self):
+        if not HAS_PDF2IMAGE:
+            print("警告: pdf2image未安装，PDF转图像功能不可用")
+        if not HAS_CV2:
+            print("警告: opencv未安装，图像预处理功能不可用")
+    
+    @property
+    def paddle_ocr(self):
+        if self._paddle_ocr is None:
+            if check_paddleocr():
+                from paddleocr import PaddleOCR
+                print("正在初始化PaddleOCR（首次使用需要下载模型）...")
+                self._paddle_ocr = PaddleOCR(
+                    use_angle_cls=True,
+                    lang=self.config.OCR_LANGUAGE,
+                    use_gpu=self.config.OCR_USE_GPU,
+                    show_log=False
+                )
+        return self._paddle_ocr
+    
+    @property
+    def openai_client(self):
+        if self._openai_client is None and HAS_OPENAI:
+            api_key = self.config.DEEPSEEK_API_KEY or os.getenv("DEEPSEEK_API_KEY")
+            if api_key:
+                self._openai_client = OpenAI(
+                    api_key=api_key,
+                    base_url=self.config.DEEPSEEK_BASE_URL
+                )
+        return self._openai_client
+    
+    def preprocess_image(self, image: 'np.ndarray') -> 'np.ndarray':
+        if not HAS_CV2:
+            return image
+        
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+        
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+        
+        binary = cv2.adaptiveThreshold(
+            enhanced, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 11, 2
+        )
+        
+        denoised = cv2.fastNlMeansDenoising(binary, None, 30, 7, 21)
+        
+        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+        sharpened = cv2.filter2D(denoised, -1, kernel)
+        
+        return sharpened
+    
+    def assess_recognition_quality(self, text: str, image_shape: tuple) -> float:
+        if not text or not text.strip():
+            return 0.0
+        
+        quality_score = 1.0
+        text_len = len(text.strip())
+        img_area = image_shape[0] * image_shape[1] if image_shape else 1
+        
+        if text_len < 10:
+            quality_score *= 0.3
+        elif text_len < 50:
+            quality_score *= 0.7
+        
+        chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+        chinese_ratio = chinese_chars / max(text_len, 1)
+        if chinese_ratio < 0.1:
+            quality_score *= 0.8
+        
+        special_chars = sum(1 for c in text if not c.isprintable() and c not in '\n\r\t')
+        if special_chars > text_len * 0.2:
+            quality_score *= 0.2
+        
+        text_density = text_len / (img_area / 10000)
+        if text_density < 0.5:
+            quality_score *= 0.8
+        
+        return min(quality_score, 1.0)
+    
+    def ocr_page(self, image: 'np.ndarray') -> Tuple[str, str, float]:
+        self.stats['total_pages'] += 1
+        
+        processed_img = self.preprocess_image(image)
+        
+        text = ""
+        if self.paddle_ocr is not None:
+            try:
+                result = self.paddle_ocr.ocr(processed_img, cls=True)
+                if result and result[0]:
+                    text_lines = []
+                    for line in result[0]:
+                        if line and len(line) >= 2:
+                            text_lines.append(line[1][0])
+                    text = '\n'.join(text_lines)
+            except Exception as e:
+                print(f"    PaddleOCR识别出错: {e}")
+                text = ""
+        
+        quality = self.assess_recognition_quality(text, image.shape if HAS_CV2 else None)
+        
+        if quality >= self.quality_threshold:
+            self.stats['paddle_success'] += 1
+            return text, 'paddle', quality
+        
+        if self.use_api_fallback and quality < self.quality_threshold and self.openai_client:
+            self.stats['api_fallback'] += 1
+            try:
+                api_text = self.deepseek_ocr(image)
+                if api_text and len(api_text.strip()) > len(text.strip()):
+                    self.stats['total_cost'] += 0.01
+                    return api_text, 'deepseek', 1.0
+            except Exception as e:
+                print(f"    API保底失败: {e}")
+        
+        self.stats['low_quality'] += 1
+        return text, 'paddle_low_quality', quality
+    
+    def deepseek_ocr(self, image: 'np.ndarray') -> str:
+        import base64
+        
+        if len(image.shape) == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        
+        _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        base64_image = base64.b64encode(buffer).decode('utf-8')
+        
+        response = self.openai_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": "请提取这张图片中的所有文字，直接返回提取到的文字内容，保持原有的段落格式，不要添加任何解释。"
+                        }
+                    ]
+                }
+            ],
+            max_tokens=4000
+        )
+        
+        return response.choices[0].message.content
+    
+    def pdf_to_images(self, pdf_path: str) -> List['np.ndarray']:
+        if not HAS_PDF2IMAGE:
+            print("pdf2image未安装，无法转换PDF")
+            return []
+        
+        images = convert_from_path(pdf_path, dpi=self.config.PDF_DPI)
+        return [np.array(img) for img in images]
+    
+    def process_pdf(self, pdf_path: str) -> Tuple[str, Dict]:
+        images = self.pdf_to_images(pdf_path)
+        if not images:
+            return "", {"pages_processed": 0, "ocr_used": False}
+        
+        all_text = []
+        page_stats = []
+        
+        total_pages = len(images)
+        for i, img in enumerate(images):
+            print(f"    OCR处理: 第 {i+1}/{total_pages} 页...", end='\r')
+            text, method, quality = self.ocr_page(img)
+            
+            if text.strip():
+                all_text.append(f"[第{i+1}页]\n{text}")
+            
+            page_stats.append({
+                'page': i + 1,
+                'method': method,
+                'quality': quality,
+                'char_count': len(text.strip())
+            })
+        
+        print(f"    OCR处理完成: {total_pages} 页                    ")
+        
+        full_text = '\n\n'.join(all_text)
+        
+        return full_text, {
+            "pages_processed": len(images),
+            "ocr_used": True,
+            "stats": self.stats.copy(),
+            "page_stats": page_stats
+        }
+    
+    def get_stats_report(self) -> str:
+        total = self.stats['total_pages']
+        if total == 0:
+            return "尚未处理任何页面"
+        
+        paddle_rate = self.stats['paddle_success'] / total * 100
+        api_rate = self.stats['api_fallback'] / total * 100
+        low_rate = self.stats['low_quality'] / total * 100
+        
+        report = f"""
+OCR统计报告:
+  总页数: {total}
+  PaddleOCR成功: {self.stats['paddle_success']} ({paddle_rate:.1f}%)
+  API保底: {self.stats['api_fallback']} ({api_rate:.1f}%)
+  低质量结果: {self.stats['low_quality']} ({low_rate:.1f}%)
+  预估API费用: ¥{self.stats['total_cost']:.2f}
+"""
+        return report
+
+
+class OCRProcessor:
+    """OCR处理器 - 兼容旧接口，内部使用SmartOCR"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.smart_ocr = SmartOCR(config) if config.OCR_ENABLED else None
+        self._check_dependencies()
+    
+    def _check_dependencies(self):
+        if not HAS_PDF2IMAGE:
+            print("警告: pdf2image未安装，PDF转图像功能不可用")
+    
+    def pdf_to_images(self, pdf_path: str) -> List['np.ndarray']:
+        if self.smart_ocr:
+            return self.smart_ocr.pdf_to_images(pdf_path)
+        return []
+    
+    def ocr_image(self, image: 'np.ndarray', enhance: bool = True) -> str:
+        if self.smart_ocr:
+            text, method, quality = self.smart_ocr.ocr_page(image)
+            return text
+        return ""
+    
+    def process_pdf(self, pdf_path: str, enhance: bool = True) -> Tuple[str, Dict]:
+        if self.smart_ocr:
+            return self.smart_ocr.process_pdf(pdf_path)
+        return "", {"pages_processed": 0, "ocr_used": False}
+    
+    def get_stats_report(self) -> str:
+        if self.smart_ocr:
+            return self.smart_ocr.get_stats_report()
+        return "OCR未启用"
+
+
+class FileRecordDB:
+    """文件记录数据库（SQLite）"""
+    
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self._init_db()
+    
+    def _init_db(self):
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS file_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_path TEXT UNIQUE NOT NULL,
+                    file_hash TEXT NOT NULL,
+                    last_processed TEXT NOT NULL,
+                    chunk_count INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+    
+    def compute_file_hash(self, file_path: str) -> str:
+        hasher = hashlib.sha256()
+        with open(file_path, 'rb') as f:
+            while chunk := f.read(8192):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+    
+    def get_file_record(self, file_path: str) -> Optional[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT * FROM file_records WHERE file_path = ?',
+                (file_path,)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def upsert_file_record(self, file_path: str, file_hash: str, chunk_count: int):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+            cursor.execute('''
+                INSERT INTO file_records (file_path, file_hash, last_processed, chunk_count, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(file_path) DO UPDATE SET
+                    file_hash = excluded.file_hash,
+                    last_processed = excluded.last_processed,
+                    chunk_count = excluded.chunk_count,
+                    updated_at = excluded.updated_at
+            ''', (file_path, file_hash, now, chunk_count, now))
+            conn.commit()
+    
+    def delete_file_record(self, file_path: str):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM file_records WHERE file_path = ?', (file_path,))
+            conn.commit()
+    
+    def needs_processing(self, file_path: str) -> bool:
+        if not os.path.exists(file_path):
+            return False
+        
+        record = self.get_file_record(file_path)
+        if not record:
+            return True
+        
+        current_hash = self.compute_file_hash(file_path)
+        return current_hash != record['file_hash']
+
+
+@dataclass
+class SourceReference:
+    """来源引用"""
+    document: str
+    chunk_index: int = 0
+    confidence: float = 0.0
+    relevant_text: str = ""
+    
+    def __str__(self) -> str:
+        return f"{self.document}" + (f"-第{self.chunk_index+1}段" if self.chunk_index else "")
+
+
+@dataclass
+class RetrievedQA:
+    """检索到的QA对"""
+    question: str
+    answer: str
+    summary: str = ""
+    source: SourceReference = None
+    confidence: float = 0.0
+    
+    def to_dict(self) -> Dict:
+        return {
+            'question': self.question,
+            'answer': self.answer,
+            'summary': self.summary,
+            'source': str(self.source) if self.source else None,
+            'confidence': self.confidence
+        }
+
+
+@dataclass
+class AnswerResult:
+    """生成的答案结果"""
+    text: str
+    sources: List[str] = field(default_factory=list)
+    source_details: List[SourceReference] = field(default_factory=list)
+    confidence: float = 0.0
+    retrieved_qa: List[RetrievedQA] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict:
+        return {
+            'text': self.text,
+            'sources': self.sources,
+            'confidence': self.confidence,
+            'retrieved_qa': [qa.to_dict() for qa in self.retrieved_qa]
+        }
+    
+    def __str__(self) -> str:
+        result = self.text
+        if self.sources:
+            result += f"\n\n📚 来源: {', '.join(self.sources)}"
+        return result
+
+
+@dataclass
+class Message:
+    """对话消息"""
+    role: str
+    content: str
+    
+    def to_dict(self) -> Dict:
+        return {'role': self.role, 'content': self.content}
+
+
+class QARecordDB:
+    """QA对记录数据库（SQLite）"""
+    
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self._init_db()
+    
+    def _init_db(self):
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS qa_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chunk_id TEXT UNIQUE NOT NULL,
+                    source_file TEXT NOT NULL,
+                    chunk_hash TEXT NOT NULL,
+                    qa_count INTEGER DEFAULT 0,
+                    last_processed TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS qa_pairs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chunk_id TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    summary TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (chunk_id) REFERENCES qa_records(chunk_id)
+                )
+            ''')
+            conn.commit()
+    
+    def compute_chunk_hash(self, content: str) -> str:
+        return hashlib.sha256(content.encode('utf-8')).hexdigest()
+    
+    def get_chunk_record(self, chunk_id: str) -> Optional[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT * FROM qa_records WHERE chunk_id = ?',
+                (chunk_id,)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def needs_processing(self, chunk_id: str, chunk_content: str) -> bool:
+        record = self.get_chunk_record(chunk_id)
+        if not record:
+            return True
+        
+        current_hash = self.compute_chunk_hash(chunk_content)
+        return current_hash != record['chunk_hash']
+    
+    def upsert_qa_record(self, chunk_id: str, source_file: str, chunk_hash: str, qa_count: int):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+            cursor.execute('''
+                INSERT INTO qa_records (chunk_id, source_file, chunk_hash, qa_count, last_processed, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chunk_id) DO UPDATE SET
+                    chunk_hash = excluded.chunk_hash,
+                    qa_count = excluded.qa_count,
+                    last_processed = excluded.last_processed,
+                    updated_at = excluded.updated_at
+            ''', (chunk_id, source_file, chunk_hash, qa_count, now, now))
+            conn.commit()
+    
+    def insert_qa_pairs(self, chunk_id: str, qa_pairs: List[Dict]):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM qa_pairs WHERE chunk_id = ?', (chunk_id,))
+            
+            for qa in qa_pairs:
+                cursor.execute('''
+                    INSERT INTO qa_pairs (chunk_id, question, answer, summary)
+                    VALUES (?, ?, ?, ?)
+                ''', (chunk_id, qa['question'], qa['answer'], qa.get('summary', '')))
+            conn.commit()
+    
+    def get_all_qa_pairs(self) -> List[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT q.*, r.source_file 
+                FROM qa_pairs q 
+                JOIN qa_records r ON q.chunk_id = r.chunk_id
+            ''')
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def delete_by_source(self, source_file: str):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                DELETE FROM qa_pairs WHERE chunk_id IN 
+                (SELECT chunk_id FROM qa_records WHERE source_file = ?)
+            ''', (source_file,))
+            cursor.execute('DELETE FROM qa_records WHERE source_file = ?', (source_file,))
+            conn.commit()
+    
+    def get_stats(self) -> Dict:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) FROM qa_records')
+            chunk_count = cursor.fetchone()[0]
+            cursor.execute('SELECT COUNT(*) FROM qa_pairs')
+            qa_count = cursor.fetchone()[0]
+            return {'chunk_count': chunk_count, 'qa_count': qa_count}
+
+
+class DocumentProcessor:
+    """文档处理器"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=config.CHUNK_SIZE,
+            chunk_overlap=config.CHUNK_OVERLAP,
+            length_function=len,
+            separators=['\n\n', '\n', '。', '！', '？', '；', '.', '!', '?', ';', ' ', '']
+        )
+        self.ocr_processor = None
+        if config.OCR_ENABLED:
+            self.ocr_processor = OCRProcessor(config)
+    
+    def read_markdown(self, file_path: str) -> str:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    
+    def read_pdf(self, file_path: str, force_ocr: bool = False) -> Tuple[str, Dict]:
+        text_parts = []
+        metadata = {"ocr_used": False, "pages": 0}
+        
+        with fitz.open(file_path) as doc:
+            metadata["pages"] = len(doc)
+            for page in doc:
+                text = page.get_text()
+                if text.strip():
+                    text_parts.append(text)
+        
+        normal_text = '\n\n'.join(text_parts)
+        
+        if force_ocr or (len(normal_text.strip()) < 100 and self.ocr_processor):
+            print(f"  检测到扫描件或文本过少，启用OCR处理: {Path(file_path).name}")
+            try:
+                ocr_text, ocr_meta = self.ocr_processor.process_pdf(file_path)
+                if ocr_text.strip():
+                    metadata["ocr_used"] = True
+                    metadata["ocr_pages"] = ocr_meta.get("pages_processed", 0)
+                    metadata["ocr_stats"] = ocr_meta.get("stats", {})
+                    metadata["page_stats"] = ocr_meta.get("page_stats", [])
+                    
+                    if self.config.OCR_SAVE_STATS and self.ocr_processor.smart_ocr:
+                        self._save_ocr_stats(file_path, ocr_meta)
+                    
+                    return ocr_text, metadata
+            except Exception as e:
+                print(f"  OCR处理失败（可能需要安装Poppler）: {e}")
+                if normal_text.strip():
+                    print(f"  使用原始文本内容")
+                    return normal_text, metadata
+        
+        return normal_text, metadata
+    
+    def _save_ocr_stats(self, file_path: str, ocr_meta: Dict):
+        import json
+        from datetime import datetime
+        
+        stats_dir = os.path.dirname(self.config.OCR_STATS_PATH)
+        os.makedirs(stats_dir, exist_ok=True)
+        
+        stats_record = {
+            "file": file_path,
+            "filename": Path(file_path).name,
+            "timestamp": datetime.now().isoformat(),
+            "stats": ocr_meta.get("stats", {}),
+            "page_stats": ocr_meta.get("page_stats", [])
+        }
+        
+        stats_path = self.config.OCR_STATS_PATH
+        existing_stats = []
+        if os.path.exists(stats_path):
+            try:
+                with open(stats_path, 'r', encoding='utf-8') as f:
+                    existing_stats = json.load(f)
+            except:
+                pass
+        
+        existing_stats.append(stats_record)
+        
+        with open(stats_path, 'w', encoding='utf-8') as f:
+            json.dump(existing_stats, f, ensure_ascii=False, indent=2)
+    
+    def read_document(self, file_path: str, force_ocr: bool = False) -> Tuple[Optional[str], Dict]:
+        ext = Path(file_path).suffix.lower()
+        metadata = {"file_path": file_path, "file_name": Path(file_path).name}
+        
+        if ext in {'.md', '.markdown'}:
+            return self.read_markdown(file_path), metadata
+        elif ext == '.pdf':
+            return self.read_pdf(file_path, force_ocr=force_ocr)
+        else:
+            print(f"不支持的文件类型: {ext}")
+            return None, metadata
+    
+    def split_text(self, text: str, metadata: Dict = None) -> List[Dict]:
+        chunks = self.text_splitter.split_text(text)
+        
+        result = []
+        for i, chunk in enumerate(chunks):
+            chunk_data = {
+                'content': chunk,
+                'metadata': {
+                    **(metadata or {}),
+                    'chunk_index': i,
+                    'total_chunks': len(chunks)
+                }
+            }
+            result.append(chunk_data)
+        
+        return result
+    
+    def process_file(self, file_path: str, force_ocr: bool = False) -> List[Dict]:
+        text, read_metadata = self.read_document(file_path, force_ocr=force_ocr)
+        if not text:
+            return []
+        
+        metadata = {
+            'source': file_path,
+            'filename': Path(file_path).name,
+            'processed_at': datetime.now().isoformat(),
+            **read_metadata
+        }
+        
+        return self.split_text(text, metadata)
+
+
+class EmbeddingService:
+    """Embedding服务"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.model = None
+        self.client = None
+        self._init_embedding()
+    
+    def _init_embedding(self):
+        if self.config.EMBEDDING_TYPE == "deepseek":
+            if not HAS_OPENAI:
+                raise ImportError("使用DeepSeek需要安装openai库: pip install openai")
+            self.client = OpenAI(
+                api_key=self.config.DEEPSEEK_API_KEY,
+                base_url=self.config.DEEPSEEK_BASE_URL
+            )
+            print("使用DeepSeek Embedding API")
+            
+        elif self.config.EMBEDDING_TYPE == "openai":
+            if not HAS_OPENAI:
+                raise ImportError("使用OpenAI需要安装openai库: pip install openai")
+            self.client = OpenAI(
+                api_key=self.config.OPENAI_API_KEY,
+                base_url=self.config.OPENAI_BASE_URL
+            )
+            print("使用OpenAI Embedding API")
+            
+        else:
+            if not HAS_SENTENCE_TRANSFORMERS:
+                raise ImportError("使用本地模型需要安装sentence-transformers: pip install sentence-transformers")
+            self.model = SentenceTransformer(self.config.LOCAL_MODEL_NAME)
+            print(f"使用本地模型: {self.config.LOCAL_MODEL_NAME}")
+    
+    def get_embeddings(self, texts: List[str]) -> List[List[float]]:
+        if self.model:
+            embeddings = self.model.encode(texts, show_progress_bar=False)
+            return embeddings.tolist()
+        
+        elif self.client:
+            embeddings = []
+            batch_size = 100
+            
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                
+                if self.config.EMBEDDING_TYPE == "deepseek":
+                    response = self.client.embeddings.create(
+                        model="deepseek-embedding",
+                        input=batch
+                    )
+                else:
+                    response = self.client.embeddings.create(
+                        model="text-embedding-3-small",
+                        input=batch
+                    )
+                
+                batch_embeddings = [item.embedding for item in response.data]
+                embeddings.extend(batch_embeddings)
+            
+            return embeddings
+        
+        raise ValueError("Embedding服务未正确初始化")
+    
+    def get_embedding_dimension(self) -> int:
+        if self.model:
+            return self.model.get_sentence_embedding_dimension()
+        elif self.config.EMBEDDING_TYPE == "deepseek":
+            return 1536
+        else:
+            return 1536
+
+
+class LLMService:
+    """大模型服务（用于QA生成）"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.client = None
+        self._init_llm()
+    
+    def _init_llm(self):
+        if not HAS_OPENAI:
+            raise ImportError("使用LLM需要安装openai库: pip install openai")
+        
+        if self.config.LLM_TYPE == "deepseek":
+            self.client = OpenAI(
+                api_key=self.config.DEEPSEEK_API_KEY,
+                base_url=self.config.DEEPSEEK_BASE_URL
+            )
+            print(f"使用DeepSeek LLM: {self.config.LLM_MODEL}")
+        else:
+            self.client = OpenAI(
+                api_key=self.config.OPENAI_API_KEY,
+                base_url=self.config.OPENAI_BASE_URL
+            )
+            print(f"使用OpenAI LLM: {self.config.LLM_MODEL}")
+    
+    def generate_qa_pairs(self, chunk_content: str, min_count: int = 3, max_count: int = 5) -> List[Dict]:
+        prompt = f"""你是一个音频专业知识库的问答对生成专家。请根据以下文档内容，生成{min_count}-{max_count}个高质量的问答对。
+
+要求：
+1. 问题应该涵盖文档中的关键知识点
+2. 问题应该具有实际应用价值，模拟用户可能提出的真实问题
+3. 答案应该准确、完整，直接引用或总结文档内容
+4. 每个问答对需要一个简短的摘要（10字以内）
+
+文档内容：
+{chunk_content}
+
+请严格按照以下JSON格式输出，不要包含任何其他内容：
+{{
+  "qa_pairs": [
+    {{
+      "question": "具体的问题",
+      "answer": "详细的答案",
+      "summary": "简短摘要"
+    }}
+  ]
+}}"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.config.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": "你是一个专业的音频知识问答对生成助手，擅长从技术文档中提取关键信息并生成高质量的问答对。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=self.config.LLM_MAX_TOKENS,
+                temperature=self.config.LLM_TEMPERATURE
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                result = json.loads(json_match.group())
+                return result.get('qa_pairs', [])
+            
+            return []
+            
+        except Exception as e:
+            print(f"LLM调用失败: {e}")
+            return []
+    
+    def generate_qa_pairs_batch(self, chunks: List[Dict], min_count: int = 3, max_count: int = 5) -> List[Dict]:
+        results = []
+        total = len(chunks)
+        
+        for i, chunk in enumerate(chunks):
+            print(f"  生成QA对 [{i+1}/{total}]: {chunk['metadata'].get('filename', 'unknown')} - 块 {chunk['metadata'].get('chunk_index', 0)}")
+            
+            qa_pairs = self.generate_qa_pairs(chunk['content'], min_count, max_count)
+            
+            if qa_pairs:
+                result = {
+                    'chunk_id': f"{chunk['metadata']['source']}_{chunk['metadata']['chunk_index']}",
+                    'source_file': chunk['metadata'].get('filename', 'unknown'),
+                    'chunk_content': chunk['content'],
+                    'qa_pairs': qa_pairs
+                }
+                results.append(result)
+            
+            if i < total - 1:
+                time.sleep(0.5)
+        
+        return results
+
+
+class VectorStore:
+    """向量存储"""
+    
+    def __init__(self, config: Config, embedding_service: EmbeddingService):
+        self.config = config
+        self.embedding_service = embedding_service
+        self.client = None
+        self.collection = None
+        self._init_chroma()
+    
+    def _init_chroma(self):
+        os.makedirs(self.config.CHROMA_DB_PATH, exist_ok=True)
+        
+        self.client = chromadb.PersistentClient(
+            path=self.config.CHROMA_DB_PATH,
+            settings=Settings(anonymized_telemetry=False)
+        )
+        
+        self.collection = self.client.get_or_create_collection(
+            name="audio_knowledge_base",
+            metadata={"hnsw:space": "cosine"}
+        )
+        
+        print(f"ChromaDB初始化完成，当前文档数: {self.collection.count()}")
+    
+    def add_documents(self, chunks: List[Dict]):
+        if not chunks:
+            return
+        
+        texts = [chunk['content'] for chunk in chunks]
+        embeddings = self.embedding_service.get_embeddings(texts)
+        
+        ids = []
+        metadatas = []
+        
+        for i, chunk in enumerate(chunks):
+            chunk_id = f"{chunk['metadata']['source']}_{chunk['metadata']['chunk_index']}"
+            ids.append(chunk_id)
+            
+            metadata = chunk['metadata'].copy()
+            metadata['content'] = chunk['content'][:500]
+            metadatas.append(metadata)
+        
+        self.collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            documents=texts
+        )
+    
+    def delete_by_source(self, source: str):
+        all_items = self.collection.get()
+        
+        ids_to_delete = []
+        for i, metadata in enumerate(all_items['metadatas']):
+            if metadata.get('source') == source:
+                ids_to_delete.append(all_items['ids'][i])
+        
+        if ids_to_delete:
+            self.collection.delete(ids=ids_to_delete)
+            print(f"删除了 {len(ids_to_delete)} 个旧块")
+    
+    def search(self, query: str, n_results: int = 5) -> List[Dict]:
+        query_embedding = self.embedding_service.get_embeddings([query])[0]
+        
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results,
+            include=['documents', 'metadatas', 'distances']
+        )
+        
+        search_results = []
+        for i in range(len(results['ids'][0])):
+            search_results.append({
+                'content': results['documents'][0][i],
+                'metadata': results['metadatas'][0][i],
+                'distance': results['distances'][0][i]
+            })
+        
+        return search_results
+    
+    def get_all_chunks(self) -> List[Dict]:
+        all_items = self.collection.get()
+        chunks = []
+        
+        for i in range(len(all_items['ids'])):
+            chunks.append({
+                'chunk_id': all_items['ids'][i],
+                'content': all_items['documents'][i],
+                'metadata': all_items['metadatas'][i]
+            })
+        
+        return chunks
+
+
+class QAVectorStore:
+    """QA对向量存储"""
+    
+    def __init__(self, config: Config, embedding_service: EmbeddingService):
+        self.config = config
+        self.embedding_service = embedding_service
+        self.client = None
+        self.collection = None
+        self._init_chroma()
+    
+    def _init_chroma(self):
+        os.makedirs(self.config.QA_CHROMA_DB_PATH, exist_ok=True)
+        
+        self.client = chromadb.PersistentClient(
+            path=self.config.QA_CHROMA_DB_PATH,
+            settings=Settings(anonymized_telemetry=False)
+        )
+        
+        self.collection = self.client.get_or_create_collection(
+            name="qa_knowledge_base",
+            metadata={"hnsw:space": "cosine"}
+        )
+        
+        print(f"QA向量库初始化完成，当前QA对数: {self.collection.count()}")
+    
+    def add_qa_pairs(self, qa_results: List[Dict]):
+        if not qa_results:
+            return
+        
+        all_questions = []
+        all_ids = []
+        all_metadatas = []
+        all_documents = []
+        
+        for result in qa_results:
+            chunk_id = result['chunk_id']
+            source_file = result['source_file']
+            
+            for i, qa in enumerate(result['qa_pairs']):
+                qa_id = f"{chunk_id}_qa_{i}"
+                all_ids.append(qa_id)
+                all_questions.append(qa['question'])
+                all_documents.append(qa['answer'])
+                
+                all_metadatas.append({
+                    'chunk_id': chunk_id,
+                    'source_file': source_file,
+                    'question': qa['question'],
+                    'summary': qa.get('summary', ''),
+                    'answer': qa['answer'][:500]
+                })
+        
+        if not all_questions:
+            return
+        
+        embeddings = self.embedding_service.get_embeddings(all_questions)
+        
+        self.collection.add(
+            ids=all_ids,
+            embeddings=embeddings,
+            metadatas=all_metadatas,
+            documents=all_documents
+        )
+    
+    def delete_by_chunk(self, chunk_id: str):
+        all_items = self.collection.get()
+        
+        ids_to_delete = []
+        for i, metadata in enumerate(all_items['metadatas']):
+            if metadata.get('chunk_id', '').startswith(chunk_id):
+                ids_to_delete.append(all_items['ids'][i])
+        
+        if ids_to_delete:
+            self.collection.delete(ids=ids_to_delete)
+    
+    def delete_by_source(self, source_file: str):
+        all_items = self.collection.get()
+        
+        ids_to_delete = []
+        for i, metadata in enumerate(all_items['metadatas']):
+            if metadata.get('source_file') == source_file:
+                ids_to_delete.append(all_items['ids'][i])
+        
+        if ids_to_delete:
+            self.collection.delete(ids=ids_to_delete)
+            print(f"删除了 {len(ids_to_delete)} 个QA向量")
+    
+    def search(self, query: str, n_results: int = 5) -> List[Dict]:
+        query_embedding = self.embedding_service.get_embeddings([query])[0]
+        
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results,
+            include=['documents', 'metadatas', 'distances']
+        )
+        
+        search_results = []
+        for i in range(len(results['ids'][0])):
+            search_results.append({
+                'answer': results['documents'][0][i],
+                'question': results['metadatas'][0][i].get('question', ''),
+                'metadata': results['metadatas'][0][i],
+                'distance': results['distances'][0][i]
+            })
+        
+        return search_results
+
+
+class QAGenerator:
+    """QA对生成器"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.qa_db = QARecordDB(config.QA_SQLITE_DB_PATH)
+        self.embedding_service = EmbeddingService(config)
+        self.llm_service = LLMService(config)
+        self.qa_vector_store = QAVectorStore(config, self.embedding_service)
+    
+    def generate_for_chunks(self, chunks: List[Dict], force: bool = False) -> List[Dict]:
+        chunks_to_process = []
+        
+        for chunk in chunks:
+            chunk_id = f"{chunk['metadata']['source']}_{chunk['metadata']['chunk_index']}"
+            
+            if not force and not self.qa_db.needs_processing(chunk_id, chunk['content']):
+                print(f"  跳过（已处理）: {chunk_id}")
+                continue
+            
+            chunks_to_process.append(chunk)
+        
+        if not chunks_to_process:
+            print("所有块都已生成QA对")
+            return []
+        
+        print(f"需要生成QA对的块数: {len(chunks_to_process)}")
+        
+        qa_results = self.llm_service.generate_qa_pairs_batch(
+            chunks_to_process,
+            self.config.QA_MIN_COUNT,
+            self.config.QA_MAX_COUNT
+        )
+        
+        return qa_results
+    
+    def save_qa_results(self, qa_results: List[Dict]):
+        for result in qa_results:
+            chunk_id = result['chunk_id']
+            source_file = result['source_file']
+            chunk_hash = self.qa_db.compute_chunk_hash(result['chunk_content'])
+            qa_count = len(result['qa_pairs'])
+            
+            self.qa_db.upsert_qa_record(chunk_id, source_file, chunk_hash, qa_count)
+            self.qa_db.insert_qa_pairs(chunk_id, result['qa_pairs'])
+        
+        self.qa_vector_store.add_qa_pairs(qa_results)
+        
+        self._save_to_json(qa_results)
+    
+    def _save_to_json(self, qa_results: List[Dict]):
+        os.makedirs(os.path.dirname(self.config.QA_JSON_OUTPUT_PATH), exist_ok=True)
+        
+        existing_data = []
+        if os.path.exists(self.config.QA_JSON_OUTPUT_PATH):
+            with open(self.config.QA_JSON_OUTPUT_PATH, 'r', encoding='utf-8') as f:
+                try:
+                    existing_data = json.load(f)
+                except:
+                    existing_data = []
+        
+        existing_ids = {item['chunk_id'] for item in existing_data}
+        
+        for result in qa_results:
+            if result['chunk_id'] in existing_ids:
+                existing_data = [item for item in existing_data if item['chunk_id'] != result['chunk_id']]
+            existing_data.append(result)
+        
+        with open(self.config.QA_JSON_OUTPUT_PATH, 'w', encoding='utf-8') as f:
+            json.dump(existing_data, f, ensure_ascii=False, indent=2)
+        
+        print(f"QA对已保存到: {self.config.QA_JSON_OUTPUT_PATH}")
+    
+    def search(self, query: str, n_results: int = 5) -> List[Dict]:
+        return self.qa_vector_store.search(query, n_results)
+    
+    def get_stats(self) -> Dict:
+        return self.qa_db.get_stats()
+
+
+class AudioKnowledgeBase:
+    """音频专业知识库系统"""
+    
+    def __init__(self, config: Config = None):
+        self.config = config or Config()
+        self.file_db = FileRecordDB(self.config.SQLITE_DB_PATH)
+        self.doc_processor = DocumentProcessor(self.config)
+        self.embedding_service = EmbeddingService(self.config)
+        self.vector_store = VectorStore(self.config, self.embedding_service)
+        self.qa_generator = None
+    
+    def _init_qa_generator(self):
+        if self.qa_generator is None:
+            self.qa_generator = QAGenerator(self.config)
+    
+    def scan_documents(self) -> List[str]:
+        documents = []
+        doc_dir = Path(self.config.DOCUMENTS_DIR)
+        
+        if not doc_dir.exists():
+            print(f"文档目录不存在，正在创建: {doc_dir}")
+            doc_dir.mkdir(parents=True, exist_ok=True)
+            return documents
+        
+        for ext in self.config.SUPPORTED_EXTENSIONS:
+            documents.extend(str(p) for p in doc_dir.rglob(f'*{ext}'))
+        
+        return sorted(documents)
+    
+    def process_documents(self, force: bool = False, force_ocr: bool = False):
+        documents = self.scan_documents()
+        
+        if not documents:
+            print("未找到任何文档")
+            return
+        
+        print(f"发现 {len(documents)} 个文档")
+        if force_ocr:
+            print("OCR强制模式: 将对所有PDF进行OCR处理")
+        
+        processed_count = 0
+        skipped_count = 0
+        ocr_used = False
+        
+        for doc_path in documents:
+            if not force and not self.file_db.needs_processing(doc_path):
+                print(f"跳过（未修改）: {doc_path}")
+                skipped_count += 1
+                continue
+            
+            print(f"处理中: {doc_path}")
+            
+            self.vector_store.delete_by_source(doc_path)
+            
+            chunks = self.doc_processor.process_file(doc_path, force_ocr=force_ocr)
+            
+            if not chunks:
+                print(f"警告: 文档内容为空或无法解析: {doc_path}")
+                continue
+            
+            if chunks and chunks[0].get('metadata', {}).get('ocr_used'):
+                ocr_used = True
+            
+            self.vector_store.add_documents(chunks)
+            
+            file_hash = self.file_db.compute_file_hash(doc_path)
+            self.file_db.upsert_file_record(doc_path, file_hash, len(chunks))
+            
+            print(f"完成: {len(chunks)} 个文本块")
+            processed_count += 1
+        
+        print(f"\n处理完成: 新处理 {processed_count} 个，跳过 {skipped_count} 个")
+        print(f"向量库总文档数: {self.vector_store.collection.count()}")
+        
+        if ocr_used and self.doc_processor.ocr_processor and self.doc_processor.ocr_processor.smart_ocr:
+            print("\n" + self.doc_processor.ocr_processor.get_stats_report())
+    
+    def generate_qa_pairs(self, force: bool = False):
+        self._init_qa_generator()
+        
+        print("\n" + "="*60)
+        print("开始生成QA对")
+        print("="*60)
+        
+        all_chunks = self.vector_store.get_all_chunks()
+        
+        if not all_chunks:
+            print("向量库中没有文档块，请先处理文档")
+            return
+        
+        print(f"向量库中共有 {len(all_chunks)} 个文档块")
+        
+        chunks_for_qa = []
+        for chunk in all_chunks:
+            chunks_for_qa.append({
+                'content': chunk['content'],
+                'metadata': {
+                    'source': chunk['metadata'].get('source', ''),
+                    'filename': chunk['metadata'].get('filename', ''),
+                    'chunk_index': chunk['metadata'].get('chunk_index', 0)
+                }
+            })
+        
+        qa_results = self.qa_generator.generate_for_chunks(chunks_for_qa, force)
+        
+        if qa_results:
+            self.qa_generator.save_qa_results(qa_results)
+            print(f"\nQA对生成完成: {len(qa_results)} 个块，共 {sum(len(r['qa_pairs']) for r in qa_results)} 个问答对")
+        else:
+            print("\n没有新的QA对需要生成")
+        
+        stats = self.qa_generator.get_stats()
+        print(f"QA库统计: {stats['chunk_count']} 个块，{stats['qa_count']} 个问答对")
+    
+    def search(self, query: str, n_results: int = 5) -> List[Dict]:
+        return self.vector_store.search(query, n_results)
+
+    def get_stats(self) -> Dict:
+        """获取知识库统计信息"""
+        total_chunks = self.vector_store.collection.count()
+        sources = set()
+        if total_chunks > 0:
+            all_items = self.vector_store.collection.get(include=['metadatas'])
+            for m in (all_items.get('metadatas') or []):
+                src = m.get('source') or m.get('filename')
+                if src:
+                    sources.add(Path(src).name if isinstance(src, str) else str(src))
+        return {
+            'total_documents': len(sources),
+            'total_chunks': total_chunks,
+            'total_qa_pairs': 0,
+            'last_updated': None
+        }
+
+    def list_documents(self) -> List[str]:
+        """获取所有已索引的文档列表"""
+        return self.scan_documents()
+    
+    def search_qa(self, query: str, n_results: int = 5) -> List[Dict]:
+        self._init_qa_generator()
+        return self.qa_generator.search(query, n_results)
+    
+    def print_search_results(self, results: List[Dict]):
+        print("\n" + "="*60)
+        print("搜索结果（文档块）")
+        print("="*60)
+        
+        for i, result in enumerate(results, 1):
+            print(f"\n【结果 {i}】相似度: {1 - result['distance']:.4f}")
+            print(f"来源: {result['metadata'].get('filename', '未知')}")
+            print(f"内容:\n{result['content'][:300]}...")
+            print("-"*40)
+    
+    def print_qa_search_results(self, results: List[Dict]):
+        print("\n" + "="*60)
+        print("搜索结果（QA对）")
+        print("="*60)
+        
+        for i, result in enumerate(results, 1):
+            print(f"\n【结果 {i}】相似度: {1 - result['distance']:.4f}")
+            print(f"问题: {result['question']}")
+            print(f"答案:\n{result['answer'][:300]}...")
+            print(f"来源: {result['metadata'].get('source_file', '未知')}")
+            print("-"*40)
+    
+    def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedQA]:
+        """
+        检索最相关的QA对
+        
+        Args:
+            query: 用户问题
+            top_k: 返回结果数量
+            
+        Returns:
+            List[RetrievedQA]: 检索到的QA对列表
+        """
+        self._init_qa_generator()
+        
+        raw_results = self.qa_generator.search(query, n_results=top_k)
+        
+        retrieved_qa_list = []
+        for result in raw_results:
+            confidence = 1 - result.get('distance', 1.0)
+            
+            source_ref = SourceReference(
+                document=result['metadata'].get('source_file', '未知'),
+                chunk_index=0,
+                confidence=confidence,
+                relevant_text=result['answer'][:200]
+            )
+            
+            retrieved_qa = RetrievedQA(
+                question=result.get('question', ''),
+                answer=result.get('answer', ''),
+                summary=result['metadata'].get('summary', ''),
+                source=source_ref,
+                confidence=confidence
+            )
+            retrieved_qa_list.append(retrieved_qa)
+        
+        return retrieved_qa_list
+    
+    def retrieve_chunks(self, query: str, top_k: int = 3) -> List[Dict]:
+        """
+        检索最相关的文档块
+        
+        Args:
+            query: 用户问题
+            top_k: 返回结果数量
+            
+        Returns:
+            List[Dict]: 检索到的文档块列表
+        """
+        return self.vector_store.search(query, n_results=top_k)
+    
+    def generate_answer(
+        self, 
+        query: str, 
+        conversation_history: List[Message] = None,
+        top_k: int = 5
+    ) -> AnswerResult:
+        """
+        检索相关内容并生成最终回答
+        
+        Args:
+            query: 用户问题
+            conversation_history: 对话历史（支持多轮对话）
+            top_k: 检索的QA对数量
+            
+        Returns:
+            AnswerResult: 生成的答案结果（包含来源和置信度）
+        """
+        self._init_qa_generator()
+        
+        retrieved_qa = self.retrieve(query, top_k=top_k)
+        
+        retrieved_chunks = self.retrieve_chunks(query, top_k=3)
+        
+        if not retrieved_qa and not retrieved_chunks:
+            return AnswerResult(
+                text="抱歉，我在知识库中没有找到相关信息来回答您的问题。",
+                sources=[],
+                confidence=0.0
+            )
+        
+        context_parts = []
+        sources_set = set()
+        source_details = []
+        
+        for qa in retrieved_qa:
+            context_parts.append(f"【相关问答】\n问题: {qa.question}\n答案: {qa.answer}")
+            if qa.source:
+                sources_set.add(str(qa.source))
+                source_details.append(qa.source)
+        
+        for chunk in retrieved_chunks:
+            content = chunk.get('content', '')
+            filename = chunk.get('metadata', {}).get('filename', '未知')
+            confidence = 1 - chunk.get('distance', 1.0)
+            context_parts.append(f"【相关文档片段】\n来源: {filename}\n内容: {content}")
+            
+            source_ref = SourceReference(
+                document=filename,
+                chunk_index=chunk.get('metadata', {}).get('chunk_index', 0),
+                confidence=confidence,
+                relevant_text=content[:200]
+            )
+            sources_set.add(str(source_ref))
+            source_details.append(source_ref)
+        
+        context = "\n\n".join(context_parts)
+        
+        history_text = ""
+        if conversation_history:
+            history_parts = []
+            for msg in conversation_history[-5:]:
+                role_name = "用户" if msg.role == "user" else "助手"
+                history_parts.append(f"{role_name}: {msg.content}")
+            history_text = "\n【对话历史】\n" + "\n".join(history_parts) + "\n\n"
+        
+        prompt = f"""你是一个专业的音频知识助手。请根据以下检索到的知识库内容，回答用户的问题。
+
+要求：
+1. 回答要准确、专业、有条理
+2. 如果知识库中有相关信息，请综合使用
+3. 如果知识库中没有相关信息，请诚实说明
+4. 回答时可以引用具体的来源文档
+
+{history_text}【知识库内容】
+{context}
+
+【用户问题】
+{query}
+
+请给出专业、准确的回答："""
+
+        try:
+            if self.config.LLM_TYPE == "deepseek":
+                api_key = self.config.DEEPSEEK_API_KEY or os.getenv("DEEPSEEK_API_KEY", "")
+                client = OpenAI(
+                    api_key=api_key,
+                    base_url=self.config.DEEPSEEK_BASE_URL
+                )
+            else:
+                api_key = self.config.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
+                client = OpenAI(
+                    api_key=api_key,
+                    base_url=self.config.OPENAI_BASE_URL
+                )
+            
+            response = client.chat.completions.create(
+                model=self.config.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": "你是一个专业的音频知识助手，擅长回答音频工程、音乐制作、声学等方面的问题。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=self.config.LLM_MAX_TOKENS,
+                temperature=0.7
+            )
+            
+            answer_text = response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            if retrieved_qa:
+                answer_text = retrieved_qa[0].answer
+                if len(retrieved_qa) > 1:
+                    answer_text += f"\n\n补充信息：{retrieved_qa[1].answer}"
+            else:
+                answer_text = "抱歉，生成回答时出现错误，请稍后重试。"
+        
+        avg_confidence = sum(qa.confidence for qa in retrieved_qa) / len(retrieved_qa) if retrieved_qa else 0.0
+        
+        return AnswerResult(
+            text=answer_text,
+            sources=list(sources_set),
+            source_details=source_details,
+            confidence=avg_confidence,
+            retrieved_qa=retrieved_qa
+        )
+    
+    def chat(
+        self, 
+        query: str, 
+        conversation_history: List[Dict] = None
+    ) -> AnswerResult:
+        """
+        多轮对话接口
+        
+        Args:
+            query: 用户问题
+            conversation_history: 对话历史（字典列表，格式: [{"role": "user/assistant", "content": "..."}]）
+            
+        Returns:
+            AnswerResult: 生成的答案结果
+        """
+        messages = None
+        if conversation_history:
+            messages = [Message(role=m['role'], content=m['content']) for m in conversation_history]
+        
+        return self.generate_answer(query, conversation_history=messages)
+    
+    def get_context_for_agent(self, query: str, top_k: int = 5) -> Dict:
+        """
+        为Agent提供上下文信息
+        
+        Args:
+            query: 用户问题
+            top_k: 检索数量
+            
+        Returns:
+            Dict: 包含上下文信息的字典，适合Agent调用
+        """
+        retrieved_qa = self.retrieve(query, top_k=top_k)
+        retrieved_chunks = self.retrieve_chunks(query, top_k=3)
+        
+        context = {
+            'query': query,
+            'qa_pairs': [qa.to_dict() for qa in retrieved_qa],
+            'documents': [
+                {
+                    'content': chunk.get('content', ''),
+                    'source': chunk.get('metadata', {}).get('filename', '未知'),
+                    'confidence': 1 - chunk.get('distance', 1.0)
+                }
+                for chunk in retrieved_chunks
+            ],
+            'sources': list(set(qa.source.document for qa in retrieved_qa if qa.source)),
+            'avg_confidence': sum(qa.confidence for qa in retrieved_qa) / len(retrieved_qa) if retrieved_qa else 0.0
+        }
+        
+        return context
+
+
+class KnowledgeBaseAPI:
+    """
+    知识库API接口类
+    专门为OpenClaw Agent设计，提供简洁的调用接口
+    """
+    
+    def __init__(self, config: Config = None):
+        self._kb = AudioKnowledgeBase(config)
+        self._conversation_history: List[Message] = []
+    
+    def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedQA]:
+        """检索最相关的QA对"""
+        return self._kb.retrieve(query, top_k)
+    
+    def generate_answer(self, query: str, top_k: int = 5) -> AnswerResult:
+        """
+        生成答案（不带对话历史）
+        
+        示例:
+            kb = KnowledgeBaseAPI()
+            answer = kb.generate_answer("压缩器应该怎么设置？")
+            print(answer.text)
+            print(answer.sources)
+        """
+        return self._kb.generate_answer(query, top_k=top_k)
+    
+    def chat(self, query: str) -> AnswerResult:
+        """
+        多轮对话（自动维护对话历史）
+        
+        示例:
+            kb = KnowledgeBaseAPI()
+            answer1 = kb.chat("什么是压缩器？")
+            answer2 = kb.chat("那它的attack参数怎么设置？")  # 会带上之前的对话上下文
+        """
+        result = self._kb.generate_answer(
+            query, 
+            conversation_history=self._conversation_history
+        )
+        
+        self._conversation_history.append(Message(role='user', content=query))
+        self._conversation_history.append(Message(role='assistant', content=result.text))
+        
+        if len(self._conversation_history) > 20:
+            self._conversation_history = self._conversation_history[-20:]
+        
+        return result
+    
+    def clear_history(self):
+        """清除对话历史"""
+        self._conversation_history = []
+    
+    def get_context(self, query: str, top_k: int = 5) -> Dict:
+        """获取上下文信息（供Agent使用）"""
+        return self._kb.get_context_for_agent(query, top_k)
+
+    def search(self, query: str, top_k: int = 3, search_type: str = "hybrid") -> List[Dict]:
+        """
+        在音频专业知识库中搜索相关文档，返回 OCT 期望的格式。
+
+        Args:
+            query: 搜索关键词或问题
+            top_k: 返回结果数量，默认 3
+            search_type: 搜索类型（semantic/keyword/hybrid），当前仅支持语义搜索
+
+        Returns:
+            List[Dict]: 格式为 [{"content": "...", "score": 0.95, "source": "..."}, ...]
+        """
+        raw_results = self._kb.search(query, n_results=top_k)
+        results = []
+        for r in raw_results:
+            content = r.get('content', '')
+            metadata = r.get('metadata', {})
+            distance = r.get('distance', 1.0)
+            score = max(0, 1 - distance)
+            source = metadata.get('filename') or metadata.get('source', '未知')
+            results.append({
+                'content': content,
+                'score': round(score, 4),
+                'source': source,
+            })
+        return results
+    
+    def process_documents(self, force: bool = False, force_ocr: bool = False):
+        """处理文档"""
+        self._kb.process_documents(force, force_ocr)
+    
+    def generate_qa_pairs(self, force: bool = False):
+        """生成QA对"""
+        self._kb.generate_qa_pairs(force)
+    
+    def full_pipeline(self, force: bool = False):
+        """运行完整流水线"""
+        self._kb.process_documents(force)
+        self._kb.generate_qa_pairs(force)
+
+    def get_stats(self) -> Dict:
+        """获取知识库统计信息"""
+        return self._kb.get_stats()
+
+    def list_documents(self) -> List[str]:
+        """获取所有已索引的文档列表"""
+        return self._kb.list_documents()
+
+
+def interactive_mode(kb: AudioKnowledgeBase, use_qa: bool = False):
+    print("\n" + "="*60)
+    print("音频专业知识库 - 交互式查询")
+    print("输入问题进行查询，输入 'quit' 或 'exit' 退出")
+    print("="*60)
+    
+    while True:
+        try:
+            query = input("\n请输入问题: ").strip()
+            
+            if query.lower() in ['quit', 'exit', 'q']:
+                print("再见！")
+                break
+            
+            if not query:
+                continue
+            
+            if use_qa:
+                results = kb.search_qa(query, n_results=3)
+                kb.print_qa_search_results(results)
+            else:
+                results = kb.search(query, n_results=3)
+                kb.print_search_results(results)
+            
+        except KeyboardInterrupt:
+            print("\n再见！")
+            break
+        except Exception as e:
+            print(f"错误: {e}")
+
+
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='音频专业知识库系统')
+    parser.add_argument('--docs-dir', default='./documents', help='文档目录')
+    parser.add_argument('--force', action='store_true', help='强制重新处理所有文档')
+    parser.add_argument('--force-ocr', action='store_true', help='强制对所有PDF进行OCR处理（用于扫描件）')
+    parser.add_argument('--ocr-mode', type=str, default='smart',
+                        choices=['paddle_only', 'deepseek_only', 'smart'],
+                        help='OCR模式：paddle_only（全免费），deepseek_only（全API），smart（智能降级）')
+    parser.add_argument('--ocr-quality-threshold', type=float, default=0.85,
+                        help='识别质量阈值，低于此值触发API保底（smart模式下）')
+    parser.add_argument('--save-ocr-stats', action='store_true',
+                        help='保存OCR统计信息，便于分析哪些书需要API保底')
+    parser.add_argument('--no-ocr', action='store_true', help='禁用OCR功能')
+    parser.add_argument('--search', type=str, help='搜索查询（文档块）')
+    parser.add_argument('--search-qa', type=str, help='搜索查询（QA对）')
+    parser.add_argument('--ask', type=str, help='生成答案（带来源引用）')
+    parser.add_argument('--chat', action='store_true', help='多轮对话模式')
+    parser.add_argument('--interactive', '-i', action='store_true', help='交互式查询模式')
+    parser.add_argument('--interactive-qa', action='store_true', help='交互式QA查询模式')
+    parser.add_argument('--embedding-type', choices=['local', 'deepseek', 'openai'], 
+                        default='local', help='Embedding类型')
+    parser.add_argument('--llm-type', choices=['deepseek', 'openai'], 
+                        default='deepseek', help='LLM类型（用于QA生成）')
+    parser.add_argument('--generate-qa', action='store_true', help='生成QA对')
+    parser.add_argument('--full-pipeline', action='store_true', help='运行完整流水线（文档处理 + QA生成）')
+    
+    args = parser.parse_args()
+    
+    config = Config()
+    config.DOCUMENTS_DIR = args.docs_dir
+    config.EMBEDDING_TYPE = args.embedding_type
+    config.LLM_TYPE = args.llm_type
+    config.OCR_MODE = args.ocr_mode
+    config.OCR_QUALITY_THRESHOLD = args.ocr_quality_threshold
+    config.OCR_SAVE_STATS = args.save_ocr_stats
+    
+    if args.ocr_mode == 'paddle_only':
+        config.OCR_API_FALLBACK = False
+    elif args.ocr_mode == 'deepseek_only':
+        config.OCR_API_FALLBACK = True
+        config.OCR_QUALITY_THRESHOLD = 1.0
+    
+    if args.no_ocr:
+        config.OCR_ENABLED = False
+    
+    print("="*60)
+    print("音频专业知识库系统")
+    print("="*60)
+    print(f"文档目录: {config.DOCUMENTS_DIR}")
+    print(f"向量数据库: {config.CHROMA_DB_PATH}")
+    print(f"记录数据库: {config.SQLITE_DB_PATH}")
+    print(f"QA数据库: {config.QA_SQLITE_DB_PATH}")
+    print(f"QA向量库: {config.QA_CHROMA_DB_PATH}")
+    print(f"分块大小: {config.CHUNK_SIZE} 字符")
+    print(f"重叠大小: {config.CHUNK_OVERLAP} 字符")
+    print(f"Embedding类型: {config.EMBEDDING_TYPE}")
+    print(f"LLM类型: {config.LLM_TYPE}")
+    ocr_info = f"{config.OCR_MODE}模式" if config.OCR_ENABLED else "禁用"
+    if config.OCR_ENABLED and config.OCR_API_FALLBACK:
+        ocr_info += f" (质量阈值: {config.OCR_QUALITY_THRESHOLD:.0%})"
+    print(f"OCR: {ocr_info}")
+    print("="*60)
+    
+    kb = AudioKnowledgeBase(config)
+    
+    if args.full_pipeline:
+        kb.process_documents(force=args.force, force_ocr=args.force_ocr)
+        kb.generate_qa_pairs(force=args.force)
+    elif args.generate_qa:
+        kb.generate_qa_pairs(force=args.force)
+    elif args.ask:
+        answer = kb.generate_answer(args.ask)
+        print("\n" + "="*60)
+        print("回答")
+        print("="*60)
+        print(answer.text)
+        if answer.sources:
+            print(f"\n📚 来源: {', '.join(answer.sources)}")
+        print(f"📊 置信度: {answer.confidence:.2%}")
+    elif args.chat:
+        api = KnowledgeBaseAPI(config)
+        print("\n" + "="*60)
+        print("多轮对话模式")
+        print("输入问题进行对话，输入 'quit' 或 'exit' 退出，输入 'clear' 清除历史")
+        print("="*60)
+        
+        while True:
+            try:
+                query = input("\n用户: ").strip()
+                
+                if query.lower() in ['quit', 'exit', 'q']:
+                    print("再见！")
+                    break
+                
+                if query.lower() == 'clear':
+                    api.clear_history()
+                    print("对话历史已清除")
+                    continue
+                
+                if not query:
+                    continue
+                
+                answer = api.chat(query)
+                print(f"\n助手: {answer.text}")
+                if answer.sources:
+                    print(f"📚 来源: {', '.join(answer.sources)}")
+                    
+            except KeyboardInterrupt:
+                print("\n再见！")
+                break
+            except Exception as e:
+                print(f"错误: {e}")
+    elif args.search:
+        results = kb.search(args.search)
+        kb.print_search_results(results)
+    elif args.search_qa:
+        results = kb.search_qa(args.search_qa)
+        kb.print_qa_search_results(results)
+    elif args.interactive_qa:
+        kb.process_documents()
+        interactive_mode(kb, use_qa=True)
+    elif args.interactive:
+        kb.process_documents()
+        interactive_mode(kb, use_qa=False)
+    else:
+        kb.process_documents(force=args.force, force_ocr=args.force_ocr)
+
+
+def demo_agent_usage():
+    """
+    Agent调用示例
+    展示如何在OpenClaw Agent中使用知识库
+    """
+    
+    # 方式1: 使用KnowledgeBaseAPI（推荐）
+    kb = KnowledgeBaseAPI()
+    
+    # 检索QA对
+    qa_pairs = kb.retrieve("压缩器应该怎么设置？", top_k=3)
+    for qa in qa_pairs:
+        print(f"Q: {qa.question}")
+        print(f"A: {qa.answer}")
+        print(f"来源: {qa.source}")
+        print(f"置信度: {qa.confidence:.2%}")
+        print("-" * 40)
+    
+    # 生成答案（带来源）
+    answer = kb.generate_answer("压缩器应该怎么设置？")
+    print(answer.text)
+    print(f"来源: {answer.sources}")
+    print(f"置信度: {answer.confidence:.2%}")
+    
+    # 多轮对话
+    answer1 = kb.chat("什么是压缩器？")
+    print(answer1.text)
+    
+    answer2 = kb.chat("那attack参数怎么设置？")
+    print(answer2.text)
+    
+    # 获取上下文（供Agent决策使用）
+    context = kb.get_context("EQ均衡器如何使用？")
+    print(context['qa_pairs'])
+    print(context['documents'])
+    print(context['sources'])
+    
+    # 方式2: 直接使用AudioKnowledgeBase
+    kb2 = AudioKnowledgeBase()
+    
+    # 带对话历史的生成
+    history = [
+        Message(role='user', content='什么是压缩器？'),
+        Message(role='assistant', content='压缩器是一种动态处理工具...')
+    ]
+    answer = kb2.generate_answer("那release参数呢？", conversation_history=history)
+    print(answer.text)
+    
+    # 方式3: 获取结构化上下文（适合Function Calling）
+    context = kb2.get_context_for_agent("如何消除齿音？")
+    
+    # 返回给Agent的结构化数据
+    return {
+        'answer': answer.to_dict(),
+        'context': context
+    }
+
+
+if __name__ == "__main__":
+    main()

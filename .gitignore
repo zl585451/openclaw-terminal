@@ -72,6 +72,13 @@ docs/06_release/
 resources/nocturne_server/
 resources/nocturne_memory/
 
+# 内嵌 AI.library：运行时数据与本地 venv（源码由仓库跟踪）
+resources/ai_library/data/
+resources/ai_library/documents/
+resources/ai_library/__pycache__/
+resources/ai_library/.venv/
+resources/ai_library/venv/
+
 # Cursor/Copilot 技能包（不混入 OCT 代码库）
 skills/minimax-multimodal-toolkit/
 skills/minimax-skills/

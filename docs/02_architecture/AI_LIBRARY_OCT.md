@@ -1,6 +1,23 @@
 # AI.library 与 OCT 集成指南
 
-> **最后更新**：2026-03-21 | **状态**：✅ 已集成（P0+P1+P2）
+> **最后更新**：2026-04-26 | **状态**：✅ 已集成（P0+P1+P2 + 书库 Phase 1 内嵌与 userData 数据根）
+
+---
+
+## 内嵌源码与数据目录（书库 Phase 1）
+
+OCT 仓库内提供 **`resources/ai_library/`**（`api_server.py`、`audio_knowledge_base.py` 等）。Electron 在用户 **未** 配置 `OCT_AI_LIBRARY_PATH` 时，若该目录存在 `api_server.py`，则自动将其作为启动 **cwd**。
+
+运行时的向量库、SQLite、文档扫描目录等 **不再默认写入** `resources/ai_library/data/`，而是由主进程在 spawn 子进程时注入：
+
+| 环境变量 | 值 | 说明 |
+|----------|-----|------|
+| `AI_LIBRARY_DATA_ROOT` | `%APPDATA%/…/userData/ai_library_data`（macOS/Linux 为对应 userData） | Chroma、SQLite、QA JSON、`library/` 子目录等均在此之下 |
+| `AI_LIBRARY_DOCS_ROOT` | `ai_library_data/documents` | 与旧版「论文 documents」语义一致，独立于源码树 |
+
+仍可通过在 shell 中导出上述变量，在未经 OCT 启动时本地调试 Python 服务。
+
+**CORS**：`api_server.py` 已允许 OCT 前端开发端口 **5176**。
 
 ---
 
@@ -19,7 +36,7 @@
 
 1. 打开 **设置 → 记忆** 标签页。
 2. 找到 **AI.library 知识库（插件）**。
-3. 勾选 **随 OCT 自动启动**，填写 **项目根目录**（含 `api_server.py`，例如 `E:\AI.library`），端口保持 **8001**（或与 `api_server.py` 中一致）。
+3. 勾选 **随 OCT 自动启动**；**项目根目录**可留空——若仓库内已有 `resources/ai_library/api_server.py`，将自动使用内嵌目录。仍填写外部路径（如 `E:\AI.library`）时以外部目录为准。端口保持 **8001**（或与 `api_server.py` 中一致）。
 4. 点击 **保存并应用**（会重启 Gateway 以注入 `AI_LIBRARY_URL`）。
 
 关闭 OCT 时，由 OCT 拉起的 AI.library 子进程会一并结束。
@@ -139,6 +156,8 @@ OCT_AI_LIBRARY_PORT=8001
 
 | 文件 | 说明 |
 |------|------|
+| `resources/ai_library/` | 内嵌 AI.library 源码；运行时数据见 userData `ai_library_data/` |
+| `electron/main.ts` | 解析内嵌路径、`AI_LIBRARY_*` 子进程环境变量 |
 | `oct-gateway/config.js` | ai_library 配置加载 |
 | `oct-gateway/tools/ai_library.js` | 检索模块、缓存、错误处理 |
 | `oct-gateway/tools.js` | search_knowledge 工具注册与执行 |

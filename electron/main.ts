@@ -126,6 +126,19 @@ function getNocturnePath(): string {
   return '';
 }
 
+/** 仓库内嵌 AI.library 根目录（含 api_server.py）；打包后与开发时路径探测与 nocturne 一致。 */
+function resolveBundledAiLibraryRoot(): string {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'ai_library'),
+    path.join(__dirname, '..', 'resources', 'ai_library'),
+    path.join(__dirname, '..', '..', 'resources', 'ai_library'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, 'api_server.py'))) return c;
+  }
+  return path.join(__dirname, '..', 'resources', 'ai_library');
+}
+
 // 获取 Nocturne 预编译 exe 路径（PyInstaller 打包，无需 Python）
 // 打包后位于 resources/nocturne_server/nocturne_server.exe
 function getNocturneExePath(): string {
@@ -829,6 +842,14 @@ function syncAiLibraryPluginConfigFromDisk(): void {
   const envPort = parseInt(process.env.OCT_AI_LIBRARY_PORT || '', 10);
   if (!Number.isNaN(envPort) && envPort > 0) octAiLibraryPort = envPort;
 
+  // 书库 Phase 1：用户未在 config / 环境变量中填写路径时，使用仓库内 resources/ai_library
+  if (!octAiLibraryPath) {
+    const bundled = resolveBundledAiLibraryRoot();
+    if (fs.existsSync(path.join(bundled, 'api_server.py'))) {
+      octAiLibraryPath = bundled;
+    }
+  }
+
   const explicitUrl = (process.env.AI_LIBRARY_URL || '').trim();
   if (explicitUrl) {
     resolvedAiLibraryUrlForGateway = explicitUrl;
@@ -876,6 +897,7 @@ async function startAiLibraryBackend(): Promise<boolean> {
   }
 
   const { cmd, args } = getAiLibraryPythonCommand(root);
+  const aiLibraryDataRoot = path.join(app.getPath('userData'), 'ai_library_data');
   console.log('[AI.library] 启动:', cmd, args.join(' '), 'cwd=', root);
   aiLibraryProcess = spawn(cmd, args, {
     cwd: root,
@@ -886,6 +908,8 @@ async function startAiLibraryBackend(): Promise<boolean> {
       API_HOST: '0.0.0.0',
       API_PORT: String(octAiLibraryPort),
       PYTHONIOENCODING: 'utf-8',
+      AI_LIBRARY_DATA_ROOT: aiLibraryDataRoot,
+      AI_LIBRARY_DOCS_ROOT: path.join(aiLibraryDataRoot, 'documents'),
     }),
   });
 
