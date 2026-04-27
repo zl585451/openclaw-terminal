@@ -2,20 +2,41 @@ import { useCallback, useState } from 'react';
 import { useWorkbench } from '../../workbench/WorkbenchContext';
 import { resolveWorkbenchPlugin } from '../../workbench/plugins';
 import DocumentAppendBar from './DocumentAppendBar';
-import { inferImportedTextArtifactType, parseScript } from '../../utils/scriptParser';
 import type { WorkbenchArtifactType } from '../../workbench/types';
+import { useProject } from '../../contexts/ProjectContext';
+import { getChapterText } from '../../modules/script-adapter/services/aiLibraryClient';
 import '../CanvasPanel.css';
-
-const ipcRenderer =
-  typeof window !== 'undefined' && typeof (window as any).require === 'function'
-    ? (window as any).require('electron').ipcRenderer
-    : null;
 
 export default function WorkbenchPanel() {
   const workbench = useWorkbench();
   const activeDocument = workbench.activeDocument;
   const hasMultipleDocuments = workbench.documents.length > 1;
-  const [importing, setImporting] = useState(false);
+
+  // ─── 从项目加载章节 ────────────────────────────────────────────────────────
+  const { activeProject } = useProject();
+  const [chapterLoading, setChapterLoading] = useState(false);
+  const [chapterError, setChapterError] = useState<string | null>(null);
+
+  const handleLoadChapter = useCallback(async (chapterIndex: number) => {
+    if (!activeProject) return;
+    setChapterLoading(true);
+    setChapterError(null);
+    try {
+      const { chapter, text } = await getChapterText(activeProject.id, chapterIndex);
+      const title = chapter.title ?? `第 ${chapterIndex + 1} 章`;
+      workbench.createDocument({
+        title: `${activeProject.title} · ${title}`,
+        content: text,
+        artifactType: 'document',
+        mode: 'markdown',
+        origin: 'user',
+      });
+    } catch (e) {
+      setChapterError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setChapterLoading(false);
+    }
+  }, [activeProject, workbench]);
 
   // 中文字数：去掉所有空白字符后的长度，对中英文混排都是合理近似
   const cnCharCount = activeDocument?.content
@@ -76,38 +97,6 @@ export default function WorkbenchPanel() {
     });
   }, [activeDocument, toggleArtifactTarget, workbench]);
 
-  // 上传文本文件（剧本优先，正文自动回退到 document）
-  const handleImportScript = useCallback(async () => {
-    if (!ipcRenderer || importing) return;
-    setImporting(true);
-    try {
-      const result: {
-        success: boolean;
-        text?: string;
-        fileName?: string;
-        sourcePath?: string;
-        draftCachePath?: string;
-        error?: string;
-      } =
-        await ipcRenderer.invoke('parse-script-file');
-      if (!result.success || !result.text) return;
-
-      const artifactType = inferImportedTextArtifactType(result.text);
-      const parsed = parseScript(result.text);
-      const fallbackTitle = artifactType === 'script' ? '剧本' : '文档';
-      const title = parsed.title || result.fileName?.replace(/\.(docx|txt)$/i, '') || fallbackTitle;
-
-      workbench.openCanvas(result.text, 'markdown', title, 'text', artifactType, {
-        sourcePath: result.sourcePath,
-        draftCachePath: artifactType === 'script' ? result.draftCachePath : undefined,
-      });
-    } catch (err) {
-      console.error('[ScriptImport] 解析失败:', err);
-    } finally {
-      setImporting(false);
-    }
-  }, [importing, workbench]);
-
   const renderPreview = () => {
     if (!activeDocument) return null;
     const plugin = resolveWorkbenchPlugin(activeDocument);
@@ -118,16 +107,42 @@ export default function WorkbenchPanel() {
     <div className="canvas-empty">
       <div className="canvas-empty-title">Workbench</div>
       <div className="canvas-empty-copy">
-        Open a code block or send a structured result here to start building artifacts.
+        AMY 的产出物会出现在这里。先在书库里选定当前项目，再开始对话或执行内容制作。
       </div>
-      <button
-        className="canvas-action-btn"
-        style={{ marginTop: '16px' }}
-        onClick={handleImportScript}
-        disabled={importing}
-      >
-        {importing ? '解析中…' : '📄 上传文本'}
-      </button>
+
+      {activeProject && activeProject.chapters.length > 0 && (
+        <div className="canvas-chapter-loader">
+          <div className="canvas-chapter-loader-label">
+            📖 {activeProject.title} — 加载章节到 Canvas
+          </div>
+          <select
+            className="canvas-chapter-select"
+            defaultValue=""
+            disabled={chapterLoading}
+            onChange={(e) => {
+              const idx = Number(e.target.value);
+              if (!isNaN(idx)) handleLoadChapter(idx);
+              e.target.value = '';
+            }}
+          >
+            <option value="" disabled>选择章节…</option>
+            {activeProject.chapters.map((ch) => (
+              <option key={ch.chapter_index} value={ch.chapter_index}>
+                {ch.title ?? `第 ${ch.chapter_index + 1} 章`}
+                {ch.char_count ? `（${ch.char_count.toLocaleString('zh-CN')} 字）` : ''}
+              </option>
+            ))}
+          </select>
+          {chapterLoading && <span className="canvas-chapter-loading">加载中…</span>}
+          {chapterError && <span className="canvas-chapter-error">{chapterError}</span>}
+        </div>
+      )}
+
+      {!activeProject && (
+        <div className="canvas-chapter-loader-hint">
+          在书库里点击「设为当前项目」后，可直接在这里加载章节内容。
+        </div>
+      )}
     </div>
   );
 
@@ -163,15 +178,6 @@ export default function WorkbenchPanel() {
           </div>
         )}
         <div className="canvas-toolbar-actions">
-          {/* 文本上传按钮（剧本优先，正文自动回退） */}
-          <button
-            className="canvas-action-btn"
-            onClick={handleImportScript}
-            disabled={importing}
-            title="上传 .txt 或 .docx 文本文件"
-          >
-            {importing ? '解析中…' : '📄 文本'}
-          </button>
           {canToggleScriptView && (
             <button
               className="canvas-action-btn"
