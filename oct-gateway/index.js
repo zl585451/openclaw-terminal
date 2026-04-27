@@ -279,6 +279,7 @@ async function handleChatRequest(request, connection) {
   const userMessage = params?.message || '';
   const attachments = params?.attachments || [];
   const workbenchContext = params?.workbenchContext || params?.canvasContext || null;
+  const projectContext = params?.projectContext || null;
   let keepalivePhase = 'waiting_first_token';
   let keepaliveToolName = null;
   const keepaliveStartTime = Date.now();
@@ -380,6 +381,7 @@ async function handleChatRequest(request, connection) {
     workbenchContext,
     orchestratorResult: orchResult,
     systemPrompt,
+    projectContext,
   });
 
   connection.send({ type: 'event', event: 'agent-phase', phase: 'thinking' });

@@ -1627,7 +1627,8 @@ function sendChatMessage(
   files?: UploadedFile[],
   pacingMs?: number,
   workbenchContext?: any,
-  requestId?: string
+  requestId?: string,
+  projectContext?: any,
 ): { success: boolean; error?: string } {
   if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
     return { success: false, error: 'WebSocket not connected' };
@@ -1653,6 +1654,7 @@ function sendChatMessage(
     pacingMs?: number;
     workbenchContext?: any;
     canvasContext?: any;
+    projectContext?: any;
   } = {
     sessionKey: currentSessionKey,
     idempotencyKey,
@@ -1662,6 +1664,9 @@ function sendChatMessage(
   if (workbenchContext) {
     params.workbenchContext = workbenchContext;
     params.canvasContext = workbenchContext;
+  }
+  if (projectContext) {
+    params.projectContext = projectContext;
   }
 
   // OpenClaw chat.send attachments: Gateway 期望 { type, mimeType, content }
@@ -4203,6 +4208,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
   workbenchContext?: any;
   canvasContext?: any;
   requestId?: string;
+  projectContext?: any;
 }) => {
   let content: string;
   let imageDataUrl: string | null | undefined;
@@ -4210,6 +4216,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
   let pacingMs: number | undefined;
   let workbenchContext: any;
   let requestId: string | undefined;
+  let projectContext: any;
 
   if (typeof payload === 'string') {
     content = payload;
@@ -4218,6 +4225,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
     pacingMs = undefined;
     workbenchContext = undefined;
     requestId = undefined;
+    projectContext = undefined;
   } else if (payload && typeof payload === 'object') {
     const c = payload.content;
     content = typeof c === 'string' ? c : (c ? String(c) : '');
@@ -4228,6 +4236,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
     requestId = typeof payload.requestId === 'string'
       ? String(payload.requestId).trim()
       : undefined;
+    projectContext = payload.projectContext ?? undefined;
   } else {
     content = '';
     imageDataUrl = null;
@@ -4235,9 +4244,10 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
     pacingMs = undefined;
     workbenchContext = undefined;
     requestId = undefined;
+    projectContext = undefined;
   }
 
-  return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext, requestId);
+  return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext, requestId, projectContext);
 });
 
 function sendScriptAdapterRunRequest(method: string, params: Record<string, unknown>) {

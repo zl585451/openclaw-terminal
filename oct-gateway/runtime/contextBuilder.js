@@ -1,3 +1,47 @@
+function parseChineseChapterNumber(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return NaN;
+  if (/^\d+$/.test(raw)) return Number(raw);
+
+  const digitMap = {
+    '零': 0,
+    '〇': 0,
+    '○': 0,
+    '一': 1,
+    '二': 2,
+    '两': 2,
+    '三': 3,
+    '四': 4,
+    '五': 5,
+    '六': 6,
+    '七': 7,
+    '八': 8,
+    '九': 9,
+  };
+  const unitMap = {
+    '十': 10,
+    '百': 100,
+    '千': 1000,
+  };
+
+  let total = 0;
+  let current = 0;
+  for (const char of raw) {
+    if (digitMap[char] != null) {
+      current = digitMap[char];
+      continue;
+    }
+    const unit = unitMap[char];
+    if (unit != null) {
+      total += (current || 1) * unit;
+      current = 0;
+      continue;
+    }
+    return NaN;
+  }
+  return total + current;
+}
+
 class ContextBuilder {
   constructor({
     session,
@@ -34,6 +78,7 @@ class ContextBuilder {
     workbenchContext,
     orchestratorResult,
     systemPrompt,
+    projectContext,
   }) {
     const imageAttachments = (attachments || []).filter((attachment) => attachment.type === 'image');
     const audioAttachments = (attachments || []).filter((attachment) => attachment.type === 'audio');
@@ -86,15 +131,17 @@ class ContextBuilder {
       : '';
     const canvasSuggestionNotice = this._buildCanvasSuggestion(orchestratorResult);
     const canvasRoundtripNotice = this._buildCanvasRoundtrip(workbenchContext);
+    const projectChapterNotice = await this._buildProjectChapterNotice(userMessage, projectContext);
 
     const lastUserMsg = typeof messageContent === 'string'
-      ? messageContent + contextMemory + backgroundTaskNotice + canvasSuggestionNotice + canvasRoundtripNotice
+      ? messageContent + contextMemory + backgroundTaskNotice + canvasSuggestionNotice + canvasRoundtripNotice + projectChapterNotice
       : [
           ...messageContent,
           ...(contextMemory ? [{ type: 'text', text: contextMemory }] : []),
           ...(backgroundTaskNotice ? [{ type: 'text', text: backgroundTaskNotice }] : []),
           ...(canvasSuggestionNotice ? [{ type: 'text', text: canvasSuggestionNotice }] : []),
           ...(canvasRoundtripNotice ? [{ type: 'text', text: canvasRoundtripNotice }] : []),
+          ...(projectChapterNotice ? [{ type: 'text', text: projectChapterNotice }] : []),
         ];
 
     this.session.addMessage(
@@ -110,6 +157,7 @@ class ContextBuilder {
       history,
       imageAttachments,
       sessionKey,
+      projectContext,
     });
 
     const recallInjection = await this._buildVectorRecallInjection({ userMessage, sessionKey });
@@ -354,7 +402,13 @@ class ContextBuilder {
         version: canvasContext.activeDocument.version,
         status: canvasContext.activeDocument.status,
         explanation: canvasContext.activeDocument.explanation || '',
-        content: canvasContext.activeDocument.content,
+        content: (() => {
+          const raw = canvasContext.activeDocument.content || '';
+          const LIMIT = 2000;
+          return raw.length > LIMIT
+            ? raw.substring(0, LIMIT) + `\n…[已截断，全文 ${raw.length} 字，仅展示前 ${LIMIT} 字]`
+            : raw;
+        })(),
       },
       documents: Array.isArray(canvasContext.documents) ? canvasContext.documents : [],
     };
@@ -365,7 +419,7 @@ class ContextBuilder {
       + `${JSON.stringify(summary, null, 2)}`;
   }
 
-  async _buildSystemPrompt({ systemPrompt, userMessage, history, imageAttachments, sessionKey }) {
+  async _buildSystemPrompt({ systemPrompt, userMessage, history, imageAttachments, sessionKey, projectContext }) {
     // 会话稳定性止血：暂时停用并发 hypothesis sidecar。
     // 该 sidecar 通过独立 streamChat 运行，历史上会与主 turn 形成并发链路，
     // 触发 turnId 混流与“主会话空收尾”的风险（见 2026-04-17 会话断开排查）。
@@ -412,7 +466,109 @@ class ContextBuilder {
       this.log.debug('AI.library 检索失败，跳过', { error: error?.message || String(error) });
     }
 
-    return modelContext + finalSystemPrompt + timeContext + knowledgeContext;
+    const projectContextSection = this._buildProjectContextSection(projectContext);
+
+    return modelContext + finalSystemPrompt + timeContext + projectContextSection + knowledgeContext;
+  }
+
+  _buildProjectContextSection(projectContext) {
+    if (!projectContext || !projectContext.id) return '';
+
+    const { title, author, total_chars, chapter_count, chapters } = projectContext;
+    const charsLabel = total_chars >= 10000
+      ? `${(total_chars / 10000).toFixed(1)} 万字`
+      : `${total_chars} 字`;
+
+    const chaptersToShow = Array.isArray(chapters) ? chapters.slice(0, 60) : [];
+    const chapterLines = chaptersToShow.map((chapter) => {
+      const chapterTitle = chapter.title ? chapter.title : `第 ${chapter.chapter_index + 1} 章`;
+      const chapterChars = chapter.char_count ? `（${chapter.char_count} 字）` : '';
+      return `  ${chapter.chapter_index + 1}. ${chapterTitle}${chapterChars}`;
+    });
+
+    if (Array.isArray(chapters) && chapters.length > 60) {
+      chapterLines.push(`  ... 共 ${chapter_count} 章（仅展示前 60 章）`);
+    }
+
+    return '\n\n[当前项目]\n'
+      + `书名：《${title}》\n`
+      + `作者：${author || '未知'}\n`
+      + `规模：${chapter_count} 章 · ${charsLabel}\n`
+      + `目录：\n${chapterLines.join('\n')}\n`
+      + '\n注：以上是用户当前选定的书本项目结构信息。'
+      + ' 当用户讨论人物、章节、结构或本书范围内的内容时，应默认优先基于这本书来理解问题。'
+      + ' 这里只提供书目与章节结构，不代表你已经拥有具体章节原文。';
+  }
+
+  async _buildProjectChapterNotice(userMessage, projectContext) {
+    if (!projectContext?.id || !userMessage) return '';
+    const chapterIndex = this._extractReferencedChapterIndex(userMessage, projectContext);
+    if (chapterIndex == null) return '';
+
+    try {
+      const chapterData = await this._fetchProjectChapter(projectContext.id, chapterIndex);
+      if (!chapterData?.text?.trim()) return '';
+      const title = chapterData.chapter?.title || `第 ${chapterIndex + 1} 章`;
+      const trimmedText = String(chapterData.text || '').trim();
+      const safeText = trimmedText.length > 12000
+        ? `${trimmedText.slice(0, 12000)}\n\n[章节正文过长，已截断前 12000 字用于本轮理解]`
+        : trimmedText;
+      return `\n\n[当前项目章节正文]\n章节：第 ${chapterIndex + 1} 章《${title}》\n以下内容来自当前项目书库，可直接据此回答本轮关于该章节的问题：\n${safeText}`;
+    } catch (error) {
+      this.log.debug('project chapter fetch failed, continuing without chapter context', {
+        projectId: projectContext.id,
+        error: error?.message || String(error),
+      });
+      return '';
+    }
+  }
+
+  _extractReferencedChapterIndex(userMessage, projectContext) {
+    const text = String(userMessage || '').trim();
+    if (!text) return null;
+
+    const directArabic = text.match(/第\s*(\d{1,4})\s*章/);
+    if (directArabic) {
+      const index = Number(directArabic[1]) - 1;
+      return this._isValidProjectChapterIndex(index, projectContext) ? index : null;
+    }
+
+    const directChinese = text.match(/第\s*([零一二两三四五六七八九十百千〇○]{1,8})\s*章/);
+    if (directChinese) {
+      const parsed = parseChineseChapterNumber(directChinese[1]);
+      const index = parsed - 1;
+      return this._isValidProjectChapterIndex(index, projectContext) ? index : null;
+    }
+
+    const looseArabic = text.match(/(?:^|\D)(\d{1,4})\s*章/);
+    if (looseArabic) {
+      const index = Number(looseArabic[1]) - 1;
+      return this._isValidProjectChapterIndex(index, projectContext) ? index : null;
+    }
+
+    return null;
+  }
+
+  _isValidProjectChapterIndex(index, projectContext) {
+    if (!Number.isInteger(index) || index < 0) return false;
+    if (Array.isArray(projectContext?.chapters) && projectContext.chapters.length > 0) {
+      return projectContext.chapters.some((chapter) => Number(chapter.chapter_index) === index);
+    }
+    return index < Number(projectContext?.chapter_count || 0);
+  }
+
+  async _fetchProjectChapter(projectId, chapterIndex) {
+    const base = String((this.config.ai_library && this.config.ai_library.url) || this.config.AI_LIBRARY_URL || 'http://127.0.0.1:8001').replace(/\/$/, '');
+    const response = await fetch(`${base}/api/library/${encodeURIComponent(projectId)}/chapter/${chapterIndex}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`PROJECT_CHAPTER_HTTP_${response.status}:${body.slice(0, 120)}`);
+    }
+    const payload = await response.json();
+    return {
+      chapter: payload?.chapter || null,
+      text: String(payload?.text || ''),
+    };
   }
 
   _injectTaskContext(messages, sessionKey) {

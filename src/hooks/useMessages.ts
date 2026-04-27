@@ -15,6 +15,7 @@ import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
+import { useProject } from '../contexts/ProjectContext';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
 function isSystemCommand(text: string): boolean {
@@ -155,6 +156,7 @@ export function useMessages({
   onClarifyOpen,
 }: UseMessagesOptions): UseMessagesReturn {
   const transportPacingMs = 4;
+  const { activeProject } = useProject();
   const scrollRef = useRef(scroll);
   scrollRef.current = scroll;
   const streamSpeedMsRef = useRef(streamSpeedMs);
@@ -1078,6 +1080,7 @@ export function useMessages({
       transportPacingMs,
       roundtripContext,
       newRequestId,
+      activeProject,
     );
     if (!result?.success && !cmdIsSystem) {
       clearRoundTimeout();
@@ -1090,7 +1093,7 @@ export function useMessages({
         console.warn('[useMessages] send failed cleanup', e);
       }
     }
-  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProject, getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── quickSend ─────────────────────────────────────────────────────────────
   const quickSend = useCallback((content: string) => {
@@ -1187,6 +1190,7 @@ export function useMessages({
       transportPacingMs,
       workbenchBus.getContext('continue'),
       newRequestId,
+      activeProject,
     ).then((result) => {
       if (!result?.success && !isSystem) {
         clearRoundTimeout();
@@ -1199,7 +1203,7 @@ export function useMessages({
         }
       }
     });
-  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProject, getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     wsConnected: ws.wsConnected,
