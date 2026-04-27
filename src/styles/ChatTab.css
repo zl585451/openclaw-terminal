@@ -269,8 +269,8 @@
   align-self: flex-end;
   background: var(--bg-user-msg);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px 12px 2px 12px;
-  padding: 10px 14px;
+  border-radius: 8px;
+  padding: 11px 14px;
   margin: 4px 0;
   max-width: 72%;
   margin-left: auto;
@@ -299,6 +299,7 @@
   padding: 4px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-light);
+  border-radius: 4px;
   color: var(--accent-primary);
   font-family: var(--font-mono);
   cursor: pointer;
@@ -635,7 +636,7 @@
   margin: 14px 0 16px;
   padding: 10px 14px 10px 16px;
   border-left: 3px solid var(--chat-summary-line, var(--accent-primary));
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 6px 6px 0;
   background: var(--chat-summary-bg, transparent);
   color: var(--chat-copy-muted, var(--text-secondary));
 }
@@ -715,7 +716,7 @@
 .msg-content.markdown-body code {
   background: var(--chat-code-bg, var(--bg-code)) !important;
   padding: 2px 6px 3px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 0.88em;  /* 相对正文缩小 */
   font-family: var(--font-mono);
   line-height: inherit;
@@ -844,7 +845,7 @@
   margin: 12px 0 16px;
   padding: 10px 14px 10px 16px;
   border-left: 3px solid var(--chat-summary-line, var(--accent-primary));
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 6px 6px 0;
   background: var(--chat-summary-bg, transparent);
   color: var(--chat-copy-muted, var(--text-secondary));
 }
@@ -861,7 +862,7 @@
   font-size: var(--text-code);
   font-family: var(--font-sans);
   border: 1px solid var(--chat-table-border, var(--border-subtle));
-  border-radius: 8px;
+  border-radius: 6px;
   display: table;
   background: var(--chat-table-bg, var(--bg-surface));
   overflow: hidden;
@@ -1115,7 +1116,7 @@
   flex-shrink: 0;  /* 防止被挤压变形 */
   min-height: fit-content;  /* 保持内容高度 */
   /* 居中显示 */
-  max-width: 800px;
+  max-width: 780px;
   margin: 0 auto;
   width: 100%;
   padding: 10px 24px;
@@ -1235,6 +1236,7 @@
   padding: 4px 8px;
   background: transparent;
   border: 1px solid var(--border-light);
+  border-radius: 4px;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   cursor: pointer;
@@ -1283,6 +1285,7 @@
   padding: 4px 8px;
   background: transparent;
   border: 1px solid var(--border-light);
+  border-radius: 4px;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   cursor: pointer;
@@ -1297,6 +1300,7 @@
 .quick-menu-btn {
   background: transparent;
   border: 1px solid var(--border-light);
+  border-radius: 4px;
   color: var(--text-secondary);
   font-size: var(--text-lg);
   padding: 6px 10px;
@@ -1317,7 +1321,7 @@
 }
 
 .has-tray .chat-input {
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 8px 8px;
   border-top: none;
 }
 
@@ -1325,7 +1329,7 @@
   flex: 1;
   background: var(--bg-input);
   border: 1px solid var(--border-light);
-  border-radius: 12px;
+  border-radius: 8px;
   color: var(--text-primary);
   padding: 12px 16px;
   font-family: var(--font-sans);
@@ -1408,7 +1412,7 @@
   padding: 0 16px;
   background: var(--accent-primary);
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--text-code);
