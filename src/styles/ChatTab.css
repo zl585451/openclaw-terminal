@@ -319,8 +319,9 @@
   --chat-heading-subtle: rgba(244, 236, 220, 0.88);
   --chat-strong: rgba(248, 241, 226, 0.92);
   --chat-marker: rgba(196, 112, 72, 0.78);
-  --chat-summary-line: rgba(89, 171, 142, 0.65);
-  --chat-summary-bg: rgba(89, 171, 142, 0.07);
+  /* blockquote/callout 颜色由主题决定，见下方 data-theme 覆盖 */
+  --chat-summary-line: var(--accent-primary);
+  --chat-summary-bg: var(--accent-primary-muted);
   --chat-code-fg: #e3b16d;
   --chat-code-bg: rgba(196, 112, 72, 0.11);
   --chat-code-border: rgba(196, 112, 72, 0.24);
@@ -2193,4 +2194,29 @@
     border-radius: 10px;
     font-size: 12px;
   }
+}
+
+/* ============================================================
+   主题适配：blockquote / callout 引用块颜色
+   --chat-summary-line  左边框颜色
+   --chat-summary-bg    背景色
+   三套主题各自跟随 accent 色，保持协调且不抢眼
+   ============================================================ */
+
+/* 终端 Terminal — 荧光绿 #00E676 */
+[data-theme="terminal"] .chat-message.assistant {
+  --chat-summary-line: rgba(0, 230, 118, 0.55);
+  --chat-summary-bg:   rgba(0, 230, 118, 0.05);
+}
+
+/* 深空 Deep Space — 蓝紫 #7C8AFF */
+[data-theme="deepspace"] .chat-message.assistant {
+  --chat-summary-line: rgba(124, 138, 255, 0.55);
+  --chat-summary-bg:   rgba(124, 138, 255, 0.06);
+}
+
+/* 棕黑 Claude Dark — 橙棕 #D4764E */
+[data-theme="claude-dark"] .chat-message.assistant {
+  --chat-summary-line: rgba(212, 118, 78, 0.60);
+  --chat-summary-bg:   rgba(212, 118, 78, 0.06);
 }
