@@ -3,6 +3,7 @@ import { deleteBook, listBooks, type LibraryBook } from '../../services/aiLibrar
 import { BookCard } from './BookCard';
 import { BookDetailDrawer } from './BookDetailDrawer';
 import { UploadDialog } from './UploadDialog';
+import { useProject } from '../../../../contexts/ProjectContext';
 import styles from '../../styles/scriptAdapter.module.css';
 
 export function LibraryView() {
@@ -11,6 +12,8 @@ export function LibraryView() {
   const [error, setError] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [detailBookId, setDetailBookId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ bookId: string; title: string } | null>(null);
+  const { activeProjectId, setActiveProjectById } = useProject();
 
   const refresh = async () => {
     setLoading(true);
@@ -28,10 +31,12 @@ export function LibraryView() {
     void refresh();
   }, []);
 
-  const handleDelete = async (bookId: string, title: string) => {
-    if (!window.confirm(`确定删除《${title}》吗？章节和正文会一起移除。`)) return;
+  const handleDelete = async (bookId: string) => {
     try {
       await deleteBook(bookId);
+      if (bookId === activeProjectId) {
+        await setActiveProjectById(null);
+      }
       await refresh();
     } catch (e: unknown) {
       window.alert(`删除失败：${e instanceof Error ? e.message : '未知错误'}`);
@@ -78,8 +83,10 @@ export function LibraryView() {
             <BookCard
               key={book.id}
               book={book}
+              isActive={book.id === activeProjectId}
               onView={() => setDetailBookId(book.id)}
-              onDelete={() => void handleDelete(book.id, book.title)}
+              onDelete={() => setPendingDelete({ bookId: book.id, title: book.title })}
+              onSetActive={() => void setActiveProjectById(book.id)}
             />
           ))}
         </div>
@@ -88,9 +95,12 @@ export function LibraryView() {
       {uploadOpen ? (
         <UploadDialog
           onClose={() => setUploadOpen(false)}
-          onSuccess={() => {
+          onSuccess={(result) => {
             setUploadOpen(false);
-            void refresh();
+            void (async () => {
+              await refresh();
+              await setActiveProjectById(result.book_id);
+            })();
           }}
         />
       ) : null}
@@ -100,10 +110,58 @@ export function LibraryView() {
           bookId={detailBookId}
           onClose={() => setDetailBookId(null)}
           onDelete={async (bookId, title) => {
-            await handleDelete(bookId, title);
-            setDetailBookId(null);
+            setPendingDelete({ bookId, title });
           }}
         />
+      ) : null}
+
+      {pendingDelete ? (
+        <div className={styles.libraryOverlay} onClick={(e) => e.target === e.currentTarget && setPendingDelete(null)}>
+          <div className={styles.uploadDialog}>
+            <header className={styles.uploadDialogHeader}>
+              <div>
+                <h3>删除这本书？</h3>
+                <p>这会从当前项目素材库中移除书籍、章节目录和对应正文。</p>
+              </div>
+              <button
+                type="button"
+                className={styles.closeButton}
+                onClick={() => setPendingDelete(null)}
+              >
+                关闭
+              </button>
+            </header>
+
+            <div className={styles.confirmDialogBody}>
+              <strong>《{pendingDelete.title}》</strong>
+              <p>删除后无法恢复。如果这本书正被设为当前项目，也会同时取消当前项目绑定。</p>
+            </div>
+
+            <footer className={styles.uploadDialogFooter}>
+              <button
+                type="button"
+                className={styles.ghostButton}
+                onClick={() => setPendingDelete(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className={styles.dangerButton}
+                onClick={async () => {
+                  const { bookId } = pendingDelete;
+                  setPendingDelete(null);
+                  await handleDelete(bookId);
+                  if (detailBookId === bookId) {
+                    setDetailBookId(null);
+                  }
+                }}
+              >
+                确认删除
+              </button>
+            </footer>
+          </div>
+        </div>
       ) : null}
     </div>
   );

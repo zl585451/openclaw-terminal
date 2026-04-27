@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { pickLocalFile, uploadBook } from '../../services/aiLibraryClient';
+import { pickLocalFile, uploadBook, type UploadBookResult } from '../../services/aiLibraryClient';
 import styles from '../../styles/scriptAdapter.module.css';
 
 interface UploadDialogProps {
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (result: UploadBookResult) => void;
 }
 
 export function UploadDialog({ onClose, onSuccess }: UploadDialogProps) {
@@ -41,8 +41,8 @@ export function UploadDialog({ onClose, onSuccess }: UploadDialogProps) {
     setUploading(true);
     setError(null);
     try {
-      await uploadBook({ filePath, title: title.trim(), author: author.trim() || undefined });
-      onSuccess();
+      const result = await uploadBook({ filePath, title: title.trim(), author: author.trim() || undefined });
+      onSuccess(result);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '上传失败');
     } finally {

@@ -77,6 +77,7 @@ export function ScriptAdapterApp({ onBack, initialScreen = 'home' }: ScriptAdapt
   const [screen, setScreen] = useState<ScriptAdapterScreen>(initialScreen);
   const [taskContract, setTaskContract] = useState<TaskCreationContract | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const enteredFromChat = initialScreen !== 'home';
 
   useEffect(() => {
     scriptAdapterActions.loadProject(
@@ -94,6 +95,14 @@ export function ScriptAdapterApp({ onBack, initialScreen = 'home' }: ScriptAdapt
   useEffect(() => {
     rootRef.current?.scrollTo({ top: 0, left: 0 });
   }, [screen]);
+
+  const handleModuleBack = () => {
+    if (enteredFromChat) {
+      onBack?.();
+      return;
+    }
+    setScreen('home');
+  };
 
   return (
     <div className={styles.root} ref={rootRef}>
@@ -115,11 +124,12 @@ export function ScriptAdapterApp({ onBack, initialScreen = 'home' }: ScriptAdapt
         />
       ) : null}
       {screen === 'workspace' ? (
-        <ScriptAdapterLayout onBack={() => setScreen('home')} taskContract={taskContract} />
+        <ScriptAdapterLayout onBack={handleModuleBack} taskContract={taskContract} />
       ) : null}
       {screen === 'library' ? (
         <LibraryWorkspace
-          onBack={() => setScreen('home')}
+          onBack={handleModuleBack}
+          backLabel={enteredFromChat ? '← 返回 Chat' : '← 返回内容创作首页'}
           onOpenWorkbench={() => setScreen('workspace')}
         />
       ) : null}
@@ -212,9 +222,10 @@ function ContentCreationHome({ onBack, onCreateTask, onOpenDemoTask, onOpenLibra
 interface LibraryWorkspaceProps {
   onBack: () => void;
   onOpenWorkbench: () => void;
+  backLabel: string;
 }
 
-function LibraryWorkspace({ onBack, onOpenWorkbench }: LibraryWorkspaceProps) {
+function LibraryWorkspace({ onBack, onOpenWorkbench, backLabel }: LibraryWorkspaceProps) {
   return (
     <div className={styles.layout}>
       <div className={styles.layoutHeader}>
@@ -230,7 +241,7 @@ function LibraryWorkspace({ onBack, onOpenWorkbench }: LibraryWorkspaceProps) {
             进入工作台
           </button>
           <button type="button" className={styles.backButton} onClick={onBack}>
-            ← 返回内容创作首页
+            {backLabel}
           </button>
         </div>
       </div>

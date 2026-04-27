@@ -4358,6 +4358,30 @@
   margin-top: 18px;
 }
 
+.confirmDialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(190, 56, 56, 0.14);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 248, 246, 0.98), rgba(255, 252, 250, 0.98));
+}
+
+.confirmDialogBody strong {
+  color: #7f1f1f;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.confirmDialogBody p {
+  margin: 0;
+  color: #6d5a58;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .drawerPanel {
   display: flex;
   flex-direction: column;
