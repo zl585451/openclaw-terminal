@@ -17,6 +17,7 @@
 3. `内容创作任务对象模型.md`
 4. `任务安排初步分析Agent规则.md`
 5. `多人演播有声书Agent团队编排规范.md`
+6. `Project-Layer-MVP实现方案.md`
 
 历史分阶段执行计划（已迁入 `docs/_archive/historical_plans/content_creation/`，仅作追溯）：
 
