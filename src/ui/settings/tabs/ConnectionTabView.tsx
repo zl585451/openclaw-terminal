@@ -552,6 +552,20 @@ export function ConnectionTabView({
                 )}
               </div>
             )}
+            <div className="settings-field">
+              <label>内容创作 Agent 真实化开关</label>
+              <input
+                type="text"
+                value={apiKeys.SCRIPT_ADAPTER_REAL_AGENTS || ''}
+                onChange={(e) => setApiKeys((k) => ({ ...k, SCRIPT_ADAPTER_REAL_AGENTS: e.target.value }))}
+                placeholder="all"
+                className="settings-input settings-input-focusable"
+                autoComplete="off"
+              />
+              <p className="settings-desc settings-desc-compact">
+                复制粘贴 <code>all</code> 后保存并重新连接，即启用内容创作工作台 5 个 Agent 的真实产物链路。留空或填 <code>off</code> 则回到 mock。
+              </p>
+            </div>
             {currentProviderId === 'custom' && (
               <>
                 <div className="settings-field">

@@ -31,6 +31,7 @@ export interface ApiKeysState {
   OCT_SETTINGS_MODE: SettingsMode | '';
   OCT_PROVIDER: string;
   OCT_MODEL: string;
+  SCRIPT_ADAPTER_REAL_AGENTS: string;
   CUSTOM_MODEL: string;
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
@@ -174,6 +175,7 @@ type GatewayConfigPayload = {
   CUSTOM_API_KEY: string;
   OCT_PROVIDER: string;
   OCT_MODEL: string;
+  SCRIPT_ADAPTER_REAL_AGENTS: string;
   CUSTOM_MODEL: string;
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
@@ -297,6 +299,7 @@ function buildGatewayPayload(
     CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
     OCT_PROVIDER: currentProviderId || 'bailian-coding',
     OCT_MODEL: effectiveModel,
+    SCRIPT_ADAPTER_REAL_AGENTS: apiKeys.SCRIPT_ADAPTER_REAL_AGENTS || '',
     CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
     DASHSCOPE_BASE_URL:
       currentProviderId === 'deepseek' || currentProviderId === 'custom' || currentProviderId === 'minimax'
@@ -349,6 +352,7 @@ export function useApiKeys() {
     OCT_SETTINGS_MODE: '',
     OCT_PROVIDER: '',
     OCT_MODEL: '',
+    SCRIPT_ADAPTER_REAL_AGENTS: '',
     CUSTOM_MODEL: '',
     DASHSCOPE_BASE_URL: '',
     DEEPSEEK_BASE_URL: '',

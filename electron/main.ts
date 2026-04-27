@@ -3692,6 +3692,7 @@ ipcMain.handle('get-api-keys', async () => {
     keys.OCT_SETTINGS_MODE = pick('OCT_SETTINGS_MODE', cfg.OCT_SETTINGS_MODE);
     keys.OCT_PROVIDER = pick('OCT_PROVIDER', cfg.OCT_PROVIDER);
     keys.OCT_MODEL = pick('OCT_MODEL', cfg.OCT_MODEL);
+    keys.SCRIPT_ADAPTER_REAL_AGENTS = pick('SCRIPT_ADAPTER_REAL_AGENTS', cfg.SCRIPT_ADAPTER_REAL_AGENTS);
     keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);
     keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
     keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
@@ -3768,6 +3769,7 @@ ipcMain.handle('get-api-keys', async () => {
         OCT_SETTINGS_MODE: keys.OCT_SETTINGS_MODE || '',
         OCT_PROVIDER: keys.OCT_PROVIDER || '',
         OCT_MODEL: keys.OCT_MODEL || '',
+        SCRIPT_ADAPTER_REAL_AGENTS: keys.SCRIPT_ADAPTER_REAL_AGENTS || '',
         DASHSCOPE_BASE_URL: keys.DASHSCOPE_BASE_URL || '',
         DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
         MINIMAX_BASE_URL: keys.MINIMAX_BASE_URL || '',
@@ -3818,6 +3820,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     OCT_SETTINGS_MODE?: string;
     OCT_PROVIDER?: string;
     OCT_MODEL?: string;
+    SCRIPT_ADAPTER_REAL_AGENTS?: string;
     CUSTOM_MODEL?: string;
     DASHSCOPE_BASE_URL?: string;
     DEEPSEEK_BASE_URL?: string;
@@ -3873,6 +3876,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
     if (keys.OCT_PROVIDER !== undefined) cfg.OCT_PROVIDER = keys.OCT_PROVIDER || '';
     if (keys.OCT_MODEL !== undefined) cfg.OCT_MODEL = keys.OCT_MODEL || '';
+    if (keys.SCRIPT_ADAPTER_REAL_AGENTS !== undefined) cfg.SCRIPT_ADAPTER_REAL_AGENTS = keys.SCRIPT_ADAPTER_REAL_AGENTS || '';
     if (keys.CUSTOM_MODEL !== undefined) cfg.CUSTOM_MODEL = keys.CUSTOM_MODEL || '';
     if (keys.DASHSCOPE_BASE_URL !== undefined) cfg.DASHSCOPE_BASE_URL = keys.DASHSCOPE_BASE_URL || '';
     if (keys.DEEPSEEK_BASE_URL !== undefined) cfg.DEEPSEEK_BASE_URL = keys.DEEPSEEK_BASE_URL || '';
@@ -3920,6 +3924,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
     // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
     const aiConfigChanged = keys.OCT_PROVIDER !== undefined || keys.OCT_MODEL !== undefined
+      || keys.SCRIPT_ADAPTER_REAL_AGENTS !== undefined
       || keys.OPENCLAW_TOKEN !== undefined
       || keys.CUSTOM_MODEL !== undefined
       || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
