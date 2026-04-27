@@ -35,23 +35,55 @@ export function BatchProgressView({
   const visible = sortedRuns.slice(start, Math.min(sortedRuns.length, start + Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + 8));
   const currentRun = sortedRuns.find((run) => run.chapterIndex === expandedChapterIndex && run.sheet);
   const batchVoiceRegistry = batch.config?.sharedContext?.voiceRegistry || [];
+  const completed = batch.status === 'completed';
+  const progressPercent = batch.totalChapters > 0
+    ? Math.round(((batch.completedChapters + batch.failedChapters) / batch.totalChapters) * 100)
+    : 0;
 
   return (
     <section className={`${styles.card} ${styles.batchProgressCard}`}>
+      {completed ? (
+        <div className={styles.deliveryCompleteCard}>
+          <div>
+            <div className={styles.workOrderKicker}>交付窗口</div>
+            <h2>试产已完成，交付物可以导出了。</h2>
+            <p>
+              本次已完成 {batch.completedChapters}/{batch.totalChapters} 章，
+              累计费用 ¥{Number(batch.actualCost || 0).toFixed(2)}。
+            </p>
+          </div>
+          <div className={styles.deliveryCompleteActions}>
+            <button type="button" className={styles.confirmStartButton} onClick={onExportDocx}>
+              导出 Word DOCX
+            </button>
+            <button type="button" className={styles.ghostButton} onClick={onExport}>
+              导出 Markdown 留痕
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className={styles.batchProgressHeader}>
         <div>
-          <div className={styles.workOrderKicker}>批次进度面板</div>
-          <h2>{batch.bookTitle}</h2>
-          <p>
-            已完成 {batch.completedChapters}/{batch.totalChapters} 章，失败 {batch.failedChapters} 章，
-            累计 ¥{Number(batch.actualCost || 0).toFixed(2)}
-          </p>
+          <div className={styles.workOrderKicker}>批次进度</div>
+          <h2>{completed ? '已完成' : batch.status === 'running' ? '正在试产' : '批次状态'}</h2>
+          <p>{batch.bookTitle}</p>
         </div>
         <div className={styles.batchProgressActions}>
           <button type="button" className={styles.ghostButton} onClick={onRefresh}>刷新状态</button>
-          <button type="button" className={styles.confirmStartButton} onClick={onExportDocx} disabled={batch.completedChapters === 0}>导出 Word DOCX</button>
-          <button type="button" className={styles.ghostButton} onClick={onExport} disabled={batch.completedChapters === 0}>导出 Markdown 留痕</button>
           <button type="button" className={styles.ghostButton} onClick={onCancel} disabled={batch.status !== 'running'}>取消批次</button>
+        </div>
+      </div>
+
+      <div className={styles.batchProgressMeter}>
+        <div className={styles.batchProgressStats}>
+          <div><span>进度</span><strong>{batch.completedChapters}/{batch.totalChapters}</strong></div>
+          <div><span>失败</span><strong>{batch.failedChapters}</strong></div>
+          <div><span>费用</span><strong>¥{Number(batch.actualCost || 0).toFixed(2)}</strong></div>
+          <div><span>状态</span><strong>{batch.status}</strong></div>
+        </div>
+        <div className={styles.batchProgressTrack}>
+          <span style={{ width: `${Math.min(100, progressPercent)}%` }} />
         </div>
       </div>
 

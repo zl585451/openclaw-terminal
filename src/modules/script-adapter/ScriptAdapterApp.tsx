@@ -32,18 +32,41 @@ type ScriptAdapterScreen = 'home' | 'create' | 'workspace' | 'library';
 type WizardStep = 1 | 2 | 3;
 type CreationRangeMode = 'single' | 'range' | 'all';
 
-const SOURCE_AGENT_PREVIEW = [
-  { name: '文件解析 Agent', status: '预分配', desc: '识别文件类型、字数、章节边界和基础元数据。' },
-  { name: '内容识别 Agent', status: '预分配', desc: '判断题材、文本形态和是否适合当前目标产物。' },
-  { name: '任务安排 Agent', status: '预分配', desc: '生成初步任务草案、推荐方案和后续 Agent 队列。' },
-];
-
 const AGENT_QUEUE_SUMMARY = [
   { label: '已预分配', value: '3', desc: '文件解析、内容识别、任务安排' },
   { label: '即将执行', value: '1', desc: '业务分析 Agent' },
   { label: '后续候选', value: '3', desc: '场景拆分、文本改编、角色音标注' },
   { label: '人工确认', value: '是', desc: '分析方向和冲突要求需要确认' },
 ];
+
+const getGoalConfirmationCopy = (goal: string) => {
+  if (goal.includes('广播剧')) {
+    return {
+      next: '业务分析 Agent 会先判断场景拆分、对白增强和音效成本。',
+      reason: '广播剧改造成本更高，所以这里只锁定目标和范围；第 3 步再决定是否真的进入广播剧拆解。',
+      focus: '场景拆分 / 对白增强 / 音效成本',
+    };
+  }
+  if (goal.includes('润色')) {
+    return {
+      next: '业务分析 Agent 会先判断语言顺滑度、节奏和信息顺序。',
+      reason: '润色目标需要先看文本问题分布，所以这里只锁定目标和范围；第 3 步再决定润色深度。',
+      focus: '语言顺滑 / 节奏调整 / 信息顺序',
+    };
+  }
+  if (goal.includes('分析')) {
+    return {
+      next: '业务分析 Agent 会先输出问题清单、证据片段和后续建议。',
+      reason: '作品分析不直接改稿，所以这里只锁定分析对象；第 3 步再确认报告深度和交付清单。',
+      focus: '问题清单 / 证据片段 / 后续建议',
+    };
+  }
+  return {
+    next: '业务分析 Agent 会先判断旁白听感、对白可演性和角色音风险。',
+    reason: '多人演播需要先看可演性和角色音风险，所以这里只锁定目标和范围；第 3 步再决定改法深度。',
+    focus: '旁白听感 / 对白可演性 / 角色音风险',
+  };
+};
 
 interface ScriptAdapterAppProps {
   onBack?: () => void;
@@ -302,7 +325,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     },
     {
       index: 3,
-      title: '确认修改策略',
+      title: '确认修改方向',
       desc: analysisCompleted ? '选择怎么改 · 锁定制作队列' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围',
       status: activeStep === 3 ? 'active' : analysisCompleted ? 'done' : 'pending',
     },
@@ -506,9 +529,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     : sourceMode === 'upload'
       ? false
       : Boolean(pastedText.trim());
-  const sourceSummary = selectedBook
-    ? `${selectedBook.title}${selectedRangeChapters.length > 0 ? ` · ${selectedRangeLabel}` : ''}`
-    : uploadTitle.trim() || '待选择素材';
+  const sourceSummary = selectedBook?.title || uploadTitle.trim() || '待选择素材';
   const sourceTypeLabel = selectedBook?.source_type || (sourceMode === 'paste' ? '临时粘贴文本' : '待识别');
   const sourceWordCountLabel = selectedRangeTotalChars
     ? `约 ${selectedRangeTotalChars.toLocaleString('zh-CN')} 字`
@@ -527,6 +548,11 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     try {
       const result = await runMockTaskIntake((stepIndex) => {
         setIntakeStepIndex(stepIndex);
+      }, {
+        sourceTitle: sourceSummary,
+        rangeLabel: sourceMode === 'library' ? selectedRangeLabel : sourceMode === 'paste' ? '临时文本' : '待选择',
+        wordCountLabel: sourceWordCountLabel,
+        sourceTypeLabel,
       });
       setIntakeResult(result);
       setDecisionOverrides({});
@@ -577,6 +603,12 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
         customNote: current[itemId]?.customNote ?? '',
       },
     }));
+    if (itemId === 'work_goal') {
+      setAnalysisStatus('idle');
+      setAnalysisReport(null);
+      setAnalysisError('');
+      setSelectedStrategyId('');
+    }
   };
 
   const updateDecisionNote = (itemId: string, customNote: string) => {
@@ -596,6 +628,9 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     return decisionOverrides[itemId]?.value ?? sourceItem?.value ?? fallback;
   };
 
+  const selectedWorkGoal = getDecisionSummaryValue('work_goal', '多人演播有声书');
+  const goalConfirmationCopy = getGoalConfirmationCopy(selectedWorkGoal);
+
   const handleRunAnalysis = async () => {
     if (!sourceConfirmed || isAnalysisRunning) return;
 
@@ -606,7 +641,17 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     setActiveStep(3);
 
     try {
-      const report = await runMockInitialAnalysis();
+      const report = await runMockInitialAnalysis({
+        rangeLabel: selectedRangeLabel,
+        chapterCount: selectedRangeChapters.length,
+        totalChars: selectedRangeTotalChars,
+        workGoal: selectedWorkGoal,
+        chapters: selectedRangeChapters.map((chapter) => ({
+          title: chapter.title || `第 ${chapter.chapter_index + 1} 章`,
+          preview: chapter.preview || '',
+          charCount: Number(chapter.char_count || 0),
+        })),
+      });
       setAnalysisReport(report);
       setSelectedStrategyId(report.recommendedStrategyId);
       setAnalysisStatus('completed');
@@ -619,24 +664,26 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
   const getFooterTitle = () => {
     if (activeStep === 1) {
-      return isIntakeRunning ? '正在确认素材并生成任务方案' : sourceConfirmed ? '素材已确认，可进入目标和范围确认' : '等待确认项目素材';
+      if (isIntakeRunning) return '正在确认素材';
+      if (sourceConfirmed) return `已确认：${selectedRangeLabel}`;
+      return sourceReady ? `待确认：${selectedRangeLabel}` : '等待选择任务素材';
     }
     if (activeStep === 2) {
       return isAnalysisRunning ? 'AI 初读分析中' : sourceConfirmed ? '等待确认目标和范围' : '请先完成素材确认';
     }
-    return analysisCompleted ? '等待确认修改策略' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围确认';
+    return analysisCompleted ? '等待确认修改方向' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围确认';
   };
 
   const getFooterDesc = () => {
-    if (activeStep === 1) return '确认后会生成素材对象、轻量画像和 Agent 预分配，并自动进入第 2 步。';
+    if (activeStep === 1) return '确认后会进入目标和范围配置；后台解析会自动完成，不需要你理解技术链路。';
     if (activeStep === 2) return '确认后只进入 AI 初读分析，不会直接改稿；分析完成会自动进入第 3 步。';
-    return '确认策略后才进入制作 Agent，并生成工作台执行单。';
+    return '确认修改方向和交付清单后，才进入制作 Agent，并生成工作台执行单。';
   };
 
   const getFooterButtonText = () => {
-    if (activeStep === 1) return isIntakeRunning ? '正在生成任务方案' : sourceConfirmed ? '重新确认素材' : '确认素材，进入第 2 步';
+    if (activeStep === 1) return isIntakeRunning ? '正在确认素材' : sourceConfirmed ? '重新确认素材' : '确认这份素材，继续配置目标';
     if (activeStep === 2) return isAnalysisRunning ? 'AI 初读分析中' : analysisCompleted ? '重新分析并进入第 3 步' : '确认目标和范围，进入第 3 步';
-    return '确认策略，进入工作台';
+    return '确认方向，进入工作台';
   };
 
   const isFooterButtonDisabled = () => {
@@ -662,7 +709,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
       rangeLabel: selectedRangeLabel,
       totalChars: selectedRangeTotalChars,
       chapterCount: selectedRangeChapters.length,
-      workGoal: getDecisionSummaryValue('work_goal', '多人演播有声书 · 先做业务分析'),
+      workGoal: getDecisionSummaryValue('work_goal', '多人演播有声书'),
       strategyTitle: selectedStrategy.title,
       strategyDesc: selectedStrategy.desc,
       deliveryOptions,
@@ -673,9 +720,9 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     <div className={styles.createShell}>
       <header className={styles.createComposerHeader}>
         <div>
-          <div className={styles.detailEyebrow}>后台任务编排</div>
-          <h1>配置内容制作任务</h1>
-          <p>先确认素材，再确认产品内容和工作范围。改动策略会在 AI 初读分析后单独确认。</p>
+          <div className={styles.detailEyebrow}>新建内容任务</div>
+          <h1>先确认素材，再配置目标</h1>
+          <p>第一步只需要确认本次要处理的书和章节；后台解析、内容识别和任务草案会自动完成。</p>
         </div>
         <button type="button" className={styles.backButton} onClick={onBack}>
           ← 返回任务大厅
@@ -692,14 +739,14 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             </div>
             <div className={styles.mutedText}>
               {analysisCompleted
-                ? 'AI 初读分析完成，等待你确认修改策略。'
+                ? 'AI 初读分析完成，等待你确认修改方向。'
                 : isAnalysisRunning
-                  ? '业务分析 Agent 正在输出问题、证据和修改策略。'
+                  ? '业务分析 Agent 正在输出问题、证据和修改方向。'
                   : sourceConfirmed
-                ? '已生成初步任务草案，等待你确认详细执行方案。'
+                ? '已生成任务草案，等待你确认目标订单。'
                 : isIntakeRunning
                   ? `正在执行第 ${Math.min(intakeStepIndex + 1, MOCK_INTAKE_STEPS.length)} 步素材摄入。`
-                  : '先选项目素材，系统再生成 Agent 预分配。'}
+                  : '先确认素材，系统再自动生成任务草案。'}
             </div>
           </div>
 
@@ -731,8 +778,9 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <div className={`${styles.card} ${styles.composerGateCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
-                <div className={styles.detailEyebrow}>第 1 步 · 输入确认</div>
-                <h2>从当前项目素材中选择本次任务输入</h2>
+                <div className={styles.detailEyebrow}>第 1 步 · 素材确认</div>
+                <h2>确认本次任务素材</h2>
+                <p className={styles.sectionLead}>选择要处理的书和章节。确认后系统会自动解析素材，并带你进入目标配置。</p>
               </div>
               <span className={sourceConfirmed ? styles.composerStatePill : styles.reviewPill}>
                 {sourceConfirmed ? '已确认' : isIntakeRunning ? '处理中' : '待确认'}
@@ -782,29 +830,12 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                       </span>
                     </div>
 
-                    {libraryBooks.length > 0 ? (
-                      <div className={styles.libraryBookOptionList}>
-                        {libraryBooks.map((book) => (
-                          <button
-                            key={book.id}
-                            type="button"
-                            className={`${styles.libraryBookOption} ${selectedBookId === book.id ? styles.libraryBookOptionActive : ''}`}
-                            onClick={() => setSelectedBookId(book.id)}
-                          >
-                            <strong>{book.title}</strong>
-                            <span>
-                              {book.chapter_count} 章 · {(book.total_chars || 0).toLocaleString('zh-CN')} 字
-                              {book.author ? ` · ${book.author}` : ''}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
+                    {libraryBooks.length === 0 ? (
                       <div className={styles.mockUploadBox}>
                         <strong>当前项目还没有素材</strong>
                         <span>先切到“上传新文件”，把小说放进项目素材库，再回来选章节。</span>
                       </div>
-                    )}
+                    ) : null}
 
                     {selectedBook ? (
                       <>
@@ -877,9 +908,9 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                           </label>
                         ) : null}
                         <div className={styles.creationRangeSummary}>
-                          <strong>{selectedRangeLabel}</strong>
+                          <strong>范围已锁定</strong>
                           <span>
-                            已锁定 {selectedRangeChapters.length || 0} 章 · {selectedRangeTotalChars.toLocaleString('zh-CN')} 字。
+                            {selectedRangeChapters.length || 0} 章 · {selectedRangeTotalChars.toLocaleString('zh-CN')} 字。
                             {selectedRangeMode === 'all' ? ' 全书本轮只做规划确认，不建议直接真实试产。' : ' 后续工作台只展示摘要，不再重新选章。'}
                           </span>
                         </div>
@@ -890,10 +921,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                     {selectedChapter ? (
                       <div className={styles.sourcePreviewCard}>
                         <div>
-                          <strong>{selectedChapter.title || `第 ${selectedChapter.chapter_index + 1} 章`}</strong>
-                          <span>
-                            来自《{selectedBook?.title || '未命名素材'}》 · 右侧参数会按这章更新
-                          </span>
+                          <strong>章节预览</strong>
+                          <span>只展示开头片段，方便确认文本是否选对。</span>
                         </div>
                         <p>{chapterPreview || '正在加载章节预览...'}</p>
                       </div>
@@ -951,80 +980,62 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               </div>
 
               <div className={styles.sourceInspectPanel}>
-                <div className={styles.taskFieldLabel}>确认后生成的素材参数</div>
+                <div className={styles.sourceFocusCard}>
+                  <span>准备确认</span>
+                  <strong>{sourceMode === 'library' ? selectedRangeLabel : sourceSummary}</strong>
+                  <em>{sourceMode === 'library' ? '来自项目素材库' : sourceMode === 'paste' ? '来自临时粘贴文本' : '等待上传到项目素材库'}</em>
+                </div>
+
                 <div className={styles.sourceParamGrid}>
-                  <div><span>文件 / 素材</span><strong>{sourceSummary}</strong></div>
-                  <div><span>类型</span><strong>{sourceConfirmed ? intakeResult?.sourceProfile.contentCategory ?? sourceTypeLabel : sourceTypeLabel}</strong></div>
-                  <div><span>范围</span><strong>{sourceMode === 'library' ? selectedRangeLabel : sourceMode === 'paste' ? '临时文本' : '待选择'}</strong></div>
+                  <div><span>素材</span><strong>{sourceSummary}</strong></div>
                   <div><span>字数</span><strong>{sourceWordCountLabel}</strong></div>
+                  <div><span>类型</span><strong>{sourceConfirmed ? intakeResult?.sourceProfile.contentCategory ?? sourceTypeLabel : sourceTypeLabel}</strong></div>
+                  <div><span>状态</span><strong>{sourceConfirmed ? '已确认' : sourceReady ? '可以确认' : '等待素材'}</strong></div>
                 </div>
-                {!sourceConfirmed ? (
-                  <div className={styles.sourceProfileSummary}>
-                    <strong>
-                      {sourceMode === 'library'
-                        ? '这一步会把项目素材里的选中章节作为本次任务输入'
+
+                <div className={styles.sourceProfileSummary}>
+                  <strong>
+                    {intakeResult
+                      ? `系统理解：${intakeResult.sourceProfile.contentCategory}`
+                      : sourceMode === 'library'
+                        ? '系统将把选中章节作为本次任务输入'
                         : sourceMode === 'upload'
-                          ? '先把文件送入项目素材库，再作为当前任务输入'
-                          : '临时粘贴文本只用于快速试跑'}
-                    </strong>
-                    <span>
-                      {sourceMode === 'library'
-                        ? '确认后进入文件解析、轻量画像和 Agent 预分配。'
+                          ? '请先上传文件，再回到素材库选择章节'
+                          : '临时文本可快速试跑，但不会自动入库'}
+                  </strong>
+                  <span>
+                    {intakeResult
+                      ? intakeResult.sourceProfile.structureSummary
+                      : sourceMode === 'library'
+                        ? '确认后会自动完成文件解析、内容识别和任务草案生成。'
                         : sourceMode === 'upload'
-                          ? '上传成功后会自动回到“项目素材库”模式，方便继续选章节。'
-                          : '后续如果要长期复用，建议先把正文上传进项目素材库。'}
-                    </span>
-                    <em>
-                      {sourceMode === 'library'
-                        ? '来源：项目素材空间'
-                        : sourceMode === 'upload'
-                          ? '来源：本次新增素材'
-                          : '来源：临时会话输入'}
-                    </em>
-                  </div>
-                ) : null}
-                {intakeResult ? (
-                  <div className={styles.sourceProfileSummary}>
-                    <strong>AI 已识别素材归属：{intakeResult.sourceProfile.contentCategory}</strong>
-                    <span>{intakeResult.sourceProfile.structureSummary}</span>
-                    <em>{intakeResult.sourceProfile.confidenceLabel}</em>
-                  </div>
-                ) : null}
-                <div className={styles.agentPreviewList}>
-                  {SOURCE_AGENT_PREVIEW.map((item) => (
-                    <div key={item.name} className={styles.agentPreviewItem}>
-                      <div>
-                        <strong>{item.name}</strong>
-                        <span>{item.desc}</span>
-                      </div>
-                      <em>{item.status}</em>
-                    </div>
-                  ))}
+                          ? '上传成功后会自动回到“项目素材库”模式。'
+                          : '如果后续要复用这份正文，建议先上传进项目素材库。'}
+                  </span>
+                  <em>{intakeResult?.sourceProfile.confidenceLabel ?? '自动识别'}</em>
                 </div>
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  disabled={isIntakeRunning || !sourceReady}
-                  onClick={handleConfirmSource}
-                >
-                  {isIntakeRunning ? '正在生成任务方案' : sourceConfirmed ? '重新生成任务方案' : '确认素材，生成任务方案'}
-                </button>
+
+                <div className={styles.nextActionHint}>
+                  <strong>确认后将自动完成</strong>
+                  <span>文件解析 → 内容识别 → 任务草案生成</span>
+                  <small>这些后台步骤会折叠处理；你下一步只需要确认目标和范围。</small>
+                </div>
+
                 {libraryError ? <div className={styles.inlineErrorText}>{libraryError}</div> : null}
                 {intakeError ? <div className={styles.inlineErrorText}>{intakeError}</div> : null}
               </div>
             </div>
           </div>
           ) : null}
-
           {activeStep === 2 ? (
           <div className={`${styles.card} ${styles.composerRequirementCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
                 <div className={styles.detailEyebrow}>第 2 步 · 目标和范围确认</div>
-                <h2>确认产品内容和工作范围</h2>
+                <h2>确认工作目标和处理范围</h2>
               </div>
               <span className={sourceConfirmed ? styles.reviewPill : styles.mutedPill}>
-                {sourceConfirmed ? '初步分析已生成' : isIntakeRunning ? '生成中' : '等待素材'}
+                {sourceConfirmed ? '任务草案已生成' : isIntakeRunning ? '生成中' : '等待素材'}
               </span>
             </div>
 
@@ -1033,15 +1044,28 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <div className={styles.planHeroCard}>
                   <div className={styles.planHeroHeader}>
                     <div>
-                      <strong>AI 推荐执行方案</strong>
-                      <span>{intakeResult.intakeSummary}</span>
+                      <strong>已生成任务草案</strong>
+                      <span>这一步只确认订单是否正确：做成什么，处理哪一段。</span>
                     </div>
                     <em>{intakeResult.plannerAgent}</em>
                   </div>
-                  <div className={styles.planHeroMain}>
-                    <span>建议方案</span>
-                    <strong>{intakeResult.recommendedAction}</strong>
-                    <p>{intakeResult.recommendedReason}确认后只进入 AI 初读分析，不会直接改稿。</p>
+                  <div className={styles.orderSummaryGrid}>
+                    <div>
+                      <span>目标</span>
+                      <strong>{selectedWorkGoal}</strong>
+                    </div>
+                    <div>
+                      <span>范围</span>
+                      <strong>{selectedRangeLabel}</strong>
+                    </div>
+                    <div>
+                      <span>下一步</span>
+                      <strong>{goalConfirmationCopy.focus}</strong>
+                    </div>
+                  </div>
+                  <div className={styles.orderNextStepBox}>
+                    <strong>确认后：进入业务分析，不会开始改稿</strong>
+                    <span>{goalConfirmationCopy.next}</span>
                   </div>
                 </div>
 
@@ -1076,11 +1100,11 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                           {item.id === 'scope' ? '返回改范围' : getDecisionEditButtonText(item)}
                         </button>
                       </div>
-                      {editingDecisionId === item.id && item.id !== 'scope' ? (
+                          {editingDecisionId === item.id && item.id !== 'scope' ? (
                         <div className={styles.decisionEditPanel}>
                           <div className={styles.decisionEditHint}>
-                            <strong>系统建议优先选候选项</strong>
-                            <span>自定义内容只作为补充约束，后续会交给任务安排 Agent 判断是否需要切换团队或人工确认。</span>
+                            <strong>这里只换产品目标，不选改法</strong>
+                            <span>第 2 步只决定“要做成什么”和“处理哪一段”；改稿深度、润色方式和产物细节会在第 3 步确认。</span>
                           </div>
                           <div className={styles.decisionOptionList}>
                             {item.options.map((option) => (
@@ -1090,7 +1114,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                                 className={getDecisionView(item).value === option.value ? styles.decisionOptionActive : styles.decisionOption}
                                 onClick={() => updateDecision(item.id, option.value, option.desc)}
                               >
-                                <span>{option.source === 'recommended' ? 'AI 推荐' : option.source === 'agent' ? 'Agent 候选' : '同类预设'}</span>
+                                <span>{option.source === 'recommended' ? '建议目标' : option.source === 'agent' ? 'Agent 候选' : '产品预设'}</span>
                                 <strong>{option.value}</strong>
                                 <em>{option.desc}</em>
                               </button>
@@ -1112,8 +1136,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
                 <div className={styles.teamLockBox}>
                   <div>
-                    <strong>确认后锁定的 Agent 团队</strong>
-                    <span>业务分析 Agent 先执行；AI 输出问题、风险和可修改建议后，再进入第 3 步确认修改策略。</span>
+                    <strong>确认后进入业务分析，不进入制作</strong>
+                    <span>{goalConfirmationCopy.reason}</span>
                   </div>
                   <button
                     type="button"
@@ -1143,8 +1167,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <div className={`${styles.card} ${styles.composerRequirementCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
-                <div className={styles.detailEyebrow}>第 3 步 · 修改策略确认</div>
-                <h2>基于 AI 初读结果，选择怎么改</h2>
+                <div className={styles.detailEyebrow}>第 3 步 · 修改方向确认</div>
+                <h2>确认修改方向和交付内容</h2>
               </div>
               <span className={analysisCompleted ? styles.reviewPill : styles.mutedPill}>
                 {analysisCompleted ? '待确认策略' : isAnalysisRunning ? '分析中' : '等待分析'}
@@ -1153,8 +1177,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
             {isAnalysisRunning ? (
               <div className={styles.analysisRunningPanel}>
-                <strong>业务分析 Agent 正在初读文本</strong>
-                <span>正在生成文本问题、证据片段、可修改方向、推荐策略和执行影响。这里不会改稿，只做决策前分析。</span>
+                <strong>业务分析 Agent 正在读取第 2 步的目标订单</strong>
+                <span>正在基于已锁定目标和范围生成问题证据、可修改方向、推荐策略和执行影响。这里仍不会改稿，只做开工前决策。</span>
               </div>
             ) : null}
 
@@ -1194,8 +1218,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <div className={styles.strategyPanel}>
                   <div className={styles.composerSectionHeader}>
                     <div>
-                      <div className={styles.taskFieldLabel}>选择修改策略</div>
-                      <span className={styles.mutedText}>这里才决定“怎么改、改多深”。</span>
+                      <div className={styles.taskFieldLabel}>选择修改方向</div>
+                      <span className={styles.mutedText}>这里才决定“怎么改、改多深、交给哪些制作 Agent”。</span>
                     </div>
                   </div>
                   <div className={styles.strategyGrid}>
@@ -1218,8 +1242,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <div className={styles.deliveryOptionContractPanel}>
                   <div className={styles.composerSectionHeader}>
                     <div>
-                      <div className={styles.taskFieldLabel}>确认交付内容</div>
-                      <span className={styles.mutedText}>这里决定本轮跑哪些产物。BGM/SFX 是高费用项，默认关闭。</span>
+                      <div className={styles.taskFieldLabel}>确认交付清单</div>
+                      <span className={styles.mutedText}>这里决定本轮真正生成哪些文件。BGM/SFX 是高费用项，默认关闭。</span>
                     </div>
                   </div>
                   <div className={styles.deliveryOptionGrid}>
@@ -1284,6 +1308,51 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
         </section>
 
         <aside className={styles.composerSummary}>
+          {activeStep === 1 ? (
+            <>
+              <div className={`${styles.card} ${styles.taskMapCard}`}>
+                <div className={styles.composerSectionHeader}>
+                  <div>
+                    <div className={styles.sidebarSectionLabel}>下一步</div>
+                    <h3>确认后会发生什么</h3>
+                  </div>
+                  <span className={sourceReady ? styles.reviewPill : styles.mutedPill}>
+                    {sourceReady ? '可继续' : '待素材'}
+                  </span>
+                </div>
+                <div className={styles.simpleFlowList}>
+                  <div className={sourceConfirmed ? styles.simpleFlowItemDone : styles.simpleFlowItemActive}>
+                    <span>1</span>
+                    <strong>确认这份素材</strong>
+                  </div>
+                  <div className={sourceConfirmed ? styles.simpleFlowItemActive : styles.simpleFlowItemPending}>
+                    <span>2</span>
+                    <strong>配置目标和范围</strong>
+                  </div>
+                  <div className={styles.simpleFlowItemPending}>
+                    <span>3</span>
+                    <strong>选择修改策略</strong>
+                  </div>
+                </div>
+              </div>
+
+              <details className={`${styles.card} ${styles.technicalDetailsCard}`}>
+                <summary>查看后台处理细节</summary>
+                <div className={styles.backgroundStepList}>
+                  {MOCK_INTAKE_STEPS.map((step, index) => (
+                    <div key={step.id} className={getIntakeStepClassName(index)}>
+                      <span>{index + 1}</span>
+                      <div>
+                        <strong>{step.title}</strong>
+                        <em>{step.desc}</em>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </>
+          ) : (
+          <>
           <div className={`${styles.card} ${styles.taskMapCard}`}>
             <div className={styles.composerSectionHeader}>
               <div>
@@ -1297,9 +1366,9 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             <div className={styles.summaryList}>
               <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 已完成解析' : isIntakeRunning ? '正在摄入 · 生成素材对象' : sourceMode === 'library' ? '项目素材库 · 待确认' : sourceMode === 'upload' ? '新上传文件 · 待确认' : '临时文本 · 待确认'}</strong></div>
               <div><span>归属</span><strong>{intakeResult?.sourceProfile.contentCategory ?? '待识别'}</strong></div>
-              <div><span>目标</span><strong>{getDecisionSummaryValue('work_goal', '多人演播有声书 · 先做业务分析')}</strong></div>
+              <div><span>目标</span><strong>{selectedWorkGoal}</strong></div>
               <div><span>范围</span><strong>{getDecisionSummaryValue('scope', '第 1 章')}</strong></div>
-              <div><span>本轮</span><strong>{analysisCompleted ? selectedStrategy?.title ?? '待选择策略' : isAnalysisRunning ? 'AI 初读分析中' : '先分析问题'}</strong></div>
+              <div><span>本轮</span><strong>{analysisCompleted ? selectedStrategy?.title ?? '待选择方向' : isAnalysisRunning ? 'AI 初读分析中' : goalConfirmationCopy.focus}</strong></div>
               <div><span>草案</span><strong>{sourceConfirmed ? '已生成 TaskDraft' : isIntakeRunning ? '生成中' : '等待生成'}</strong></div>
             </div>
           </div>
@@ -1339,7 +1408,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <div className={analysisCompleted ? styles.gateMapItemActive : isAnalysisRunning ? styles.gateMapItemActive : styles.gateMapItemPending}>
                 <span>3</span>
                 <div>
-                  <strong>修改策略确认</strong>
+                  <strong>修改方向确认</strong>
                   <em>{analysisCompleted ? '等待确认策略' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围'}</em>
                 </div>
               </div>
@@ -1361,8 +1430,10 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
           <div className={styles.requirementBoundaryBox}>
             <strong>执行边界</strong>
-            <span>当前只确认产品内容和工作范围。AI 初读分析完成后，系统会再给出可修改建议，由用户单独确认改动策略。</span>
+            <span>第 2 步只确认目标订单和处理范围；第 3 步才确认修改方向、交付清单和制作 Agent 队列。</span>
           </div>
+          </>
+          )}
         </aside>
       </main>
 

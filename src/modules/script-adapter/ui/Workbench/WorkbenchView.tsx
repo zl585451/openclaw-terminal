@@ -110,6 +110,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [currentBatch, setCurrentBatch] = useState<BatchJob | null>(null);
   const [currentBatchRuns, setCurrentBatchRuns] = useState<ChapterRunRecord[]>([]);
+  const [startConfirmOpen, setStartConfirmOpen] = useState(false);
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -180,6 +181,28 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
       deliveryOptions.bgmSfx,
     ],
   );
+  const deliveryItemLabels = useMemo(() => [
+    '多人演播台本',
+    deliveryOptions.voiceRegistry ? '角色音表' : null,
+    deliveryOptions.qualityReview ? '质检报告' : null,
+    deliveryOptions.cvDirections ? 'CV 演播指导' : null,
+    deliveryOptions.bgmSfx ? 'BGM/SFX 建议' : null,
+  ].filter(Boolean) as string[], [
+    deliveryOptions.voiceRegistry,
+    deliveryOptions.qualityReview,
+    deliveryOptions.cvDirections,
+    deliveryOptions.bgmSfx,
+  ]);
+  const startWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    if (executionMode === 'real' && batchEstimate.chapterCount > 5) {
+      warnings.push('真实 Agent 试产超过 5 章，建议先跑 1 章或 3-5 章。');
+    }
+    if (deliveryOptions.bgmSfx && batchEstimate.chapterCount > 5) {
+      warnings.push('已开启 BGM/SFX 建议，批量成本会明显上升。');
+    }
+    return warnings;
+  }, [batchEstimate.chapterCount, deliveryOptions.bgmSfx, executionMode]);
 
   const teamStages = productionStages.map((stage) => ({
     ...stage,
@@ -199,13 +222,15 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
     if (!result.success) return;
     const nextBatches = result.batches || [];
     setBatchHistory(nextBatches);
+    const runningBatch = nextBatches.find((item) => item.status === 'running' || item.status === 'paused') ?? null;
     const preferred = preferBatchId
       || currentBatchIdRef.current
-      || nextBatches.find((item) => item.status === 'running' || item.status === 'paused')?.id
-      || nextBatches[0]?.id
+      || runningBatch?.id
       || null;
     if (preferred) {
       setCurrentBatchId(preferred);
+    } else {
+      setCurrentBatchId(null);
     }
   };
 
@@ -216,7 +241,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
     setCurrentBatchRuns(result.chapterRuns || []);
   };
 
-  const startBatchExecution = async () => {
+  const requestStartBatchExecution = () => {
     if (!selectedBatchBook || batchEstimate.chapterCount === 0) {
       setBatchLibraryError('请先选择一本书和至少一个章节。');
       return;
@@ -225,29 +250,13 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
       setBatchLibraryError('首次真实试产不建议直接跑全书，请先选择 1 章或 3-5 章。');
       return;
     }
-    if (executionMode === 'real' && batchEstimate.chapterCount > 5) {
-      const allowLarge = window.confirm('当前是真实 Agent 试产，且章节超过 5 章。建议先跑 1 章或 3-5 章。确认继续吗？');
-      if (!allowLarge) return;
-    }
-    if (deliveryOptions.bgmSfx && batchEstimate.chapterCount > 5) {
-      const allowBgm = window.confirm('当前已开启 BGM/SFX 建议，批量成本会明显上升。确认继续吗？');
-      if (!allowBgm) return;
-    }
-    const confirmed = window.confirm(
-      `确认启动《${selectedBatchBook.title}》批次？\n`
-      + `${batchEstimate.chapterCount} 章 / ${batchEstimate.totalChars.toLocaleString('zh-CN')} 字 / `
-      + `约 ${batchEstimate.estimatedDurationMinutes} 分钟 / 约 ¥${batchEstimate.estimatedCostCny.toFixed(2)}\n`
-      + `模式：${executionMode === 'real' ? '真实 Agent 试产' : '模拟演示'}\n`
-      + `交付项：${[
-        '多人演播台本',
-        deliveryOptions.voiceRegistry ? '角色音表' : null,
-        deliveryOptions.qualityReview ? '质检报告' : null,
-        deliveryOptions.cvDirections ? 'CV 演播指导' : null,
-        deliveryOptions.bgmSfx ? 'BGM/SFX 建议' : null,
-      ].filter(Boolean).join(' / ')}`,
-    );
-    if (!confirmed) return;
+    setBatchLibraryError('');
+    setStartConfirmOpen(true);
+  };
 
+  const startBatchExecution = async () => {
+    if (!selectedBatchBook || batchEstimate.chapterCount === 0) return;
+    setStartConfirmOpen(false);
     setBatchLibraryLoading('start');
     setBatchLibraryError('');
     try {
@@ -288,10 +297,10 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
   const contractRangeLabel = taskContract?.rangeLabel
     || (batchEstimate.chapterCount === 1 ? '单章试产' : `${batchEstimate.chapterCount} 章小批量试产`);
   const startBatchButtonText = batchEstimate.chapterCount <= 1
-    ? '确认预算并启动单章试产'
+    ? '确认开工，开始单章试产'
     : batchEstimate.chapterCount <= 5
-      ? '确认预算并启动小批量试产'
-      : '确认高成本预算并启动批次';
+      ? '确认开工，开始小批量试产'
+      : '确认高成本预算，开始批次';
   const deliverySummary = [
     'Word DOCX',
     '多人演播台本',
@@ -300,6 +309,12 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
     deliveryOptions.cvDirections ? 'CV 演播指导' : null,
     deliveryOptions.bgmSfx ? 'BGM/SFX 建议' : null,
   ].filter(Boolean).join(' / ');
+  const currentBatchCompleted = currentBatch?.status === 'completed';
+  const currentBatchRunning = Boolean(currentBatch && currentBatch.status !== 'completed');
+  const activeTeamMember = teamStages.find((stage) => stage.status === 'running')
+    ?? teamStages.find((stage) => stage.status === 'pending')
+    ?? teamStages[0];
+  const completedTeamCount = teamStages.filter((stage) => stage.status === 'done').length;
 
   const startMockExecution = () => {
     const taskId = project?.id ?? 'demo-content-task';
@@ -581,11 +596,13 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
           className={styles.secondaryWideButton}
           onClick={() => scriptAdapterActions.setViewMode('pipeline')}
         >
-          查看高级流程
+          返回修改方案
         </button>
       </aside>
 
       <main className={styles.taskMain}>
+        {!currentBatch ? (
+        <>
         <section className={`${styles.card} ${styles.workOrderHeroCard}`}>
           <div className={styles.workOrderHeroMain}>
             <div className={styles.workOrderHeroCopy}>
@@ -593,7 +610,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
               <h2>请最后确认预算、试产模式和交付物。</h2>
               <p>
                 你前面确认的素材、章节范围、目标和修改策略已经锁定。这里不再重新选章节，
-                只做开工前拍板；如需改范围，请返回新建流程前几步调整。
+                只做开工前拍板；如需改范围，请返回修改方案。
               </p>
               <div className={styles.workOrderSealRow}>
                 <span>不改剧情</span>
@@ -609,10 +626,6 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
               <div>
                 <span>范围</span>
                 <strong>{contractRangeLabel}</strong>
-              </div>
-              <div>
-                <span>字数</span>
-                <strong>{batchEstimate.totalChars.toLocaleString('zh-CN')} 字</strong>
               </div>
               <div>
                 <span>修改策略</span>
@@ -634,7 +647,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
               type="button"
               className={styles.confirmStartButton}
               disabled={batchLibraryLoading === 'start' || batchEstimate.chapterCount === 0}
-              onClick={() => void startBatchExecution()}
+              onClick={requestStartBatchExecution}
             >
               {batchLibraryLoading === 'start' ? '启动中…' : startBatchButtonText}
             </button>
@@ -643,7 +656,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
               className={styles.ghostButton}
               onClick={() => scriptAdapterActions.setViewMode('pipeline')}
             >
-              查看高级流程
+              返回修改方案
             </button>
           </div>
         </section>
@@ -692,14 +705,6 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
               )) : <div>当前批次规模适合直接试跑。</div>}
             </div>
             {batchLibraryError ? <div className={styles.inlineErrorText}>{batchLibraryError}</div> : null}
-            <button
-              type="button"
-              className={styles.confirmStartButton}
-              disabled={batchLibraryLoading === 'start' || batchEstimate.chapterCount === 0}
-              onClick={() => void startBatchExecution()}
-            >
-              {batchLibraryLoading === 'start' ? '启动中…' : startBatchButtonText}
-            </button>
           </div>
 
           <div className={`${styles.card} ${styles.contractGuardCard}`}>
@@ -720,6 +725,24 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
             </div>
           </div>
         </section>
+        </>
+        ) : null}
+
+        {currentBatchRunning ? (
+          <section className={`${styles.card} ${styles.lifecycleStatusCard}`}>
+            <div>
+              <div className={styles.workOrderKicker}>开工中</div>
+              <h2>正在试产，当前由{activeTeamMember?.friendly.title || '制作 Agent'}处理。</h2>
+              <p>
+                {completedTeamCount}/{teamStages.length} 个制作角色已完成。这里先看真实进度；
+                详细 Agent 队列和历史记录已折叠，避免干扰当前状态。
+              </p>
+            </div>
+            <button type="button" className={styles.ghostButton} onClick={openRunnableStage}>
+              查看当前制作阶段
+            </button>
+          </section>
+        ) : null}
 
         {currentBatch ? (
           <BatchProgressView
@@ -740,7 +763,10 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
           />
         ) : null}
 
-        <section className={`${styles.card} ${styles.batchHistoryCard}`}>
+        {currentBatchCompleted ? (
+        <details className={`${styles.card} ${styles.collapsibleWorkbenchSection}`}>
+          <summary>查看批次历史</summary>
+          <section className={styles.batchHistoryCard}>
           <div className={styles.productionTeamHeader}>
             <div>
               <div className={styles.sectionTitle}>批次历史</div>
@@ -773,32 +799,23 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
               </div>
             ))}
           </div>
-        </section>
+          </section>
+        </details>
+        ) : null}
 
-        <section className={styles.contractFocusGrid}>
-          <div className={styles.contractFocusCard}>
-            <span>做什么</span>
-            <strong>多人演播有声书样章</strong>
-            <em>给有声书团队试跑制作形态。</em>
-          </div>
-          <div className={styles.contractFocusCard}>
-            <span>做哪里</span>
-            <strong>{currentChapter ? `第${currentChapter.index}章 · 前半段` : '第1章 · 前半段'}</strong>
-            <em>先小范围验证效果，不直接跑完整本。</em>
-          </div>
-          <div className={styles.contractFocusCard}>
-            <span>怎么改</span>
-            <strong>保留剧情，只提升听感</strong>
-            <em>不重写故事，只让它更适合演播。</em>
-          </div>
-        </section>
-
+        {currentBatchRunning ? (
+        <>
         <section className={styles.contractReviewNotice}>
           <strong>需要你之后确认的地方</strong>
           <span>未定角色音是否独立锁 CV、演播提示是否继续扩到全章、质检结果是否允许进入打包。</span>
         </section>
+        </>
+        ) : null}
 
-        <section className={`${styles.card} ${styles.productionTeamCard}`}>
+        {currentBatch ? (
+        <details className={`${styles.card} ${styles.collapsibleWorkbenchSection}`}>
+          <summary>查看制作角色和保护条款</summary>
+          <section className={styles.productionTeamCard}>
           <div className={styles.productionTeamHeader}>
             <div>
               <div className={styles.sectionTitle}>谁在为你干活</div>
@@ -823,7 +840,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
               </div>
             ))}
           </div>
-        </section>
+          </section>
 
         <section className={styles.contractDeliveryGrid}>
           <div className={`${styles.card} ${styles.deliveryChecklistCard}`}>
@@ -859,8 +876,75 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
             </div>
           </div>
         </section>
+        </details>
+        ) : null}
 
       </main>
+      {startConfirmOpen ? (
+        <div className={styles.workbenchModalOverlay} role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setStartConfirmOpen(false);
+        }}>
+          <section className={styles.startConfirmDialog} role="dialog" aria-modal="true" aria-labelledby="start-confirm-title">
+            <div className={styles.startConfirmHeader}>
+              <div>
+                <span>开工确认</span>
+                <h3 id="start-confirm-title">确认启动这次试产？</h3>
+              </div>
+              <button type="button" aria-label="关闭开工确认" onClick={() => setStartConfirmOpen(false)}>
+                ×
+              </button>
+            </div>
+
+            <div className={styles.startConfirmProject}>
+              <span>素材</span>
+              <strong>《{selectedBatchBook?.title || taskContract?.bookTitle || '待选择素材'}》</strong>
+              <em>{contractRangeLabel}</em>
+            </div>
+
+            <div className={styles.startConfirmStats}>
+              <div><span>章节</span><strong>{batchEstimate.chapterCount}</strong></div>
+              <div><span>字数</span><strong>{batchEstimate.totalChars.toLocaleString('zh-CN')}</strong></div>
+              <div><span>耗时</span><strong>{batchEstimate.estimatedDurationMinutes} 分钟</strong></div>
+              <div><span>费用</span><strong>¥{batchEstimate.estimatedCostCny.toFixed(2)}</strong></div>
+            </div>
+
+            <div className={styles.startConfirmInfoGrid}>
+              <div>
+                <span>试产模式</span>
+                <strong>{executionMode === 'real' ? '真实 Agent 试产' : '模拟演示'}</strong>
+              </div>
+              <div>
+                <span>交付项</span>
+                <strong>{deliveryItemLabels.join(' / ')}</strong>
+              </div>
+            </div>
+
+            {startWarnings.length > 0 ? (
+              <div className={styles.startConfirmWarnings}>
+                {startWarnings.map((warning) => (
+                  <div key={warning}>{warning}</div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.startConfirmSafeNote}>当前批次规模适合直接试跑。</div>
+            )}
+
+            <div className={styles.startConfirmActions}>
+              <button type="button" className={styles.ghostButton} onClick={() => setStartConfirmOpen(false)}>
+                再检查一下
+              </button>
+              <button
+                type="button"
+                className={styles.confirmStartButton}
+                disabled={batchLibraryLoading === 'start'}
+                onClick={() => void startBatchExecution()}
+              >
+                {batchLibraryLoading === 'start' ? '启动中…' : startBatchButtonText}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
