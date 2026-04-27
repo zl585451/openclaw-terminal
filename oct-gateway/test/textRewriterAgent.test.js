@@ -34,7 +34,7 @@ async function main() {
   });
 
   await test('oversized source throws TEXT_REWRITER_TOO_LONG', async () => {
-    await assert.rejects(() => runTextRewriterAgent({ sourceText: makeText(5000) }), /TEXT_REWRITER_TOO_LONG/);
+    await assert.rejects(() => runTextRewriterAgent({ sourceText: makeText(13000) }), /TEXT_REWRITER_TOO_LONG/);
   });
 
   const runLive = process.env.RUN_LIVE_TESTS === '1' || process.env.RUN_LIVE_TESTS === 'true';

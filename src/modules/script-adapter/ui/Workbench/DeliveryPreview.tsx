@@ -8,6 +8,7 @@ import type {
   TaskExecutionSheet,
   VoiceRoleMarkersPayload,
 } from '../../types/execution';
+import { exportDeliveryAsDocx, exportDeliveryAsMarkdown } from '../../services/exportClient';
 import styles from '../../styles/scriptAdapter.module.css';
 
 const CONCLUSION_LABEL: Record<string, string> = {
@@ -22,6 +23,8 @@ interface DeliveryPreviewProps {
 
 export function DeliveryPreview({ sheet }: DeliveryPreviewProps) {
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportingDocx, setExportingDocx] = useState(false);
   if (sheet.overallStatus !== 'completed') return null;
 
   const artifacts = Object.values(sheet.artifacts);
@@ -41,9 +44,41 @@ export function DeliveryPreview({ sheet }: DeliveryPreviewProps) {
   };
 
   const handleCopyAll = async () => {
-    await navigator.clipboard.writeText(JSON.stringify(fullPackage, null, 2));
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(fullPackage, null, 2));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch (error: unknown) {
+      window.alert(`复制失败：${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  };
+
+  const handleExportMarkdown = async () => {
+    setExporting(true);
+    try {
+      const result = await exportDeliveryAsMarkdown(sheet);
+      if (result.success) {
+        window.alert(`已导出到：${result.filePath}`);
+      } else if (result.error !== 'cancelled') {
+        window.alert(`导出失败：${result.error || '未知错误'}`);
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportDocx = async () => {
+    setExportingDocx(true);
+    try {
+      const result = await exportDeliveryAsDocx(sheet);
+      if (result.success) {
+        window.alert(`已导出到：${result.filePath}`);
+      } else if (result.error !== 'cancelled') {
+        window.alert(`导出失败：${result.error || '未知错误'}`);
+      }
+    } finally {
+      setExportingDocx(false);
+    }
   };
 
   const segments = adapted?.payload?.segments || [];
@@ -92,9 +127,17 @@ export function DeliveryPreview({ sheet }: DeliveryPreviewProps) {
       </div>
 
       <footer>
-        <button type="button" className={styles.confirmStartButton} onClick={handleCopyAll}>
-          {copied ? '已复制完整 JSON' : '复制完整交付包 JSON'}
-        </button>
+        <div className={styles.deliveryActions}>
+          <button type="button" className={styles.confirmStartButton} onClick={handleExportDocx} disabled={exportingDocx}>
+            {exportingDocx ? '导出中…' : '导出 Word DOCX'}
+          </button>
+          <button type="button" className={styles.confirmStartButton} onClick={handleExportMarkdown} disabled={exporting}>
+            {exporting ? '导出中…' : '导出 Markdown'}
+          </button>
+          <button type="button" className={styles.ghostButton} onClick={handleCopyAll}>
+            {copied ? '已复制完整 JSON' : '复制完整交付包 JSON'}
+          </button>
+        </div>
         <small>{pack?.payload?.notes || '交付包未生成完整 notes,请展开 final_package 查看。'}</small>
       </footer>
     </section>
