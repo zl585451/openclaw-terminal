@@ -25,6 +25,12 @@ export interface LibraryChapter {
   preview: string | null;
 }
 
+export interface UploadBookResult {
+  book_id: string;
+  chapter_count: number;
+  total_chars: number;
+}
+
 type LibraryListPayload = { success?: boolean; books?: LibraryBook[]; total?: number };
 type LibraryChaptersPayload = { success?: boolean; chapters?: LibraryChapter[]; book_id?: string };
 type LibraryChapterPayload = {
@@ -66,4 +72,25 @@ export async function getChapterText(
   if (!res.success) throw new Error(res.error);
   const inner = res.data as LibraryChapterPayload;
   return { chapter: inner.chapter, text: inner.text };
+}
+
+export async function pickLocalFile(): Promise<string | null> {
+  const res = await api().pickFile();
+  if (!res.success) return null;
+  return res.filePath;
+}
+
+export async function uploadBook(params: {
+  filePath: string;
+  title: string;
+  author?: string;
+}): Promise<UploadBookResult> {
+  const res = (await api().upload(params)) as LibraryIpcResult<UploadBookResult>;
+  if (!res.success) throw new Error(res.error);
+  return res.data;
+}
+
+export async function deleteBook(bookId: string): Promise<void> {
+  const res = await api().remove(bookId);
+  if (!res.success) throw new Error(res.error);
 }
