@@ -59,7 +59,7 @@ const DEFAULT_CONFIG = {
   OCT_PERSONA_STYLE: 'warm',
   TTS_MINIMAX_VOICE_ID: 'male-qn-qingse',
   /** 随 OCT 启动 AI.library（知识库 HTTP 服务，默认端口 8001，与 Nocturne :8000 错开） */
-  OCT_AI_LIBRARY_AUTO_START: false,
+  OCT_AI_LIBRARY_AUTO_START: true,
   OCT_AI_LIBRARY_PATH: '',
   OCT_AI_LIBRARY_PORT: 8001,
   /** SQLite busy_timeout(ms)，缓解 database is locked，默认 10000，可设为 5000~60000 */
@@ -147,6 +147,19 @@ function getNocturneExePath(): string {
     path.join(process.resourcesPath || '', 'nocturne_server', exeName),
     path.join(__dirname, '..', 'resources', 'nocturne_server', exeName),
     path.join(__dirname, '..', '..', 'resources', 'nocturne_server', exeName),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return '';
+}
+
+function getAiLibraryExePath(): string {
+  const exeName = process.platform === 'win32' ? 'ai_library_server.exe' : 'ai_library_server';
+  const candidates = [
+    path.join(process.resourcesPath || '', 'ai_library_server', exeName),
+    path.join(__dirname, '..', 'resources', 'ai_library_server', exeName),
+    path.join(__dirname, '..', '..', 'resources', 'ai_library_server', exeName),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
@@ -876,13 +889,18 @@ async function startAiLibraryBackend(): Promise<boolean> {
     return false;
   }
   if (!octAiLibraryPath) {
-    console.warn('[AI.library] 已启用自动启动但未配置 OCT_AI_LIBRARY_PATH');
-    mainWindow?.webContents.send('openclaw-log-lines', ['[AI.library] 请在设置中填写知识库目录路径']);
-    return false;
+    const bundledExe = getAiLibraryExePath();
+    if (!bundledExe) {
+      console.warn('[AI.library] 已启用自动启动但未配置 OCT_AI_LIBRARY_PATH');
+      mainWindow?.webContents.send('openclaw-log-lines', ['[AI.library] 未找到内置书库运行时，请检查安装包']);
+      return false;
+    }
   }
 
-  const root = path.resolve(octAiLibraryPath.replace(/^["']|["']$/g, ''));
-  if (!fs.existsSync(path.join(root, 'api_server.py'))) {
+  const bundledExe = getAiLibraryExePath();
+  const root = octAiLibraryPath ? path.resolve(octAiLibraryPath.replace(/^["']|["']$/g, '')) : '';
+  const hasValidRoot = root && fs.existsSync(path.join(root, 'api_server.py'));
+  if (!bundledExe && !hasValidRoot) {
     console.warn('[AI.library] 目录无效（缺少 api_server.py）:', root);
     mainWindow?.webContents.send('openclaw-log-lines', [`[AI.library] 路径无效: ${root}`]);
     return false;
@@ -896,11 +914,13 @@ async function startAiLibraryBackend(): Promise<boolean> {
     return true;
   }
 
-  const { cmd, args } = getAiLibraryPythonCommand(root);
   const aiLibraryDataRoot = path.join(app.getPath('userData'), 'ai_library_data');
-  console.log('[AI.library] 启动:', cmd, args.join(' '), 'cwd=', root);
-  aiLibraryProcess = spawn(cmd, args, {
-    cwd: root,
+  const launch = bundledExe
+    ? { cmd: bundledExe, args: [] as string[], cwd: path.dirname(bundledExe), source: 'exe' as const }
+    : { ...getAiLibraryPythonCommand(root), cwd: root, source: 'python' as const };
+  console.log('[AI.library] 启动:', launch.cmd, launch.args.join(' '), 'cwd=', launch.cwd, 'mode=', launch.source);
+  aiLibraryProcess = spawn(launch.cmd, launch.args, {
+    cwd: launch.cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     detached: false,

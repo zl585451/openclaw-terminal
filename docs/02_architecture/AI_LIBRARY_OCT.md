@@ -6,7 +6,8 @@
 
 ## 内嵌源码与数据目录（书库 Phase 1）
 
-OCT 仓库内提供 **`resources/ai_library/`**（`api_server.py`、`audio_knowledge_base.py` 等）。Electron 在用户 **未** 配置 `OCT_AI_LIBRARY_PATH` 时，若该目录存在 `api_server.py`，则自动将其作为启动 **cwd**。
+OCT 仓库内提供 **`resources/ai_library/`**（`api_server.py`、`audio_knowledge_base.py` 等）。Electron 在用户 **未** 配置 `OCT_AI_LIBRARY_PATH` 时，若该目录存在 `api_server.py`，则自动将其作为启动 **cwd**。  
+自 **2026-04-27** 起，Windows 打包链路额外支持内嵌 **`ai_library_server.exe`**：客户端安装后优先启动该独立运行时，只有在 exe 不存在时才回退到 Python 源码模式。
 
 运行时的向量库、SQLite、文档扫描目录等 **不再默认写入** `resources/ai_library/data/`，而是由主进程在 spawn 子进程时注入：
 
@@ -62,7 +63,7 @@ OCT 仓库内提供 **`resources/ai_library/`**（`api_server.py`、`audio_knowl
 
 1. 打开 **设置 → 记忆** 标签页。
 2. 找到 **AI.library 知识库（插件）**。
-3. 勾选 **随 OCT 自动启动**；**项目根目录**可留空——若仓库内已有 `resources/ai_library/api_server.py`，将自动使用内嵌目录。仍填写外部路径（如 `E:\AI.library`）时以外部目录为准。端口保持 **8001**（或与 `api_server.py` 中一致）。
+3. **随 OCT 自动启动** 默认开启；**项目根目录**可留空——若仓库内已有 `resources/ai_library/api_server.py` 或打包后的 `ai_library_server.exe`，将自动使用内嵌运行时。仍填写外部路径（如 `E:\AI.library`）时以外部目录为准。端口保持 **8001**（或与 `api_server.py` 中一致）。
 4. 点击 **保存并应用**（会重启 Gateway 以注入 `AI_LIBRARY_URL`）。
 
 关闭 OCT 时，由 OCT 拉起的 AI.library 子进程会一并结束。
@@ -167,7 +168,7 @@ OCT_AI_LIBRARY_PORT=8001
 |------|------|
 | 超时 | ⏱️ 搜索超时，图书馆响应太慢 |
 | 空结果 | 📚 没找到相关内容，换个词试试？ |
-| 服务离线 | 📚 AI.library 未启动，请先运行 api_server.py |
+| 服务离线 | 📚 AI.library 未启动，请检查内置运行时或外部路径配置 |
 | 网络错误 | 📚 连接图书馆失败，请检查服务状态 |
 
 ### 缓存机制
@@ -182,7 +183,8 @@ OCT_AI_LIBRARY_PORT=8001
 
 | 文件 | 说明 |
 |------|------|
-| `resources/ai_library/` | 内嵌 AI.library 源码；运行时数据见 userData `ai_library_data/` |
+| `resources/ai_library/` | 内嵌 AI.library 源码；开发态 / 回退模式使用 |
+| `resources/ai_library_server/` | Windows 打包产物目录，包含 `ai_library_server.exe` 及依赖 |
 | `electron/main.ts` | 解析内嵌路径、`AI_LIBRARY_*` 子进程环境变量 |
 | `oct-gateway/config.js` | ai_library 配置加载 |
 | `oct-gateway/tools/ai_library.js` | 检索模块、缓存、错误处理 |

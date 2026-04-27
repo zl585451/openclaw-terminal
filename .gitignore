@@ -78,6 +78,10 @@ resources/ai_library/documents/
 resources/ai_library/__pycache__/
 resources/ai_library/.venv/
 resources/ai_library/venv/
+resources/ai_library/.build-venv/
+resources/ai_library/build/
+resources/ai_library/dist/
+resources/ai_library_server/
 
 # Cursor/Copilot 技能包（不混入 OCT 代码库）
 skills/minimax-multimodal-toolkit/

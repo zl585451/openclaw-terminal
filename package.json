@@ -18,7 +18,8 @@
     "start:fast": "concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
     "electron:dev": "npm run build:electron && concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
     "build:nocturne": ".\\scripts\\build-nocturne-exe.bat",
-    "electron:build:win": "npm run build:nocturne && npm run rebuild:gateway:native && npm run build && electron-builder --win --x64",
+    "build:ai-library": ".\\scripts\\build-ai-library-exe.bat",
+    "electron:build:win": "npm run build:nocturne && npm run build:ai-library && npm run rebuild:gateway:native && npm run build && electron-builder --win --x64",
     "electron:build:win:nolocal": "npm run rebuild:gateway:native && npm run build && electron-builder --win --x64",
     "electron:build:mac": "npm run rebuild:gateway:native && npm run build && electron-builder --mac --x64 --arm64",
     "electron:build:linux": "npm run rebuild:gateway:native && npm run build && electron-builder --linux --x64",
@@ -103,6 +104,22 @@
           "!**/.env",
           "!**/.env.*",
           "!**/*.pyc"
+        ]
+      },
+      {
+        "from": "resources/ai_library_server",
+        "to": "ai_library_server",
+        "filter": [
+          "**/*",
+          "!**/.env",
+          "!**/.env.*",
+          "!**/*.pem",
+          "!**/*.key",
+          "!**/id_rsa*",
+          "!**/*secret*",
+          "!**/*token*",
+          "!**/*credential*",
+          "!**/*password*"
         ]
       },
       {
