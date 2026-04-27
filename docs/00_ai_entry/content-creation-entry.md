@@ -37,5 +37,8 @@
 3. 创建任务 schema。
 4. ExecutionGate 状态机。
 5. Gateway 执行任务。
-   - 开工确认书可传 `sourceText` 到 Gateway；开关与专用端点可用顶层 `SCRIPT_ADAPTER_*` 或 `config.json` 嵌套 `scriptAdapter`（运行时读 `config.scriptAdapter`）。首个 Agent 可走真实 LLM 时，后续四个 mock 会读取已产出的 `adapted_script` 对齐 speaker 与 `segmentId`。Week 4 Track 1：可从 AI.library 书库选章经 **Electron `window.electronAPI.library.*`** 填入 `sourceText`（不经 Gateway）。详见 `docs/02_architecture/script-adapter-gateway-protocol.md` 与 `docs/05_changelog/` 下相关 changelog。
+   - 开工确认书可传 `sourceText` 到 Gateway；开关与专用端点可用顶层 `SCRIPT_ADAPTER_*` 或 `config.json` 嵌套 `scriptAdapter`（运行时读 `config.scriptAdapter`）。
+   - Week 5 起，`adapter.audiobook_text_rewriter@1.0`、`classifier.voice_role_marker@1.0`、`designer.performance_audio@1.0`、`reviewer.production_quality@1.0` 可按 `SCRIPT_ADAPTER_REAL_AGENTS` 走真实 LLM；`packager.content_delivery@1.0` 固定为纯 JS 收口，不调 LLM。
+   - 任一真实 Agent 失败时 dispatcher 必须回退占位产物，不让 pipeline 中断；前端执行页会以红色边条标识失败产物，并允许继续复制 JSON / 查看交付预览。
+   - Week 4 Track 1：可从 AI.library 书库选章经 **Electron `window.electronAPI.library.*`** 填入 `sourceText`（不经 Gateway）。详见 `docs/02_architecture/script-adapter-gateway-protocol.md` 与 `docs/05_changelog/` 下相关 changelog。
 6. 任务持久化和最近任务列表。

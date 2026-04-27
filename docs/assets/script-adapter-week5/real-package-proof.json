@@ -1,0 +1,167 @@
+{
+  "generatedAt": "2026-04-26T18:02:49.951Z",
+  "mode": "frontend-mock-runtime-proof",
+  "artifacts": [
+    {
+      "artifactId": "artifact-adapted_script-1777226569950",
+      "artifactType": "adapted_script",
+      "producedBy": "adapter.audiobook_text_rewriter@1.0",
+      "producedAt": "2026-04-26T18:02:49.950Z",
+      "title": "多人演播样章台本",
+      "summary": "文本改编师：已完成第1章前半段的听感改编样稿。",
+      "payload": {
+        "chapterTitle": "第1章 · 樟木箱",
+        "totalCharCount": 286,
+        "segments": [
+          {
+            "segmentId": "seg-001",
+            "type": "narration",
+            "text": "三月的风从楼道窗缝里灌进来，带着一股灰尘和旧木头的味道。周佳宁站在门口，看着周婉云把钥匙插进那把发涩的锁里。",
+            "rewriteNote": "保留原场景信息，拆短句并增加可听化停顿。"
+          },
+          {
+            "segmentId": "seg-002",
+            "type": "dialogue",
+            "speaker": "周婉云",
+            "text": "东西都搬得差不多了。就剩阁楼上那些旧东西，你自己上去收拾一下。",
+            "rewriteNote": "对白改得更自然，保留人物冷淡的交代感。"
+          }
+        ]
+      },
+      "metrics": {
+        "segments": 2,
+        "chars": 286
+      }
+    },
+    {
+      "artifactId": "artifact-voice_registry-1777226569951",
+      "artifactType": "voice_registry",
+      "producedBy": "classifier.voice_role_marker@1.0",
+      "producedAt": "2026-04-26T18:02:49.951Z",
+      "title": "角色音标注表",
+      "summary": "角色音统筹：已根据上游台本 2 段提取 1 个对白/独白声线（旁白单独统计）。",
+      "payload": {
+        "registry": [
+          {
+            "roleName": "旁白",
+            "category": "narrator",
+            "voiceHint": "冷静克制，随场景收紧或放松",
+            "appearanceCount": 1
+          },
+          {
+            "roleName": "周婉云",
+            "category": "main",
+            "voiceHint": "按对白密度与情绪起伏分配",
+            "appearanceCount": 1
+          }
+        ],
+        "unresolved": [
+          "周婉云"
+        ]
+      },
+      "metrics": {
+        "roles": 2,
+        "unresolved": 1
+      }
+    },
+    {
+      "artifactId": "artifact-performance_design-1777226569951",
+      "artifactType": "performance_design",
+      "producedBy": "designer.performance_audio@1.0",
+      "producedAt": "2026-04-26T18:02:49.951Z",
+      "title": "演播设计提示",
+      "summary": "演播设计师：已按上游 segmentId 绑定底噪、音效与对白情绪占位。",
+      "payload": {
+        "bgmTrack": {
+          "mood": "随样章场景",
+          "suggestion": "保持人声清晰，底噪随段切换微调。"
+        },
+        "sfxList": [
+          {
+            "atSegmentId": "seg-001",
+            "sfxType": "AMB",
+            "description": "环境铺底（绑定当前段）。"
+          },
+          {
+            "atSegmentId": "seg-002",
+            "sfxType": "SFX",
+            "description": "动作/细节音效占位。"
+          }
+        ],
+        "cvDirections": [
+          {
+            "atSegmentId": "seg-002",
+            "emotion": "随段调整",
+            "pace": "对白节奏跟读"
+          }
+        ]
+      },
+      "metrics": {
+        "sfx": 2,
+        "directions": 1
+      }
+    },
+    {
+      "artifactId": "artifact-review_report-1777226569951",
+      "artifactType": "review_report",
+      "producedBy": "reviewer.production_quality@1.0",
+      "producedAt": "2026-04-26T18:02:49.951Z",
+      "title": "质检问题清单",
+      "summary": "质检审校：已对照上游 2 段、约 286 字台本做占位质检。",
+      "payload": {
+        "conclusion": "pass_with_changes",
+        "issues": [
+          {
+            "severity": "P1",
+            "category": "一致性",
+            "location": "周婉云",
+            "description": "样章共 2 段，涉及说话人：周婉云，交付前请与角色音表再对一遍。",
+            "suggestion": "锁定 CV 后再进入打包。"
+          }
+        ]
+      },
+      "metrics": {
+        "issues": 1,
+        "p1": 1
+      }
+    },
+    {
+      "artifactId": "artifact-final_package-1777226569951",
+      "artifactType": "final_package",
+      "producedBy": "packager.content_delivery@1.0",
+      "producedAt": "2026-04-26T18:02:49.951Z",
+      "title": "制作交付包",
+      "summary": "交付打包员：已按「第1章 · 樟木箱」2 段台本整理 mock 交付清单。",
+      "payload": {
+        "manifest": [
+          {
+            "name": "第1章 · 樟木箱_多人演播样章.md",
+            "type": "台本",
+            "size": "1 KB"
+          },
+          {
+            "name": "第1章 · 樟木箱_角色音标注表.json",
+            "type": "角色音",
+            "size": "—"
+          },
+          {
+            "name": "第1章 · 樟木箱_演播设计稿.md",
+            "type": "演播设计",
+            "size": "—"
+          },
+          {
+            "name": "第1章 · 樟木箱_质检报告.md",
+            "type": "质检",
+            "size": "—"
+          }
+        ],
+        "versionTag": "audiobook-mvp-segments-2",
+        "notes": "本包为 Gateway mock 预览；头部台本共 2 段，与上游 adapted_script 对齐。"
+      },
+      "metrics": {
+        "files": 4,
+        "segments": 2
+      }
+    }
+  ]
+}
