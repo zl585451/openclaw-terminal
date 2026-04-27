@@ -3,6 +3,7 @@ import type { TaskExecutionSheet } from '../../types/execution';
 import { abortPipeline } from '../../services/mockAgentExecution';
 import { AgentRunCard } from './AgentRunCard';
 import { ArtifactPreview } from './ArtifactPreview';
+import { DeliveryPreview } from './DeliveryPreview';
 import styles from '../../styles/scriptAdapter.module.css';
 
 const GATE_TYPE_LABEL: Record<string, string> = {
@@ -121,6 +122,8 @@ export function ExecutionView({ sheet, onBackToContract, onRetry }: ExecutionVie
           })}
         </div>
       </section>
+
+      <DeliveryPreview sheet={sheet} />
 
       <section className={styles.executionResultGrid}>
         <div className={`${styles.card} ${styles.artifactDeckCard}`}>
