@@ -40,32 +40,46 @@ const AGENTS = [
   },
 ];
 
-function createExecutionPlan(taskId, taskTitle) {
+function createExecutionPlan(taskId, taskTitle, options = {}) {
   const createdAt = new Date().toISOString();
+  const deliveryOptions = options.deliveryOptions || {};
+  const agents = AGENTS.filter((agent) => {
+    if (deliveryOptions.voiceRegistry === false && agent.agentId === 'classifier.voice_role_marker@1.0') {
+      return false;
+    }
+    if (deliveryOptions.qualityReview === false && agent.agentId === 'reviewer.production_quality@1.0') {
+      return false;
+    }
+    if (options.includePerformanceDesign === false && agent.agentId === 'designer.performance_audio@1.0') {
+      return false;
+    }
+    return true;
+  });
+  const reviewGates = [
+    {
+      gateId: `gate-strategy-${taskId}`,
+      afterAgentId: 'adapter.audiobook_text_rewriter@1.0',
+      gateType: 'strategy_confirmation',
+      description: '修改策略已在开工前确认，MVP 演示中自动通过。',
+      status: 'pending',
+    },
+    {
+      gateId: `gate-quality-${taskId}`,
+      afterAgentId: 'reviewer.production_quality@1.0',
+      gateType: 'quality_review',
+      description: '质检结果需要复核，MVP 演示中自动通过。',
+      status: 'pending',
+    },
+  ].filter((gate) => agents.some((agent) => agent.agentId === gate.afterAgentId));
   const plan = {
     planId: `plan-${taskId}`,
     taskId,
-    agents: AGENTS.map((agent, index) => ({
+    agents: agents.map((agent, index) => ({
       ...agent,
       order: index + 1,
       parallelizable: false,
     })),
-    reviewGates: [
-      {
-        gateId: `gate-strategy-${taskId}`,
-        afterAgentId: 'adapter.audiobook_text_rewriter@1.0',
-        gateType: 'strategy_confirmation',
-        description: '修改策略已在开工前确认，MVP 演示中自动通过。',
-        status: 'pending',
-      },
-      {
-        gateId: `gate-quality-${taskId}`,
-        afterAgentId: 'reviewer.production_quality@1.0',
-        gateType: 'quality_review',
-        description: '质检结果需要复核，MVP 演示中自动通过。',
-        status: 'pending',
-      },
-    ],
+    reviewGates,
     createdAt,
   };
 
@@ -90,12 +104,44 @@ function createExecutionPlan(taskId, taskTitle) {
   };
 }
 
+async function runSingleScriptAdapterChapter({
+  sheet,
+  sourceText,
+  signal,
+  ctx = {},
+  onProgress,
+}) {
+  return runMockAgentPipeline({
+    sheet,
+    signal,
+    emit: (event, payload) => {
+      if (!onProgress) return;
+      if (event === 'agent_progress') {
+        onProgress({
+          agentId: payload.agentId,
+          progressSummary: payload.progressSummary,
+          progressPercent: payload.progressPercent,
+        });
+      }
+    },
+    onSheetUpdate: () => {},
+    ctx: {
+      ...ctx,
+      sourceText,
+    },
+  });
+}
+
 function startMockScriptAdapterRun(params, connection, logger) {
   const taskId = String(params?.taskId || `script-adapter-${Date.now()}`);
   const taskTitle = String(params?.taskTitle || '多人演播有声书样章');
   const sourceText = String(params?.sourceText || '');
+  const config = params?.config || {};
   logger?.info?.('script adapter run start', { taskId, sourceTextLen: sourceText.length });
-  let sheet = createExecutionPlan(taskId, taskTitle);
+  let sheet = createExecutionPlan(taskId, taskTitle, {
+    includePerformanceDesign: config?.includePerformanceDesign !== false,
+    deliveryOptions: config?.deliveryOptions || {},
+  });
   const abortController = new AbortController();
   const emit = createScriptAdapterEmitter(connection, taskId);
 
@@ -117,7 +163,11 @@ function startMockScriptAdapterRun(params, connection, logger) {
         sheet = nextSheet;
         runRegistry.updateRun(taskId, { sheet, status: sheet.overallStatus });
       },
-      ctx: { sourceText },
+      ctx: {
+        sourceText,
+        realAgentsOverride: config?.realAgents,
+        deliveryOptions: config?.deliveryOptions || {},
+      },
     })
       .then((completedSheet) => {
         runRegistry.updateRun(taskId, {
@@ -187,4 +237,5 @@ module.exports = {
   cancelMockScriptAdapterRun,
   listMockScriptAdapterRuns,
   createExecutionPlan,
+  runSingleScriptAdapterChapter,
 };

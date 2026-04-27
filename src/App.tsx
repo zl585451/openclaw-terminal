@@ -15,9 +15,11 @@ import './styles/App.css';
 
 export type TabType = 'chat' | 'sound' | 'reaper';
 type AppView = 'chat' | 'script-adapter';
+type ScriptAdapterEntry = 'home' | 'workspace' | 'library';
 
 const App: React.FC = () => {
   const [appView, setAppView] = useState<AppView>('chat');
+  const [scriptAdapterEntry, setScriptAdapterEntry] = useState<ScriptAdapterEntry>('home');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vaultUnlocked, setVaultUnlocked] = useState(false);
@@ -104,6 +106,11 @@ const App: React.FC = () => {
 
   const getNextMessageId = () => ++messageIdRef.current;
 
+  const openScriptAdapter = (entry: ScriptAdapterEntry) => {
+    setScriptAdapterEntry(entry);
+    setAppView('script-adapter');
+  };
+
   return (
     <ThemeProvider>
       <WorkbenchProvider>
@@ -136,8 +143,16 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   className="script-adapter-entry-button"
+                  data-entry-tone="library"
+                  onClick={() => openScriptAdapter('library')}
+                >
+                  📚 项目素材库
+                </button>
+                <button
+                  type="button"
+                  className="script-adapter-entry-button"
                   data-temp-entry="script-adapter"
-                  onClick={() => setAppView('script-adapter')}
+                  onClick={() => openScriptAdapter('home')}
                 >
                   内容制作工作台
                 </button>
@@ -166,7 +181,11 @@ const App: React.FC = () => {
               {activeTab === 'reaper' && <ReaperTab />}
             </>
           ) : (
-            <ScriptAdapterApp onBack={() => setAppView('chat')} />
+            <ScriptAdapterApp
+              key={scriptAdapterEntry}
+              initialScreen={scriptAdapterEntry}
+              onBack={() => setAppView('chat')}
+            />
           )}
         </div>
         <WorkbenchHost />

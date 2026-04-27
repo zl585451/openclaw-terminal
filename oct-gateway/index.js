@@ -109,6 +109,14 @@ const {
   cancelMockScriptAdapterRun,
   listMockScriptAdapterRuns,
 } = require('./script_adapter/mock_execution');
+const {
+  startBatch: startScriptAdapterBatch,
+  getBatchStatus: getScriptAdapterBatchStatus,
+  listBatches: listScriptAdapterBatches,
+  cancelBatch: cancelScriptAdapterBatch,
+  rerunChapter: rerunScriptAdapterBatchChapter,
+  deleteBatch: deleteScriptAdapterBatch,
+} = require('./script_adapter/batchOrchestrator');
 const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const { startScheduler, stopScheduler } = require('./summarizer/scheduler');
@@ -498,6 +506,83 @@ async function handleTransportMessage(msg, connection) {
         type: 'script-adapter-run-list',
         runs: listMockScriptAdapterRuns(),
       },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.start') {
+    const result = await startScriptAdapterBatch(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'batch start failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.status') {
+    const result = getScriptAdapterBatchStatus(msg.params?.batchId);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'batch not found' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.list') {
+    const result = listScriptAdapterBatches(msg.params || {});
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: true,
+      method: msg.method,
+      payload: result,
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.cancel') {
+    const result = cancelScriptAdapterBatch(msg.params?.batchId);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'batch cancel failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.rerunChapter') {
+    const result = rerunScriptAdapterBatchChapter(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'rerun failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.delete') {
+    const result = deleteScriptAdapterBatch(msg.params?.batchId);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'delete failed' },
     });
     return true;
   }

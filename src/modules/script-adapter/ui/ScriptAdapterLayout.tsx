@@ -3,6 +3,7 @@ import { scriptAdapterActions } from '../store/actions';
 import { WorkbenchView } from './Workbench/WorkbenchView';
 import { PipelineView } from './Pipeline/PipelineView';
 import { AgentListView } from './Agents/AgentListView';
+import type { TaskCreationContract } from '../types/batch';
 import styles from '../styles/scriptAdapter.module.css';
 
 const VIEW_LABEL: Record<ViewMode, string> = {
@@ -13,9 +14,10 @@ const VIEW_LABEL: Record<ViewMode, string> = {
 
 interface ScriptAdapterLayoutProps {
   onBack?: () => void;
+  taskContract?: TaskCreationContract | null;
 }
 
-export function ScriptAdapterLayout({ onBack }: ScriptAdapterLayoutProps) {
+export function ScriptAdapterLayout({ onBack, taskContract }: ScriptAdapterLayoutProps) {
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -62,7 +64,7 @@ export function ScriptAdapterLayout({ onBack }: ScriptAdapterLayoutProps) {
       </div>
 
       <div className={styles.viewFrame}>
-        {viewMode === 'workbench' && <WorkbenchView />}
+        {viewMode === 'workbench' && <WorkbenchView taskContract={taskContract} />}
         {viewMode === 'pipeline' && <PipelineView />}
         {viewMode === 'agents' && <AgentListView />}
       </div>

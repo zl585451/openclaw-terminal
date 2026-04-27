@@ -216,6 +216,7 @@ export interface ElectronAPI {
     source?: string;
     useMock?: boolean;
     sourceText?: string;
+    config?: unknown;
   }) => Promise<ApiResult & { taskId?: string; planId?: string }>;
   cancelScriptAdapterRun?: (payload: { taskId: string; reason?: string }) => Promise<ApiResult & { taskId?: string; status?: string }>;
   listScriptAdapterRuns?: () => Promise<ApiResult & {
@@ -230,6 +231,20 @@ export interface ElectronAPI {
       error?: string;
     }>;
   }>;
+  scriptAdapterBatch?: {
+    start: (payload: {
+      bookId: string;
+      chapterIndices: number[];
+      bookTitle?: string;
+      config?: unknown;
+      estimate?: unknown;
+    }) => Promise<ApiResult & { batchId?: string }>;
+    status: (batchId: string) => Promise<ApiResult & { batch?: unknown; chapterRuns?: unknown[] }>;
+    list: (params?: { limit?: number; offset?: number }) => Promise<ApiResult & { batches?: unknown[] }>;
+    cancel: (batchId: string) => Promise<ApiResult>;
+    rerunChapter: (batchId: string, chapterIndex: number) => Promise<ApiResult>;
+    remove: (batchId: string) => Promise<ApiResult>;
+  };
   onScriptAdapterEvent?: (callback: (payload: UnknownRecord) => void) => (() => void);
   /** AI.library 书库 Phase 2：main 进程 fetch 代理，不经 Gateway */
   library?: {
@@ -242,6 +257,24 @@ export interface ElectronAPI {
       bookId: string,
       chapterIndex: number,
     ) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    pickFile: () => Promise<{ success: true; filePath: string } | { success: false; error: string }>;
+    upload: (params: {
+      filePath: string;
+      title: string;
+      author?: string;
+    }) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    remove: (bookId: string) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+  };
+  delivery?: {
+    exportMarkdown: (params: {
+      filename: string;
+      content: string;
+    }) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+    exportDocx: (params: {
+      filename: string;
+      documentTitle: string;
+      data: unknown;
+    }) => Promise<{ success: boolean; filePath?: string; error?: string }>;
   };
   chatHistoryLoad?: () => Promise<ChatHistoryItem[]>;
   chatHistorySave?: (items: ChatHistoryItem[]) => Promise<void>;

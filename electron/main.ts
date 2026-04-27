@@ -1539,7 +1539,10 @@ function handleMessage(msg: any) {
       
     case 'res':
       console.log('[OCT] Response: ok=', msg.ok, 'payload=', msg.payload ? JSON.stringify(msg.payload).slice(0, 200) : null);
-      if (typeof msg.method === 'string' && msg.method.startsWith('scriptAdapter.run.')) {
+      if (
+        typeof msg.method === 'string'
+        && (msg.method.startsWith('scriptAdapter.run.') || msg.method.startsWith('scriptAdapter.batch.'))
+      ) {
         const pending = scriptAdapterPendingRequests.get(String(msg.id || ''));
         if (pending) {
           clearTimeout(pending.timeout);
@@ -4273,6 +4276,7 @@ ipcMain.handle('script-adapter-run-start', (_event, payload: {
   source?: string;
   useMock?: boolean;
   sourceText?: string;
+  config?: Record<string, unknown>;
 }) => {
   const taskId = String(payload?.taskId || `script-adapter-${Date.now()}`);
   return sendScriptAdapterRunRequest('scriptAdapter.run.start', {
@@ -4281,6 +4285,7 @@ ipcMain.handle('script-adapter-run-start', (_event, payload: {
     source: String(payload?.source || 'content-workbench'),
     useMock: payload?.useMock !== false,
     sourceText: String(payload?.sourceText || ''),
+    config: payload?.config || {},
   });
 });
 
@@ -4293,6 +4298,54 @@ ipcMain.handle('script-adapter-run-cancel', (_event, payload: { taskId: string; 
 
 ipcMain.handle('script-adapter-run-list', () => {
   return sendScriptAdapterRunRequest('scriptAdapter.run.list', {});
+});
+
+ipcMain.handle('script-adapter-batch-start', (_event, payload: {
+  bookId: string;
+  chapterIndices: number[];
+  bookTitle?: string;
+  config?: Record<string, unknown>;
+  estimate?: Record<string, unknown>;
+}) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.start', {
+    bookId: String(payload?.bookId || ''),
+    chapterIndices: Array.isArray(payload?.chapterIndices) ? payload.chapterIndices : [],
+    bookTitle: payload?.bookTitle ? String(payload.bookTitle) : undefined,
+    config: payload?.config || {},
+    estimate: payload?.estimate || {},
+  });
+});
+
+ipcMain.handle('script-adapter-batch-status', (_event, payload: { batchId: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.status', {
+    batchId: String(payload?.batchId || ''),
+  });
+});
+
+ipcMain.handle('script-adapter-batch-list', (_event, payload: { limit?: number; offset?: number } | undefined) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.list', {
+    limit: Number(payload?.limit) > 0 ? Math.floor(Number(payload?.limit)) : 20,
+    offset: Number(payload?.offset) >= 0 ? Math.floor(Number(payload?.offset)) : 0,
+  });
+});
+
+ipcMain.handle('script-adapter-batch-cancel', (_event, payload: { batchId: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.cancel', {
+    batchId: String(payload?.batchId || ''),
+  });
+});
+
+ipcMain.handle('script-adapter-batch-rerun', (_event, payload: { batchId: string; chapterIndex: number }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.rerunChapter', {
+    batchId: String(payload?.batchId || ''),
+    chapterIndex: Number(payload?.chapterIndex),
+  });
+});
+
+ipcMain.handle('script-adapter-batch-delete', (_event, payload: { batchId: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.delete', {
+    batchId: String(payload?.batchId || ''),
+  });
 });
 
 // ── AI.library 书库 Phase 2：main 进程直连 fetch（不经 Gateway）────────────────
@@ -4352,6 +4405,226 @@ ipcMain.handle('library:chapter', async (_event, payload: { bookId: string; chap
   return aiLibraryFetch(
     `/api/library/${encodeURIComponent(payload.bookId)}/chapter/${payload.chapterIndex}`,
   );
+});
+
+ipcMain.handle('library:pickFile', async () => {
+  try {
+    const result = await dialog.showOpenDialog({
+      title: '选择小说文件',
+      filters: [
+        { name: '文本文件', extensions: ['txt', 'md'] },
+        { name: '所有文件', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, error: 'cancelled' };
+    }
+    return { success: true, filePath: result.filePaths[0] };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `PICK_FILE_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('library:upload', async (_event, payload: {
+  filePath: string;
+  title: string;
+  author?: string;
+}) => {
+  const filePath = String(payload?.filePath || '').trim();
+  const title = String(payload?.title || '').trim();
+  const author = String(payload?.author || '').trim();
+
+  if (!filePath) return { success: false, error: 'filePath required' };
+  if (!title) return { success: false, error: 'title required' };
+
+  try {
+    const ext = path.extname(filePath).toLowerCase();
+    if (!['.txt', '.md'].includes(ext)) {
+      return { success: false, error: '暂不支持该格式，请使用 .txt 或 .md 文件' };
+    }
+
+    const buffer = await fs.promises.readFile(filePath);
+    const filename = path.basename(filePath);
+    const form = new FormData();
+    form.append('file', new Blob([buffer]), filename);
+    form.append('title', title);
+    form.append('author', author);
+    form.append('source_type', 'novel');
+
+    const resp = await fetch(`${getAiLibraryBase()}/api/library/upload`, {
+      method: 'POST',
+      body: form,
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      return { success: false, error: `UPLOAD_HTTP_${resp.status}: ${body.slice(0, 200)}` };
+    }
+
+    const data = await resp.json();
+    return { success: true, data };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `UPLOAD_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('library:delete', async (_event, payload: { bookId: string }) => {
+  if (!payload?.bookId) return { success: false, error: 'bookId required' };
+  return aiLibraryFetch(`/api/library/${encodeURIComponent(payload.bookId)}`, { method: 'DELETE' });
+});
+
+ipcMain.handle('delivery:exportMarkdown', async (_event, payload: { filename: string; content: string }) => {
+  try {
+    const result = await dialog.showSaveDialog({
+      title: '保存交付包',
+      defaultPath: String(payload?.filename || 'delivery.md'),
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Text', extensions: ['txt'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, error: 'cancelled' };
+    }
+    await fs.promises.writeFile(result.filePath, String(payload?.content || ''), 'utf8');
+    return { success: true, filePath: result.filePath };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `WRITE_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('delivery:exportDocx', async (_event, payload: {
+  filename: string;
+  documentTitle: string;
+  data: any;
+}) => {
+  try {
+    const result = await dialog.showSaveDialog({
+      title: '保存 Word 交付包',
+      defaultPath: String(payload?.filename || 'delivery.docx'),
+      filters: [
+        { name: 'Word', extensions: ['docx'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, error: 'cancelled' };
+    }
+
+    const docxModule = await import('docx');
+    const {
+      AlignmentType,
+      BorderStyle,
+      Document,
+      HeadingLevel,
+      Packer,
+      Paragraph,
+      Table,
+      TableCell,
+      TableRow,
+      TextRun,
+      WidthType,
+    } = docxModule;
+    const sections = Array.isArray(payload?.data?.sections) ? payload.data.sections : [];
+    const metadata = Array.isArray(payload?.data?.metadata) ? payload.data.metadata : [];
+    const children: any[] = [];
+
+    children.push(new Paragraph({
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: String(payload?.documentTitle || '多人演播交付包'), bold: true })],
+    }));
+
+    for (const item of metadata) {
+      children.push(new Paragraph({
+        children: [
+          new TextRun({ text: `${String(item?.label || '')}：`, bold: true }),
+          new TextRun(String(item?.value || '')),
+        ],
+      }));
+    }
+
+    children.push(new Paragraph({ text: '' }));
+
+    for (const section of sections) {
+      children.push(new Paragraph({
+        heading: section.level === 1 ? HeadingLevel.HEADING_1 : section.level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
+        children: [new TextRun(String(section.title || ''))],
+      }));
+
+      for (const block of Array.isArray(section.blocks) ? section.blocks : []) {
+        if (block.type === 'paragraph') {
+          children.push(new Paragraph(String(block.text || '')));
+          continue;
+        }
+        if (block.type === 'scriptLine') {
+          children.push(new Paragraph({
+            children: [
+              new TextRun({ text: `[${String(block.speaker || '旁白')}] `, bold: true }),
+              new TextRun(String(block.text || '')),
+            ],
+          }));
+          if (block.note) {
+            children.push(new Paragraph({
+              children: [new TextRun({ text: `改编说明：${String(block.note)}`, italics: true })],
+            }));
+          }
+          continue;
+        }
+        if (block.type === 'bullet') {
+          for (const item of Array.isArray(block.items) ? block.items : []) {
+            children.push(new Paragraph({
+              text: String(item || ''),
+              bullet: { level: 0 },
+            }));
+          }
+          continue;
+        }
+        if (block.type === 'table') {
+          const rows = [];
+          rows.push(new TableRow({
+            children: (Array.isArray(block.columns) ? block.columns : []).map((column: string) => new TableCell({
+              children: [new Paragraph({ children: [new TextRun({ text: String(column || ''), bold: true })] })],
+            })),
+          }));
+          for (const row of Array.isArray(block.rows) ? block.rows : []) {
+            rows.push(new TableRow({
+              children: row.map((cell: string) => new TableCell({
+                children: [new Paragraph(String(cell || ''))],
+              })),
+            }));
+          }
+          children.push(new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows,
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
+              bottom: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
+              left: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
+              right: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
+              insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: 'E6E9EF' },
+              insideVertical: { style: BorderStyle.SINGLE, size: 1, color: 'E6E9EF' },
+            },
+          }));
+        }
+      }
+
+      children.push(new Paragraph({ text: '' }));
+    }
+
+    const document = new Document({
+      sections: [{ properties: {}, children }],
+    });
+    const buffer = await Packer.toBuffer(document);
+    await fs.promises.writeFile(result.filePath, buffer);
+    return { success: true, filePath: result.filePath };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `DOCX_WRITE_FAILED: ${msg}` };
+  }
 });
 
 ipcMain.handle('image-generate', async (_event, payload: {

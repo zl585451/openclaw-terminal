@@ -20,10 +20,27 @@ const electronAPI = {
     source?: string;
     useMock?: boolean;
     sourceText?: string;
+    config?: unknown;
   }) => ipcRenderer.invoke('script-adapter-run-start', payload),
   cancelScriptAdapterRun: (payload: { taskId: string; reason?: string }) =>
     ipcRenderer.invoke('script-adapter-run-cancel', payload),
   listScriptAdapterRuns: () => ipcRenderer.invoke('script-adapter-run-list'),
+  scriptAdapterBatch: {
+    start: (payload: {
+      bookId: string;
+      chapterIndices: number[];
+      bookTitle?: string;
+      config?: Record<string, unknown>;
+      estimate?: Record<string, unknown>;
+    }) => ipcRenderer.invoke('script-adapter-batch-start', payload),
+    status: (batchId: string) => ipcRenderer.invoke('script-adapter-batch-status', { batchId }),
+    list: (params?: { limit?: number; offset?: number }) =>
+      ipcRenderer.invoke('script-adapter-batch-list', params || {}),
+    cancel: (batchId: string) => ipcRenderer.invoke('script-adapter-batch-cancel', { batchId }),
+    rerunChapter: (batchId: string, chapterIndex: number) =>
+      ipcRenderer.invoke('script-adapter-batch-rerun', { batchId, chapterIndex }),
+    remove: (batchId: string) => ipcRenderer.invoke('script-adapter-batch-delete', { batchId }),
+  },
   library: {
     list: (params?: { limit?: number; offset?: number }) =>
       ipcRenderer.invoke('library:list', params || {}),
@@ -31,6 +48,19 @@ const electronAPI = {
     chapters: (bookId: string) => ipcRenderer.invoke('library:chapters', { bookId }),
     chapter: (bookId: string, chapterIndex: number) =>
       ipcRenderer.invoke('library:chapter', { bookId, chapterIndex }),
+    pickFile: () => ipcRenderer.invoke('library:pickFile'),
+    upload: (params: { filePath: string; title: string; author?: string }) =>
+      ipcRenderer.invoke('library:upload', params),
+    remove: (bookId: string) => ipcRenderer.invoke('library:delete', { bookId }),
+  },
+  delivery: {
+    exportMarkdown: (params: { filename: string; content: string }) =>
+      ipcRenderer.invoke('delivery:exportMarkdown', params),
+    exportDocx: (params: {
+      filename: string;
+      documentTitle: string;
+      data: unknown;
+    }) => ipcRenderer.invoke('delivery:exportDocx', params),
   },
   onScriptAdapterEvent: (callback: (payload: any) => void) => {
     const handler = (_event: any, payload: any) => callback(payload);

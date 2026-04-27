@@ -18,11 +18,17 @@ function getScriptAdapterRealAgentsRaw() {
   return String(config.getEnvOrConfig?.(REAL_AGENTS_FLAG) || '').trim();
 }
 
-function isRealAgentEnabled(agentId) {
-  const flag = getScriptAdapterRealAgentsRaw().toLowerCase();
+function matchAgentFlag(flagRaw, agentId) {
+  const flag = String(flagRaw || '').trim().toLowerCase();
   if (!flag || flag === 'off' || flag === 'false' || flag === '0') return false;
   if (flag === '1' || flag === 'true' || flag === 'on' || flag === 'all') return true;
   return flag.split(',').map((s) => s.trim()).includes(agentId);
+}
+
+function isRealAgentEnabled(agentId, ctx = {}) {
+  const override = ctx?.realAgentsOverride;
+  if (override != null) return matchAgentFlag(override, agentId);
+  return matchAgentFlag(getScriptAdapterRealAgentsRaw(), agentId);
 }
 
 async function createArtifactForAgent(agentId, displayName, ctx = {}) {
@@ -30,7 +36,7 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
 
   if (
     agentId === 'adapter.audiobook_text_rewriter@1.0'
-    && isRealAgentEnabled(agentId)
+    && isRealAgentEnabled(agentId, ctx)
     && sourceText
   ) {
     try {
@@ -68,7 +74,7 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
     }
   }
 
-  if (agentId === 'classifier.voice_role_marker@1.0' && isRealAgentEnabled(agentId)) {
+  if (agentId === 'classifier.voice_role_marker@1.0' && isRealAgentEnabled(agentId, ctx)) {
     try {
       const { payload, latencyMs, model } = await runVoiceClassifierAgent(ctx);
       return envelope(
@@ -97,17 +103,18 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
     }
   }
 
-  if (agentId === 'designer.performance_audio@1.0' && isRealAgentEnabled(agentId)) {
+  if (agentId === 'designer.performance_audio@1.0' && isRealAgentEnabled(agentId, ctx)) {
     try {
       const { payload, latencyMs, model } = await runPerformanceDesignerAgent(ctx);
+      const filteredPayload = filterPerformancePayload(payload, ctx?.deliveryOptions || {});
       return envelope(
         'performance_design',
         agentId,
         displayName,
         '演播设计提示',
-        `${model} 完成 BGM/${payload.sfxList.length} 条 SFX/${payload.cvDirections.length} 条 CV,耗时 ${latencyMs}ms`,
-        payload,
-        { sfx: payload.sfxList.length, cv: payload.cvDirections.length, latencyMs },
+        `${model} 完成 BGM/${filteredPayload.sfxList.length} 条 SFX/${filteredPayload.cvDirections.length} 条 CV,耗时 ${latencyMs}ms`,
+        filteredPayload,
+        { sfx: filteredPayload.sfxList.length, cv: filteredPayload.cvDirections.length, latencyMs },
       );
     } catch (error) {
       return envelope(
@@ -126,7 +133,7 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
     }
   }
 
-  if (agentId === 'reviewer.production_quality@1.0' && isRealAgentEnabled(agentId)) {
+  if (agentId === 'reviewer.production_quality@1.0' && isRealAgentEnabled(agentId, ctx)) {
     try {
       const { payload, latencyMs, model } = await runQualityReviewerAgent(ctx);
       return envelope(
@@ -162,7 +169,7 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
     }
   }
 
-  if (agentId === 'packager.content_delivery@1.0' && isRealAgentEnabled(agentId)) {
+  if (agentId === 'packager.content_delivery@1.0' && isRealAgentEnabled(agentId, ctx)) {
     try {
       const { payload, latencyMs, model } = await runDeliveryPackagerAgent(ctx);
       return envelope(
@@ -198,6 +205,18 @@ function findAdaptedScriptPayload(artifacts) {
     if (payload && Array.isArray(payload.segments) && payload.segments.length > 0) return payload;
   }
   return null;
+}
+
+function filterPerformancePayload(payload, deliveryOptions = {}) {
+  const includeCv = deliveryOptions.cvDirections !== false;
+  const includeBgmSfx = deliveryOptions.bgmSfx !== false;
+  return {
+    bgmTrack: includeBgmSfx
+      ? payload.bgmTrack
+      : { mood: '', suggestion: '' },
+    sfxList: includeBgmSfx ? payload.sfxList || [] : [],
+    cvDirections: includeCv ? payload.cvDirections || [] : [],
+  };
 }
 
 function buildVoiceRegistryFromAdapted(adapted, agentId, displayName) {
@@ -359,8 +378,14 @@ function createMockArtifact(agentId, displayName, ctx = {}) {
   }
 
   if (agentId === 'designer.performance_audio@1.0') {
-    if (adapted) return buildPerformanceDesignFromAdapted(adapted, agentId, displayName);
-    return envelope('performance_design', agentId, displayName, '演播设计提示', '已补充场景底噪、关键音效和 CV 情绪方向。', {
+    if (adapted) {
+      const artifact = buildPerformanceDesignFromAdapted(adapted, agentId, displayName);
+      return {
+        ...artifact,
+        payload: filterPerformancePayload(artifact.payload, ctx?.deliveryOptions || {}),
+      };
+    }
+    const payload = filterPerformancePayload({
       bgmTrack: { mood: '空屋静场', suggestion: '低频稀疏铺底，保持人声清楚，进入阁楼前轻微收紧。' },
       sfxList: [
         { atSegmentId: 'seg-001', sfxType: 'AMB', description: '老楼道空旷底噪，轻微风声，持续但弱。' },
@@ -369,7 +394,11 @@ function createMockArtifact(agentId, displayName, ctx = {}) {
       cvDirections: [
         { atSegmentId: 'seg-002', emotion: '克制/2级', pace: '平稳偏快，句尾收住。' },
       ],
-    }, { sfx: 2, directions: 1 });
+    }, ctx?.deliveryOptions || {});
+    return envelope('performance_design', agentId, displayName, '演播设计提示', '已补充场景底噪、关键音效和 CV 情绪方向。', payload, {
+      sfx: payload.sfxList.length,
+      directions: payload.cvDirections.length,
+    });
   }
 
   if (agentId === 'reviewer.production_quality@1.0') {

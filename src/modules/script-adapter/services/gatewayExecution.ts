@@ -16,6 +16,11 @@ export interface StartGatewayExecutionPayload {
   taskTitle: string;
   source?: string;
   sourceText?: string;
+  config?: {
+    realAgents?: 'off' | 'all' | string[];
+    deliveryOptions?: import('../types/batch').DeliveryOptions;
+    includePerformanceDesign?: boolean;
+  };
 }
 
 export async function startGatewayExecution(payload: StartGatewayExecutionPayload) {
@@ -28,6 +33,7 @@ export async function startGatewayExecution(payload: StartGatewayExecutionPayloa
       ...payload,
       useMock: true,
       sourceText: payload.sourceText,
+      config: payload.config,
     });
   } catch (error) {
     return {

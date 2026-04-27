@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { ScriptAdapterLayout } from './ui/ScriptAdapterLayout';
+import { LibraryView } from './ui/Library/LibraryView';
+import {
+  getChapterText,
+  listBooks,
+  listChapters,
+  pickLocalFile,
+  uploadBook,
+  type LibraryBook,
+  type LibraryChapter,
+} from './services/aiLibraryClient';
 import { scriptAdapterActions } from './store/actions';
 import { MOCK_PROJECT, MOCK_CHAPTERS } from './mockData/mockProject';
 import { MOCK_STAGES } from './mockData/mockStages';
@@ -15,10 +25,12 @@ import {
   runMockInitialAnalysis,
   runMockTaskIntake,
 } from './services/mockTaskIntake';
+import type { DeliveryOptions, TaskCreationContract } from './types/batch';
 import styles from './styles/scriptAdapter.module.css';
 
-type ScriptAdapterScreen = 'home' | 'create' | 'workspace';
+type ScriptAdapterScreen = 'home' | 'create' | 'workspace' | 'library';
 type WizardStep = 1 | 2 | 3;
+type CreationRangeMode = 'single' | 'range' | 'all';
 
 const SOURCE_AGENT_PREVIEW = [
   { name: '文件解析 Agent', status: '预分配', desc: '识别文件类型、字数、章节边界和基础元数据。' },
@@ -35,10 +47,12 @@ const AGENT_QUEUE_SUMMARY = [
 
 interface ScriptAdapterAppProps {
   onBack?: () => void;
+  initialScreen?: ScriptAdapterScreen;
 }
 
-export function ScriptAdapterApp({ onBack }: ScriptAdapterAppProps) {
-  const [screen, setScreen] = useState<ScriptAdapterScreen>('home');
+export function ScriptAdapterApp({ onBack, initialScreen = 'home' }: ScriptAdapterAppProps) {
+  const [screen, setScreen] = useState<ScriptAdapterScreen>(initialScreen);
+  const [taskContract, setTaskContract] = useState<TaskCreationContract | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -65,16 +79,26 @@ export function ScriptAdapterApp({ onBack }: ScriptAdapterAppProps) {
           onBack={onBack}
           onCreateTask={() => setScreen('create')}
           onOpenDemoTask={() => setScreen('workspace')}
+          onOpenLibrary={() => setScreen('library')}
         />
       ) : null}
       {screen === 'create' ? (
         <TaskCreateWizard
           onBack={() => setScreen('home')}
-          onStart={() => setScreen('workspace')}
+          onStart={(contract) => {
+            setTaskContract(contract);
+            setScreen('workspace');
+          }}
         />
       ) : null}
       {screen === 'workspace' ? (
-        <ScriptAdapterLayout onBack={() => setScreen('home')} />
+        <ScriptAdapterLayout onBack={() => setScreen('home')} taskContract={taskContract} />
+      ) : null}
+      {screen === 'library' ? (
+        <LibraryWorkspace
+          onBack={() => setScreen('home')}
+          onOpenWorkbench={() => setScreen('workspace')}
+        />
       ) : null}
     </div>
   );
@@ -84,9 +108,10 @@ interface HomeProps {
   onBack?: () => void;
   onCreateTask: () => void;
   onOpenDemoTask: () => void;
+  onOpenLibrary: () => void;
 }
 
-function ContentCreationHome({ onBack, onCreateTask, onOpenDemoTask }: HomeProps) {
+function ContentCreationHome({ onBack, onCreateTask, onOpenDemoTask, onOpenLibrary }: HomeProps) {
   return (
     <div className={styles.entryShell}>
       <header className={styles.entryHeader}>
@@ -113,6 +138,17 @@ function ContentCreationHome({ onBack, onCreateTask, onOpenDemoTask }: HomeProps
           </p>
           <button type="button" className={styles.primaryButton} onClick={onCreateTask}>
             新建任务
+          </button>
+        </div>
+
+        <div className={`${styles.card} ${styles.entrySecondaryCard} ${styles.entryLibraryCard}`}>
+          <div className={styles.entryCardKicker}>项目启动</div>
+          <h2>项目素材库</h2>
+          <p>
+            先把小说、脚本、访谈稿放进素材空间，再按章节预览、删除或回到工作台开工。它更像项目沙盒，不只是上传入口。
+          </p>
+          <button type="button" className={styles.ghostButton} onClick={onOpenLibrary}>
+            打开素材库
           </button>
         </div>
 
@@ -150,6 +186,39 @@ function ContentCreationHome({ onBack, onCreateTask, onOpenDemoTask }: HomeProps
   );
 }
 
+interface LibraryWorkspaceProps {
+  onBack: () => void;
+  onOpenWorkbench: () => void;
+}
+
+function LibraryWorkspace({ onBack, onOpenWorkbench }: LibraryWorkspaceProps) {
+  return (
+    <div className={styles.layout}>
+      <div className={styles.layoutHeader}>
+        <div className={styles.projectMeta}>
+          <div className={styles.projectName}>项目素材库</div>
+          <div className={styles.projectSub}>
+            先上传并整理小说章节，再围绕这些内容讨论或进入内容制作工作台。
+          </div>
+        </div>
+
+        <div className={styles.layoutControls}>
+          <button type="button" className={styles.ghostButton} onClick={onOpenWorkbench}>
+            进入工作台
+          </button>
+          <button type="button" className={styles.backButton} onClick={onBack}>
+            ← 返回内容创作首页
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.viewFrame}>
+        <LibraryView />
+      </div>
+    </div>
+  );
+}
+
 interface EntryTemplateCardProps {
   title: string;
   desc: string;
@@ -166,10 +235,25 @@ function EntryTemplateCard({ title, desc }: EntryTemplateCardProps) {
 
 interface WizardProps {
   onBack: () => void;
-  onStart: () => void;
+  onStart: (contract: TaskCreationContract) => void;
 }
 
 function TaskCreateWizard({ onBack, onStart }: WizardProps) {
+  const [sourceMode, setSourceMode] = useState<'library' | 'upload' | 'paste'>('library');
+  const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([]);
+  const [libraryChapters, setLibraryChapters] = useState<LibraryChapter[]>([]);
+  const [selectedBookId, setSelectedBookId] = useState('');
+  const [selectedChapterIndex, setSelectedChapterIndex] = useState<number | ''>('');
+  const [selectedRangeMode, setSelectedRangeMode] = useState<CreationRangeMode>('single');
+  const [selectedRangeEndIndex, setSelectedRangeEndIndex] = useState<number | ''>('');
+  const [chapterPreview, setChapterPreview] = useState('');
+  const [libraryStatus, setLibraryStatus] = useState<'idle' | 'loading-books' | 'loading-chapters' | 'loading-preview'>('idle');
+  const [libraryError, setLibraryError] = useState('');
+  const [uploadFilePath, setUploadFilePath] = useState('');
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadAuthor, setUploadAuthor] = useState('');
+  const [uploadingBook, setUploadingBook] = useState(false);
+  const [pastedText, setPastedText] = useState('');
   const [activeStep, setActiveStep] = useState<WizardStep>(1);
   const [intakeStatus, setIntakeStatus] = useState<IntakeStatus>('idle');
   const [intakeStepIndex, setIntakeStepIndex] = useState(0);
@@ -179,6 +263,14 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
   const [analysisError, setAnalysisError] = useState('');
   const [selectedStrategyId, setSelectedStrategyId] = useState('');
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptions>({
+    adaptedScript: true,
+    voiceRegistry: true,
+    qualityReview: true,
+    cvDirections: false,
+    bgmSfx: false,
+    finalPackage: true,
+  });
   const [editingDecisionId, setEditingDecisionId] = useState<string | null>(null);
   const [decisionOverrides, setDecisionOverrides] = useState<Record<string, { value: string; desc: string; customNote: string }>>({});
   const sourceConfirmed = intakeStatus === 'completed' && Boolean(intakeResult);
@@ -199,7 +291,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     {
       index: 1,
       title: '确认素材',
-      desc: sourceConfirmed ? '参数已确认 · 已生成预分配' : isIntakeRunning ? '正在生成素材对象' : '上传原始文本 · 生成预分配',
+      desc: sourceConfirmed ? '参数已确认 · 已生成预分配' : isIntakeRunning ? '正在生成素材对象' : '先选项目素材 · 再生成预分配',
       status: activeStep === 1 ? 'active' : sourceConfirmed ? 'done' : 'pending',
     },
     {
@@ -216,6 +308,112 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     },
   ] as const;
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadBooks = async () => {
+      setLibraryStatus('loading-books');
+      setLibraryError('');
+      try {
+        const books = await listBooks();
+        if (cancelled) return;
+        setLibraryBooks(books);
+        if (books.length > 0) {
+          setSelectedBookId((current) => current || books[0].id);
+          setSourceMode('library');
+        } else {
+          setSelectedBookId('');
+          setSelectedChapterIndex('');
+          setSourceMode('upload');
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setLibraryBooks([]);
+        setSelectedBookId('');
+        setSelectedChapterIndex('');
+        setLibraryError(error instanceof Error ? error.message : '项目素材库加载失败');
+      } finally {
+        if (!cancelled) setLibraryStatus('idle');
+      }
+    };
+
+    void loadBooks();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBookId) {
+      setLibraryChapters([]);
+      setSelectedChapterIndex('');
+      setChapterPreview('');
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadChapters = async () => {
+      setLibraryStatus('loading-chapters');
+      setLibraryError('');
+      try {
+        const chapters = await listChapters(selectedBookId);
+        if (cancelled) return;
+        setLibraryChapters(chapters);
+        setSelectedChapterIndex((current) => {
+          if (current !== '' && chapters.some((chapter) => chapter.chapter_index === current)) return current;
+          return chapters.length > 0 ? chapters[0].chapter_index : '';
+        });
+        setSelectedRangeEndIndex((current) => {
+          if (current !== '' && chapters.some((chapter) => chapter.chapter_index === current)) return current;
+          return chapters.length > 0 ? chapters[0].chapter_index : '';
+        });
+      } catch (error) {
+        if (cancelled) return;
+        setLibraryChapters([]);
+        setSelectedChapterIndex('');
+        setLibraryError(error instanceof Error ? error.message : '章节列表加载失败');
+      } finally {
+        if (!cancelled) setLibraryStatus('idle');
+      }
+    };
+
+    void loadChapters();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBookId]);
+
+  useEffect(() => {
+    if (!selectedBookId || selectedChapterIndex === '') {
+      setChapterPreview('');
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPreview = async () => {
+      setLibraryStatus('loading-preview');
+      setLibraryError('');
+      try {
+        const { text } = await getChapterText(selectedBookId, Number(selectedChapterIndex));
+        if (!cancelled) setChapterPreview(text.slice(0, 220));
+      } catch (error) {
+        if (!cancelled) {
+          setChapterPreview('');
+          setLibraryError(error instanceof Error ? error.message : '章节预览加载失败');
+        }
+      } finally {
+        if (!cancelled) setLibraryStatus('idle');
+      }
+    };
+
+    void loadPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBookId, selectedChapterIndex]);
+
   const canOpenStep = (step: WizardStep) => {
     if (step === 1) return true;
     if (step === 2) return sourceConfirmed;
@@ -226,8 +424,100 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     if (canOpenStep(step)) setActiveStep(step);
   };
 
+  const refreshLibraryBooks = async () => {
+    setLibraryStatus('loading-books');
+    setLibraryError('');
+    try {
+      const books = await listBooks();
+      setLibraryBooks(books);
+      return books;
+    } catch (error) {
+      setLibraryError(error instanceof Error ? error.message : '项目素材库刷新失败');
+      return [];
+    } finally {
+      setLibraryStatus('idle');
+    }
+  };
+
+  const handlePickUploadFile = async () => {
+    const filePath = await pickLocalFile();
+    if (!filePath) return;
+    setUploadFilePath(filePath);
+    if (!uploadTitle.trim()) {
+      setUploadTitle((filePath.split(/[\\/]/).pop() || '').replace(/\.(txt|md)$/i, ''));
+    }
+  };
+
+  const handleUploadIntoLibrary = async () => {
+    if (!uploadFilePath) {
+      setLibraryError('请先选择一个 .txt 或 .md 文件');
+      return;
+    }
+    if (!uploadTitle.trim()) {
+      setLibraryError('请先填写书名');
+      return;
+    }
+
+    setUploadingBook(true);
+    setLibraryError('');
+    try {
+      const uploaded = await uploadBook({
+        filePath: uploadFilePath,
+        title: uploadTitle.trim(),
+        author: uploadAuthor.trim() || undefined,
+      });
+      const books = await refreshLibraryBooks();
+      const nextBook = books.find((book) => book.id === uploaded.book_id) || books[0];
+      if (nextBook) {
+        setSelectedBookId(nextBook.id);
+        setSourceMode('library');
+      }
+      setUploadFilePath('');
+      setUploadTitle('');
+      setUploadAuthor('');
+    } catch (error) {
+      setLibraryError(error instanceof Error ? error.message : '上传到项目素材库失败');
+    } finally {
+      setUploadingBook(false);
+    }
+  };
+
+  const selectedBook = libraryBooks.find((book) => book.id === selectedBookId) || null;
+  const selectedChapter = libraryChapters.find((chapter) => chapter.chapter_index === selectedChapterIndex) || null;
+  const selectedRangeChapters = (() => {
+    if (!selectedBook || libraryChapters.length === 0) return [];
+    if (selectedRangeMode === 'all') return libraryChapters;
+    if (selectedRangeMode === 'range') {
+      const start = selectedChapterIndex === '' ? libraryChapters[0]?.chapter_index ?? 0 : Number(selectedChapterIndex);
+      const end = selectedRangeEndIndex === '' ? start : Number(selectedRangeEndIndex);
+      const [from, to] = [start, end].sort((a, b) => a - b);
+      return libraryChapters.filter((chapter) => chapter.chapter_index >= from && chapter.chapter_index <= to);
+    }
+    return selectedChapter ? [selectedChapter] : [];
+  })();
+  const selectedRangeTotalChars = selectedRangeChapters.reduce((sum, chapter) => sum + Number(chapter.char_count || 0), 0);
+  const selectedRangeLabel = selectedRangeMode === 'all'
+    ? `全书规划 · ${selectedRangeChapters.length} 章`
+    : selectedRangeChapters.length > 1
+      ? `${selectedRangeChapters[0]?.title || `第 ${selectedRangeChapters[0]?.chapter_index + 1} 章`} - ${selectedRangeChapters[selectedRangeChapters.length - 1]?.title || `第 ${selectedRangeChapters[selectedRangeChapters.length - 1]?.chapter_index + 1} 章`}`
+      : selectedChapter?.title || (selectedChapter ? `第 ${selectedChapter.chapter_index + 1} 章` : '待选择章节');
+  const sourceReady = sourceMode === 'library'
+    ? Boolean(selectedBook && selectedRangeChapters.length > 0)
+    : sourceMode === 'upload'
+      ? false
+      : Boolean(pastedText.trim());
+  const sourceSummary = selectedBook
+    ? `${selectedBook.title}${selectedRangeChapters.length > 0 ? ` · ${selectedRangeLabel}` : ''}`
+    : uploadTitle.trim() || '待选择素材';
+  const sourceTypeLabel = selectedBook?.source_type || (sourceMode === 'paste' ? '临时粘贴文本' : '待识别');
+  const sourceWordCountLabel = selectedRangeTotalChars
+    ? `约 ${selectedRangeTotalChars.toLocaleString('zh-CN')} 字`
+    : sourceMode === 'paste' && pastedText.trim()
+      ? `约 ${pastedText.trim().length.toLocaleString('zh-CN')} 字`
+      : '待真实解析';
+
   const handleConfirmSource = async () => {
-    if (isIntakeRunning) return;
+    if (isIntakeRunning || !sourceReady) return;
 
     setIntakeStatus('running');
     setIntakeStepIndex(0);
@@ -301,6 +591,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   };
 
   const getDecisionSummaryValue = (itemId: string, fallback: string) => {
+    if (itemId === 'scope' && sourceMode === 'library') return selectedRangeLabel;
     const sourceItem = intakeResult?.taskDraft.confirmItems.find((item) => item.id === itemId);
     return decisionOverrides[itemId]?.value ?? sourceItem?.value ?? fallback;
   };
@@ -328,7 +619,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
   const getFooterTitle = () => {
     if (activeStep === 1) {
-      return isIntakeRunning ? '正在确认素材并生成任务方案' : sourceConfirmed ? '素材已确认，可进入目标和范围确认' : '等待确认素材参数';
+      return isIntakeRunning ? '正在确认素材并生成任务方案' : sourceConfirmed ? '素材已确认，可进入目标和范围确认' : '等待确认项目素材';
     }
     if (activeStep === 2) {
       return isAnalysisRunning ? 'AI 初读分析中' : sourceConfirmed ? '等待确认目标和范围' : '请先完成素材确认';
@@ -349,7 +640,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   };
 
   const isFooterButtonDisabled = () => {
-    if (activeStep === 1) return isIntakeRunning;
+    if (activeStep === 1) return isIntakeRunning || !sourceReady;
     if (activeStep === 2) return !sourceConfirmed || isAnalysisRunning;
     return !analysisCompleted || !selectedStrategyId;
   };
@@ -363,7 +654,19 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
       void handleRunAnalysis();
       return;
     }
-    onStart();
+    if (!selectedBook || selectedRangeChapters.length === 0 || !selectedStrategy) return;
+    onStart({
+      bookId: selectedBook.id,
+      bookTitle: selectedBook.title,
+      chapterIndices: selectedRangeChapters.map((chapter) => chapter.chapter_index),
+      rangeLabel: selectedRangeLabel,
+      totalChars: selectedRangeTotalChars,
+      chapterCount: selectedRangeChapters.length,
+      workGoal: getDecisionSummaryValue('work_goal', '多人演播有声书 · 先做业务分析'),
+      strategyTitle: selectedStrategy.title,
+      strategyDesc: selectedStrategy.desc,
+      deliveryOptions,
+    });
   };
 
   return (
@@ -396,7 +699,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 ? '已生成初步任务草案，等待你确认详细执行方案。'
                 : isIntakeRunning
                   ? `正在执行第 ${Math.min(intakeStepIndex + 1, MOCK_INTAKE_STEPS.length)} 步素材摄入。`
-                  : '先确认素材参数，系统再生成 Agent 预分配。'}
+                  : '先选项目素材，系统再生成 Agent 预分配。'}
             </div>
           </div>
 
@@ -429,7 +732,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
             <div className={styles.composerSectionHeader}>
               <div>
                 <div className={styles.detailEyebrow}>第 1 步 · 输入确认</div>
-                <h2>提交原始文本，确认素材参数</h2>
+                <h2>从当前项目素材中选择本次任务输入</h2>
               </div>
               <span className={sourceConfirmed ? styles.composerStatePill : styles.reviewPill}>
                 {sourceConfirmed ? '已确认' : isIntakeRunning ? '处理中' : '待确认'}
@@ -440,27 +743,246 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <div className={styles.sourcePrimaryColumn}>
                 <div className={styles.sourceModeHeader}>
                   <strong>素材来源</strong>
-                  <span>第一版以上传原始文本为主，粘贴和已有文档先作为轻量入口保留。</span>
+                  <span>优先复用当前项目素材库里的书和章节；只有缺素材时，才在这里补充上传。</span>
                 </div>
                 <div className={styles.choiceGrid}>
-                  <button type="button" className={styles.choiceCardActive}>上传文件</button>
-                  <button type="button" className={styles.choiceCard}>粘贴试跑</button>
-                  <button type="button" className={styles.choiceCard}>已有文档</button>
+                  <button
+                    type="button"
+                    className={sourceMode === 'library' ? styles.choiceCardActive : styles.choiceCard}
+                    onClick={() => setSourceMode('library')}
+                  >
+                    项目素材库
+                  </button>
+                  <button
+                    type="button"
+                    className={sourceMode === 'upload' ? styles.choiceCardActive : styles.choiceCard}
+                    onClick={() => setSourceMode('upload')}
+                  >
+                    上传新文件
+                  </button>
+                  <button
+                    type="button"
+                    className={sourceMode === 'paste' ? styles.choiceCardActive : styles.choiceCard}
+                    onClick={() => setSourceMode('paste')}
+                  >
+                    粘贴试跑
+                  </button>
                 </div>
-                <div className={styles.mockUploadBox}>
-                  <strong>拖拽小说原文到这里，或点击选择文件</strong>
-                  <span>支持 .txt / .md / .docx / 小说章节文本。确认后才会进入文件解析和 Agent 预分配。</span>
-                </div>
+
+                {sourceMode === 'library' ? (
+                  <div className={styles.sourceLibraryPanel}>
+                    <div className={styles.sourceLibraryHeaderRow}>
+                      <strong>当前项目已有素材</strong>
+                      <span>
+                        {libraryStatus === 'loading-books'
+                          ? '正在读取项目素材库...'
+                          : libraryBooks.length > 0
+                            ? `${libraryBooks.length} 份素材`
+                            : '还没有已上传素材'}
+                      </span>
+                    </div>
+
+                    {libraryBooks.length > 0 ? (
+                      <div className={styles.libraryBookOptionList}>
+                        {libraryBooks.map((book) => (
+                          <button
+                            key={book.id}
+                            type="button"
+                            className={`${styles.libraryBookOption} ${selectedBookId === book.id ? styles.libraryBookOptionActive : ''}`}
+                            onClick={() => setSelectedBookId(book.id)}
+                          >
+                            <strong>{book.title}</strong>
+                            <span>
+                              {book.chapter_count} 章 · {(book.total_chars || 0).toLocaleString('zh-CN')} 字
+                              {book.author ? ` · ${book.author}` : ''}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className={styles.mockUploadBox}>
+                        <strong>当前项目还没有素材</strong>
+                        <span>先切到“上传新文件”，把小说放进项目素材库，再回来选章节。</span>
+                      </div>
+                    )}
+
+                    {selectedBook ? (
+                      <>
+                      <div className={styles.sourceSelectionGrid}>
+                        <label className={styles.sourceSelectField}>
+                          <span>选中的书</span>
+                          <select value={selectedBookId} onChange={(event) => setSelectedBookId(event.target.value)}>
+                            {libraryBooks.map((book) => (
+                              <option key={book.id} value={book.id}>
+                                {book.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className={styles.sourceSelectField}>
+                          <span>起始章节</span>
+                          <select
+                            value={selectedChapterIndex === '' ? '' : String(selectedChapterIndex)}
+                            onChange={(event) => {
+                              const next = event.target.value === '' ? '' : Number(event.target.value);
+                              setSelectedChapterIndex(next);
+                              if (selectedRangeMode === 'single') setSelectedRangeEndIndex(next);
+                            }}
+                          >
+                            <option value="">{libraryStatus === 'loading-chapters' ? '章节加载中...' : '请选择一章'}</option>
+                            {libraryChapters.map((chapter) => (
+                              <option key={chapter.id} value={String(chapter.chapter_index)}>
+                                {chapter.title || `第 ${chapter.chapter_index + 1} 章`}（{chapter.char_count ?? '?'} 字）
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className={styles.creationRangeCard}>
+                        <div className={styles.taskFieldLabel}>本次处理范围</div>
+                        <div className={styles.creationRangeTabs}>
+                          {[
+                            ['single', '单章试产'],
+                            ['range', '小批量范围'],
+                            ['all', '全书规划'],
+                          ].map(([mode, label]) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              className={selectedRangeMode === mode ? styles.batchModeTabActive : styles.batchModeTab}
+                              onClick={() => {
+                                setSelectedRangeMode(mode as CreationRangeMode);
+                                if (mode === 'single') setSelectedRangeEndIndex(selectedChapterIndex);
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {selectedRangeMode === 'range' ? (
+                          <label className={styles.sourceSelectField}>
+                            <span>结束章节</span>
+                            <select
+                              value={selectedRangeEndIndex === '' ? '' : String(selectedRangeEndIndex)}
+                              onChange={(event) => setSelectedRangeEndIndex(event.target.value === '' ? '' : Number(event.target.value))}
+                            >
+                              {libraryChapters.map((chapter) => (
+                                <option key={chapter.id} value={String(chapter.chapter_index)}>
+                                  {chapter.title || `第 ${chapter.chapter_index + 1} 章`}（{chapter.char_count ?? '?'} 字）
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        <div className={styles.creationRangeSummary}>
+                          <strong>{selectedRangeLabel}</strong>
+                          <span>
+                            已锁定 {selectedRangeChapters.length || 0} 章 · {selectedRangeTotalChars.toLocaleString('zh-CN')} 字。
+                            {selectedRangeMode === 'all' ? ' 全书本轮只做规划确认，不建议直接真实试产。' : ' 后续工作台只展示摘要，不再重新选章。'}
+                          </span>
+                        </div>
+                      </div>
+                      </>
+                    ) : null}
+
+                    {selectedChapter ? (
+                      <div className={styles.sourcePreviewCard}>
+                        <div>
+                          <strong>{selectedChapter.title || `第 ${selectedChapter.chapter_index + 1} 章`}</strong>
+                          <span>
+                            来自《{selectedBook?.title || '未命名素材'}》 · 右侧参数会按这章更新
+                          </span>
+                        </div>
+                        <p>{chapterPreview || '正在加载章节预览...'}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {sourceMode === 'upload' ? (
+                  <div className={styles.sourceUploadPanel}>
+                    <div className={styles.mockUploadBox}>
+                      <strong>把新文件先放进当前项目素材库</strong>
+                      <span>支持 `.txt` / `.md`。上传成功后会自动回到“项目素材库”并选中这本书。</span>
+                    </div>
+                    <div className={styles.sourceUploadRow}>
+                      <button type="button" className={styles.ghostButton} onClick={() => void handlePickUploadFile()}>
+                        {uploadFilePath ? '重新选择文件' : '选择文件'}
+                      </button>
+                      <span>{uploadFilePath || '未选择文件'}</span>
+                    </div>
+                    <div className={styles.sourceSelectionGrid}>
+                      <label className={styles.sourceSelectField}>
+                        <span>书名</span>
+                        <input value={uploadTitle} onChange={(event) => setUploadTitle(event.target.value)} placeholder="例如：长夜未瞑" />
+                      </label>
+                      <label className={styles.sourceSelectField}>
+                        <span>作者（可选）</span>
+                        <input value={uploadAuthor} onChange={(event) => setUploadAuthor(event.target.value)} placeholder="例如：某某" />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={uploadingBook}
+                      onClick={() => void handleUploadIntoLibrary()}
+                    >
+                      {uploadingBook ? '上传中...' : '上传到项目素材库'}
+                    </button>
+                  </div>
+                ) : null}
+
+                {sourceMode === 'paste' ? (
+                  <div className={styles.sourceUploadPanel}>
+                    <div className={styles.mockUploadBox}>
+                      <strong>临时试跑文本</strong>
+                      <span>这段文本只用于快速试跑，不会自动存入项目素材库。</span>
+                    </div>
+                    <textarea
+                      className={styles.sourcePasteTextarea}
+                      value={pastedText}
+                      onChange={(event) => setPastedText(event.target.value)}
+                      placeholder="粘贴一段临时文本，例如第 1 章开头的 1000-3000 字。"
+                    />
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.sourceInspectPanel}>
                 <div className={styles.taskFieldLabel}>确认后生成的素材参数</div>
                 <div className={styles.sourceParamGrid}>
-                  <div><span>文件</span><strong>{intakeResult?.sourceDocument.fileName ?? '长夜未瞑_第1章.txt'}</strong></div>
-                  <div><span>类型</span><strong>{intakeResult?.sourceProfile.contentCategory ?? intakeResult?.sourceDocument.sourceType ?? '待识别'}</strong></div>
-                  <div><span>章节</span><strong>{intakeResult?.sourceDocument.chapterHint ?? '待解析'}</strong></div>
-                  <div><span>字数</span><strong>{intakeResult?.sourceDocument.wordCountLabel ?? '待真实解析'}</strong></div>
+                  <div><span>文件 / 素材</span><strong>{sourceSummary}</strong></div>
+                  <div><span>类型</span><strong>{sourceConfirmed ? intakeResult?.sourceProfile.contentCategory ?? sourceTypeLabel : sourceTypeLabel}</strong></div>
+                  <div><span>范围</span><strong>{sourceMode === 'library' ? selectedRangeLabel : sourceMode === 'paste' ? '临时文本' : '待选择'}</strong></div>
+                  <div><span>字数</span><strong>{sourceWordCountLabel}</strong></div>
                 </div>
+                {!sourceConfirmed ? (
+                  <div className={styles.sourceProfileSummary}>
+                    <strong>
+                      {sourceMode === 'library'
+                        ? '这一步会把项目素材里的选中章节作为本次任务输入'
+                        : sourceMode === 'upload'
+                          ? '先把文件送入项目素材库，再作为当前任务输入'
+                          : '临时粘贴文本只用于快速试跑'}
+                    </strong>
+                    <span>
+                      {sourceMode === 'library'
+                        ? '确认后进入文件解析、轻量画像和 Agent 预分配。'
+                        : sourceMode === 'upload'
+                          ? '上传成功后会自动回到“项目素材库”模式，方便继续选章节。'
+                          : '后续如果要长期复用，建议先把正文上传进项目素材库。'}
+                    </span>
+                    <em>
+                      {sourceMode === 'library'
+                        ? '来源：项目素材空间'
+                        : sourceMode === 'upload'
+                          ? '来源：本次新增素材'
+                          : '来源：临时会话输入'}
+                    </em>
+                  </div>
+                ) : null}
                 {intakeResult ? (
                   <div className={styles.sourceProfileSummary}>
                     <strong>AI 已识别素材归属：{intakeResult.sourceProfile.contentCategory}</strong>
@@ -482,11 +1004,12 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  disabled={isIntakeRunning}
+                  disabled={isIntakeRunning || !sourceReady}
                   onClick={handleConfirmSource}
                 >
                   {isIntakeRunning ? '正在生成任务方案' : sourceConfirmed ? '重新生成任务方案' : '确认素材，生成任务方案'}
                 </button>
+                {libraryError ? <div className={styles.inlineErrorText}>{libraryError}</div> : null}
                 {intakeError ? <div className={styles.inlineErrorText}>{intakeError}</div> : null}
               </div>
             </div>
@@ -529,21 +1052,31 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                         <div>
                           <div className={styles.decisionLabelRow}>
                             <span>{item.label}</span>
-                            <b>{getDecisionSourceLabel(item)}</b>
+                            <b>{item.id === 'scope' ? '第 1 步已锁定' : getDecisionSourceLabel(item)}</b>
                           </div>
-                          <strong>{getDecisionView(item).value}</strong>
-                          <em>{getDecisionView(item).desc}</em>
+                          <strong>{item.id === 'scope' ? selectedRangeLabel : getDecisionView(item).value}</strong>
+                          <em>
+                            {item.id === 'scope'
+                              ? `${selectedRangeChapters.length} 章 · ${selectedRangeTotalChars.toLocaleString('zh-CN')} 字。若要修改章节，请回到第 1 步。`
+                              : getDecisionView(item).desc}
+                          </em>
                           {getDecisionView(item).customNote ? <small>补充：{getDecisionView(item).customNote}</small> : null}
                         </div>
                         <button
                           type="button"
                           className={styles.tinyEditButton}
-                          onClick={() => setEditingDecisionId(editingDecisionId === item.id ? null : item.id)}
+                          onClick={() => {
+                            if (item.id === 'scope') {
+                              setActiveStep(1);
+                              return;
+                            }
+                            setEditingDecisionId(editingDecisionId === item.id ? null : item.id);
+                          }}
                         >
-                          {getDecisionEditButtonText(item)}
+                          {item.id === 'scope' ? '返回改范围' : getDecisionEditButtonText(item)}
                         </button>
                       </div>
-                      {editingDecisionId === item.id ? (
+                      {editingDecisionId === item.id && item.id !== 'scope' ? (
                         <div className={styles.decisionEditPanel}>
                           <div className={styles.decisionEditHint}>
                             <strong>系统建议优先选候选项</strong>
@@ -682,6 +1215,53 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   </div>
                 </div>
 
+                <div className={styles.deliveryOptionContractPanel}>
+                  <div className={styles.composerSectionHeader}>
+                    <div>
+                      <div className={styles.taskFieldLabel}>确认交付内容</div>
+                      <span className={styles.mutedText}>这里决定本轮跑哪些产物。BGM/SFX 是高费用项，默认关闭。</span>
+                    </div>
+                  </div>
+                  <div className={styles.deliveryOptionGrid}>
+                    <label className={styles.batchOptionToggle}>
+                      <input type="checkbox" checked readOnly />
+                      <span>多人演播台本 必选</span>
+                    </label>
+                    <label className={styles.batchOptionToggle}>
+                      <input
+                        type="checkbox"
+                        checked={deliveryOptions.voiceRegistry}
+                        onChange={(event) => setDeliveryOptions((current) => ({ ...current, voiceRegistry: event.target.checked }))}
+                      />
+                      <span>角色音表 建议开启</span>
+                    </label>
+                    <label className={styles.batchOptionToggle}>
+                      <input
+                        type="checkbox"
+                        checked={deliveryOptions.qualityReview}
+                        onChange={(event) => setDeliveryOptions((current) => ({ ...current, qualityReview: event.target.checked }))}
+                      />
+                      <span>质检报告 建议开启</span>
+                    </label>
+                    <label className={styles.batchOptionToggle}>
+                      <input
+                        type="checkbox"
+                        checked={deliveryOptions.cvDirections}
+                        onChange={(event) => setDeliveryOptions((current) => ({ ...current, cvDirections: event.target.checked }))}
+                      />
+                      <span>CV 演播指导 可选</span>
+                    </label>
+                    <label className={`${styles.batchOptionToggle} ${styles.highCostOption}`}>
+                      <input
+                        type="checkbox"
+                        checked={deliveryOptions.bgmSfx}
+                        onChange={(event) => setDeliveryOptions((current) => ({ ...current, bgmSfx: event.target.checked }))}
+                      />
+                      <span>BGM/SFX 建议 高费用项，默认关闭</span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className={styles.executionImpactBox}>
                   <div>
                     <strong>确认后将进入制作队列</strong>
@@ -715,7 +1295,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               </span>
             </div>
             <div className={styles.summaryList}>
-              <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 已完成解析' : isIntakeRunning ? '正在摄入 · 生成素材对象' : '上传文件 · 待确认'}</strong></div>
+              <div><span>素材</span><strong>{sourceConfirmed ? '已确认 · 已完成解析' : isIntakeRunning ? '正在摄入 · 生成素材对象' : sourceMode === 'library' ? '项目素材库 · 待确认' : sourceMode === 'upload' ? '新上传文件 · 待确认' : '临时文本 · 待确认'}</strong></div>
               <div><span>归属</span><strong>{intakeResult?.sourceProfile.contentCategory ?? '待识别'}</strong></div>
               <div><span>目标</span><strong>{getDecisionSummaryValue('work_goal', '多人演播有声书 · 先做业务分析')}</strong></div>
               <div><span>范围</span><strong>{getDecisionSummaryValue('scope', '第 1 章')}</strong></div>

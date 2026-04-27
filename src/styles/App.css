@@ -69,6 +69,16 @@ body {
   background: rgba(55, 138, 221, 0.14);
 }
 
+.script-adapter-entry-button[data-entry-tone="library"] {
+  background: rgba(30, 117, 91, 0.1);
+  border-color: rgba(30, 117, 91, 0.2);
+}
+
+.script-adapter-entry-button[data-entry-tone="library"]:hover {
+  border-color: rgba(30, 117, 91, 0.34);
+  background: rgba(30, 117, 91, 0.16);
+}
+
 .app-shell-module-title {
   padding: 10px 14px;
   color: var(--text-primary);

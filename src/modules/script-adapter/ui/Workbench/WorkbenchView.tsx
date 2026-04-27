@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useScriptAdapterStore } from '../../store/scriptAdapterStore';
 import { scriptAdapterActions } from '../../store/actions';
 import {
@@ -10,9 +10,27 @@ import {
   startGatewayExecution,
   subscribeGatewayExecutionEvents,
 } from '../../services/gatewayExecution';
+import {
+  listBooks,
+  listChapters,
+  type LibraryBook,
+  type LibraryChapter,
+} from '../../services/aiLibraryClient';
+import { estimateBatchCost } from '../../services/batchBudget';
+import {
+  cancelGatewayBatch,
+  deleteGatewayBatch,
+  getGatewayBatchStatus,
+  listGatewayBatches,
+  rerunGatewayBatchChapter,
+  startGatewayBatch,
+  subscribeGatewayBatchEvents,
+} from '../../services/gatewayBatch';
+import { exportBatchDeliveryAsDocx, exportBatchDeliveryAsMarkdown } from '../../services/exportClient';
 import type { StageStatus } from '../../types/stage';
+import type { BatchJob, ChapterRunRecord, DeliveryOptions, TaskCreationContract, TrialExecutionMode } from '../../types/batch';
 import { ExecutionView } from './ExecutionView';
-import { LibrarySelector } from './LibrarySelector';
+import { BatchProgressView } from './BatchProgressView';
 import styles from '../../styles/scriptAdapter.module.css';
 
 const TASK_STEPS = [
@@ -67,9 +85,31 @@ const TEAM_ROLE_COPY: Record<string, { title: string; shortDesc: string; promise
   },
 };
 
-export function WorkbenchView() {
-  const [sourceText, setSourceText] = useState('');
-  const [pickedMeta, setPickedMeta] = useState<{ bookTitle: string; chapterTitle: string } | null>(null);
+interface WorkbenchViewProps {
+  taskContract?: TaskCreationContract | null;
+}
+
+export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
+  const sourceText = '';
+  const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([]);
+  const [batchChapters, setBatchChapters] = useState<LibraryChapter[]>([]);
+  const [selectedBatchBookId, setSelectedBatchBookId] = useState('');
+  const [selectedBatchChapterIndices, setSelectedBatchChapterIndices] = useState<number[]>([]);
+  const [executionMode, setExecutionMode] = useState<TrialExecutionMode>('mock');
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptions>({
+    adaptedScript: true,
+    voiceRegistry: true,
+    qualityReview: true,
+    cvDirections: false,
+    bgmSfx: false,
+    finalPackage: true,
+  });
+  const [batchLibraryLoading, setBatchLibraryLoading] = useState<'books' | 'chapters' | 'start' | null>(null);
+  const [batchLibraryError, setBatchLibraryError] = useState('');
+  const [batchHistory, setBatchHistory] = useState<BatchJob[]>([]);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
+  const [currentBatch, setCurrentBatch] = useState<BatchJob | null>(null);
+  const [currentBatchRuns, setCurrentBatchRuns] = useState<ChapterRunRecord[]>([]);
   const currentProjectId = useScriptAdapterStore((state) => state.currentProjectId);
   const project = useScriptAdapterStore((state) =>
     currentProjectId ? state.projects[currentProjectId] : null,
@@ -85,6 +125,15 @@ export function WorkbenchView() {
   );
   const executionSheetRef = useRef(executionSheet);
   executionSheetRef.current = executionSheet;
+  const currentBatchIdRef = useRef<string | null>(currentBatchId);
+  currentBatchIdRef.current = currentBatchId;
+
+  useEffect(() => {
+    if (!taskContract) return;
+    setSelectedBatchBookId(taskContract.bookId);
+    setSelectedBatchChapterIndices(taskContract.chapterIndices);
+    setDeliveryOptions(taskContract.deliveryOptions);
+  }, [taskContract]);
 
   const currentChapter = chapters.find((chapter) => chapter.id === project?.meta.currentChapterId) ?? chapters[0];
   const productionStages = stages.filter((stage) => stage.idx >= 3);
@@ -94,6 +143,43 @@ export function WorkbenchView() {
   const expectedOutputs = productionStages
     .flatMap((stage) => stage.outputArtifactTypes)
     .filter((type, index, list) => list.indexOf(type) === index);
+  const selectedBatchBook = libraryBooks.find((book) => book.id === selectedBatchBookId)
+    || (taskContract ? {
+      id: taskContract.bookId,
+      title: taskContract.bookTitle,
+      author: '',
+      source_type: 'library',
+      chapter_count: taskContract.chapterCount,
+      total_chars: taskContract.totalChars,
+    } as LibraryBook : null);
+  const effectiveBatchChapters = useMemo(() => {
+    if (batchChapters.length > 0 || !taskContract) return batchChapters;
+    const avgChars = Math.max(0, Math.round(taskContract.totalChars / Math.max(1, taskContract.chapterCount)));
+    return taskContract.chapterIndices.map((chapterIndex) => ({
+      id: `${taskContract.bookId}-${chapterIndex}`,
+      book_id: taskContract.bookId,
+      chapter_index: chapterIndex,
+      title: `第 ${chapterIndex + 1} 章`,
+      char_count: avgChars,
+    })) as LibraryChapter[];
+  }, [batchChapters, taskContract]);
+
+  const batchEstimate = useMemo(
+    () => estimateBatchCost(effectiveBatchChapters, selectedBatchChapterIndices, {
+      includeVoiceRegistry: deliveryOptions.voiceRegistry,
+      includeQualityReview: deliveryOptions.qualityReview,
+      includeCvDirections: deliveryOptions.cvDirections,
+      includeBgmSfx: deliveryOptions.bgmSfx,
+    }),
+    [
+      effectiveBatchChapters,
+      selectedBatchChapterIndices,
+      deliveryOptions.voiceRegistry,
+      deliveryOptions.qualityReview,
+      deliveryOptions.cvDirections,
+      deliveryOptions.bgmSfx,
+    ],
+  );
 
   const teamStages = productionStages.map((stage) => ({
     ...stage,
@@ -108,10 +194,112 @@ export function WorkbenchView() {
     scriptAdapterActions.openStageInWorkbench(firstRunnableStage?.idx ?? 3);
   };
 
-  const handleLibraryPick = (text: string, meta: { bookTitle: string; chapterTitle: string; chars: number }) => {
-    setSourceText(text);
-    setPickedMeta({ bookTitle: meta.bookTitle, chapterTitle: meta.chapterTitle });
+  const refreshBatchHistory = async (preferBatchId?: string | null) => {
+    const result = await listGatewayBatches(12);
+    if (!result.success) return;
+    const nextBatches = result.batches || [];
+    setBatchHistory(nextBatches);
+    const preferred = preferBatchId
+      || currentBatchIdRef.current
+      || nextBatches.find((item) => item.status === 'running' || item.status === 'paused')?.id
+      || nextBatches[0]?.id
+      || null;
+    if (preferred) {
+      setCurrentBatchId(preferred);
+    }
   };
+
+  const loadBatchStatus = async (batchId: string) => {
+    const result = await getGatewayBatchStatus(batchId);
+    if (!result.success) return;
+    setCurrentBatch(result.batch || null);
+    setCurrentBatchRuns(result.chapterRuns || []);
+  };
+
+  const startBatchExecution = async () => {
+    if (!selectedBatchBook || batchEstimate.chapterCount === 0) {
+      setBatchLibraryError('请先选择一本书和至少一个章节。');
+      return;
+    }
+    if (executionMode === 'real' && taskContract?.rangeLabel.includes('全书')) {
+      setBatchLibraryError('首次真实试产不建议直接跑全书，请先选择 1 章或 3-5 章。');
+      return;
+    }
+    if (executionMode === 'real' && batchEstimate.chapterCount > 5) {
+      const allowLarge = window.confirm('当前是真实 Agent 试产，且章节超过 5 章。建议先跑 1 章或 3-5 章。确认继续吗？');
+      if (!allowLarge) return;
+    }
+    if (deliveryOptions.bgmSfx && batchEstimate.chapterCount > 5) {
+      const allowBgm = window.confirm('当前已开启 BGM/SFX 建议，批量成本会明显上升。确认继续吗？');
+      if (!allowBgm) return;
+    }
+    const confirmed = window.confirm(
+      `确认启动《${selectedBatchBook.title}》批次？\n`
+      + `${batchEstimate.chapterCount} 章 / ${batchEstimate.totalChars.toLocaleString('zh-CN')} 字 / `
+      + `约 ${batchEstimate.estimatedDurationMinutes} 分钟 / 约 ¥${batchEstimate.estimatedCostCny.toFixed(2)}\n`
+      + `模式：${executionMode === 'real' ? '真实 Agent 试产' : '模拟演示'}\n`
+      + `交付项：${[
+        '多人演播台本',
+        deliveryOptions.voiceRegistry ? '角色音表' : null,
+        deliveryOptions.qualityReview ? '质检报告' : null,
+        deliveryOptions.cvDirections ? 'CV 演播指导' : null,
+        deliveryOptions.bgmSfx ? 'BGM/SFX 建议' : null,
+      ].filter(Boolean).join(' / ')}`,
+    );
+    if (!confirmed) return;
+
+    setBatchLibraryLoading('start');
+    setBatchLibraryError('');
+    try {
+      const result = await startGatewayBatch({
+        bookId: selectedBatchBook.id,
+        bookTitle: selectedBatchBook.title,
+        chapterIndices: selectedBatchChapterIndices,
+        estimate: batchEstimate,
+        config: {
+          executionMode,
+          realAgents: executionMode === 'real' ? 'all' : 'off',
+          includePerformanceDesign: deliveryOptions.cvDirections || deliveryOptions.bgmSfx,
+          deliveryOptions,
+        },
+      });
+      if (!result.success || !result.batchId) {
+        setBatchLibraryError(result.error || '批次启动失败');
+        return;
+      }
+      setCurrentBatchId(result.batchId);
+      await refreshBatchHistory(result.batchId);
+      await loadBatchStatus(result.batchId);
+    } finally {
+      setBatchLibraryLoading(null);
+    }
+  };
+
+  const handleBatchExport = async () => {
+    if (!currentBatch) return;
+    await exportBatchDeliveryAsMarkdown(currentBatch, currentBatchRuns);
+  };
+
+  const handleBatchExportDocx = async () => {
+    if (!currentBatch) return;
+    await exportBatchDeliveryAsDocx(currentBatch, currentBatchRuns);
+  };
+
+  const contractRangeLabel = taskContract?.rangeLabel
+    || (batchEstimate.chapterCount === 1 ? '单章试产' : `${batchEstimate.chapterCount} 章小批量试产`);
+  const startBatchButtonText = batchEstimate.chapterCount <= 1
+    ? '确认预算并启动单章试产'
+    : batchEstimate.chapterCount <= 5
+      ? '确认预算并启动小批量试产'
+      : '确认高成本预算并启动批次';
+  const deliverySummary = [
+    'Word DOCX',
+    '多人演播台本',
+    deliveryOptions.voiceRegistry ? '角色音表' : null,
+    deliveryOptions.qualityReview ? '质检报告' : null,
+    deliveryOptions.cvDirections ? 'CV 演播指导' : null,
+    deliveryOptions.bgmSfx ? 'BGM/SFX 建议' : null,
+  ].filter(Boolean).join(' / ');
 
   const startMockExecution = () => {
     const taskId = project?.id ?? 'demo-content-task';
@@ -151,6 +339,11 @@ export function WorkbenchView() {
       taskTitle,
       source: 'content-workbench',
       sourceText,
+      config: {
+        realAgents: executionMode === 'real' ? 'all' : 'off',
+        includePerformanceDesign: deliveryOptions.cvDirections || deliveryOptions.bgmSfx,
+        deliveryOptions,
+      },
     });
 
     if (!result?.success) {
@@ -207,6 +400,93 @@ export function WorkbenchView() {
       abortPipeline();
     };
   }, [currentProjectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBatchLibraryLoading('books');
+    setBatchLibraryError('');
+    listBooks()
+      .then((books) => {
+        if (cancelled) return;
+        setLibraryBooks(books);
+        if (!selectedBatchBookId && books[0]) setSelectedBatchBookId(books[0].id);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setBatchLibraryError(error instanceof Error ? error.message : '批次书库加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setBatchLibraryLoading(null);
+      });
+    void refreshBatchHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBatchBookId) {
+      setBatchChapters([]);
+      setSelectedBatchChapterIndices([]);
+      return;
+    }
+    let cancelled = false;
+    setBatchLibraryLoading('chapters');
+    setBatchLibraryError('');
+    listChapters(selectedBatchBookId)
+      .then((chapters) => {
+        if (cancelled) return;
+        setBatchChapters(chapters);
+        setSelectedBatchChapterIndices((current) => {
+          if (current.length > 0 && current.every((index) => chapters.some((chapter) => chapter.chapter_index === index))) {
+            return current;
+          }
+          return chapters[0] ? [chapters[0].chapter_index] : [];
+        });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setBatchLibraryError(error instanceof Error ? error.message : '批次章节加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setBatchLibraryLoading(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBatchBookId]);
+
+  useEffect(() => {
+    if (!currentBatchId) {
+      setCurrentBatch(null);
+      setCurrentBatchRuns([]);
+      return;
+    }
+    void loadBatchStatus(currentBatchId);
+  }, [currentBatchId]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeGatewayBatchEvents((event) => {
+      if (event.event === 'batch_created') {
+        void refreshBatchHistory(event.batchId);
+      }
+      if (currentBatchIdRef.current === event.batchId) {
+        void loadBatchStatus(event.batchId);
+      }
+      if (event.event === 'batch_completed' || event.event === 'batch_cancelled' || event.event === 'batch_failed') {
+        void refreshBatchHistory(event.batchId);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!currentBatchId) return;
+    const timer = window.setInterval(() => {
+      void loadBatchStatus(currentBatchId);
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [currentBatchId]);
 
   if (executionSheet) {
     return (
@@ -310,45 +590,53 @@ export function WorkbenchView() {
           <div className={styles.workOrderHeroMain}>
             <div className={styles.workOrderHeroCopy}>
               <div className={styles.workOrderKicker}>开工确认书</div>
-              <h2>已准备好开始制作第 1 章多人演播样章。</h2>
+              <h2>请最后确认预算、试产模式和交付物。</h2>
               <p>
-                你前面确认的目标、范围和修改策略已经锁定。接下来系统会派出一支制作团队，
-                按约定开工；需要你确认的地方，会停下来问你。
+                你前面确认的素材、章节范围、目标和修改策略已经锁定。这里不再重新选章节，
+                只做开工前拍板；如需改范围，请返回新建流程前几步调整。
               </p>
               <div className={styles.workOrderSealRow}>
                 <span>不改剧情</span>
-                <span>先做样章</span>
-                <span>人工复核</span>
+                <span>{batchEstimate.chapterCount <= 1 ? '单章试产' : '小批量试产'}</span>
+                <span>交付 Word DOCX</span>
               </div>
             </div>
-            <LibrarySelector onPick={handleLibraryPick} disabled={!!executionSheet} />
-            <div className={styles.testInputArea}>
-              <label htmlFor="script-adapter-source-text">测试原文（可粘贴，或从上方书库取章）</label>
-              {pickedMeta ? (
-                <small className={styles.librarySourceBadge}>
-                  来自：《{pickedMeta.bookTitle}》· {pickedMeta.chapterTitle}
-                </small>
-              ) : null}
-              <textarea
-                id="script-adapter-source-text"
-                value={sourceText}
-                onChange={(e) => {
-                  setSourceText(e.target.value);
-                  setPickedMeta(null);
-                }}
-                placeholder="粘贴小说原文，或从书库选章填入。启用 SCRIPT_ADAPTER_REAL_AGENTS 后文本改编师可真实改编；单段超过约 4000 字会走改编失败占位（Week 5 再切片）。"
-                rows={8}
-              />
-              <small className={sourceText.length > 4000 ? styles.sourceLengthWarn : undefined}>
-                {sourceText.length} 字
-                {sourceText.length > 4000 ? '（超过约 4000 字时真实改编师可能返回占位，pipeline 不中断）' : ''}
-              </small>
+            <div className={styles.contractSummaryGrid}>
+              <div>
+                <span>素材</span>
+                <strong>{selectedBatchBook?.title || taskContract?.bookTitle || '待选择素材'}</strong>
+              </div>
+              <div>
+                <span>范围</span>
+                <strong>{contractRangeLabel}</strong>
+              </div>
+              <div>
+                <span>字数</span>
+                <strong>{batchEstimate.totalChars.toLocaleString('zh-CN')} 字</strong>
+              </div>
+              <div>
+                <span>修改策略</span>
+                <strong>{taskContract?.strategyTitle || '轻度听感改编'}</strong>
+              </div>
+              <div>
+                <span>交付物</span>
+                <strong>{deliverySummary}</strong>
+              </div>
+              <div>
+                <span>未启用</span>
+                <strong>{deliveryOptions.bgmSfx ? '无' : 'BGM/SFX 建议'}</strong>
+              </div>
             </div>
           </div>
           <div className={styles.workOrderHeroActions}>
             <div className={styles.readyStamp}>READY</div>
-            <button type="button" className={styles.confirmStartButton} onClick={startExecution}>
-              确认开工
+            <button
+              type="button"
+              className={styles.confirmStartButton}
+              disabled={batchLibraryLoading === 'start' || batchEstimate.chapterCount === 0}
+              onClick={() => void startBatchExecution()}
+            >
+              {batchLibraryLoading === 'start' ? '启动中…' : startBatchButtonText}
             </button>
             <button
               type="button"
@@ -357,6 +645,133 @@ export function WorkbenchView() {
             >
               查看高级流程
             </button>
+          </div>
+        </section>
+
+        <section className={styles.contractApprovalGrid}>
+          <div className={`${styles.card} ${styles.batchBudgetCard}`}>
+            <div className={styles.sectionTitle}>最终预算与试产模式</div>
+            <div className={styles.batchBudgetStats}>
+              <div><span>已选章节</span><strong>{batchEstimate.chapterCount}</strong></div>
+              <div><span>总字数</span><strong>{batchEstimate.totalChars.toLocaleString('zh-CN')}</strong></div>
+              <div><span>预计耗时</span><strong>{batchEstimate.estimatedDurationMinutes} 分钟</strong></div>
+              <div><span>预计费用</span><strong>¥{batchEstimate.estimatedCostCny.toFixed(2)}</strong></div>
+            </div>
+            <div className={styles.batchModeBlock}>
+              <strong>试产模式</strong>
+              <label className={styles.batchOptionToggle}>
+                <input
+                  type="radio"
+                  checked={executionMode === 'mock'}
+                  onChange={() => setExecutionMode('mock')}
+                />
+                <span>模拟演示：不调用真实模型，适合看流程</span>
+              </label>
+              <label className={styles.batchOptionToggle}>
+                <input
+                  type="radio"
+                  checked={executionMode === 'real'}
+                  onChange={() => setExecutionMode('real')}
+                />
+                <span>真实 Agent 试产：会调用模型并产生费用，建议先跑 1 章或 3-5 章</span>
+              </label>
+            </div>
+            <div className={styles.batchModeBlock}>
+              <strong>本次交付内容已锁定</strong>
+              <p>{deliverySummary}</p>
+              <small>交付项在第 3 步确认。最后页只显示摘要,避免开工前重复配置。</small>
+            </div>
+            <div className={styles.batchCostBreakdown}>
+              <div><span>基础台本 / 角色音 / 质检</span><strong>¥{batchEstimate.baseCostCny.toFixed(2)}</strong></div>
+              <div><span>CV 演播指导</span><strong>¥{batchEstimate.cvCostCny.toFixed(2)}</strong></div>
+              <div><span>BGM/SFX 建议</span><strong>¥{batchEstimate.bgmSfxCostCny.toFixed(2)}</strong></div>
+            </div>
+            <div className={styles.batchWarningList}>
+              {batchEstimate.warnings.length > 0 ? batchEstimate.warnings.map((warning) => (
+                <div key={warning}>{warning}</div>
+              )) : <div>当前批次规模适合直接试跑。</div>}
+            </div>
+            {batchLibraryError ? <div className={styles.inlineErrorText}>{batchLibraryError}</div> : null}
+            <button
+              type="button"
+              className={styles.confirmStartButton}
+              disabled={batchLibraryLoading === 'start' || batchEstimate.chapterCount === 0}
+              onClick={() => void startBatchExecution()}
+            >
+              {batchLibraryLoading === 'start' ? '启动中…' : startBatchButtonText}
+            </button>
+          </div>
+
+          <div className={`${styles.card} ${styles.contractGuardCard}`}>
+            <div className={styles.sectionTitle}>开工保护条款</div>
+            <div className={styles.contractGuardList}>
+              <div>
+                <strong>范围已锁定</strong>
+                <span>{contractRangeLabel}。如需改章节,返回新建任务第 1 步。</span>
+              </div>
+              <div>
+                <strong>不会改核心剧情</strong>
+                <span>只优化表达和演播可执行性,不改变人物关系和关键事件。</span>
+              </div>
+              <div>
+                <strong>完成后主交付为 DOCX</strong>
+                <span>Markdown 只作为内部留痕,客户优先看 Word 文档。</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {currentBatch ? (
+          <BatchProgressView
+            batch={currentBatch}
+            chapterRuns={currentBatchRuns}
+            onRefresh={() => void loadBatchStatus(currentBatch.id)}
+            onRerun={(chapterIndex) => {
+              void rerunGatewayBatchChapter(currentBatch.id, chapterIndex).then(() => loadBatchStatus(currentBatch.id));
+            }}
+            onExport={() => void handleBatchExport()}
+            onExportDocx={() => void handleBatchExportDocx()}
+            onCancel={() => {
+              void cancelGatewayBatch(currentBatch.id).then(() => {
+                void refreshBatchHistory(currentBatch.id);
+                void loadBatchStatus(currentBatch.id);
+              });
+            }}
+          />
+        ) : null}
+
+        <section className={`${styles.card} ${styles.batchHistoryCard}`}>
+          <div className={styles.productionTeamHeader}>
+            <div>
+              <div className={styles.sectionTitle}>批次历史</div>
+              <p>这里会保留已完成、失败和中断批次。重启后状态由 Gateway 持久化恢复。</p>
+            </div>
+            <button type="button" className={styles.ghostButton} onClick={() => void refreshBatchHistory()}>
+              刷新历史
+            </button>
+          </div>
+          <div className={styles.batchHistoryList}>
+            {batchHistory.length === 0 ? (
+              <div className={styles.batchHistoryEmpty}>还没有批次记录。</div>
+            ) : batchHistory.map((batch) => (
+              <div key={batch.id} className={batch.id === currentBatchId ? styles.batchHistoryItemActive : styles.batchHistoryItem}>
+                <button type="button" className={styles.batchHistoryMain} onClick={() => setCurrentBatchId(batch.id)}>
+                  <strong>{batch.bookTitle}</strong>
+                  <span>{batch.completedChapters}/{batch.totalChapters} · {batch.status}</span>
+                  <em>{new Date(batch.createdAt).toLocaleString('zh-CN')}</em>
+                </button>
+                <button
+                  type="button"
+                  className={styles.ghostButton}
+                  onClick={() => {
+                    void deleteGatewayBatch(batch.id).then(() => refreshBatchHistory(currentBatchIdRef.current));
+                  }}
+                  disabled={batch.status === 'running'}
+                >
+                  删除
+                </button>
+              </div>
+            ))}
           </div>
         </section>
 
