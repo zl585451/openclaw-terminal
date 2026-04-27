@@ -3,6 +3,9 @@
 const config = require('../config');
 const { runTextRewriterAgent } = require('./agents/textRewriterAgent');
 const { runVoiceClassifierAgent } = require('./agents/voiceClassifierAgent');
+const { runPerformanceDesignerAgent } = require('./agents/performanceDesignerAgent');
+const { runQualityReviewerAgent } = require('./agents/qualityReviewerAgent');
+const { runDeliveryPackagerAgent } = require('./agents/deliveryPackagerAgent');
 
 const REAL_AGENTS_FLAG = 'SCRIPT_ADAPTER_REAL_AGENTS';
 
@@ -89,6 +92,96 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
         '分类失败',
         `角色音真实分类失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
         { registry: [], unresolved: [] },
+        { error: 1 },
+      );
+    }
+  }
+
+  if (agentId === 'designer.performance_audio@1.0' && isRealAgentEnabled(agentId)) {
+    try {
+      const { payload, latencyMs, model } = await runPerformanceDesignerAgent(ctx);
+      return envelope(
+        'performance_design',
+        agentId,
+        displayName,
+        '演播设计提示',
+        `${model} 完成 BGM/${payload.sfxList.length} 条 SFX/${payload.cvDirections.length} 条 CV,耗时 ${latencyMs}ms`,
+        payload,
+        { sfx: payload.sfxList.length, cv: payload.cvDirections.length, latencyMs },
+      );
+    } catch (error) {
+      return envelope(
+        'performance_design',
+        agentId,
+        displayName,
+        '设计失败',
+        `演播设计真实调用失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
+        {
+          bgmTrack: { mood: '未设计', suggestion: '真实演播设计失败,请人工补充。' },
+          sfxList: [],
+          cvDirections: [],
+        },
+        { error: 1 },
+      );
+    }
+  }
+
+  if (agentId === 'reviewer.production_quality@1.0' && isRealAgentEnabled(agentId)) {
+    try {
+      const { payload, latencyMs, model } = await runQualityReviewerAgent(ctx);
+      return envelope(
+        'review_report',
+        agentId,
+        displayName,
+        '质检问题清单',
+        `${model} 给出结论:${payload.conclusion}(${payload.issues.length} 条问题),耗时 ${latencyMs}ms`,
+        payload,
+        { issues: payload.issues.length, latencyMs },
+      );
+    } catch (error) {
+      return envelope(
+        'review_report',
+        agentId,
+        displayName,
+        '质检失败',
+        `质检真实调用失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
+        {
+          conclusion: 'pass_with_changes',
+          issues: [
+            {
+              severity: 'P1',
+              category: '系统',
+              location: '全局',
+              description: '质检 Agent 失败,本轮使用占位报告继续流转。',
+              suggestion: '交付前请人工补充质检。',
+            },
+          ],
+        },
+        { error: 1 },
+      );
+    }
+  }
+
+  if (agentId === 'packager.content_delivery@1.0' && isRealAgentEnabled(agentId)) {
+    try {
+      const { payload, latencyMs, model } = await runDeliveryPackagerAgent(ctx);
+      return envelope(
+        'final_package',
+        agentId,
+        displayName,
+        '制作交付包',
+        `${model} 已打包 ${payload.manifest.length} 个产物文件,耗时 ${latencyMs}ms`,
+        payload,
+        { files: payload.manifest.length, latencyMs },
+      );
+    } catch (error) {
+      return envelope(
+        'final_package',
+        agentId,
+        displayName,
+        '打包失败',
+        `打包失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
+        { manifest: [], versionTag: 'failed', notes: '打包失败,请检查上游台本产物。' },
         { error: 1 },
       );
     }
