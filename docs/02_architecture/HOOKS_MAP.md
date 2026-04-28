@@ -1,0 +1,89 @@
+## Hooks map（useMessages 重构后）
+
+本文件记录 `src/hooks/` 下与聊天消息生命周期相关的 hooks 职责划分、输入输出与依赖关系。
+
+---
+
+## `useMessages`
+
+- **职责**：
+  - 作为“编排层”hook：聚合 WebSocket 事件、FSM（`oct.fsm`）与 StreamRouter（`oct.stream`）的生命周期
+  - 维护消息列表的写入（`setMessages`）、发送入口（`sendMessage/quickSend`）与回调对外状态（连接状态、streaming 状态、token/ctx、timeline 等）
+  - 组织各子 hook 的调用（usage 统计、timeline、stream painting）
+- **输入（参数）**：`UseMessagesOptions`
+  - `oct`: `{ fsm, stream, ingest }`
+  - `messages/setMessages`
+  - `permissions`
+  - `typewriter`
+  - `scroll`（`reconcile/scrollAfterUserSend`）
+  - `streamSpeedMs/typingSound/typingSoundVolume`
+  - `onStatusChange/onClarifyOpen`（可选回调）
+- **输出（return）**：`UseMessagesReturn`
+  - 连接状态：`wsConnected/wsReconnecting/wsError/nocturneOnline`
+  - 流程状态：`fsmPhase/isStreaming/awaitingResponse/agentPhase/thinkingElapsed`
+  - 工具与 timeline：`activeTools/activityTimeline`
+  - gateway：`gatewayCapabilities/modelName/thinkMode/pendingPills`
+  - token/context：`tokenIn/tokenOut/ctxUsed/ctxMax`
+  - refs：`fullTextRef/streamingDomRef`
+  - 发送入口：`sendMessage/quickSend`
+- **依赖**：
+  - `useWebSocket`（事件源）
+  - `useTokenUsage`（usage 聚合）
+  - `useActivityTimeline`（timeline 与 CoT debounce）
+  - `useStreamPainting`（逐字符渲染）
+  - `TurnFSM/StreamRouter/BlockIngest`（core）
+- **备注（已知技术债/临时实现）**：
+  - 当前通过在 `useMessages` 内部给 `oct` 临时挂载 `__streamPainting` 上下文来向 `useStreamPainting` 传递 refs/callback，这是**临时方案**（不影响对外 API，但不够“纯”）。
+
+---
+
+## `useTokenUsage`
+
+- **职责**：
+  - 维护 token/ctx/cost 的聚合状态（RAF 合并 flush）
+  - 向 `useWebSocket.onUsage` 提供 `onUsage(usage, isSnapshot)` 回调
+  - 在发送新消息时提供 `resetUsage()` 做一次性重置
+  - 在系统回复解析场景提供 `setFromSystemReply({ tokenIn, ctxUsed, ctxMax })`（封装写入入口）
+- **输入**：无（内部 state 管理）
+- **输出**：
+  - 状态：`tokenIn/tokenOut/ctxUsed/ctxMax/cost`
+  - 方法：`onUsage/resetUsage/setFromSystemReply`
+  - **仍暴露的内部 setter**：`setTokenOut/setCost`（目前保留；若要完全封装可在下一轮收敛）
+- **依赖**：无（仅 React hooks）
+
+---
+
+## `useActivityTimeline`
+
+- **职责**：
+  - 管理 `activityTimeline` 状态与 id 生成
+  - `onToolEvent`：追加 tool_call/tool_result 条目
+  - `onKeepalive`：维护 keepalive hint（同类条目合并更新）
+  - `scheduleCotSyncFromFullText`：对 fullText 做 **300ms debounce** 的 CoT/think 同步写入（upsert）
+  - `resetTimeline/resetWithThinkingPlaceholder/removeTypes`：由 `useMessages` 在不同阶段驱动
+- **输入**：当前实现接收 `_messages`（暂未使用，保留签名以匹配执行包）
+- **输出**：
+  - `activityTimeline`
+  - `onToolEvent/onKeepalive`
+  - `resetTimeline/resetWithThinkingPlaceholder/removeTypes/scheduleCotSyncFromFullText`
+- **依赖**：`src/types/gateway`（payload 类型）
+
+---
+
+## `useStreamPainting`
+
+- **职责**：
+  - RAF 驱动的逐字符“刷字”渲染：从 `fullTextRef` 提取可见正文（`getAssistantVisibleMain`），写入 `streamingDomRef.textContent`
+  - 帧预算/节奏控制（budget accumulation、step cap）
+  - 在 finalize 阶段完成后触发 `finalizeStreamingAssistantMessage(...)`
+  - 控制 `scrollReconcile` 调用频率（120ms 节流）
+- **输入（当前实现）**：
+  - `oct`（带 `__streamPainting` 上下文：refs/callback/配置）
+  - 其余参数 `_setMessages/_scrollReconcile` 目前为占位，不参与逻辑（保持与执行包签名兼容的临时形态）
+- **输出**：`startPainting/stopPainting`
+- **依赖**：
+  - `getAssistantVisibleMain`（正文提取）
+  - `playClickSound`（打字音效）
+- **备注（已知技术债/临时实现）**：
+  - `oct.__streamPainting` 传参属于临时实现（建议后续改为显式参数或 context 对象参数，不通过篡改入参对象传递）。
+
