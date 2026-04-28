@@ -187,9 +187,7 @@ export function useMessages({
     ctxMax,
     onUsage,
     resetUsage,
-    setTokenIn,
-    setCtxUsed,
-    setCtxMax,
+    setFromSystemReply,
   } = useTokenUsage();
   const {
     activityTimeline,
@@ -489,14 +487,20 @@ export function useMessages({
 
         if (modelMatch) setModelName(modelMatch[1].trim());
         if (tokensMatch) {
-          setTokenIn(parseFloat(tokensMatch[1]) * 1000);
-          setCtxMax(parseFloat(tokensMatch[2]) * 1000);
+          setFromSystemReply({
+            tokenIn: parseFloat(tokensMatch[1]) * 1000,
+            ctxMax: parseFloat(tokensMatch[2]) * 1000,
+          });
         }
         if (ctxMatch1) {
-          setCtxUsed(parseFloat(ctxMatch1[1]) * 1000);
-          setCtxMax(parseFloat(ctxMatch1[2]) * 1000);
+          setFromSystemReply({
+            ctxUsed: parseFloat(ctxMatch1[1]) * 1000,
+            ctxMax: parseFloat(ctxMatch1[2]) * 1000,
+          });
         } else if (ctxMatch2) {
-          setCtxUsed(parseFloat(ctxMatch2[1]) * 1000);
+          setFromSystemReply({
+            ctxUsed: parseFloat(ctxMatch2[1]) * 1000,
+          });
         }
 
         const apiKeyMatch = text.match(/api-key\s*\(([^)]+)\)/i);

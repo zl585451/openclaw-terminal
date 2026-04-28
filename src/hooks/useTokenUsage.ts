@@ -70,6 +70,16 @@ export function useTokenUsage() {
     }
   }, []);
 
+  const setFromSystemReply = useCallback((params: {
+    tokenIn?: number;
+    ctxUsed?: number;
+    ctxMax?: number;
+  }) => {
+    if (params.tokenIn != null) setTokenIn(params.tokenIn);
+    if (params.ctxUsed != null) setCtxUsed(params.ctxUsed);
+    if (params.ctxMax != null) setCtxMax(params.ctxMax);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (usageFlushRafRef.current != null) {
@@ -87,11 +97,9 @@ export function useTokenUsage() {
     cost,
     onUsage,
     resetUsage,
-    // 供 useMessages 内部（系统回复解析等）复用；不影响 useMessages 对外 API
-    setTokenIn,
+    setFromSystemReply,
+    // 仅保留与 usage 聚合相关的内部 setter（Task 4.5 只收回 token/context 的 setter 泄漏）
     setTokenOut,
-    setCtxUsed,
-    setCtxMax,
     setCost,
   };
 }
