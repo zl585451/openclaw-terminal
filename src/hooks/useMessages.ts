@@ -16,6 +16,7 @@ import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnno
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
 import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
+import { useTokenUsage } from './useTokenUsage';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
 function isSystemCommand(text: string): boolean {
@@ -170,12 +171,6 @@ export function useMessages({
   const activityIdCounter = useRef(0);
   const nextActivityId = () => `act_${++activityIdCounter.current}`;
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
-  const [tokenIn, setTokenIn] = useState<number | null>(null);
-  const [tokenOut, setTokenOut] = useState<number | null>(null);
-  const [ctxUsed, setCtxUsed] = useState<number | null>(null);
-  const [ctxMax, setCtxMax] = useState<number | null>(null);
-  const [, setCost] = useState<number | null>(null);
-  const [, setSession] = useState<string | null>(null);
   const [, setApiKeyInfo] = useState<string>('--');
   const [thinkMode, setThinkMode] = useState<string>('off');
   const [, setRuntimeMode] = useState<string>('direct');
@@ -186,9 +181,17 @@ export function useMessages({
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
   /** 流式阶段 reconcile 每帧调用会引发大量 layout；限制频率 */
   const lastStreamReconcileMsRef = useRef(0);
-  /** usage 事件 RAF 合并：同一帧多条合并后再 setState */
-  const usageBatchRef = useRef<Array<{ usage: any; isSnapshot: boolean }>>([]);
-  const usageFlushRafRef = useRef<number | null>(null);
+  const {
+    tokenIn,
+    tokenOut,
+    ctxUsed,
+    ctxMax,
+    onUsage,
+    resetUsage,
+    setTokenIn,
+    setCtxUsed,
+    setCtxMax,
+  } = useTokenUsage();
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const streamingMessageRef = useRef('');
@@ -409,33 +412,6 @@ export function useMessages({
       });
     });
   }, [getNextMessageId, setMessages]);
-
-  const scheduleUsageFlush = useCallback(() => {
-    if (usageFlushRafRef.current != null) return;
-    usageFlushRafRef.current = requestAnimationFrame(() => {
-      usageFlushRafRef.current = null;
-      const batch = usageBatchRef.current;
-      usageBatchRef.current = [];
-      if (batch.length === 0) return;
-      for (const { usage, isSnapshot } of batch) {
-        if (usage.inputTokens != null) {
-          if (isSnapshot) setTokenIn(usage.inputTokens);
-          else setTokenIn((v) => (v ?? 0) + usage.inputTokens);
-        }
-        if (usage.outputTokens != null) {
-          if (isSnapshot) setTokenOut(usage.outputTokens);
-          else setTokenOut((v) => (v ?? 0) + usage.outputTokens);
-        }
-        if (usage.cost != null) {
-          if (isSnapshot) setCost(Number(usage.cost));
-          else setCost((v) => (v ?? 0) + Number(usage.cost));
-        }
-        if (usage.ctxUsed != null) setCtxUsed(usage.ctxUsed);
-        if (usage.ctxMax != null) setCtxMax(usage.ctxMax);
-        if (usage.session != null) setSession(usage.session);
-      }
-    });
-  }, []);
 
   const clearRoundTimeout = useCallback(() => {
     if (roundTimeoutRef.current != null) {
@@ -839,8 +815,7 @@ export function useMessages({
     },
 
     onUsage: (usage, isSnapshot) => {
-      usageBatchRef.current.push({ usage, isSnapshot });
-      scheduleUsageFlush();
+      onUsage(usage, isSnapshot);
     },
 
     onModelName: (name) => setModelName(name),
@@ -925,7 +900,7 @@ export function useMessages({
     onStatusChange?.(ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
   }, [ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
 
-  // ── streamPaintRafRef / usageFlushRafRef cleanup ───────────────────────────
+  // ── streamPaintRafRef cleanup ──────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (cotSyncTimerRef.current != null) {
@@ -943,10 +918,6 @@ export function useMessages({
       if (streamPaintRafRef.current != null) {
         cancelAnimationFrame(streamPaintRafRef.current);
         streamPaintRafRef.current = null;
-      }
-      if (usageFlushRafRef.current != null) {
-        cancelAnimationFrame(usageFlushRafRef.current);
-        usageFlushRafRef.current = null;
       }
     };
   }, []);
@@ -998,6 +969,7 @@ export function useMessages({
     const thinkCmdMatch = fullContentForAMY.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
     if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
     pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
+    resetUsage();
     streamingMessageRef.current = '';
     fullTextRef.current = '';
     streamPaintShownLenRef.current = 0;
@@ -1118,6 +1090,7 @@ export function useMessages({
     const thinkCmdMatch = content.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
     if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
     pendingSystemReplyMap.current.set(newRequestId, isSystem);
+    resetUsage();
     streamingMessageRef.current = '';
     fullTextRef.current = '';
     streamPaintShownLenRef.current = 0;
