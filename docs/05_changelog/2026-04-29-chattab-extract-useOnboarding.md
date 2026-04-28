@@ -8,6 +8,7 @@
 ## 对外行为
 
 - `WelcomeHero` props、localStorage key、空会话时是否显示欢迎页逻辑不变。
+- `localStorage` key 仍为 `oct.onboarding.dismissed`，取值语义未变（`'1'` 表示已关闭引导）。
 - 回归结论：跳过引导、卡片动作 dismiss、DEV 欢迎页重置路径与重构前一致。
 
 ## 相关文档

@@ -396,6 +396,8 @@ ChatTab.v2.tsx 当前行数：X
 - `docs/05_changelog/` 一条变更记录
 - `docs/02_architecture/HOOKS_MAP.md` 更新新增的三个 hook
 
+**阶段性总结（Task 1–3）**：均为「职责抽取 + 编排收敛」式重构，**无产品行为或协议变更**；对外仍以 `ChatTab` 组合各 hook，`ChatTab` 的 props 与子组件 props 保持不变。
+
 ---
 
 *本文件是执行包，完成后保留在 `docs/_archive/refactor-chattab-2026-04/`，不进入主文档区。*
