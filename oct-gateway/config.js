@@ -1140,12 +1140,13 @@ const config = {
     return merged;
   })(),
   ai_library: (() => {
-    const def = {
-      enabled: true,
-      url: 'http://127.0.0.1:8001',
-      timeout_ms: 3000,
-      default_top_k: 3,
-    };
+      const def = {
+        enabled: true,
+        url: 'http://127.0.0.1:8001',
+        timeout_ms: 3000,
+        default_top_k: 3,
+        knowledge_search_enabled: false,
+      };
     const fromFile = _fileConfig.ai_library && typeof _fileConfig.ai_library === 'object' ? _fileConfig.ai_library : {};
     return { ...def, ...fromFile };
   })(),

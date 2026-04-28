@@ -196,7 +196,91 @@ function getStats() {
     ORDER BY last_attempt_at DESC
     LIMIT 1
   `).get() || null;
-  return { total, byDate, failed, latest, latestFailure, dbPath: resolveDbPath() };
+  const byModelVersion = database.prepare(`
+    SELECT embedding_model AS model, embedding_version AS version, COUNT(*) AS c
+    FROM raw_meta
+    GROUP BY embedding_model, embedding_version
+    ORDER BY c DESC, model ASC
+    LIMIT 20
+  `).all();
+  return { total, byDate, failed, latest, latestFailure, byModelVersion, dbPath: resolveDbPath() };
+}
+
+function listRecent(limit = 20, opts = {}) {
+  const database = initDatabase();
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+  let sql = `
+    SELECT uri, date, session, text_preview, user_text, assistant_text,
+           source_ts, created_at, embedding_model, embedding_version
+    FROM raw_meta
+  `;
+  const params = [];
+  if (opts.currentModelOnly) {
+    sql += ' WHERE embedding_model = ? AND embedding_version = ?';
+    params.push(
+      config.memory.vectorRecall.embedding.model || '',
+      config.memory.vectorRecall.embedding.version || 1
+    );
+  }
+  sql += ' ORDER BY rowid DESC LIMIT ?';
+  params.push(safeLimit);
+  return database.prepare(sql).all(...params);
+}
+
+function searchText(query, opts = {}) {
+  const database = initDatabase();
+  const raw = String(query || '').trim().toLowerCase();
+  if (!raw) return [];
+
+  const safeLimit = Math.max(1, Math.min(50, Number(opts.limit) || 10));
+  let sql = `
+    SELECT uri, date, session, text_preview, user_text, assistant_text,
+           source_ts, created_at, embedding_model, embedding_version
+    FROM raw_meta
+  `;
+  const params = [];
+  if (opts.currentModelOnly) {
+    sql += ' WHERE embedding_model = ? AND embedding_version = ?';
+    params.push(
+      config.memory.vectorRecall.embedding.model || '',
+      config.memory.vectorRecall.embedding.version || 1
+    );
+  }
+  sql += ' ORDER BY rowid DESC LIMIT 500';
+  const rows = database.prepare(sql).all(...params);
+
+  const tokens = raw.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  const scored = rows.map((row) => {
+    const user = String(row.user_text || '').toLowerCase();
+    const assistant = String(row.assistant_text || '').toLowerCase();
+    const preview = String(row.text_preview || '').toLowerCase();
+    const haystack = `${user}\n${assistant}\n${preview}`;
+
+    let score = 0;
+    if (haystack.includes(raw)) score += 1.0;
+    if (user.includes(raw)) score += 0.35;
+    if (assistant.includes(raw)) score += 0.25;
+    if (preview.includes(raw)) score += 0.2;
+
+    if (tokens.length > 1) {
+      let matchedTokens = 0;
+      for (const token of tokens) {
+        if (!token) continue;
+        if (haystack.includes(token)) matchedTokens += 1;
+      }
+      score += (matchedTokens / tokens.length) * 0.6;
+    }
+
+    return {
+      ...row,
+      lexical_score: Number(score.toFixed(4)),
+    };
+  });
+
+  return scored
+    .filter((row) => row.lexical_score >= 0.6)
+    .sort((a, b) => b.lexical_score - a.lexical_score || String(b.source_ts || '').localeCompare(String(a.source_ts || '')))
+    .slice(0, safeLimit);
 }
 
 function recordFailure(uri, error) {
@@ -231,6 +315,8 @@ module.exports = {
   insertVector,
   searchSimilar,
   getStats,
+  listRecent,
+  searchText,
   hasVector,
   recordFailure,
   clearFailure,

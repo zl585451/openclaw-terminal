@@ -117,8 +117,6 @@ export interface MemoryTabViewProps {
   setAmyWorkModeWriting: (v: boolean) => void;
   aiLibAutoStart: boolean;
   setAiLibAutoStart: (v: boolean) => void;
-  aiLibPath: string;
-  setAiLibPath: (v: string) => void;
   aiLibPort: number;
   setAiLibPort: (v: number) => void;
   aiLibStatus: AiLibStatusState;
@@ -149,8 +147,6 @@ export function MemoryTabView({
   setAmyWorkModeWriting,
   aiLibAutoStart,
   setAiLibAutoStart,
-  aiLibPath,
-  setAiLibPath,
   aiLibPort,
   setAiLibPort,
   aiLibStatus,
@@ -251,9 +247,9 @@ export function MemoryTabView({
       </div>
 
       <section className="settings-section settings-section-spaced">
-        <h3>AI.library 知识库（插件）</h3>
+        <h3>AI.library 项目书库</h3>
         <p className="settings-description-code">
-          与 Nocturne（端口 <strong>8000</strong>）并行；知识库服务默认 <strong>8001</strong>。开启「随 OCT 启动」后，打开应用会自动拉起 <code>api_server.py</code>，Gateway 会收到检索结果。
+          与 Nocturne（端口 <strong>8000</strong>）并行；项目书库服务默认 <strong>8001</strong>。当前版本由 OCT 内置 Node 服务提供上传、切章、列表和章节读取，不再依赖 Python。
         </p>
         {aiLibStatus && (
           <div className="settings-status-card settings-status-card-tight">
@@ -264,7 +260,7 @@ export function MemoryTabView({
               {' · '}
               端口占用：{aiLibStatus.portInUse ? '是' : '否'}
               {' · '}
-              OCT 托管进程：{aiLibStatus.managed ? '是' : '否'}
+              OCT 托管服务：{aiLibStatus.managed ? '是' : '否'}
             </p>
             {aiLibStatus.resolvedGatewayUrl ? (
               <p className="settings-status-line-muted">Gateway 使用：{aiLibStatus.resolvedGatewayUrl}</p>
@@ -281,16 +277,6 @@ export function MemoryTabView({
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-row">
-          <label>项目根目录</label>
-          <input
-            type="text"
-            className="settings-input settings-input-grow"
-            placeholder="例如 E:\AI.library（需含 api_server.py）"
-            value={aiLibPath}
-            onChange={(e) => setAiLibPath(e.target.value)}
-          />
         </div>
         <div className="settings-row">
           <label>端口</label>
@@ -315,7 +301,7 @@ export function MemoryTabView({
               try {
                 const r = await api.saveAiLibraryPlugin({
                   OCT_AI_LIBRARY_AUTO_START: aiLibAutoStart,
-                  OCT_AI_LIBRARY_PATH: aiLibPath.trim(),
+                  OCT_AI_LIBRARY_PATH: '',
                   OCT_AI_LIBRARY_PORT: aiLibPort,
                 });
                 if (!r?.success) {

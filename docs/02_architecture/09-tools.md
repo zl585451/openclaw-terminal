@@ -60,6 +60,8 @@ const result = await searcher.search({ query: '关键词' });
 
 ### search_knowledge（AI.library）
 
+> 2026-04-28: The default client now ships the project library core as a native Electron service. Professional audio RAG search is disabled by default and is no longer part of the default packaged client.
+
 || 项目 | 内容 |
 ||------|------|
 || 触发 | 用户询问音频/混音/母带/录音/声学等专业问题时，模型自动调用 |

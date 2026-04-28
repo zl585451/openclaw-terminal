@@ -126,12 +126,21 @@
 
 ---
 
-## 九、AI.library 插件
+## 九、AI.library 项目书库
 
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
-| `get-ai-library-plugin` | 获取 AI.library 配置 | - | `{ enabled, path?, port?, ... }` |
-| `save-ai-library-plugin` | 保存 AI.library 配置 | `{ enabled, path?, port?, autoStart?, installMode? }` | `{ success, error? }` |
+| `get-ai-library-plugin` | 获取内置项目书库配置与健康状态 | - | `{ enabled, autoStart?, port?, resolvedGatewayUrl?, healthy?, mode: "native", dataRoot?, ... }` |
+| `save-ai-library-plugin` | 保存内置项目书库配置 | `{ enabled, port?, autoStart?, installMode? }` | `{ success, error? }` |
+| `library:list` | 列出已上传书籍 | `{ limit?, offset? }` | `{ success, data }` |
+| `library:get` | 获取书籍详情 | `bookId` | `{ success, data }` |
+| `library:chapters` | 获取章节目录 | `bookId` | `{ success, data }` |
+| `library:chapter` | 读取章节正文 | `bookId, chapterIndex` | `{ success, data }` |
+| `library:pick-file` | 选择本地书籍文件 | - | `{ success, filePath }` |
+| `library:upload` | 上传并切分书籍 | `{ filePath, title, author? }` | `{ success, data }` |
+| `library:delete` | 删除书籍 | `bookId` | `{ success, data }` |
+
+AI.library 当前是 OCT 内置项目书库核心，默认使用 Electron/Node 原生实现。配置中不再需要 Python 项目路径；重知识检索/RAG 默认关闭，不属于当前稳定测试链路。
 
 ---
 

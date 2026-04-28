@@ -7,7 +7,7 @@ module.exports = {
     type: 'function',
     function: {
       name: 'search_knowledge',
-      description: '搜索音频专业知识库（AI.library），返回相关文档片段。当用户询问音频/声音/混音/母带/录音/声学等专业问题时调用。',
+      description: '搜索音频专业知识库（AI.library）。当前默认客户端仅启用项目书库，专业知识检索模块未启用时不要调用。',
       parameters: {
         type: 'object',
         properties: {
@@ -27,6 +27,9 @@ module.exports = {
     const ret = await aiLibrary.searchKnowledge(query, topK);
     const results = ret.results || [];
     const errorMsg = ret.error;
+    if (errorMsg === 'knowledge_search_disabled') {
+      return { success: false, results: [], formatted: '', hint: 'knowledge_search_disabled' };
+    }
     const formatted = errorMsg || aiLibrary.formatKnowledgeForPrompt(results);
     return { success: true, results, formatted, hint: errorMsg || undefined };
   },

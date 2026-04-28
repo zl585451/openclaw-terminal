@@ -246,7 +246,7 @@ export interface ElectronAPI {
     remove: (batchId: string) => Promise<ApiResult>;
   };
   onScriptAdapterEvent?: (callback: (payload: UnknownRecord) => void) => (() => void);
-  /** AI.library 书库 Phase 2：main 进程 fetch 代理，不经 Gateway */
+  /** AI.library 项目书库：Electron/Node 原生内置实现，不依赖 Python 后端 */
   library?: {
     list: (params?: { limit?: number; offset?: number }) => Promise<
       { success: true; data: unknown } | { success: false; error: string }

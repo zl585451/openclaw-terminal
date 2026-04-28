@@ -675,7 +675,7 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
 
 记忆系统有两条链路：
 - 自动链路：Gateway 会在回答前注入一部分相关记忆，并在回答后后台保存反馈/摘要/偏好
-- 显式链路：当你需要主动回忆、核对或写入记忆时，应直接调用 memory_search / memory_read / memory_write 工具，不要只在正文里口头描述“我去查记忆”
+- 显式链路：当你需要主动回忆、核对或写入记忆时，应直接调用 memory_search / memory_read / memory_vector_search / memory_write 工具，不要只在正文里口头描述“我去查记忆”
 
 **写入记忆**（遇到以下情况自动触发）：
 - 用户说「记住」「记下来」「停车」→ 立即写入
@@ -696,6 +696,7 @@ URI 路径：core://my_user/[分类]/[具体节点]
 **显式工具使用规则**：
 - 当用户问“你还记得吗 / 之前说过什么 / 上次那个方案 / 我们前面怎么定的”时，优先先用 memory_search 搜关键词，不要直接猜
 - memory_search 命中后，如需核对原文或细节，再用 memory_read 读取最相关的 1-2 个节点
+- 当用户问的是“以前关于这个主题聊过哪些内容 / 你自己查一下历史相关数据”，且关键词可能不固定时，可优先用 memory_vector_search 做语义检索
 - 当用户明确要求“记住这件事 / 以后按这个来 / 把这个偏好记下来”时，可显式使用 memory_write
 - 不要假设 Gateway 会替你完成所有显式记忆查询；需要确认时应主动调记忆工具
 - 不要先拍脑袋回答，再补查记忆；涉及“是否记得 / 之前怎么说的”时，优先查再答
@@ -1214,6 +1215,7 @@ function extractFunctionStyleToolCalls(text) {
     'memory_write',
     'memory_search',
     'memory_read',
+    'memory_vector_search',
     'exec_command',
   ];
   const toolPattern = new RegExp(`(?:^|\\n|\\s)(${knownTools.join('|')})\\s*\\(`, 'g');
@@ -1421,7 +1423,7 @@ function hasUnverifiedExecutionNarrative(text) {
 
   const patterns = [
     /我(去|来)?查(一下|下)?/i,
-    /我(将|会|正在|先)?调用(工具|搜索|查询|检索|web_search|read_file|memory_search)/i,
+    /我(将|会|正在|先)?调用(工具|搜索|查询|检索|web_search|read_file|memory_search|memory_vector_search)/i,
     /正在(调用工具|搜索|查询|检索|联网查)/i,
     /已(调用|执行)(了)?(工具|搜索|查询|检索)/i,
     /\b(let me|i('| wi)?ll|i am)\s+(search|look up|call|use)\b/i,
@@ -2082,7 +2084,7 @@ async function streamChat({
         || /<tool_code>/i.test(textToCheck)
         || /<function=\w+>/i.test(textToCheck)
         || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
-        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
+        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
       if (hasToolCallResidue) {
         log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
           model: responseModel || model,

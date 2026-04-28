@@ -85,8 +85,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     aiLibAutoStart,
     setAiLibAutoStart,
-    aiLibPath,
-    setAiLibPath,
     aiLibPort,
     setAiLibPort,
     aiLibStatus,
@@ -464,8 +462,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               setAmyWorkModeWriting={setAmyWorkModeWriting}
               aiLibAutoStart={aiLibAutoStart}
               setAiLibAutoStart={setAiLibAutoStart}
-              aiLibPath={aiLibPath}
-              setAiLibPath={setAiLibPath}
               aiLibPort={aiLibPort}
               setAiLibPort={setAiLibPort}
               aiLibStatus={aiLibStatus}

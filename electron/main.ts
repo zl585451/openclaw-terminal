@@ -8,6 +8,7 @@ dotenv.config({ path: envPath });
 
 import { app, BrowserWindow, ipcMain, Notification, dialog, screen, globalShortcut, shell } from 'electron';
 import * as fs from 'fs';
+import * as http from 'http';
 import * as os from 'os';
 import * as net from 'net';
 import { spawn } from 'child_process';
@@ -58,8 +59,8 @@ const DEFAULT_CONFIG = {
   OCT_USER_NAME: '用户',
   OCT_PERSONA_STYLE: 'warm',
   TTS_MINIMAX_VOICE_ID: 'male-qn-qingse',
-  /** 随 OCT 启动 AI.library（知识库 HTTP 服务，默认端口 8001，与 Nocturne :8000 错开） */
-  OCT_AI_LIBRARY_AUTO_START: false,
+  /** 随 OCT 启动内置项目书库服务（默认端口 8001，与 Nocturne :8000 错开） */
+  OCT_AI_LIBRARY_AUTO_START: true,
   OCT_AI_LIBRARY_PATH: '',
   OCT_AI_LIBRARY_PORT: 8001,
   /** SQLite busy_timeout(ms)，缓解 database is locked，默认 10000，可设为 5000~60000 */
@@ -124,19 +125,6 @@ function getNocturnePath(): string {
     if (fs.existsSync(p)) return p;
   }
   return '';
-}
-
-/** 仓库内嵌 AI.library 根目录（含 api_server.py）；打包后与开发时路径探测与 nocturne 一致。 */
-function resolveBundledAiLibraryRoot(): string {
-  const candidates = [
-    path.join(process.resourcesPath || '', 'ai_library'),
-    path.join(__dirname, '..', 'resources', 'ai_library'),
-    path.join(__dirname, '..', '..', 'resources', 'ai_library'),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(path.join(c, 'api_server.py'))) return c;
-  }
-  return path.join(__dirname, '..', 'resources', 'ai_library');
 }
 
 // 获取 Nocturne 预编译 exe 路径（PyInstaller 打包，无需 Python）
@@ -292,6 +280,62 @@ function ensureNocturneEnv(): void {
       console.warn('[Nocturne] Failed to write .env at', envPath, e);
     }
   }
+}
+
+async function repairNocturneRootNode(dbPath: string): Promise<void> {
+  const gatewayEntry = getOctGatewayEntry();
+  if (!gatewayEntry) return;
+
+  const betterSqlitePath = path.join(path.dirname(gatewayEntry), 'node_modules', 'better-sqlite3');
+  if (!fs.existsSync(betterSqlitePath) && !fs.existsSync(`${betterSqlitePath}.js`)) {
+    appendNocturneDiagnostic('root_repair_skipped', {
+      dbPath,
+      reason: 'better-sqlite3 not found',
+      betterSqlitePath,
+    });
+    return;
+  }
+
+  const script = `
+    const fs = require('fs');
+    const path = require('path');
+    const Database = require(process.argv[1]);
+    const dbPath = process.argv[2];
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new Database(dbPath);
+    db.pragma('foreign_keys = ON');
+    db.pragma('journal_mode = WAL');
+    db.exec("CREATE TABLE IF NOT EXISTS nodes (uuid VARCHAR(36) NOT NULL, created_at DATETIME, PRIMARY KEY (uuid))");
+    db.prepare("INSERT OR IGNORE INTO nodes (uuid, created_at) VALUES (?, CURRENT_TIMESTAMP)")
+      .run('00000000-0000-0000-0000-000000000000');
+    db.close();
+  `;
+
+  const runtime = app.isPackaged ? process.execPath : 'node';
+  await new Promise<void>((resolve) => {
+    const child = spawn(runtime, ['-e', script, betterSqlitePath, dbPath], {
+      cwd: path.dirname(gatewayEntry),
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+      env: buildOctChildEnv(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+    });
+    let stderr = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+    });
+    child.on('error', (e) => {
+      appendNocturneDiagnostic('root_repair_failed', { dbPath, error: e.message });
+      resolve();
+    });
+    child.on('exit', (code) => {
+      appendNocturneDiagnostic(code === 0 ? 'root_repair_ok' : 'root_repair_failed', {
+        dbPath,
+        code,
+        error: stderr.trim() || undefined,
+      });
+      resolve();
+    });
+  });
 }
 
 function isPortInUse(port: number): Promise<boolean> {
@@ -808,23 +852,410 @@ function synthesizeMiniMaxViaWebSocket({
   });
 }
 
-// ── AI.library 插件（与 Nocturne :8000 错开，默认 :8001）────────────────
+// ── 内置项目书库（与 Nocturne :8000 错开，默认 :8001）────────────────
 let aiLibraryProcess: ReturnType<typeof spawn> | null = null;
-let octAiLibraryAutoStart = false;
+let aiLibraryHttpServer: http.Server | null = null;
+let octAiLibraryAutoStart = true;
 let octAiLibraryPath = '';
 let octAiLibraryPort = AI_LIBRARY_DEFAULT_PORT;
 /** 注入子进程 Gateway 的 AI_LIBRARY_URL；空则让 oct-gateway 用自身默认 */
 let resolvedAiLibraryUrlForGateway = '';
 
+type NativeLibraryBook = {
+  id: string;
+  title: string;
+  author: string | null;
+  source_type: string;
+  source_format: string;
+  source_path: string;
+  total_chars: number;
+  chapter_count: number;
+  uploaded_at: string;
+  metadata: Record<string, unknown>;
+};
+
+type NativeLibraryChapter = {
+  id: string;
+  book_id: string;
+  chapter_index: number;
+  title: string | null;
+  start_char: number;
+  end_char: number;
+  char_count: number;
+  preview: string;
+};
+
+type NativeLibraryIndex = {
+  version: 1;
+  books: NativeLibraryBook[];
+  chapters: NativeLibraryChapter[];
+};
+
+function getNativeLibraryRoot(): string {
+  return path.join(app.getPath('userData'), 'ai_library_data', 'library');
+}
+
+function getNativeLibrarySourcesRoot(): string {
+  return path.join(getNativeLibraryRoot(), 'sources');
+}
+
+function getNativeLibraryIndexPath(): string {
+  return path.join(getNativeLibraryRoot(), 'library.json');
+}
+
+function ensureNativeLibraryDirs(): void {
+  fs.mkdirSync(getNativeLibrarySourcesRoot(), { recursive: true });
+}
+
+function readNativeLibraryIndex(): NativeLibraryIndex {
+  ensureNativeLibraryDirs();
+  const indexPath = getNativeLibraryIndexPath();
+  if (!fs.existsSync(indexPath)) {
+    return { version: 1, books: [], chapters: [] };
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+    return {
+      version: 1,
+      books: Array.isArray(parsed.books) ? parsed.books : [],
+      chapters: Array.isArray(parsed.chapters) ? parsed.chapters : [],
+    };
+  } catch {
+    return { version: 1, books: [], chapters: [] };
+  }
+}
+
+function writeNativeLibraryIndex(index: NativeLibraryIndex): void {
+  ensureNativeLibraryDirs();
+  fs.writeFileSync(getNativeLibraryIndexPath(), JSON.stringify(index, null, 2), 'utf-8');
+}
+
+function decodeLibraryText(buffer: Buffer): string {
+  const utf8 = buffer.toString('utf-8').replace(/^\ufeff/, '');
+  const replacementCount = (utf8.match(/\ufffd/g) || []).length;
+  if (replacementCount === 0) return utf8;
+  try {
+    const decoder = new TextDecoder('gb18030');
+    const decoded = decoder.decode(buffer).replace(/^\ufeff/, '');
+    const decodedReplacementCount = (decoded.match(/\ufffd/g) || []).length;
+    return decodedReplacementCount < replacementCount ? decoded : utf8;
+  } catch {
+    return utf8;
+  }
+}
+
+function normalizeChapterTitle(title: string): string {
+  let normalized = String(title || '').trim();
+  const patterns = [/^(第[一二三四五六七八九十百千零\d]+[章回])/, /^(Chapter\s+\d+)\b/i];
+  for (const pattern of patterns) {
+    while (true) {
+      const match = normalized.match(pattern);
+      if (!match) break;
+      const prefix = match[1];
+      const rest = normalized.slice(prefix.length).trimStart();
+      if (!rest.startsWith(prefix)) break;
+      normalized = `${prefix} ${rest.slice(prefix.length).trimStart()}`.trim();
+    }
+  }
+  return normalized;
+}
+
+function bodyTextWithoutTitle(content: string): string {
+  const lines = content.replace(/^\ufeff/, '').split(/\r?\n/);
+  if (lines.length === 0) return '';
+  return lines.slice(1).join('\n').trimStart();
+}
+
+function bodySignalChars(content: string): number {
+  const body = bodyTextWithoutTitle(content);
+  const compact = body.trim();
+  if (!compact || /^[\s\-_=~*#·.。…—]+$/.test(compact)) return 0;
+  return (body.match(/[\u4e00-\u9fffA-Za-z0-9]/g) || []).length;
+}
+
+function splitNativeLibraryChapters(text: string, bookId: string): NativeLibraryChapter[] {
+  const cleanText = String(text || '').replace(/^\ufeff/, '');
+  if (!cleanText) return [];
+  const patterns = [
+    /(?:^|\n)\s*(第[一二三四五六七八九十百千零\d]+[章回][^\n]*)/g,
+    /(?:^|\n)\s*(Chapter\s+\d+[^\n]*)/gi,
+    /(?:^|\n)\s*(#{1,3}\s+[^\n]+)/g,
+  ];
+  let matches: Array<{ start: number; title: string }> = [];
+  for (const pattern of patterns) {
+    matches = [];
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(cleanText)) !== null) {
+      const title = normalizeChapterTitle(match[1] || '');
+      const start = match.index + match[0].lastIndexOf(match[1] || '');
+      matches.push({ start, title });
+    }
+    if (matches.length > 0) break;
+  }
+  matches.sort((a, b) => a.start - b.start);
+  const deduped = matches.filter((entry, index) => index === 0 || entry.start !== matches[index - 1].start);
+
+  if (deduped.length === 0) {
+    return [{
+      id: crypto.randomUUID().replace(/-/g, '').slice(0, 12),
+      book_id: bookId,
+      chapter_index: 0,
+      title: '全文',
+      start_char: 0,
+      end_char: cleanText.length,
+      char_count: cleanText.length,
+      preview: cleanText.slice(0, 200),
+    }];
+  }
+
+  const candidates = deduped.map((entry, index) => {
+    const end = index + 1 < deduped.length ? deduped[index + 1].start : cleanText.length;
+    const content = cleanText.slice(entry.start, end);
+    return { ...entry, end, content, bodySignal: bodySignalChars(content) };
+  });
+  let startIndex = 0;
+  for (let i = 0; i < Math.min(candidates.length, 24); i += 1) {
+    if (candidates[i].bodySignal >= 80) {
+      startIndex = i;
+      break;
+    }
+  }
+  const filtered = candidates.slice(startIndex).filter((candidate) => candidate.bodySignal > 0);
+  const finalCandidates = filtered.length > 0 ? filtered : [{
+    start: 0,
+    end: cleanText.length,
+    title: '全文',
+    content: cleanText,
+    bodySignal: cleanText.length,
+  }];
+  return finalCandidates.map((candidate, index) => ({
+    id: crypto.randomUUID().replace(/-/g, '').slice(0, 12),
+    book_id: bookId,
+    chapter_index: index,
+    title: candidate.title,
+    start_char: candidate.start,
+    end_char: candidate.end,
+    char_count: candidate.content.length,
+    preview: candidate.content.slice(0, 200),
+  }));
+}
+
+function listNativeLibraryBooks(limit = 50, offset = 0): NativeLibraryBook[] {
+  const index = readNativeLibraryIndex();
+  return [...index.books]
+    .sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at)))
+    .slice(offset, offset + limit);
+}
+
+function getNativeLibraryBook(bookId: string): NativeLibraryBook | null {
+  const index = readNativeLibraryIndex();
+  return index.books.find((book) => book.id === bookId) || null;
+}
+
+function listNativeLibraryChapters(bookId: string): NativeLibraryChapter[] {
+  const index = readNativeLibraryIndex();
+  return index.chapters
+    .filter((chapter) => chapter.book_id === bookId)
+    .sort((a, b) => a.chapter_index - b.chapter_index);
+}
+
+function getNativeLibraryChapterText(bookId: string, chapterIndex: number): { chapter: NativeLibraryChapter; text: string } | null {
+  const book = getNativeLibraryBook(bookId);
+  if (!book) return null;
+  const chapter = listNativeLibraryChapters(bookId).find((item) => item.chapter_index === chapterIndex);
+  if (!chapter) return null;
+  const sourcePath = path.join(getNativeLibraryRoot(), book.source_path);
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Source file missing: ${book.source_path}`);
+  }
+  const text = decodeLibraryText(fs.readFileSync(sourcePath));
+  return {
+    chapter,
+    text: text.slice(chapter.start_char, chapter.end_char),
+  };
+}
+
+async function uploadNativeLibraryBook(params: { filePath: string; title: string; author?: string }): Promise<{
+  book_id: string;
+  chapter_count: number;
+  total_chars: number;
+}> {
+  const filePath = String(params.filePath || '').trim();
+  const title = String(params.title || '').trim();
+  const author = String(params.author || '').trim();
+  if (!filePath) throw new Error('filePath required');
+  if (!title) throw new Error('title required');
+  const ext = path.extname(filePath).toLowerCase();
+  if (!['.txt', '.md'].includes(ext)) {
+    throw new Error('暂不支持该格式，请使用 .txt 或 .md 文件');
+  }
+  const buffer = await fs.promises.readFile(filePath);
+  const text = decodeLibraryText(buffer);
+  const bookId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  const suffix = ext.slice(1);
+  const sourceRel = path.join('sources', `${bookId}.${suffix}`).replace(/\\/g, '/');
+  const sourceAbs = path.join(getNativeLibraryRoot(), sourceRel);
+  ensureNativeLibraryDirs();
+  await fs.promises.writeFile(sourceAbs, text, 'utf-8');
+  const chapters = splitNativeLibraryChapters(text, bookId);
+  const book: NativeLibraryBook = {
+    id: bookId,
+    title,
+    author: author || null,
+    source_type: 'novel',
+    source_format: suffix,
+    source_path: sourceRel,
+    total_chars: text.length,
+    chapter_count: chapters.length,
+    uploaded_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    metadata: {},
+  };
+  const index = readNativeLibraryIndex();
+  index.books = [book, ...index.books.filter((item) => item.id !== bookId)];
+  index.chapters = [...index.chapters.filter((item) => item.book_id !== bookId), ...chapters];
+  writeNativeLibraryIndex(index);
+  return {
+    book_id: bookId,
+    chapter_count: chapters.length,
+    total_chars: text.length,
+  };
+}
+
+function deleteNativeLibraryBook(bookId: string): boolean {
+  const index = readNativeLibraryIndex();
+  const book = index.books.find((item) => item.id === bookId);
+  if (!book) return false;
+  index.books = index.books.filter((item) => item.id !== bookId);
+  index.chapters = index.chapters.filter((item) => item.book_id !== bookId);
+  writeNativeLibraryIndex(index);
+  const sourcePath = path.join(getNativeLibraryRoot(), book.source_path);
+  if (fs.existsSync(sourcePath)) {
+    try {
+      fs.unlinkSync(sourcePath);
+    } catch {
+      /* ignore orphan source cleanup failures */
+    }
+  }
+  return true;
+}
+
+function sendNativeLibraryJson(res: http.ServerResponse, status: number, payload: unknown): void {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+  });
+  res.end(body);
+}
+
+function startNativeLibraryHttpServer(): Promise<boolean> {
+  if (aiLibraryHttpServer?.listening) return Promise.resolve(true);
+  ensureNativeLibraryDirs();
+  aiLibraryHttpServer = http.createServer((req, res) => {
+    try {
+      if (req.method === 'OPTIONS') {
+        sendNativeLibraryJson(res, 200, { success: true });
+        return;
+      }
+      const parsed = new URL(req.url || '/', `http://127.0.0.1:${octAiLibraryPort}`);
+      const pathname = decodeURIComponent(parsed.pathname);
+      if (req.method === 'GET' && pathname === '/health') {
+        sendNativeLibraryJson(res, 200, {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          version: 'native-library-core-1',
+          knowledge_base_ready: false,
+          library_ready: true,
+        });
+        return;
+      }
+      if (req.method === 'GET' && pathname === '/api/library/list') {
+        const limit = Math.max(1, Number(parsed.searchParams.get('limit') || 50));
+        const offset = Math.max(0, Number(parsed.searchParams.get('offset') || 0));
+        const books = listNativeLibraryBooks(limit, offset);
+        sendNativeLibraryJson(res, 200, { success: true, books, total: books.length });
+        return;
+      }
+      const chapterMatch = pathname.match(/^\/api\/library\/([^/]+)\/chapter\/(\d+)$/);
+      if (req.method === 'GET' && chapterMatch) {
+        const data = getNativeLibraryChapterText(chapterMatch[1], Number(chapterMatch[2]));
+        if (!data) {
+          sendNativeLibraryJson(res, 404, { success: false, detail: 'Chapter not found' });
+          return;
+        }
+        sendNativeLibraryJson(res, 200, { success: true, book_id: chapterMatch[1], ...data });
+        return;
+      }
+      const chaptersMatch = pathname.match(/^\/api\/library\/([^/]+)\/chapters$/);
+      if (req.method === 'GET' && chaptersMatch) {
+        const book = getNativeLibraryBook(chaptersMatch[1]);
+        if (!book) {
+          sendNativeLibraryJson(res, 404, { success: false, detail: 'Book not found' });
+          return;
+        }
+        sendNativeLibraryJson(res, 200, {
+          success: true,
+          book_id: chaptersMatch[1],
+          chapters: listNativeLibraryChapters(chaptersMatch[1]),
+        });
+        return;
+      }
+      const bookMatch = pathname.match(/^\/api\/library\/([^/]+)$/);
+      if (bookMatch && req.method === 'GET') {
+        const book = getNativeLibraryBook(bookMatch[1]);
+        if (!book) {
+          sendNativeLibraryJson(res, 404, { success: false, detail: 'Book not found' });
+          return;
+        }
+        sendNativeLibraryJson(res, 200, { success: true, book });
+        return;
+      }
+      if (bookMatch && req.method === 'DELETE') {
+        const deleted = deleteNativeLibraryBook(bookMatch[1]);
+        sendNativeLibraryJson(res, deleted ? 200 : 404, deleted
+          ? { success: true, deleted: bookMatch[1] }
+          : { success: false, detail: 'Book not found' });
+        return;
+      }
+      if (req.method === 'POST' && pathname === '/api/search') {
+        sendNativeLibraryJson(res, 501, {
+          results: [],
+          error: 'knowledge_search_disabled',
+          message: 'Native Project Library only provides /api/library/* in this build.',
+        });
+        return;
+      }
+      sendNativeLibraryJson(res, 404, { success: false, detail: 'Not Found' });
+    } catch (error: any) {
+      sendNativeLibraryJson(res, 500, { success: false, detail: error?.message || String(error) });
+    }
+  });
+  return new Promise((resolve) => {
+    aiLibraryHttpServer?.once('error', (error: any) => {
+      console.warn('[AI.library] Native library HTTP failed:', error?.message || String(error));
+      aiLibraryHttpServer = null;
+      resolve(false);
+    });
+    aiLibraryHttpServer?.listen(octAiLibraryPort, '127.0.0.1', () => {
+      console.log(`[AI.library] Native project library ready http://127.0.0.1:${octAiLibraryPort}`);
+      resolve(true);
+    });
+  });
+}
+
 function syncAiLibraryPluginConfigFromDisk(): void {
-  octAiLibraryAutoStart = false;
+  octAiLibraryAutoStart = true;
   octAiLibraryPath = '';
   octAiLibraryPort = AI_LIBRARY_DEFAULT_PORT;
 
   if (fs.existsSync(CONFIG_FILE)) {
     try {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      if (data.OCT_AI_LIBRARY_AUTO_START === true) octAiLibraryAutoStart = true;
+      if (typeof data.OCT_AI_LIBRARY_AUTO_START === 'boolean') {
+        octAiLibraryAutoStart = data.OCT_AI_LIBRARY_AUTO_START;
+      }
       if (typeof data.OCT_AI_LIBRARY_PATH === 'string') octAiLibraryPath = data.OCT_AI_LIBRARY_PATH.trim();
       if (typeof data.OCT_AI_LIBRARY_PORT === 'number' && data.OCT_AI_LIBRARY_PORT > 0) {
         octAiLibraryPort = data.OCT_AI_LIBRARY_PORT;
@@ -842,31 +1273,14 @@ function syncAiLibraryPluginConfigFromDisk(): void {
   const envPort = parseInt(process.env.OCT_AI_LIBRARY_PORT || '', 10);
   if (!Number.isNaN(envPort) && envPort > 0) octAiLibraryPort = envPort;
 
-  // 书库 Phase 1：用户未在 config / 环境变量中填写路径时，使用仓库内 resources/ai_library
-  if (!octAiLibraryPath) {
-    const bundled = resolveBundledAiLibraryRoot();
-    if (fs.existsSync(path.join(bundled, 'api_server.py'))) {
-      octAiLibraryPath = bundled;
-    }
-  }
-
   const explicitUrl = (process.env.AI_LIBRARY_URL || '').trim();
   if (explicitUrl) {
     resolvedAiLibraryUrlForGateway = explicitUrl;
-  } else if (octAiLibraryAutoStart && octAiLibraryPath) {
+  } else if (octAiLibraryAutoStart) {
     resolvedAiLibraryUrlForGateway = `http://127.0.0.1:${octAiLibraryPort}`;
   } else {
     resolvedAiLibraryUrlForGateway = '';
   }
-}
-
-function getAiLibraryPythonCommand(root: string): { cmd: string; args: string[] } {
-  const winVenv = path.join(root, 'venv', 'Scripts', 'python.exe');
-  if (fs.existsSync(winVenv)) return { cmd: winVenv, args: ['api_server.py'] };
-  const unixVenv = path.join(root, 'venv', 'bin', 'python3');
-  if (fs.existsSync(unixVenv)) return { cmd: unixVenv, args: ['api_server.py'] };
-  const py = getPythonForNocturne();
-  return { cmd: py[0], args: [...py.slice(1), 'api_server.py'] };
 }
 
 /** OCT 托管启动 AI.library；端口已占用时视为已运行 */
@@ -875,20 +1289,9 @@ async function startAiLibraryBackend(): Promise<boolean> {
   if (!octAiLibraryAutoStart) {
     return false;
   }
-  if (!octAiLibraryPath) {
-    console.warn('[AI.library] 已启用自动启动但未配置 OCT_AI_LIBRARY_PATH');
-    mainWindow?.webContents.send('openclaw-log-lines', ['[AI.library] 请在设置中填写知识库目录路径']);
-    return false;
-  }
-
-  const root = path.resolve(octAiLibraryPath.replace(/^["']|["']$/g, ''));
-  if (!fs.existsSync(path.join(root, 'api_server.py'))) {
-    console.warn('[AI.library] 目录无效（缺少 api_server.py）:', root);
-    mainWindow?.webContents.send('openclaw-log-lines', [`[AI.library] 路径无效: ${root}`]);
-    return false;
-  }
 
   if (aiLibraryProcess && !aiLibraryProcess.killed) return true;
+  if (aiLibraryHttpServer?.listening) return true;
 
   if (await isPortInUse(octAiLibraryPort)) {
     console.log('[AI.library] 端口', octAiLibraryPort, '已占用，跳过启动（可能已在运行）');
@@ -896,55 +1299,14 @@ async function startAiLibraryBackend(): Promise<boolean> {
     return true;
   }
 
-  const { cmd, args } = getAiLibraryPythonCommand(root);
-  const aiLibraryDataRoot = path.join(app.getPath('userData'), 'ai_library_data');
-  console.log('[AI.library] 启动:', cmd, args.join(' '), 'cwd=', root);
-  aiLibraryProcess = spawn(cmd, args, {
-    cwd: root,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-    detached: false,
-    env: buildOctChildEnv({
-      API_HOST: '0.0.0.0',
-      API_PORT: String(octAiLibraryPort),
-      PYTHONIOENCODING: 'utf-8',
-      AI_LIBRARY_DATA_ROOT: aiLibraryDataRoot,
-      AI_LIBRARY_DOCS_ROOT: path.join(aiLibraryDataRoot, 'documents'),
-    }),
-  });
-
-  aiLibraryProcess.stderr?.on('data', (data: Buffer) => {
-    const msg = data.toString().trim();
-    if (msg) console.log('[AI.library]', msg);
-  });
-  aiLibraryProcess.on('exit', (code) => {
-    console.log('[AI.library] 进程退出 code:', code);
-    aiLibraryProcess = null;
-  });
-  aiLibraryProcess.on('error', (err) => {
-    console.error('[AI.library] 启动失败:', err.message);
-    aiLibraryProcess = null;
-  });
-
-  for (let i = 0; i < 40; i++) {
-    await new Promise((r) => setTimeout(r, 250));
-    try {
-      const res = await fetch(`http://127.0.0.1:${octAiLibraryPort}/health`, {
-        signal: AbortSignal.timeout(1500),
-      });
-      if (res.ok) {
-        console.log('[AI.library] 已就绪 http://127.0.0.1:' + octAiLibraryPort);
-        mainWindow?.webContents.send('openclaw-log-lines', [
-          `[AI.library] 知识库服务已启动 ✅ http://127.0.0.1:${octAiLibraryPort}`,
-        ]);
-        return true;
-      }
-    } catch {
-      /* retry */
-    }
+  const ok = await startNativeLibraryHttpServer();
+  if (ok) {
+    mainWindow?.webContents.send('openclaw-log-lines', [
+      `[AI.library] 内置项目书库已启动 ✅ http://127.0.0.1:${octAiLibraryPort}`,
+    ]);
+    return true;
   }
-  console.warn('[AI.library] 启动超时，请检查 api_server 日志');
-  mainWindow?.webContents.send('openclaw-log-lines', ['[AI.library] 启动超时，对话仍可继续（检索将静默跳过）']);
+  mainWindow?.webContents.send('openclaw-log-lines', ['[AI.library] 内置项目书库启动失败，对话仍可继续']);
   return false;
 }
 
@@ -2756,18 +3118,20 @@ ipcMain.handle('get-ai-library-plugin', async () => {
   } catch {
     healthy = false;
   }
-  const managed = !!(aiLibraryProcess && !aiLibraryProcess.killed);
+  const managed = !!(aiLibraryHttpServer?.listening || (aiLibraryProcess && !aiLibraryProcess.killed));
   const portInUse = await isPortInUse(octAiLibraryPort);
   return {
     success: true,
     data: {
       OCT_AI_LIBRARY_AUTO_START: octAiLibraryAutoStart,
-      OCT_AI_LIBRARY_PATH: octAiLibraryPath,
+      OCT_AI_LIBRARY_PATH: '',
       OCT_AI_LIBRARY_PORT: octAiLibraryPort,
       resolvedGatewayUrl: resolvedAiLibraryUrlForGateway,
       managed,
       portInUse,
       healthy,
+      mode: 'native',
+      dataRoot: getNativeLibraryRoot(),
     },
   };
 });
@@ -2804,6 +3168,12 @@ ipcMain.handle(
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
       loadOpenClawConfig();
 
+      if (aiLibraryHttpServer?.listening) {
+        await new Promise<void>((resolve) => {
+          aiLibraryHttpServer?.close(() => resolve());
+        });
+        aiLibraryHttpServer = null;
+      }
       if (aiLibraryProcess && !aiLibraryProcess.killed) {
         try {
           aiLibraryProcess.kill('SIGTERM');
@@ -3180,6 +3550,12 @@ async function startNocturneBackend(): Promise<boolean> {
   if (nocturneBackendProcess && !nocturneBackendProcess.killed) return true;
 
   ensureNocturneEnv();
+  const userDataDir = app.getPath('userData');
+  const envInfo = getNocturnePath() ? readNocturneEnvConfig(getNocturnePath()) : null;
+  const dbPath = envInfo?.dbPath || path.join(userDataDir, 'nocturne_memory.db');
+  const dbUrl = envInfo?.dbUrl || `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
+  await repairNocturneRootNode(dbPath);
+
   const portInUse = await isPortInUse(8000);
   if (portInUse) {
     console.log('[Nocturne] 端口 8000 已被占用，跳过启动');
@@ -3199,11 +3575,6 @@ async function startNocturneBackend(): Promise<boolean> {
       return DEFAULT_CONFIG.NOCTURNE_BUSY_TIMEOUT ?? 10000;
     })()
   );
-
-  const userDataDir = app.getPath('userData');
-  const envInfo = getNocturnePath() ? readNocturneEnvConfig(getNocturnePath()) : null;
-  const dbPath = envInfo?.dbPath || path.join(userDataDir, 'nocturne_memory.db');
-  const dbUrl = envInfo?.dbUrl || `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
 
   // 优先使用预编译 exe（打包后无需 Python）
   const exePath = getNocturneExePath();
@@ -4358,53 +4729,44 @@ ipcMain.handle('script-adapter-batch-delete', (_event, payload: { batchId: strin
   });
 });
 
-// ── AI.library 书库 Phase 2：main 进程直连 fetch（不经 Gateway）────────────────
-function getAiLibraryBase(): string {
-  syncAiLibraryPluginConfigFromDisk();
-  return (resolvedAiLibraryUrlForGateway || 'http://127.0.0.1:8001').replace(/\/$/, '');
-}
-
-async function aiLibraryFetch<T = unknown>(
-  path: string,
-  init?: RequestInit,
-): Promise<{ success: true; data: T } | { success: false; error: string }> {
-  try {
-    const url = `${getAiLibraryBase()}${path}`;
-    const resp = await fetch(url, {
-      ...init,
-      headers: {
-        ...(init?.method && init.method !== 'GET' && init.method !== 'HEAD'
-          ? { 'Content-Type': 'application/json' }
-          : {}),
-        ...(init?.headers || {}),
-      },
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      return { success: false, error: `AI_LIBRARY_HTTP_${resp.status}: ${body.slice(0, 200)}` };
-    }
-    const data = (await resp.json()) as T;
-    return { success: true, data };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `AI_LIBRARY_FETCH_FAILED: ${msg}` };
-  }
-}
-
+// ── AI.library 书库 Phase 2：Electron 原生实现（不经 Python）────────────────
 ipcMain.handle('library:list', async (_event, payload: { limit?: number; offset?: number }) => {
   const limit = Number(payload?.limit) > 0 ? Math.floor(Number(payload.limit)) : 50;
   const offset = Number(payload?.offset) >= 0 ? Math.floor(Number(payload.offset)) : 0;
-  return aiLibraryFetch(`/api/library/list?limit=${limit}&offset=${offset}`);
+  try {
+    const books = listNativeLibraryBooks(limit, offset);
+    return { success: true, data: { success: true, books, total: books.length } };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_LIST_FAILED: ${msg}` };
+  }
 });
 
 ipcMain.handle('library:get', async (_event, payload: { bookId: string }) => {
   if (!payload?.bookId) return { success: false, error: 'bookId required' };
-  return aiLibraryFetch(`/api/library/${encodeURIComponent(payload.bookId)}`);
+  try {
+    const book = getNativeLibraryBook(payload.bookId);
+    if (!book) return { success: false, error: `Book ${payload.bookId} not found` };
+    return { success: true, data: { success: true, book } };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_GET_FAILED: ${msg}` };
+  }
 });
 
 ipcMain.handle('library:chapters', async (_event, payload: { bookId: string }) => {
   if (!payload?.bookId) return { success: false, error: 'bookId required' };
-  return aiLibraryFetch(`/api/library/${encodeURIComponent(payload.bookId)}/chapters`);
+  try {
+    const book = getNativeLibraryBook(payload.bookId);
+    if (!book) return { success: false, error: `Book ${payload.bookId} not found` };
+    return {
+      success: true,
+      data: { success: true, book_id: payload.bookId, chapters: listNativeLibraryChapters(payload.bookId) },
+    };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_CHAPTERS_FAILED: ${msg}` };
+  }
 });
 
 ipcMain.handle('library:chapter', async (_event, payload: { bookId: string; chapterIndex: number }) => {
@@ -4412,9 +4774,14 @@ ipcMain.handle('library:chapter', async (_event, payload: { bookId: string; chap
   if (typeof payload?.chapterIndex !== 'number' || Number.isNaN(payload.chapterIndex)) {
     return { success: false, error: 'chapterIndex required' };
   }
-  return aiLibraryFetch(
-    `/api/library/${encodeURIComponent(payload.bookId)}/chapter/${payload.chapterIndex}`,
-  );
+  try {
+    const data = getNativeLibraryChapterText(payload.bookId, payload.chapterIndex);
+    if (!data) return { success: false, error: `Chapter ${payload.chapterIndex} not found in book ${payload.bookId}` };
+    return { success: true, data: { success: true, book_id: payload.bookId, ...data } };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_CHAPTER_FAILED: ${msg}` };
+  }
 });
 
 ipcMain.handle('library:pickFile', async () => {
@@ -4450,30 +4817,7 @@ ipcMain.handle('library:upload', async (_event, payload: {
   if (!title) return { success: false, error: 'title required' };
 
   try {
-    const ext = path.extname(filePath).toLowerCase();
-    if (!['.txt', '.md'].includes(ext)) {
-      return { success: false, error: '暂不支持该格式，请使用 .txt 或 .md 文件' };
-    }
-
-    const buffer = await fs.promises.readFile(filePath);
-    const filename = path.basename(filePath);
-    const form = new FormData();
-    form.append('file', new Blob([buffer]), filename);
-    form.append('title', title);
-    form.append('author', author);
-    form.append('source_type', 'novel');
-
-    const resp = await fetch(`${getAiLibraryBase()}/api/library/upload`, {
-      method: 'POST',
-      body: form,
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      return { success: false, error: `UPLOAD_HTTP_${resp.status}: ${body.slice(0, 200)}` };
-    }
-
-    const data = await resp.json();
+    const data = await uploadNativeLibraryBook({ filePath, title, author });
     return { success: true, data };
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -4483,7 +4827,14 @@ ipcMain.handle('library:upload', async (_event, payload: {
 
 ipcMain.handle('library:delete', async (_event, payload: { bookId: string }) => {
   if (!payload?.bookId) return { success: false, error: 'bookId required' };
-  return aiLibraryFetch(`/api/library/${encodeURIComponent(payload.bookId)}`, { method: 'DELETE' });
+  try {
+    const deleted = deleteNativeLibraryBook(payload.bookId);
+    if (!deleted) return { success: false, error: `Book ${payload.bookId} not found` };
+    return { success: true, data: { success: true, deleted: payload.bookId } };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_DELETE_FAILED: ${msg}` };
+  }
 });
 
 ipcMain.handle('delivery:exportMarkdown', async (_event, payload: { filename: string; content: string }) => {
@@ -5233,6 +5584,10 @@ app.on('will-quit', async () => {
     try { aiLibraryProcess.kill('SIGTERM'); } catch {}
     aiLibraryProcess = null;
   }
+  if (aiLibraryHttpServer?.listening) {
+    await new Promise<void>((resolve) => aiLibraryHttpServer?.close(() => resolve()));
+    aiLibraryHttpServer = null;
+  }
   
   // 强制清理端口，确保下次启动时不会被占用
   try {
@@ -5277,6 +5632,10 @@ app.on('before-quit', async (e) => {
   if (aiLibraryProcess && !aiLibraryProcess.killed) {
     try { aiLibraryProcess.kill('SIGTERM'); } catch {}
     aiLibraryProcess = null;
+  }
+  if (aiLibraryHttpServer?.listening) {
+    await new Promise<void>((resolve) => aiLibraryHttpServer?.close(() => resolve()));
+    aiLibraryHttpServer = null;
   }
 
   // 3. 强制清理端口
