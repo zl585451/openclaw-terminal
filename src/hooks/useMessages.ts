@@ -19,6 +19,8 @@ import { useProject } from '../contexts/ProjectContext';
 import { useTokenUsage } from './useTokenUsage';
 import { useActivityTimeline } from './useActivityTimeline';
 import { useStreamPainting } from './useStreamPainting';
+import type { ActivityEntry } from './useActivityTimeline';
+export type { ActivityEntryType, ActivityEntry } from './useActivityTimeline';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
 function isSystemCommand(text: string): boolean {
@@ -56,28 +58,6 @@ export interface ActiveTool {
   tool: string;
   state: 'executing' | 'done' | 'error';
   resultPreview?: string;
-}
-
-export type ActivityEntryType =
-  | 'thinking_placeholder'
-  | 'cot'
-  | 'tool_call'
-  | 'tool_result'
-  | 'keepalive_hint';
-
-export interface ActivityEntry {
-  id: string;
-  type: ActivityEntryType;
-  timestamp: number;
-  content?: string;
-  toolName?: string;
-  argsPreview?: string;
-  callId?: string;
-  resultPreview?: string;
-  elapsedMs?: number;
-  isError?: boolean;
-  hint?: string;
-  keepaliveElapsedMs?: number;
 }
 
 export interface GatewayCapabilities {
