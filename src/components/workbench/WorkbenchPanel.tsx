@@ -27,9 +27,11 @@ export default function WorkbenchPanel() {
       workbench.createDocument({
         title: `${activeProject.title} · ${title}`,
         content: text,
-        artifactType: 'document',
+        artifactType: 'script',
         mode: 'markdown',
         origin: 'user',
+        projectBookId: activeProject.id,
+        projectChapterIndex: chapterIndex,
       });
     } catch (e) {
       setChapterError(e instanceof Error ? e.message : String(e));

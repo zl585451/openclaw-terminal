@@ -56,6 +56,8 @@ function sanitizeWorkbenchDocument(value: unknown): WorkbenchDocument | null {
     mode,
     content,
     language,
+    projectBookId: typeof raw.projectBookId === 'string' ? raw.projectBookId : undefined,
+    projectChapterIndex: Number.isInteger(raw.projectChapterIndex) ? raw.projectChapterIndex : undefined,
     artifactType: isWorkbenchArtifactType(raw.artifactType)
       ? raw.artifactType
       : inferArtifactType(mode),
@@ -250,6 +252,8 @@ export function createWorkbenchDocument(
     content: overrides.content ?? content,
     language: overrides.language || language,
     origin: overrides.origin || 'user',
+    projectBookId: overrides.projectBookId,
+    projectChapterIndex: Number.isInteger(overrides.projectChapterIndex) ? overrides.projectChapterIndex : undefined,
     sourceMessageId: overrides.sourceMessageId,
     explanation: overrides.explanation,
     scriptCharacterLibrary: overrides.scriptCharacterLibrary,

@@ -45,6 +45,14 @@ export const scriptStyles = {
     textOverflow: 'ellipsis',
   } as React.CSSProperties,
 
+  sidebarStatus: {
+    padding: '0 10px 8px 10px',
+    fontSize: '11px',
+    color: 'var(--text-tertiary)',
+    borderBottom: '1px solid var(--border-subtle)',
+    marginBottom: '4px',
+  } as React.CSSProperties,
+
   sidebarToggleBtn: {
     border: '1px solid var(--border-subtle)',
     borderRadius: '6px',

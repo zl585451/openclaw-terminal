@@ -39,6 +39,8 @@ export interface WorkbenchDocument {
   content: string;
   language: string;
   origin: 'ai' | 'user';
+  projectBookId?: string;
+  projectChapterIndex?: number;
   sourcePath?: string;
   draftCachePath?: string;
   sourceMessageId?: string;

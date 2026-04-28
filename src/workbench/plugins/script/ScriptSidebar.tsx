@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ScriptChapter } from '../../../utils/scriptParser';
 import { scriptStyles } from './styles';
 
 const SIDEBAR_ITEM_HEIGHT = 42;
@@ -11,12 +10,14 @@ export function ScriptSidebar({
   activeIdx,
   onToggleCollapsed,
   onSelectChapter,
+  statusText,
 }: {
   collapsed: boolean;
-  chapters: ScriptChapter[];
+  chapters: Array<{ title: string }>;
   activeIdx: number;
   onToggleCollapsed: () => void;
   onSelectChapter: (idx: number) => void;
+  statusText?: string | null;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -96,6 +97,9 @@ export function ScriptSidebar({
           {collapsed ? '›' : '‹'}
         </button>
       </div>
+      {!collapsed && statusText && (
+        <div style={scriptStyles.sidebarStatus}>{statusText}</div>
+      )}
       {!collapsed && (
         <div
           ref={listRef}

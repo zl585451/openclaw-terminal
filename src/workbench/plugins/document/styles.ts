@@ -100,6 +100,16 @@ export const documentWorkbenchStyles = {
     textOverflow: 'ellipsis',
   } as React.CSSProperties,
 
+  topbarHint: {
+    fontSize: '11px',
+    color: 'var(--text-tertiary)',
+    marginLeft: '12px',
+    maxWidth: '240px',
+    whiteSpace: 'nowrap' as const,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  } as React.CSSProperties,
+
   section: {
     padding: '28px 32px 8px',
   } as React.CSSProperties,
