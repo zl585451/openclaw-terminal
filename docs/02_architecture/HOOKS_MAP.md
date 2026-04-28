@@ -91,6 +91,9 @@
 
 ## `useTtsPlayback`
 
+- **输入 / 输出签名摘要**：
+  - `useTtsPlayback(settings: { ttsPlayback: boolean; ttsProvider: TtsProvider })`（`TtsProvider` 见 `SettingsContext`）
+  - **仅对外返回**：`speakingMessageId`、`ttsError`、`playTTSForMessage`、`stopTts`（无 ref / 内部 setter 泄漏）
 - **职责**：
   - 管理回复朗读：`speakingMessageId`、`ttsError`
   - 浏览器 `speechSynthesis` 与 Electron `tts-speak` + `Audio` 播放路径、auto 回退与错误通知
@@ -105,4 +108,15 @@
   - `extractAssistantCotAndMain`
   - 与 `ChatTab`/其他模块相同的 `ipcRenderer` 存根模式（非 Electron 环境下 no-op）
 - **不暴露**：内部 `setState`、audio/utterance ref 不导出。
+
+---
+
+## `useImageStudio`
+
+- **输入 / 输出签名摘要**：
+  - `useImageStudio(messages: ChatMessage[])`（需订阅最新消息以在 assistant 成文后注入优化后的生图 prompt）
+  - **对外返回**：`imageStudioOpen`、`imageStudioInitialPrompt`、`openImageStudio(prefill?)`、`closeImageStudio`、`toggleImageStudio`、`registerPromptInjector`、`markPendingPromptOptimization`
+- **职责**：生图工作台侧栏开关、初始 prompt；Escape 关闭；与 `ImageStudio` 的 `registerPromptInjector` / 聊天 `quickSend` 回流配合的 pending 注入逻辑。
+- **依赖**：`extractOptimizedImagePrompt`（`src/utils/extractOptimizedImagePrompt.ts`）
+- **不暴露**：内部 injector / pending / last-id ref 不导出。
 

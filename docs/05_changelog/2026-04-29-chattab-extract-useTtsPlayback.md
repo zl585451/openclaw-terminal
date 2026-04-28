@@ -3,7 +3,7 @@
 ## 变更摘要
 
 - 从 `ChatTab.v2.tsx` 抽出 TTS 播放状态与逻辑至 `src/hooks/useTtsPlayback.ts`。
-- 将原组件内联的 `stripMarkdown` 提取为 `src/utils/stripMarkdown.ts`，供 TTS hook 与后续复用（生图 prompt 提取仍不依赖该工具函数）。
+- 将原组件内联的 `stripMarkdown` 提取为 `src/utils/stripMarkdown.ts`，供 TTS hook 使用。**动机**：`useTtsPlayback` 若从 `ChatTab.v2` 引用同名工具函数会形成 `hooks → ui/chat → hooks` 的循环依赖风险，故将纯文本工具下沉到 `utils/`（生图 prompt 提取当时仍保留在 ChatTab 内联，与 `stripMarkdown` 无关）。
 
 ## 对外行为
 

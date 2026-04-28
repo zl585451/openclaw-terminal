@@ -23,7 +23,6 @@ import { useCanvas } from '../../contexts/CanvasContext';
 import { workbenchBus } from '../../workbench/WorkbenchBus';
 // playClickSound, resetSoundCounter 已迁移到 useTypewriter hook
 import { stripThinkModeMarker } from '../../utils/socraticTemplates';
-import { extractAssistantCotAndMain } from '../../utils/cotExtract';
 import { clearProcessedMarkdownCache } from '../../utils/markdownPreprocess';
 import { createMarkdownComponents } from './markdownComponents';
 import ChatInputArea from './ChatInput';
@@ -36,6 +35,7 @@ import type { CapabilityId, CapabilityStatus } from '../../core/capabilities/typ
 import { InlineInquiry } from '../../components/inlineInquiry/InlineInquiry';
 import { useInlineInquiry } from '../../hooks/useInlineInquiry';
 import { useTtsPlayback } from '../../hooks/useTtsPlayback';
+import { useImageStudio } from '../../hooks/useImageStudio';
 import { parseClarifyCard } from '../../core/clarifyCard/parser';
 import type { ClarifyCardSpec } from '../../core/clarifyCard/types';
 import { CapabilityBar } from '../../components/capabilityBar/CapabilityBar';
@@ -118,40 +118,6 @@ export interface UploadedFile {
 
 
 
-
-
-function extractOptimizedImagePrompt(raw: string): string {
-  const withoutThinkMarker = stripThinkModeMarker(String(raw || ''));
-  const extracted = extractAssistantCotAndMain(withoutThinkMarker);
-  let text = (extracted.mainContent || withoutThinkMarker || '')
-    .replace(/\[\/?cot\]/gi, '')
-    .trim();
-
-  const fenced = text.match(/```(?:\w+)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]?.trim()) {
-    text = fenced[1].trim();
-  }
-
-  const lines = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !/^\[cot\]?$/i.test(line))
-    .filter((line) => !/^(用户|要求|说明|规则)\s*[:：]/.test(line))
-    .filter((line) => !/^生图提示词\s*[:：]/.test(line))
-    .filter((line) => !/^(请帮我|请你|下面是|以下是)/.test(line))
-    .filter((line) => !/^(只输出|不要解释|不要加引号|不要使用\s*markdown)/i.test(line))
-    .filter((line) => !/^\d+[.)、]\s*/.test(line));
-
-  const joined = lines.join(' ').trim();
-  const unquoted = joined
-    .replace(/^["'`]+/, '')
-    .replace(/["'`]+$/, '')
-    .trim();
-
-  return unquoted;
-}
-
 interface ChatTabProps {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -167,6 +133,15 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     ttsPlayback: settings.ttsPlayback,
     ttsProvider: settings.ttsProvider,
   });
+  const {
+    imageStudioOpen,
+    imageStudioInitialPrompt,
+    openImageStudio,
+    closeImageStudio,
+    toggleImageStudio,
+    registerPromptInjector,
+    markPendingPromptOptimization,
+  } = useImageStudio(messages);
   const { permissions } = usePermissions();
   const canvasBridge = useCanvasBridge();
   const { setNodeInspectHandler } = useCanvas();
@@ -219,8 +194,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [, setLogPath] = useState('');
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [capBarSetupTarget, setCapBarSetupTarget] = useState<CapabilityId | null>(null);
-  const [imageStudioOpen, setImageStudioOpen] = useState(false);
-  const [imageStudioInitialPrompt, setImageStudioInitialPrompt] = useState('');
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     try {
       return localStorage.getItem('oct.onboarding.dismissed') === '1';
@@ -228,17 +201,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       return false;
     }
   });
-
-  useEffect(() => {
-    if (!imageStudioOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setImageStudioOpen(false);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [imageStudioOpen]);
 
   const getToolDisplayName = useCallback((tool: string): string => {
     const map: Record<string, string> = {
@@ -267,9 +229,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   // ── UI-only refs ──────────────────────────────────────────────────────────
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const imagePromptInjectorRef = useRef<((prompt: string) => void) | null>(null);
-  const pendingImagePromptRef = useRef(false);
-  const lastImagePromptAssistantIdRef = useRef<number | null>(null);
   const sendClarifyReplyRef = useRef<(text: string) => void>(() => {});
 
   // ── scrollBridgeRef：打破 useMessages↔useScrollManager 的循环依赖 ───────
@@ -334,12 +293,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     try { localStorage.setItem('oct.onboarding.dismissed', '1'); } catch { /* ignore */ }
   }, []);
 
-  const openImageStudioWithPrefill = useCallback((prefill?: string) => {
-    const next = (prefill || '').trim();
-    setImageStudioInitialPrompt(next);
-    setImageStudioOpen(true);
-  }, []);
-
   const buildPromptOptimizeRequest = useCallback((prompt: string) => (
     `请帮我优化以下生图提示词。只输出优化后的英文 prompt，不要解释，不要加引号，不要使用 markdown：\n\n生图提示词：${prompt}`
   ), []);
@@ -402,10 +355,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         }
 
         dismissOnboarding();
-        openImageStudioWithPrefill(card.action.prefill);
+        openImageStudio(card.action.prefill);
         const prefill = (card.action.prefill || '').trim();
         if (prefill) {
-          pendingImagePromptRef.current = true;
+          markPendingPromptOptimization();
           msgs.quickSend(buildPromptOptimizeRequest(prefill));
         }
       }
@@ -419,7 +372,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         return;
       }
     },
-    [appendImageCapabilityGuideMessage, appendMusicCapabilityGuideMessage, buildPromptOptimizeRequest, dismissOnboarding, msgs, onSwitchTab, openImageStudioWithPrefill],
+    [appendImageCapabilityGuideMessage, appendMusicCapabilityGuideMessage, buildPromptOptimizeRequest, dismissOnboarding, markPendingPromptOptimization, msgs, onSwitchTab, openImageStudio],
   );
 
   const handleSkipOnboarding = useCallback(() => {
@@ -437,7 +390,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         setCapBarSetupTarget('image_gen');
         return;
       }
-      openImageStudioWithPrefill(card.action.prefill);
+      openImageStudio(card.action.prefill);
       return;
     }
     if (card.action.type === 'open_tab' && card.action.tabId === 'sound') {
@@ -447,7 +400,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       }
       onSwitchTab?.('sound');
     }
-  }, [appendImageCapabilityGuideMessage, appendMusicCapabilityGuideMessage, onSwitchTab, openImageStudioWithPrefill]);
+  }, [appendImageCapabilityGuideMessage, appendMusicCapabilityGuideMessage, onSwitchTab, openImageStudio]);
 
   const handleCapabilityBarSetup = useCallback((capId: CapabilityId) => {
     setCapBarSetupTarget(capId);
@@ -584,19 +537,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       },
     ]));
   }, [getNextMessageId, setMessages]);
-
-  useEffect(() => {
-    if (!pendingImagePromptRef.current) return;
-    const lastMsg = messages[messages.length - 1];
-    if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.isStreaming) return;
-    if (lastImagePromptAssistantIdRef.current === lastMsg.id) return;
-
-    lastImagePromptAssistantIdRef.current = lastMsg.id;
-    pendingImagePromptRef.current = false;
-    const cleanedPrompt = extractOptimizedImagePrompt(lastMsg.content);
-    imagePromptInjectorRef.current?.(cleanedPrompt || lastMsg.content.trim());
-  }, [messages]);
-
 
   // scrollManager: handleChatScroll / useLayoutEffects 已迁移到 useScrollManager hook
 
@@ -842,7 +782,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
                   type="button"
                   className="attach-btn"
                   title="打开生图工作台"
-                  onClick={() => setImageStudioOpen((v) => !v)}
+                  onClick={toggleImageStudio}
                   style={{
                     background: imageStudioOpen ? 'var(--accent-primary)' : undefined,
                     color: imageStudioOpen ? 'var(--bg-base)' : undefined,
@@ -901,15 +841,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         />
         <ImageStudio
           onSendToChat={(text) => {
-            pendingImagePromptRef.current = true;
+            markPendingPromptOptimization();
             msgs.quickSend(text);
           }}
           initialPrompt={imageStudioInitialPrompt}
-          registerPromptInjector={(fn) => {
-            imagePromptInjectorRef.current = fn;
-          }}
+          registerPromptInjector={registerPromptInjector}
           onInsertImageToChat={insertImageToChat}
-          onClose={() => setImageStudioOpen(false)}
+          onClose={closeImageStudio}
         />
       </div>
       <CapabilitySetupDrawer

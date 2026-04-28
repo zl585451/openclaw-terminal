@@ -51,7 +51,7 @@ Cursor 在开始 Task 1 前执行：
 ### 背景
 
 TTS 语音朗读逻辑完全独立于消息流转，有自己的状态、ref 和异步逻辑，是最安全的第一刀。
-当前散落在 ChatTab 组件体内，与其他逻辑交织。提取后 ChatTab 只需调用 `msgs.playTTS(msg)`。
+当前散落在 ChatTab 组件体内，与其他逻辑交织。提取后 ChatTab 通过 `useTtsPlayback` 使用 `playTTSForMessage(msg)`（及 `stopTts` 等）。
 
 ### 读取文件
 
@@ -182,13 +182,16 @@ src/ui/image/ImageStudio.tsx（了解 props 接口）
 hook 签名：
 
 ```typescript
-export function useImageStudio() {
+// 实现中传入 messages，用于在 assistant 非流式回复就绪后把优化结果注入工作台（与 registerPromptInjector 配合）
+export function useImageStudio(messages: ChatMessage[]) {
   return {
     imageStudioOpen,
     imageStudioInitialPrompt,
     openImageStudio,      // 打开并可选设置初始 prompt
     closeImageStudio,
     toggleImageStudio,
+    registerPromptInjector,
+    markPendingPromptOptimization,
   }
 }
 ```
