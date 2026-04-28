@@ -36,6 +36,7 @@ import { InlineInquiry } from '../../components/inlineInquiry/InlineInquiry';
 import { useInlineInquiry } from '../../hooks/useInlineInquiry';
 import { useTtsPlayback } from '../../hooks/useTtsPlayback';
 import { useImageStudio } from '../../hooks/useImageStudio';
+import { useOnboarding } from '../../hooks/useOnboarding';
 import { parseClarifyCard } from '../../core/clarifyCard/parser';
 import type { ClarifyCardSpec } from '../../core/clarifyCard/types';
 import { CapabilityBar } from '../../components/capabilityBar/CapabilityBar';
@@ -142,6 +143,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     registerPromptInjector,
     markPendingPromptOptimization,
   } = useImageStudio(messages);
+  const { onboardingDismissed, dismissOnboarding, resetOnboardingForDev } = useOnboarding();
   const { permissions } = usePermissions();
   const canvasBridge = useCanvasBridge();
   const { setNodeInspectHandler } = useCanvas();
@@ -194,13 +196,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   const [, setLogPath] = useState('');
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [capBarSetupTarget, setCapBarSetupTarget] = useState<CapabilityId | null>(null);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
-    try {
-      return localStorage.getItem('oct.onboarding.dismissed') === '1';
-    } catch {
-      return false;
-    }
-  });
 
   const getToolDisplayName = useCallback((tool: string): string => {
     const map: Record<string, string> = {
@@ -287,11 +282,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [msgs]);
 
   const showWelcome = messages.length === 0 && !onboardingDismissed;
-
-  const dismissOnboarding = useCallback(() => {
-    setOnboardingDismissed(true);
-    try { localStorage.setItem('oct.onboarding.dismissed', '1'); } catch { /* ignore */ }
-  }, []);
 
   const buildPromptOptimizeRequest = useCallback((prompt: string) => (
     `请帮我优化以下生图提示词。只输出优化后的英文 prompt，不要解释，不要加引号，不要使用 markdown：\n\n生图提示词：${prompt}`
@@ -518,13 +508,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       setMessages([]);
       void (window as any).electronAPI?.chatHistorySave?.([]);
     }
-    try {
-      localStorage.removeItem('oct.onboarding.dismissed');
-    } catch {
-      /* ignore */
-    }
-    setOnboardingDismissed(false);
-  }, [inquiry, messages.length, setMessages]);
+    resetOnboardingForDev();
+  }, [inquiry, messages.length, resetOnboardingForDev, setMessages]);
 
   const insertImageToChat = useCallback((imageUrl: string, prompt: string) => {
     setMessages((prev) => ([

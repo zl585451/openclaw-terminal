@@ -121,3 +121,14 @@
 - **依赖**：`extractOptimizedImagePrompt`（`src/utils/extractOptimizedImagePrompt.ts`）
 - **不暴露**：内部 injector / pending / last-id ref 不导出。
 
+---
+
+## `useOnboarding`
+
+- **输入 / 输出签名摘要**：
+  - `useOnboarding()`（无参数）
+  - **返回**：`onboardingDismissed`、`dismissOnboarding`（写 `localStorage` key `oct.onboarding.dismissed` = `'1'`）
+  - **另返回**：`resetOnboardingForDev` — 仅开发态「欢迎页」调试按钮使用：移除上述 key 并将 `onboardingDismissed` 置为 `false`；**非产品对外能力**，与执行包最小签名相比为保留原 ChatTab 行为所必需。
+- **职责**：首屏引导是否已关闭；与 `WelcomeHero` 的显示条件（由 ChatTab 组合 `messages.length === 0 && !onboardingDismissed`）配合。
+- **不暴露**：内部 `setOnboardingDismissed` 不导出。
+

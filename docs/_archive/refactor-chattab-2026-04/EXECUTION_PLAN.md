@@ -288,6 +288,7 @@ export function useOnboarding() {
   return {
     onboardingDismissed,
     dismissOnboarding,   // 调用后设置 dismissed + 写 localStorage
+    // 实现另含 resetOnboardingForDev：仅 DEV「欢迎页」按钮，内部编排、非产品能力新增
   }
 }
 ```
