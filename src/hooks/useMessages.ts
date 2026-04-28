@@ -14,10 +14,11 @@ import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/ChatTa
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
-import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
+import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
 import { useTokenUsage } from './useTokenUsage';
 import { useActivityTimeline } from './useActivityTimeline';
+import { useStreamPainting } from './useStreamPainting';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
 function isSystemCommand(text: string): boolean {
@@ -205,16 +206,8 @@ export function useMessages({
   const fullTextRef = useRef<string>('');
   const streamingDomRef = useRef<HTMLPreElement | null>(null);
   const pendingFullTextSyncRafRef = useRef<number | null>(null);
-  /** 流式正文 DOM 直写 RAF 链（把大 chunk 拆成多帧铺开，像刷油漆） */
-  const streamPaintRafRef = useRef<number | null>(null);
-  /** 已向 <pre> 展示的「正文」字符数（相对 extract 后的 main） */
-  const streamPaintShownLenRef = useRef(0);
-  /** 直写节奏预算，限制每帧只追加极少字符，减少“蹦字感” */
-  const streamPaintBudgetRef = useRef(0);
-  const streamPaintLastTsRef = useRef(0);
   const pendingStreamFinalizeRef = useRef(false);
   const finalizeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const runStreamPaintTickRef = useRef<() => void>(() => {});
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
@@ -239,9 +232,6 @@ export function useMessages({
       finalizeFallbackTimerRef.current = null;
     }
     pendingStreamFinalizeRef.current = false;
-    streamPaintShownLenRef.current = 0;
-    streamPaintBudgetRef.current = 0;
-    streamPaintLastTsRef.current = 0;
     // Advance FSM through any intermediate states that may have been skipped,
     // then complete the turn. If anything throws, force-reset to IDLE so the
     // next turn can start cleanly.
@@ -303,94 +293,24 @@ export function useMessages({
     }, 180);
   }, [oct, setMessages]);
 
-  runStreamPaintTickRef.current = () => {
-    streamPaintRafRef.current = null;
-    const now = performance.now();
-    if (!streamPaintLastTsRef.current) streamPaintLastTsRef.current = now;
-    const dt = Math.min(80, now - streamPaintLastTsRef.current);
-    if (dt < 24 && !pendingStreamFinalizeRef.current) {
-      streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-      return;
-    }
-    streamPaintLastTsRef.current = now;
-    const raw = fullTextRef.current;
-    const el = streamingDomRef.current;
-    const main = getAssistantVisibleMain(raw);
-    const targetLen = main.length;
-    let shown = streamPaintShownLenRef.current;
-    if (shown > targetLen) {
-      shown = targetLen;
-      streamPaintShownLenRef.current = shown;
-    }
-    const behind = targetLen - shown;
-
-    if (!el) {
-      if (behind > 0) {
-        streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-      }
-      return;
-    }
-
-    if (behind > 0) {
-      // effectiveMs: controls chars/sec via budget accumulation.
-      // Deliberately avoid large catch-up multipliers — they make text
-      // feel like it "dumps all at once" when the model responds fast.
-      let effectiveMs = Math.max(6, streamSpeedMsRef.current);
-      // Mild catch-up when far behind (still streaming): slightly faster
-      if (!pendingStreamFinalizeRef.current && behind > 80) effectiveMs *= 0.85;
-      // After stream ends: finish at a capped speed, not an instant dump
-      if (pendingStreamFinalizeRef.current) effectiveMs = Math.max(6, effectiveMs * 0.75);
-
-      streamPaintBudgetRef.current += dt / effectiveMs;
-      let step = Math.floor(streamPaintBudgetRef.current);
-      if (step <= 0 && streamPaintBudgetRef.current >= 0.82) {
-        step = 1;
-      }
-      // Step cap: 4 chars/tick max — keeps animation visible at any speed setting
-      step = Math.min(behind, Math.max(0, Math.min(step, 4)));
-
-      if (step > 0) {
-        streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
-        shown = Math.min(targetLen, shown + step);
-        streamPaintShownLenRef.current = shown;
-        el.textContent = main.slice(0, shown);
-        if (typingSound !== 'off') {
-          for (let i = 0; i < step; i++) {
-            playClickSound(typingSound, typingSoundVolume);
-          }
-        }
-      }
-    } else if (targetLen > 0) {
-      el.textContent = main;
-    }
-
-    try {
-      const t = performance.now();
-      // 略拉长间隔，减轻与 textContent 触发布局在同一帧内叠 getBoundingClientRect 的「拖住」感
-      if (t - lastStreamReconcileMsRef.current >= 120) {
-        lastStreamReconcileMsRef.current = t;
-        scrollRef.current.reconcile();
-      }
-    } catch {
-      /* ignore */
-    }
-
-    const rawEnd = fullTextRef.current;
-    const mainEnd = getAssistantVisibleMain(rawEnd).length;
-    if (streamPaintShownLenRef.current < mainEnd) {
-      streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-      return;
-    }
-
-    if (pendingStreamFinalizeRef.current) {
-      finalizeStreamingAssistantMessage(rawEnd);
-    }
-  };
-
-  const scheduleStreamUiTick = useCallback(() => {
-    if (streamPaintRafRef.current != null) return;
-    streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-  }, []);
+  const { startPainting, stopPainting } = useStreamPainting(
+    {
+      ...oct,
+      __streamPainting: {
+        scrollReconcile: scrollRef.current.reconcile,
+        streamSpeedMsRef,
+        typingSound,
+        typingSoundVolume,
+        fullTextRef,
+        streamingDomRef,
+        finalizeStreamingAssistantMessage,
+        pendingStreamFinalizeRef,
+        lastStreamReconcileMsRef,
+      },
+    },
+    setMessages,
+    scrollRef.current.reconcile,
+  );
 
   // ── ensureStreamingAssistantMessage ───────────────────────────────────────
   const ensureStreamingAssistantMessage = useCallback(() => {
@@ -503,7 +423,7 @@ export function useMessages({
           try { oct.fsm.onToken(); } catch {}
         }
 
-        scheduleStreamUiTick();
+        startPainting();
         ensureStreamingAssistantMessage();
       }
     },
@@ -542,7 +462,7 @@ export function useMessages({
             streamingMessageRef.current = fb;
             fullTextRef.current = fb;
             pendingStreamFinalizeRef.current = true;
-            scheduleStreamUiTick();
+            stopPainting();
             ensureStreamingAssistantMessage();
           } else {
             scheduleFinalizeFallback('');
@@ -757,7 +677,7 @@ export function useMessages({
         streamingMessageRef.current = raw;
         fullTextRef.current = raw;
         applyRawToMessages();
-        scheduleStreamUiTick();
+        startPainting();
       }
         if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
         queueMicrotask(() => {
@@ -767,14 +687,14 @@ export function useMessages({
             finalizeFallbackTimerRef.current = null;
           }
           pendingStreamFinalizeRef.current = true;
-          scheduleStreamUiTick();
+          stopPainting();
           try { stream.close(); } catch (e) { console.warn('[useMessages] stream.close', e); }
         });
       }
     });
 
     return () => { unsubscribe(); };
-  }, [oct, getNextMessageId, setMessages, scheduleStreamUiTick]);
+  }, [oct, getNextMessageId, setMessages, startPainting, stopPainting]);
 
   // ── pendingPills: reset on messages change ────────────────────────────────
   useEffect(() => {
@@ -786,7 +706,7 @@ export function useMessages({
     onStatusChange?.(ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
   }, [ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
 
-  // ── streamPaintRafRef cleanup ──────────────────────────────────────────────
+  // ── cleanup ────────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (roundTimeoutRef.current != null) {
@@ -797,12 +717,9 @@ export function useMessages({
         clearTimeout(finalizeFallbackTimerRef.current);
         finalizeFallbackTimerRef.current = null;
       }
-      if (streamPaintRafRef.current != null) {
-        cancelAnimationFrame(streamPaintRafRef.current);
-        streamPaintRafRef.current = null;
-      }
+      stopPainting();
     };
-  }, []);
+  }, [stopPainting]);
 
   // ── sendMessage ───────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (
@@ -855,17 +772,11 @@ export function useMessages({
     resetTimeline();
     streamingMessageRef.current = '';
     fullTextRef.current = '';
-    streamPaintShownLenRef.current = 0;
-    streamPaintBudgetRef.current = 0;
-    streamPaintLastTsRef.current = 0;
+    stopPainting();
     pendingStreamFinalizeRef.current = false;
     if (finalizeFallbackTimerRef.current != null) {
       clearTimeout(finalizeFallbackTimerRef.current);
       finalizeFallbackTimerRef.current = null;
-    }
-    if (streamPaintRafRef.current != null) {
-      cancelAnimationFrame(streamPaintRafRef.current);
-      streamPaintRafRef.current = null;
     }
     typewriter.reset();
     resetSoundCounter();
@@ -970,17 +881,11 @@ export function useMessages({
     resetTimeline();
     streamingMessageRef.current = '';
     fullTextRef.current = '';
-    streamPaintShownLenRef.current = 0;
-    streamPaintBudgetRef.current = 0;
-    streamPaintLastTsRef.current = 0;
+    stopPainting();
     pendingStreamFinalizeRef.current = false;
     if (finalizeFallbackTimerRef.current != null) {
       clearTimeout(finalizeFallbackTimerRef.current);
       finalizeFallbackTimerRef.current = null;
-    }
-    if (streamPaintRafRef.current != null) {
-      cancelAnimationFrame(streamPaintRafRef.current);
-      streamPaintRafRef.current = null;
     }
     typewriter.reset();
     resetSoundCounter();
