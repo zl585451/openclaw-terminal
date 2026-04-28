@@ -190,6 +190,7 @@ export function useImageStudio(messages: ChatMessage[]) {
     openImageStudio,      // 打开并可选设置初始 prompt
     closeImageStudio,
     toggleImageStudio,
+    // 内部编排接口（ChatTab ↔ ImageStudio ↔ quickSend），非产品对外能力新增；仅用于保持提取前行为等价。
     registerPromptInjector,
     markPendingPromptOptimization,
   }

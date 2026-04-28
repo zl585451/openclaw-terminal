@@ -14,3 +14,7 @@
 
 - `docs/02_architecture/HOOKS_MAP.md` — 新增 `useImageStudio` 条目。
 - `docs/_archive/refactor-chattab-2026-04/EXECUTION_PLAN.md` — Task1 背景句与实现口径对齐（`playTTSForMessage`）。
+
+## 回归结论
+
+欢迎页 / 能力条 / 🎨 触发路径行为一致（与 Task 2 验收简报口径对齐）。

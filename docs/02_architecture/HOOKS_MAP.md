@@ -116,6 +116,7 @@
 - **输入 / 输出签名摘要**：
   - `useImageStudio(messages: ChatMessage[])`（需订阅最新消息以在 assistant 成文后注入优化后的生图 prompt）
   - **对外返回**：`imageStudioOpen`、`imageStudioInitialPrompt`、`openImageStudio(prefill?)`、`closeImageStudio`、`toggleImageStudio`、`registerPromptInjector`、`markPendingPromptOptimization`
+- **为何需要 `messages` 入参**：用户在工作台触发「让 AMY 优化提示词」等流程时，会先 `quickSend` 请求模型；必须在**本轮最后一条 assistant 消息已非流式落定**（`isStreaming === false` 且内容可用）之后，才能把 `extractOptimizedImagePrompt` 的结果通过 `registerPromptInjector` 写回 `ImageStudio`。hook 若不订阅 `messages`，则无法对齐「哪一条回复、何时可注入」，易过早写入或与历史消息混淆。
 - **职责**：生图工作台侧栏开关、初始 prompt；Escape 关闭；与 `ImageStudio` 的 `registerPromptInjector` / 聊天 `quickSend` 回流配合的 pending 注入逻辑。
 - **依赖**：`extractOptimizedImagePrompt`（`src/utils/extractOptimizedImagePrompt.ts`）
 - **不暴露**：内部 injector / pending / last-id ref 不导出。
