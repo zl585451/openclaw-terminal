@@ -74,6 +74,10 @@ const GOOGLE_SCOPED_KEYS = new Set([
   'GOOGLE_AI_BASE_URL',
   'GOOGLE_HTTPS_PROXY',
   'GOOGLE_TOOLS_MODE',
+  'GOOGLE_API_MODE',
+  'GOOGLE_CLOUD_PROJECT',
+  'GOOGLE_CLOUD_LOCATION',
+  'GOOGLE_GENAI_API_VERSION',
 ]);
 
 function loadGoogleScopedConfig() {
@@ -396,6 +400,14 @@ const MODEL_REGISTRY = {
   'gemini-3.1-pro-preview': {
     provider: 'google',
     label: 'Gemini 3.1 Pro Preview',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'gemini-3.1-flash-lite-preview': {
+    provider: 'google',
+    label: 'Gemini 3.1 Flash-Lite Preview',
     supportsTools: false,
     supportsStreamOptions: false,
     supportsThinking: true,
@@ -1188,6 +1200,13 @@ const config = {
     if (raw === 'on' || raw === 'off' || raw === 'auto') return raw;
     return 'auto';
   })(),
+  GOOGLE_API_MODE: (() => {
+    const raw = String(getEnvOrConfig('GOOGLE_API_MODE') || '').trim().toLowerCase();
+    return raw || 'native';
+  })(),
+  GOOGLE_CLOUD_PROJECT: getEnvOrConfig('GOOGLE_CLOUD_PROJECT') || '',
+  GOOGLE_CLOUD_LOCATION: getEnvOrConfig('GOOGLE_CLOUD_LOCATION') || '',
+  GOOGLE_GENAI_API_VERSION: getEnvOrConfig('GOOGLE_GENAI_API_VERSION') || '',
 };
 
 Object.defineProperty(config, 'DASHSCOPE_MODEL', {

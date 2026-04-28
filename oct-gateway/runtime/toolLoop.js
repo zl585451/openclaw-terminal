@@ -195,8 +195,22 @@ class ToolLoop {
 
       toolResults.push({
         tool_call_id: toolCall.id,
+        tool_name: toolName,
         role: 'tool',
         content: summarized.text,
+        ...(toolCall?.extra_content?.google_native
+          ? {
+              google_native_content: {
+                role: 'user',
+                parts: [{
+                  functionResponse: {
+                    name: toolName,
+                    response: { output: summarized.text },
+                  },
+                }],
+              },
+            }
+          : {}),
       });
     }
 
@@ -209,6 +223,9 @@ class ToolLoop {
             ? { reasoning_content: assistantResponseMessage.reasoning_content }
             : {}),
           tool_calls: normalizedToolCalls,
+          ...(assistantResponseMessage.google_native_content
+            ? { google_native_content: assistantResponseMessage.google_native_content }
+            : {}),
         }
       : {
           role: 'assistant',

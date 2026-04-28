@@ -6,6 +6,10 @@
 const https = require('https');
 const http = require('http');
 const { URL } = require('url');
+const {
+  isGoogleNativeMode,
+  generateNativeImage,
+} = require('./services/googleNative');
 
 /** 生图 HTTP 超时（硅基 / 部分模型可能超过 60s），可通过环境变量覆盖 */
 const DEFAULT_IMAGE_HTTP_TIMEOUT_MS = Number(process.env.OCT_IMAGE_HTTP_TIMEOUT_MS || 180000);
@@ -113,6 +117,7 @@ function normalizeProvider(rawProvider) {
   const provider = String(rawProvider || '').trim().toLowerCase();
   if (provider === 'siliconflow') return 'siliconflow';
   if (provider === 'openai') return 'openai';
+  if (provider === 'google') return 'google';
   return 'minimax';
 }
 
@@ -301,16 +306,22 @@ function resolveImageRuntimeConfig(rawConfig) {
 
   const scopedApiKeySource = provider === 'openai'
     ? rawConfig.IMAGE_OPENAI_API_KEY
+    : provider === 'google'
+      ? rawConfig.IMAGE_GOOGLE_API_KEY
     : provider === 'siliconflow'
       ? rawConfig.IMAGE_SILICONFLOW_API_KEY
       : rawConfig.IMAGE_MINIMAX_API_KEY;
   const scopedBaseUrlSource = provider === 'openai'
     ? rawConfig.IMAGE_OPENAI_BASE_URL
+    : provider === 'google'
+      ? rawConfig.IMAGE_GOOGLE_BASE_URL
     : provider === 'siliconflow'
       ? rawConfig.IMAGE_SILICONFLOW_BASE_URL
       : rawConfig.IMAGE_MINIMAX_BASE_URL;
   const scopedModelSource = provider === 'openai'
     ? rawConfig.IMAGE_OPENAI_MODEL
+    : provider === 'google'
+      ? rawConfig.IMAGE_GOOGLE_MODEL
     : provider === 'siliconflow'
       ? rawConfig.IMAGE_SILICONFLOW_MODEL
       : rawConfig.IMAGE_MINIMAX_MODEL;
@@ -327,6 +338,13 @@ function resolveImageRuntimeConfig(rawConfig) {
   if (allowFallbackToChat) {
     if (provider === 'minimax') {
       fallbackChatKey = String(rawConfig.MINIMAX_API_KEY || rawConfig.DASHSCOPE_API_KEY || '').trim();
+    } else if (provider === 'google') {
+      fallbackChatKey = String(
+        rawConfig.GOOGLE_AI_API_KEY
+        || rawConfig.GOOGLE_API_KEY
+        || rawConfig.GEMINI_API_KEY
+        || ''
+      ).trim();
     } else {
       fallbackChatKey = String(
         rawConfig.CUSTOM_API_KEY
@@ -342,11 +360,13 @@ function resolveImageRuntimeConfig(rawConfig) {
     minimax: 'https://api.minimax.chat',
     siliconflow: 'https://api.siliconflow.cn/v1',
     openai: 'https://api.openai.com',
+    google: String(rawConfig.GOOGLE_AI_BASE_URL || '').trim(),
   };
   const modelDefaults = {
     minimax: 'image-01',
     siliconflow: 'Kwai-Kolors/Kolors',
     openai: 'dall-e-3',
+    google: 'gemini-2.5-flash-image',
   };
 
   return {
@@ -355,7 +375,10 @@ function resolveImageRuntimeConfig(rawConfig) {
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: allowFallbackToChat,
     IMAGE_BASE_URL: scopedBaseUrl || legacyBaseUrl || baseDefaults[provider],
     IMAGE_MODEL: scopedModel || legacyModel || modelDefaults[provider],
-    resolvedApiKey: scopedApiKey || legacyApiKey || fallbackChatKey,
+    resolvedApiKey:
+      provider === 'google'
+        ? (scopedApiKey || fallbackChatKey)
+        : (scopedApiKey || legacyApiKey || fallbackChatKey),
   };
 }
 
@@ -405,7 +428,31 @@ async function handleImageGenerate(payload, rawConfig, sendToClient) {
       || (provider === 'openai' && isSiliconFlowBaseUrl(baseHint));
 
     let imageUrls;
-    if (provider === 'minimax') {
+    if (provider === 'google') {
+      if (!isGoogleNativeMode(requestConfig)) {
+        throw new Error('Google 生图仅支持原生 SDK 模式，请移除 GOOGLE_API_MODE=openai_compat');
+      }
+      const result = await generateNativeImage({
+        rawConfig: {
+          ...rawConfig,
+          GOOGLE_AI_API_KEY: requestConfig.resolvedApiKey || rawConfig.GOOGLE_AI_API_KEY || '',
+          GOOGLE_AI_BASE_URL: requestConfig.IMAGE_BASE_URL || rawConfig.GOOGLE_AI_BASE_URL || '',
+          IMAGE_MODEL: requestConfig.IMAGE_MODEL || '',
+          GOOGLE_API_MODE: rawConfig.GOOGLE_API_MODE || 'native',
+          GOOGLE_CLOUD_PROJECT: rawConfig.GOOGLE_CLOUD_PROJECT || '',
+          GOOGLE_CLOUD_LOCATION: rawConfig.GOOGLE_CLOUD_LOCATION || '',
+          GOOGLE_GENAI_API_VERSION: rawConfig.GOOGLE_GENAI_API_VERSION || '',
+        },
+        payload: {
+          ...payload,
+          model: requestConfig.IMAGE_MODEL || payload?.model,
+          negativePrompt: payload?.negativePrompt || payload?.negative_prompt || '',
+        },
+        fallbackModel: requestConfig.IMAGE_MODEL || 'gemini-2.5-flash-image',
+        aspectRatio: resolveRequestedAspectRatio(payload, requestConfig),
+      });
+      imageUrls = result.images.map((item) => item.dataUrl || item.gcsUri).filter(Boolean);
+    } else if (provider === 'minimax') {
       imageUrls = await minimaxAdapter({ ...payload, prompt }, requestConfig);
     } else if (useSiliconflow) {
       const merged = {

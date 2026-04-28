@@ -10,6 +10,10 @@ const log = createLogger('ai');
 const ProviderRouter = require('./runtime/providerRouter');
 const ToolLoop = require('./runtime/toolLoop');
 const { ProxyAgent } = require('undici');
+const {
+  isGoogleNativeMode,
+  generateNativeChat,
+} = require('./services/googleNative');
 
 // ═══════════════════════════════════════════════════════════════
 // AI 上下文截断优化
@@ -1623,6 +1627,89 @@ async function streamChat({
   if (!apiKey) {
     onError(new Error('API Key 未配置，请在设置中填入' + (provider.keyLink ? `（${provider.name}）` : '')));
     return;
+  }
+
+  if (provider.id === 'google' && isGoogleNativeMode(config)) {
+    try {
+      if (caps.toolsSupport === 'unknown') {
+        caps.toolsSupport = 'supported';
+        caps.supportsTools = true;
+        caps.capabilitySource = 'google_native_sdk';
+      }
+      if (!caps.toolReliability || caps.toolReliability === 'none') {
+        caps.toolReliability = 'loose';
+      }
+      const effectiveSupportsTools = caps.supportsTools && caps.toolReliability !== 'none';
+      effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveSupportsTools ? 'supported' : 'unsupported');
+      effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
+      const validatedMessages = validateAndFixMessages(effectiveMessages);
+      const droppedCount = effectiveMessages.length - validatedMessages.length;
+      if (droppedCount > 0) {
+        log.info('validateAndFixMessages 丢弃孤立消息', {
+          droppedCount,
+          finalCount: validatedMessages.length,
+          turnId: turnId || null,
+        });
+      }
+
+      log.info('model caps', {
+        turnId: turnId || null,
+        model,
+        toolsSupport: caps.toolsSupport || 'supported',
+        capabilitySource: caps.capabilitySource || 'google_native_sdk',
+        supportsTools: caps.supportsTools,
+        toolReliability: caps.toolReliability,
+        supportsStreamOptions: false,
+      });
+
+      const result = await generateNativeChat({
+        rawConfig: {
+          GOOGLE_AI_API_KEY: apiKey,
+          GOOGLE_AI_BASE_URL: baseUrl,
+          GOOGLE_API_MODE: config.GOOGLE_API_MODE || 'native',
+          GOOGLE_CLOUD_PROJECT: config.GOOGLE_CLOUD_PROJECT || '',
+          GOOGLE_CLOUD_LOCATION: config.GOOGLE_CLOUD_LOCATION || '',
+          GOOGLE_GENAI_API_VERSION: config.GOOGLE_GENAI_API_VERSION || '',
+        },
+        messages: validatedMessages,
+        model,
+        toolDefinitions: effectiveSupportsTools ? toolLoader.getDefinitions() : [],
+        toolChoice,
+        onDelta: (chunk) => {
+          if (chunk) onDelta(chunk);
+        },
+      });
+
+      if (result.toolCalls.length > 0) {
+        await toolLoop.handleToolCalls({
+          toolCalls: result.toolCalls,
+          toolRound,
+          toolSignatures,
+          fullText: result.text || '',
+          totalUsage: result.usage || null,
+          responseModel: result.responseModel || model,
+          assistantResponseMessage: result.assistantResponseMessage,
+          truncatedMessages: effectiveMessages,
+          onDelta,
+          onDone,
+          onError,
+          onToolEvent,
+          flushThinkAtEnd: () => {},
+          turnId,
+        });
+        return;
+      }
+
+      onDone(result.text || '', result.usage || null, result.responseModel || model);
+      return;
+    } catch (e) {
+      log.error('google native streamChat error', {
+        error: e?.message || String(e),
+        model,
+      });
+      onError(e);
+      return;
+    }
   }
 
   let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用

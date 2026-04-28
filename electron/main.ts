@@ -669,20 +669,20 @@ function getFallbackProviders() {
     },
     google: {
       id: 'google',
-      name: 'Google Gemini（Vertex AI Studio API 密钥）',
-      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      keyPlaceholder: 'Vertex AI Studio 创建的 API 密钥',
+      name: 'Google Gemini（Vertex AI 原生）',
+      baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/YOUR_PROJECT_ID/locations/us-central1/endpoints/openapi',
+      keyPlaceholder: 'AQ.xxxxx 或绑定 Vertex 的 API Key',
       keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: 'google/gemini-2.5-flash',
       models: [
-        { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash（稳定，推荐）', tools: false, thinking: true },
-        { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', tools: false, thinking: true },
-        { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', tools: false, thinking: true },
-        { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: false, thinking: true },
-        { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
-        { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash（将弃用）', tools: false, thinking: false },
-        { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', tools: false, thinking: false },
-        { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', tools: false, thinking: false },
+        { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash（推荐）', tools: true, thinking: true },
+        { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite（低延迟）', tools: true, thinking: true },
+        { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro（深度推理）', tools: true, thinking: true },
+        { id: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: true, thinking: true },
+        { id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash-Lite（预览）', tools: true, thinking: true },
+        { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: true, thinking: true },
+        { id: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash（兼容）', tools: true, thinking: false },
+        { id: 'google/gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite（低成本）', tools: true, thinking: false },
       ],
     },
     custom: {
@@ -4472,6 +4472,33 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
     const model = cfg.OCT_MODEL || provider?.defaultModel || 'qwen3.5-plus';
     if (!baseUrl || !apiKey) {
       return { success: false, error: '请先填写 API Key 并选择服务商' };
+    }
+    if (providerId === 'google') {
+      const googleApiMode = String(cfg.GOOGLE_API_MODE || 'native').trim().toLowerCase();
+      if (googleApiMode !== 'openai_compat') {
+        const googleNativePath = path.join(gatewayDir, 'services', 'googleNative.js');
+        const googleNative = fs.existsSync(googleNativePath) ? require(googleNativePath) : null;
+        if (!googleNative?.resolveGoogleClientConfig || !googleNative?.sanitizeGoogleModelId) {
+          return { success: false, error: 'Google 原生 SDK 未就绪，请重启应用后重试。' };
+        }
+        const clientConfig = googleNative.resolveGoogleClientConfig({
+          GOOGLE_AI_API_KEY: apiKey,
+          GOOGLE_AI_BASE_URL: baseUrl,
+          GOOGLE_API_MODE: googleApiMode,
+          GOOGLE_CLOUD_PROJECT: cfg.GOOGLE_CLOUD_PROJECT || '',
+          GOOGLE_CLOUD_LOCATION: cfg.GOOGLE_CLOUD_LOCATION || '',
+          GOOGLE_GENAI_API_VERSION: cfg.GOOGLE_GENAI_API_VERSION || '',
+        });
+        const normalizedModel = googleNative.sanitizeGoogleModelId(model);
+        const response = await clientConfig.client.models.generateContent({
+          model: normalizedModel,
+          contents: 'hi',
+        });
+        if (!response?.text && !response?.data && !response?.functionCalls) {
+          return { success: false, error: 'Google 原生连接未返回可识别内容，请检查模型和配额。' };
+        }
+        return { success: true, message: 'Google 原生连接成功' };
+      }
     }
     const fetchBaseUrl =
       providerId === 'google' ? getGoogleBaseUrlHelper().sanitizeGoogleOpenAiBaseUrl(baseUrl) : baseUrl;

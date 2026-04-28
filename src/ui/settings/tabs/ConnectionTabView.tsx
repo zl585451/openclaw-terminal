@@ -429,7 +429,9 @@ export function ConnectionTabView({
               )}
               {currentProviderId === 'google' && (
                 <p className="settings-desc settings-desc-spaced">
-                  使用 Google Cloud 控制台 <strong>Vertex AI Studio → 设置 → API 密钥</strong> 创建的密钥；走 Gemini 的 OpenAI 兼容接口，计费归属当前 GCP 项目。预设模型暂不支持工具调用（天气/文件等插件不可用）。
+                  默认走 Google 官方 <strong>@google/genai / Vertex AI 原生 SDK</strong>。建议把 Base URL 填成
+                  <code>https://aiplatform.googleapis.com/v1beta1/projects/你的PROJECT_ID/locations/us-central1/endpoints/openapi</code>，
+                  这样网关能自动识别项目与区域；计费直接落到你的 GCP 项目，工具调用与多轮兼容性也会比 OpenAI 兼容层更稳。
                 </p>
               )}
             </div>
