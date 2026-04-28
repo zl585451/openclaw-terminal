@@ -87,3 +87,22 @@
 - **备注（已知技术债/临时实现）**：
   - `oct.__streamPainting` 传参属于临时实现（建议后续改为显式参数或 context 对象参数，不通过篡改入参对象传递）。
 
+---
+
+## `useTtsPlayback`
+
+- **职责**：
+  - 管理回复朗读：`speakingMessageId`、`ttsError`
+  - 浏览器 `speechSynthesis` 与 Electron `tts-speak` + `Audio` 播放路径、auto 回退与错误通知
+  - `ttsPlayback` 关闭时取消正在进行的播放
+- **输入**：`TtsSettings`（`ttsPlayback`、`ttsProvider`，来自 `useSettings`）
+- **输出**：
+  - `speakingMessageId`、`ttsError`
+  - `playTTSForMessage(msg)`：`{ id, content }` 结构即可（与 `ChatMessage` 兼容）
+  - `stopTts`：停止当前朗读并清理 ref
+- **依赖**：
+  - `stripMarkdown`（`src/utils/stripMarkdown.ts`）
+  - `extractAssistantCotAndMain`
+  - 与 `ChatTab`/其他模块相同的 `ipcRenderer` 存根模式（非 Electron 环境下 no-op）
+- **不暴露**：内部 `setState`、audio/utterance ref 不导出。
+

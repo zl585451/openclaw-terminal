@@ -35,6 +35,7 @@ import ImageStudio from '../image/ImageStudio';
 import type { CapabilityId, CapabilityStatus } from '../../core/capabilities/types';
 import { InlineInquiry } from '../../components/inlineInquiry/InlineInquiry';
 import { useInlineInquiry } from '../../hooks/useInlineInquiry';
+import { useTtsPlayback } from '../../hooks/useTtsPlayback';
 import { parseClarifyCard } from '../../core/clarifyCard/parser';
 import type { ClarifyCardSpec } from '../../core/clarifyCard/types';
 import { CapabilityBar } from '../../components/capabilityBar/CapabilityBar';
@@ -119,21 +120,6 @@ export interface UploadedFile {
 
 
 
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/#{1,6}\s*/g, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/^\s*[-*+]\s+/gm, '')
-    .replace(/^\s*\d+\.\s+/gm, '')
-    .replace(/\n{2,}/g, ' ')
-    .trim();
-}
-
 function extractOptimizedImagePrompt(raw: string): string {
   const withoutThinkMarker = stripThinkModeMarker(String(raw || ''));
   const extracted = extractAssistantCotAndMain(withoutThinkMarker);
@@ -177,6 +163,10 @@ interface ChatTabProps {
 
 const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange, onSwitchTab }) => {
   const { settings, setSettings, streamSpeedMs } = useSettings();
+  const { speakingMessageId, ttsError, playTTSForMessage, stopTts } = useTtsPlayback({
+    ttsPlayback: settings.ttsPlayback,
+    ttsProvider: settings.ttsProvider,
+  });
   const { permissions } = usePermissions();
   const canvasBridge = useCanvasBridge();
   const { setNodeInspectHandler } = useCanvas();
@@ -226,9 +216,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   // ── UI-only state (消息状态已迁移到 useMessages) ────────────────────────
   const [showSettings, setShowSettings] = useState(false);
-  const [ttsError, setTtsError] = useState('');
   const [, setLogPath] = useState('');
-  const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [capBarSetupTarget, setCapBarSetupTarget] = useState<CapabilityId | null>(null);
   const [imageStudioOpen, setImageStudioOpen] = useState(false);
@@ -278,8 +266,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, []);
 
   // ── UI-only refs ──────────────────────────────────────────────────────────
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const imagePromptInjectorRef = useRef<((prompt: string) => void) | null>(null);
   const pendingImagePromptRef = useRef(false);
@@ -526,32 +512,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
 
   useEffect(() => {
-    if (!settings.ttsPlayback && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-      setSpeakingMessageId(null);
-    }
-    if (!settings.ttsPlayback && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      speechUtteranceRef.current = null;
-      setSpeakingMessageId(null);
-    }
-  }, [settings.ttsPlayback]);
-
-  const stopTtsPlayback = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current = null;
-    }
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      speechUtteranceRef.current = null;
-    }
-    setSpeakingMessageId(null);
-  }, []);
-
-  useEffect(() => {
     ipcRenderer.invoke('get-env', 'OPENCLAW_LOG_PATH').then((p: string) => {
         if (p) setLogPath(p);
         // 自动启动日志监控
@@ -571,84 +531,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       lastAssistantMsgIdRef.current = last.id;
     }
   }, [messages]);
-
-  const playBrowserTTS = useCallback(async (text: string, msgId: number) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      throw new Error('当前环境不支持浏览器本地朗读');
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.onend = () => {
-      if (speechUtteranceRef.current === utterance) {
-        speechUtteranceRef.current = null;
-      }
-      setSpeakingMessageId(null);
-    };
-    utterance.onerror = () => {
-      if (speechUtteranceRef.current === utterance) {
-        speechUtteranceRef.current = null;
-      }
-      setTtsError('浏览器本地朗读失败');
-      setSpeakingMessageId(null);
-    };
-    speechUtteranceRef.current = utterance;
-    setSpeakingMessageId(msgId);
-    window.speechSynthesis.speak(utterance);
-  }, []);
-
-  const playTTSForMessage = useCallback(async (msg: ChatMessage) => {
-    if (!settings.ttsPlayback || !msg.content) return;
-    const { mainContent } = extractAssistantCotAndMain(msg.content || '');
-    const plain = stripMarkdown(mainContent || msg.content);
-    const truncated = plain.length > 200 ? plain.slice(0, 200) + '...详细内容请查看聊天窗口' : plain;
-    if (!truncated.trim()) return;
-    setTtsError('');
-    if (settings.ttsProvider === 'browser') {
-      try {
-        await playBrowserTTS(truncated, msg.id);
-      } catch (err: any) {
-        setTtsError(err?.message || '浏览器本地朗读失败');
-      }
-      return;
-    }
-    setSpeakingMessageId(msg.id);
-    const result = await ipcRenderer.invoke('tts-speak', {
-      text: truncated,
-      providerPreference: settings.ttsProvider,
-    });
-    if (!result?.success || !result.audioBase64) {
-      if (settings.ttsProvider === 'auto') {
-        try {
-          await playBrowserTTS(truncated, msg.id);
-          setTtsError('云端朗读不可用，已回退到本地朗读');
-          return;
-        } catch {}
-      }
-      const error = result?.error || '语音朗读失败';
-      setTtsError(error);
-      ipcRenderer.invoke('show-notification', { title: '语音朗读失败', body: String(error).slice(0, 120) });
-      setSpeakingMessageId(null);
-      return;
-    }
-    const audio = new Audio('data:audio/mp3;base64,' + result.audioBase64);
-    audioRef.current = audio;
-    audio.onended = () => {
-      setSpeakingMessageId(null);
-      audioRef.current = null;
-    };
-    audio.onerror = () => {
-      setTtsError('音频播放失败，请检查系统音量与输出设备');
-      setSpeakingMessageId(null);
-      audioRef.current = null;
-    };
-    audio.play().catch((err: any) => {
-      setTtsError(err?.message || '音频播放被系统阻止');
-      setSpeakingMessageId(null);
-    });
-  }, [settings.ttsPlayback, settings.ttsProvider, playBrowserTTS]);
 
   useEffect(() => {
     if (prevStreamingRef.current && !msgs.isStreaming) {
@@ -789,7 +671,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
               <button
                 type="button"
                 className="voice-toggle"
-                onClick={stopTtsPlayback}
+                onClick={stopTts}
                 title="停止当前语音播报"
               >
                 ■ STOP VOICE
