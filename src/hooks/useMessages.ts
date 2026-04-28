@@ -721,6 +721,117 @@ export function useMessages({
     };
   }, [stopPainting]);
 
+  async function _sendMessageCore(options: {
+    text: string;
+    displayContent: string;
+    fullContentForAMY: string;
+    isSystem: boolean;
+    newRequestId: string;
+    imageDataUrl?: string;
+    files?: UploadedFile[];
+    workbenchContext?: WorkbenchRoundtripContext;
+  }): Promise<void> {
+    const {
+      text,
+      displayContent,
+      fullContentForAMY,
+      isSystem,
+      newRequestId,
+      imageDataUrl,
+      files,
+      workbenchContext,
+    } = options;
+
+    lastSentRequestId.current = newRequestId;
+    const thinkCmdMatch = text.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
+    if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
+    pendingSystemReplyMap.current.set(newRequestId, isSystem);
+    resetUsage();
+    resetTimeline();
+    streamingMessageRef.current = '';
+    fullTextRef.current = '';
+    stopPainting();
+    pendingStreamFinalizeRef.current = false;
+    if (finalizeFallbackTimerRef.current != null) {
+      clearTimeout(finalizeFallbackTimerRef.current);
+      finalizeFallbackTimerRef.current = null;
+    }
+    typewriter.reset();
+    resetSoundCounter();
+    oct.ingest.reset();
+    if (!isSystem) {
+      setAwaitingResponse(true);
+      setAgentPhase('thinking');
+      startRoundTimeout();
+    }
+    setActiveTools([]);
+    resetWithThinkingPlaceholder();
+    setPendingPills(null);
+    setMessages((prev) => {
+      const next: ChatMessage[] = [
+        ...prev,
+        {
+          id: getNextMessageId(),
+          role: 'user' as const,
+          content: displayContent,
+          timestamp: Date.now(),
+          imageDataUrl: imageDataUrl || undefined,
+          files: files,
+        },
+      ];
+      if (!isSystem) {
+        next.push({
+          id: getNextMessageId(),
+          role: 'assistant' as const,
+          content: '',
+          isStreaming: true,
+          isStreamingRaw: true,
+          timestamp: Date.now(),
+        });
+      }
+      return next;
+    });
+    scroll.scrollAfterUserSend();
+
+    if (!isSystem) {
+      try {
+        oct.stream.abortToIdle();
+        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
+          oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
+        }
+        oct.fsm.onUserTyping();
+        oct.fsm.onUserSubmit();
+        oct.fsm.onRequestStart();
+        oct.ingest.reset();
+        oct.stream.open();
+      } catch (e) {
+        console.warn('[useMessages] oct runtime (_sendMessageCore)', e);
+      }
+    }
+
+    const roundtripContext = workbenchContext ?? workbenchBus.getContext('continue');
+    const result = await ws.send(
+      fullContentForAMY,
+      imageDataUrl,
+      files,
+      transportPacingMs,
+      roundtripContext,
+      newRequestId,
+      activeProject,
+    );
+    if (!result?.success && !isSystem) {
+      clearRoundTimeout();
+      setAwaitingResponse(false);
+      console.warn('[useMessages] Send failed:', result);
+      try {
+        oct.stream.abortToIdle();
+        recoverOctStreamFromEndFailure(oct);
+      } catch (e) {
+        console.warn('[useMessages] send failed cleanup', e);
+      }
+    }
+  }
+
   // ── sendMessage ───────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (
     text: string,
@@ -762,96 +873,17 @@ export function useMessages({
       if (!ok) return;
     }
 
-    const newRequestId = Date.now().toString();
-    lastSentRequestId.current = newRequestId;
     const cmdIsSystem = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
-    const thinkCmdMatch = fullContentForAMY.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
-    if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
-    pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
-    resetUsage();
-    resetTimeline();
-    streamingMessageRef.current = '';
-    fullTextRef.current = '';
-    stopPainting();
-    pendingStreamFinalizeRef.current = false;
-    if (finalizeFallbackTimerRef.current != null) {
-      clearTimeout(finalizeFallbackTimerRef.current);
-      finalizeFallbackTimerRef.current = null;
-    }
-    typewriter.reset();
-    resetSoundCounter();
-    oct.ingest.reset();
-    if (!cmdIsSystem) {
-      setAwaitingResponse(true);
-      setAgentPhase('thinking');
-      startRoundTimeout();
-    }
-    setActiveTools([]);
-    resetWithThinkingPlaceholder();
-    setPendingPills(null);
-    setMessages((prev) => {
-      const next: ChatMessage[] = [
-        ...prev,
-        {
-          id: getNextMessageId(),
-          role: 'user' as const,
-          content: displayContent,
-          timestamp: Date.now(),
-          imageDataUrl: imageDataUrl || undefined,
-          files: files,
-        },
-      ];
-      if (!cmdIsSystem) {
-        next.push({
-          id: getNextMessageId(),
-          role: 'assistant' as const,
-          content: '',
-          isStreaming: true,
-          isStreamingRaw: true,
-          timestamp: Date.now(),
-        });
-      }
-      return next;
-    });
-    scroll.scrollAfterUserSend();
-
-    if (!cmdIsSystem) {
-      try {
-        oct.stream.abortToIdle();
-        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
-          oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
-        }
-        oct.fsm.onUserTyping();
-        oct.fsm.onUserSubmit();
-        oct.fsm.onRequestStart();
-        oct.ingest.reset();
-        oct.stream.open();
-      } catch (e) {
-        console.warn('[useMessages] oct runtime (send)', e);
-      }
-    }
-
-    const roundtripContext = workbenchContext ?? workbenchBus.getContext('continue');
-    const result = await ws.send(
+    await _sendMessageCore({
+      text: fullContentForAMY,
+      displayContent,
       fullContentForAMY,
-      imageDataUrl || undefined,
+      isSystem: cmdIsSystem,
+      newRequestId: Date.now().toString(),
+      imageDataUrl: imageDataUrl || undefined,
       files,
-      transportPacingMs,
-      roundtripContext,
-      newRequestId,
-      activeProject,
-    );
-    if (!result?.success && !cmdIsSystem) {
-      clearRoundTimeout();
-      setAwaitingResponse(false);
-      console.warn('[useMessages] Send failed:', result);
-      try {
-        oct.stream.abortToIdle();
-        recoverOctStreamFromEndFailure(oct);
-      } catch (e) {
-        console.warn('[useMessages] send failed cleanup', e);
-      }
-    }
+      workbenchContext,
+    });
   }, [activeProject, getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── quickSend ─────────────────────────────────────────────────────────────
@@ -871,85 +903,13 @@ export function useMessages({
       if (!ok) return;
     }
 
-    const newRequestId = Date.now().toString();
-    lastSentRequestId.current = newRequestId;
     const isSystem = isSystemCommand(content.trim());
-    const thinkCmdMatch = content.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
-    if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
-    pendingSystemReplyMap.current.set(newRequestId, isSystem);
-    resetUsage();
-    resetTimeline();
-    streamingMessageRef.current = '';
-    fullTextRef.current = '';
-    stopPainting();
-    pendingStreamFinalizeRef.current = false;
-    if (finalizeFallbackTimerRef.current != null) {
-      clearTimeout(finalizeFallbackTimerRef.current);
-      finalizeFallbackTimerRef.current = null;
-    }
-    typewriter.reset();
-    resetSoundCounter();
-    oct.ingest.reset();
-    if (!isSystem) {
-      setAwaitingResponse(true);
-      setAgentPhase('thinking');
-      startRoundTimeout();
-    }
-    setActiveTools([]);
-    resetWithThinkingPlaceholder();
-    setPendingPills(null);
-    setMessages((prev) => {
-      const next: ChatMessage[] = [
-        ...prev,
-        { id: getNextMessageId(), role: 'user', content: content.trim(), timestamp: Date.now() },
-      ];
-      if (!isSystem) {
-        next.push({
-          id: getNextMessageId(),
-          role: 'assistant' as const,
-          content: '',
-          isStreaming: true,
-          isStreamingRaw: true,
-          timestamp: Date.now(),
-        });
-      }
-      return next;
-    });
-    scroll.scrollAfterUserSend();
-    if (!isSystem) {
-      try {
-        oct.stream.abortToIdle();
-        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
-          oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
-        }
-        oct.fsm.onUserTyping();
-        oct.fsm.onUserSubmit();
-        oct.fsm.onRequestStart();
-        oct.ingest.reset();
-        oct.stream.open();
-      } catch (e) {
-        console.warn('[useMessages] oct runtime (quickSend)', e);
-      }
-    }
-    ws.send(
-      content.trim(),
-      undefined,
-      undefined,
-      transportPacingMs,
-      workbenchBus.getContext('continue'),
-      newRequestId,
-      activeProject,
-    ).then((result) => {
-      if (!result?.success && !isSystem) {
-        clearRoundTimeout();
-        setAwaitingResponse(false);
-        try {
-          oct.stream.abortToIdle();
-          recoverOctStreamFromEndFailure(oct);
-        } catch (e) {
-          console.warn('[useMessages] quickSend failed cleanup', e);
-        }
-      }
+    void _sendMessageCore({
+      text: content.trim(),
+      displayContent: content.trim(),
+      fullContentForAMY: content.trim(),
+      isSystem,
+      newRequestId: Date.now().toString(),
     });
   }, [activeProject, getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
 
