@@ -577,7 +577,11 @@ class SlashHandler {
       try {
         const recaller = require('../memory_vector/recaller');
         const db = require('../memory_vector/db');
-        const result = await recaller.recall(text, 'slash-test');
+        const result = await recaller.recall(text, 'slash-test', {
+          mode: 'manual',
+          topK: 5,
+          threshold: this.config.memory.vectorRecall.recall.manualThreshold,
+        });
         if (result.skipped) {
           const lexicalHits = db.searchText(text, { limit: 5, currentModelOnly: true });
           if (!lexicalHits.length) {
@@ -596,10 +600,12 @@ class SlashHandler {
         }
         const lines = [];
         if (result.hits.length > 0) {
-          lines.push(`✅ 高置信语义命中 ${result.hits.length} 条（耗时 ${result.latencyMs}ms）`);
+          lines.push(`✅ 语义候选 ${result.hits.length} 条（耗时 ${result.latencyMs}ms，手动查询不会自动注入主对话）`);
           result.hits.forEach((hit, idx) => {
+            const lexical = recaller.scoreLexicalOverlap(text, hit);
             lines.push('');
-            lines.push(`[${idx + 1}] ${hit.date} 相似度 ${(hit.similarity * 100).toFixed(1)}%`);
+            lines.push(`[${idx + 1}] ${hit.date} 相似度 ${(hit.similarity * 100).toFixed(1)}% / 词重叠 ${(lexical.overlap * 100).toFixed(1)}%`);
+            if (lexical.matched.length) lines.push(`  命中词：${lexical.matched.slice(0, 8).join(' / ')}`);
             lines.push(`  ${String(hit.text_preview || '').slice(0, 150)}`);
             lines.push(`  ${hit.uri}`);
           });
@@ -611,7 +617,7 @@ class SlashHandler {
           this.reply(connection, `✅ 高置信语义命中 0 条（耗时 ${result.latencyMs}ms）\n未找到文本候选`);
           return;
         }
-        lines.push(`🟡 高置信语义命中 0 条（耗时 ${result.latencyMs}ms）`);
+        lines.push(`🟡 语义候选 0 条（耗时 ${result.latencyMs}ms）`);
         lines.push('以下是文本候选，仅供人工核对，不会自动注入主对话：');
         lexicalHits.forEach((hit, idx) => {
           lines.push('');

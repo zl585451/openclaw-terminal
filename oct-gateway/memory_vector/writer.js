@@ -13,7 +13,7 @@ let processing = false;
 
 function buildEmbeddingText({ userText, assistantText }) {
   const user = String(userText || '').trim();
-  const assistant = String(assistantText || '').trim().slice(0, 200);
+  const assistant = String(assistantText || '').trim().slice(0, 800);
   if (!user && !assistant) return '';
   return `[用户] ${user}\n[AMY] ${assistant}`;
 }
@@ -43,7 +43,7 @@ async function embedAndStore({ uri, date, session, userText, assistantText, sour
     userText,
     assistantText,
     sourceTs,
-    textPreview: text.slice(0, 200),
+    textPreview: text.slice(0, 500),
     vector,
     model: embedding.model,
     version: embedding.version,
