@@ -2,6 +2,17 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+const PROBE_SCRIPT = `
+  const path = require('path');
+  const gatewayDir = process.argv[1];
+  const Database = require(path.join(gatewayDir, 'node_modules', 'better-sqlite3'));
+  const sqliteVec = require(path.join(gatewayDir, 'node_modules', 'sqlite-vec'));
+  const db = new Database(':memory:');
+  if (sqliteVec && typeof sqliteVec.load === 'function') sqliteVec.load(db);
+  db.exec('SELECT 1');
+  db.close();
+`;
+
 function parseArgs(argv) {
   const args = { runtime: 'node', dryRun: false };
   for (let i = 0; i < argv.length; i += 1) {
@@ -75,15 +86,35 @@ function writeMetadata(metaPath, target) {
   fs.writeFileSync(metaPath, JSON.stringify(payload, null, 2));
 }
 
-function canLoadNativeModules(gatewayDir, target) {
-  if (target.runtime !== 'node') return false;
+function resolveElectronBinary() {
   try {
-    require(path.join(gatewayDir, 'node_modules', 'better-sqlite3'));
-    require(path.join(gatewayDir, 'node_modules', 'sqlite-vec'));
-    return true;
+    return require('electron');
   } catch {
-    return false;
+    return '';
   }
+}
+
+function canLoadNativeModules(gatewayDir, target) {
+  const env = { ...process.env };
+  let command = process.execPath;
+  let args = ['-e', PROBE_SCRIPT, gatewayDir];
+  let shell = false;
+
+  if (target.runtime === 'electron') {
+    const electronBinary = resolveElectronBinary();
+    if (!electronBinary) return false;
+    command = electronBinary;
+    env.ELECTRON_RUN_AS_NODE = '1';
+  }
+
+  const result = spawnSync(command, args, {
+    cwd: gatewayDir,
+    stdio: 'ignore',
+    shell,
+    env,
+  });
+
+  return result.status === 0;
 }
 
 function rebuildForNode(gatewayDir, target) {
@@ -134,13 +165,14 @@ function main(argv = process.argv.slice(2)) {
   const metaPath = path.join(gatewayDir, 'node_modules', '.native-runtime.json');
   const target = getTargetInfo(rootDir, args.runtime);
   const metadata = readMetadata(metaPath);
+  const runtimeHealthy = canLoadNativeModules(gatewayDir, target);
 
-  if (!needsRebuild(metadata, target)) {
+  if (!needsRebuild(metadata, target) && runtimeHealthy) {
     console.log(`[ensure-oct-gateway-native] native modules already match ${target.runtime} ${target.runtimeVersion || ''} ${target.abi || ''}`.trim());
     return;
   }
 
-  if (canLoadNativeModules(gatewayDir, target)) {
+  if (runtimeHealthy) {
     writeMetadata(metaPath, target);
     console.log(`[ensure-oct-gateway-native] native modules already loadable for ${target.runtime}, metadata refreshed`);
     return;
@@ -155,6 +187,11 @@ function main(argv = process.argv.slice(2)) {
 
   if (result.status !== 0) {
     process.exit(result.status || 1);
+  }
+
+  if (!canLoadNativeModules(gatewayDir, target)) {
+    console.error(`[ensure-oct-gateway-native] native modules still failed to load after rebuild for ${target.runtime}`);
+    process.exit(1);
   }
 
   writeMetadata(metaPath, target);
