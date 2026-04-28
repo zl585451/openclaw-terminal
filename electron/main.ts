@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
 import * as net from 'net';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import * as pty from 'node-pty';
 import * as crypto from 'crypto';
 import WebSocket from 'ws';
@@ -2755,6 +2755,40 @@ function resolveGatewayConfigFileForSpawn(entry: string): string {
   return CONFIG_FILE;
 }
 
+function ensureGatewayNativeModules(entry: string): { ok: boolean; error?: string } {
+  const ensureScript = path.join(__dirname, '..', 'scripts', 'ensure-oct-gateway-native.js');
+  if (!fs.existsSync(ensureScript)) return { ok: true };
+
+  const rootDir = path.resolve(path.join(path.dirname(entry), '..'));
+  const runtime = app.isPackaged ? 'electron' : 'node';
+  const command = app.isPackaged ? process.execPath : 'node';
+  const result = spawnSync(command, [ensureScript, '--runtime', runtime], {
+    cwd: rootDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+    env: buildOctChildEnv(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+    encoding: 'utf8',
+  });
+
+  const forwardLogs = (prefix: string, content: string | null | undefined) => {
+    if (!content) return;
+    content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((line) => sendGatewayLogLine(`${prefix} ${line}`));
+  };
+
+  forwardLogs('[OCT Native]', result.stdout);
+  forwardLogs('[OCT Native ERR]', result.stderr);
+
+  if (result.status === 0) return { ok: true };
+  return {
+    ok: false,
+    error: result.error?.message || `exit code ${result.status ?? -1}`,
+  };
+}
+
 let octGatewayProcess: ReturnType<typeof spawn> | null = null;
 
 async function startOctGateway(): Promise<{ success: boolean; error?: string }> {
@@ -2776,6 +2810,15 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   const runtimeCommand = app.isPackaged ? process.execPath : 'node';
   const runtimeArgs = [entry];
   const gatewayConfigFile = resolveGatewayConfigFileForSpawn(entry);
+  const nativeCheck = ensureGatewayNativeModules(entry);
+
+  if (!nativeCheck.ok) {
+    console.warn('[OCT Gateway] native preflight failed:', nativeCheck.error);
+    return {
+      success: false,
+      error: `Gateway native 模块检查失败：${nativeCheck.error || 'unknown error'}`,
+    };
+  }
 
   try {
     octGatewayProcess = spawn(runtimeCommand, runtimeArgs, {
