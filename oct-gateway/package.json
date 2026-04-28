@@ -4,8 +4,9 @@
   "description": "OCT 独立 Gateway",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js"
+    "ensure:native": "node ../scripts/ensure-oct-gateway-native.js --runtime node",
+    "start": "npm run ensure:native && node index.js",
+    "dev": "npm run ensure:native && node --watch index.js"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",

@@ -7,6 +7,13 @@
   },
   "description": "OpenClaw Terminal - Windows 超级系统助手",
   "main": "dist-electron/main.js",
+  "engines": {
+    "node": ">=20 <23"
+  },
+  "volta": {
+    "node": "20.18.1",
+    "npm": "10.9.4"
+  },
   "scripts": {
     "init": "node scripts/init-user-config.js",
     "postinstall": "echo skip rebuild",
