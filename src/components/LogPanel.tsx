@@ -631,7 +631,7 @@ function LogPanelComponent(props: {
       </div>
 
       <div className="log-panel-overlay-statusbar">
-        <span>{lines.length} 行</span>
+        <span className="log-status-count">{lines.length} 行</span>
         {nocturneOnline !== undefined && (
           <span style={{ color: nocturneOnline ? '#86efac' : '#fca5a5' }}>
             Nocturne: {nocturneOnline ? '✅' : '❌'}
@@ -733,7 +733,7 @@ function LogPanelComponent(props: {
         </div>
         <div className="log-panel-statusbar">
           <span className="log-status-meta">
-            <span>{lines.length} 行</span>
+            <span className="log-status-count">{lines.length} 行</span>
             {nocturneOnline !== undefined && (
               <span className={`log-status-indicator ${nocturneOnline ? 'online' : 'offline'}`}>
                 Nocturne: {nocturneOnline ? '✅' : '❌'}

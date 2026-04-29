@@ -1539,7 +1539,7 @@
 .gateway-log-section {
   height: 200px;
   flex-shrink: 0;
-  overflow-y: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
