@@ -6334,3 +6334,96 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── VoiceRegistryPanel ─────────────────────────────────────── */
+
+.voiceRegistryPanel {
+  margin-top: 14px;
+  border: 1px solid rgba(80, 150, 220, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.voiceRegistryPanel > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: rgba(232, 244, 255, 0.6);
+  list-style: none;
+  user-select: none;
+}
+
+.voiceRegistryPanel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.voiceRegistryPanel > summary::before {
+  content: '▶';
+  font-size: 10px;
+  color: rgba(60, 120, 200, 0.6);
+  transition: transform 0.15s;
+}
+
+.voiceRegistryPanel[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.voiceRegistryPanel > summary strong {
+  font-size: 13px;
+}
+
+.voiceRegistryPanel > summary span {
+  font-size: 12px;
+  color: rgba(40, 80, 160, 0.6);
+}
+
+.voiceRegistryTable {
+  padding: 8px 14px 12px;
+  display: grid;
+  gap: 0;
+}
+
+.voiceRegistryHeader {
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr 1fr;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(40, 80, 160, 0.5);
+  padding: 4px 0 6px;
+  border-bottom: 1px solid rgba(80, 150, 220, 0.15);
+  margin-bottom: 4px;
+}
+
+.voiceRegistryRow {
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr 1fr;
+  gap: 8px;
+  font-size: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(80, 150, 220, 0.07);
+  color: rgba(20, 50, 100, 0.85);
+  align-items: center;
+}
+
+.voiceRegistryRow:last-child {
+  border-bottom: none;
+}
+
+.voiceCategory--narrator { color: #555; }
+.voiceCategory--main { color: #1a5cc8; font-weight: 600; }
+.voiceCategory--support { color: #2a7a40; }
+.voiceCategory--unresolved { color: #a07000; font-style: italic; }
+.voiceCategory--sfx { color: #7a3090; }
+
+.voiceRegistryNote {
+  display: block;
+  padding: 6px 14px 10px;
+  font-size: 11px;
+  color: rgba(40, 80, 160, 0.45);
+  font-style: italic;
+}

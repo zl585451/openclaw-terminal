@@ -15,6 +15,14 @@ interface BatchProgressViewProps {
   onCancel: () => void;
 }
 
+const VOICE_CATEGORY_LABEL: Record<string, string> = {
+  narrator: '旁白',
+  main: '主角',
+  support: '配角',
+  unresolved: '待定',
+  sfx: '音效',
+};
+
 const ROW_HEIGHT = 52;
 const VIEWPORT_HEIGHT = 280;
 
@@ -172,10 +180,33 @@ export function BatchProgressView({
       ) : null}
 
       {batchVoiceRegistry.length > 0 ? (
-        <div className={styles.batchVoiceRegistrySummary}>
-          <strong>跨章角色音已锁定 {batchVoiceRegistry.length} 个角色</strong>
-          <span>{batchVoiceRegistry.slice(0, 8).map((item) => item.roleName).join(' / ')}</span>
-        </div>
+        <details className={styles.voiceRegistryPanel}>
+          <summary>
+            <strong>跨章角色音</strong>
+            <span>{batchVoiceRegistry.length} 个角色已锁定</span>
+          </summary>
+          <div className={styles.voiceRegistryTable}>
+            <div className={styles.voiceRegistryHeader}>
+              <span>角色名</span>
+              <span>分类</span>
+              <span>声音提示</span>
+              <span>出现次数</span>
+            </div>
+            {batchVoiceRegistry.map((entry) => (
+              <div key={entry.roleName} className={styles.voiceRegistryRow}>
+                <span>{entry.roleName}</span>
+                <span className={styles[`voiceCategory--${entry.category}`]}>
+                  {VOICE_CATEGORY_LABEL[entry.category] ?? entry.category}
+                </span>
+                <span>{entry.voiceHint || '—'}</span>
+                <span>{entry.appearanceCount ?? '—'}</span>
+              </div>
+            ))}
+          </div>
+          <small className={styles.voiceRegistryNote}>
+            此列表由各章质检阶段累积生成，仅供参考。角色音编辑功能将在后续版本开放。
+          </small>
+        </details>
       ) : null}
 
       {currentRun?.sheet ? (
