@@ -31,7 +31,6 @@ export async function startGatewayExecution(payload: StartGatewayExecutionPayloa
   try {
     return await window.electronAPI.startScriptAdapterRun({
       ...payload,
-      useMock: true,
       sourceText: payload.sourceText,
       config: payload.config,
     });

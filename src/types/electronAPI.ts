@@ -214,7 +214,6 @@ export interface ElectronAPI {
     taskId: string;
     taskTitle: string;
     source?: string;
-    useMock?: boolean;
     sourceText?: string;
     config?: unknown;
   }) => Promise<ApiResult & { taskId?: string; planId?: string }>;
