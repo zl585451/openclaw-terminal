@@ -1,8 +1,12 @@
 'use strict';
 
 const { chatCompletion, resolveProviderFor } = require('../../services/llmClient');
+const config = require('../../config');
 
-const SYSTEM_PROMPT = `你是有声书角色音统筹师。给你一段已经改编好的多人演播台本里的角色出场统计,你要为每个角色判断角色音类别,并写一句声线建议。
+const VOICE_CLASSIFIER_MODEL = 'qwen3.5-flash';
+const DASHSCOPE_COMPATIBLE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+
+const SYSTEM_PROMPT = `你是有声书角色音统筹师。你会收到由 Text Rewriter 行协议解析后生成的 segments 统计结果。请只根据这些已经解析好的 speaker 统计，为每个 speaker 判断角色音类别，并写一句声线建议。
 
 类别(严格使用):
 - narrator: 旁白,通常出场次数最多,无对白以叙述为主
@@ -52,7 +56,7 @@ async function runVoiceClassifierAgent(ctx) {
     throw new Error('VOICE_CLASSIFIER_NO_SPEAKERS');
   }
 
-  const provider = resolveProviderFor('script_adapter');
+  const provider = resolveVoiceClassifierProvider();
   const chapterTitle = adaptedScript.payload?.chapterTitle || '未命名';
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -79,6 +83,34 @@ async function runVoiceClassifierAgent(ctx) {
 
 function pickAdaptedScript(artifacts = {}) {
   return Object.values(artifacts).find((a) => a?.artifactType === 'adapted_script') || null;
+}
+
+function resolveVoiceClassifierProvider() {
+  const baseProvider = resolveProviderFor('script_adapter');
+  if (baseProvider.source === 'script_adapter' || isDashScopeBaseUrl(baseProvider.baseUrl)) {
+    return { ...baseProvider, model: VOICE_CLASSIFIER_MODEL };
+  }
+
+  const dashScopeApiKey = String(config.getEnvOrConfig?.('DASHSCOPE_API_KEY') || '').trim();
+  if (isStandardDashScopeKey(dashScopeApiKey)) {
+    return {
+      baseUrl: DASHSCOPE_COMPATIBLE_BASE_URL,
+      apiKey: dashScopeApiKey,
+      model: VOICE_CLASSIFIER_MODEL,
+      source: 'voice_classifier_dashscope',
+    };
+  }
+
+  return { ...baseProvider, model: VOICE_CLASSIFIER_MODEL };
+}
+
+function isDashScopeBaseUrl(baseUrl) {
+  return String(baseUrl || '').toLowerCase().includes('dashscope.aliyuncs.com');
+}
+
+function isStandardDashScopeKey(apiKey) {
+  const normalized = String(apiKey || '').trim().toLowerCase();
+  return Boolean(normalized) && !normalized.startsWith('sk-sp-') && !normalized.startsWith('sk-cp-');
 }
 
 function aggregateSpeakers(segments) {
@@ -117,24 +149,29 @@ function parseVoiceClassifierOutput(raw, stats) {
 
   const statMap = new Map(stats.map((s) => [s.roleName, s.appearanceCount]));
 
-  let registry = parsed.registry.map((r) => {
+  const registry = [];
+  const seen = new Set();
+  for (const r of parsed.registry) {
     const roleName = String(r.roleName || '').trim();
+    if (!roleName || !statMap.has(roleName) || seen.has(roleName)) continue;
     const cat = String(r.category || '').trim();
-    const category = VALID_CATEGORIES.has(cat) ? cat : 'support';
-    return {
+    const category = roleName === '旁白'
+      ? 'narrator'
+      : (VALID_CATEGORIES.has(cat) ? cat : 'support');
+    registry.push({
       roleName,
       category,
       voiceHint: String(r.voiceHint || '（未给出声线建议）').trim() || '（未给出声线建议）',
       appearanceCount: Number(statMap.get(roleName) ?? r.appearanceCount ?? 0),
-    };
-  }).filter((r) => r.roleName);
+    });
+    seen.add(roleName);
+  }
 
-  const seen = new Set(registry.map((r) => r.roleName));
   for (const s of stats) {
     if (seen.has(s.roleName)) continue;
     registry.push({
       roleName: s.roleName,
-      category: 'support',
+      category: s.roleName === '旁白' ? 'narrator' : 'support',
       voiceHint: '（模型未返回该项，已按出场统计占位）',
       appearanceCount: s.appearanceCount,
     });
@@ -157,4 +194,5 @@ module.exports = {
   aggregateSpeakers,
   parseVoiceClassifierOutput,
   pickAdaptedScript,
+  resolveVoiceClassifierProvider,
 };
