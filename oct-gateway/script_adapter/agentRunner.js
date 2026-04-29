@@ -1,4 +1,5 @@
 const { createArtifactForAgent } = require('./mockArtifactFactory');
+const runRegistry = require('./runRegistry');
 
 async function runMockAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx = {} }) {
   let currentSheet = { ...sheet, overallStatus: 'running', updatedAt: new Date().toISOString() };
@@ -8,8 +9,13 @@ async function runMockAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx = 
   for (const agent of currentSheet.plan.agents) {
     assertNotAborted(signal);
     const runIndex = currentSheet.runs.findIndex((run) => run.agentId === agent.agentId);
+    if (runIndex < 0) continue;
+    const existingRun = currentSheet.runs[runIndex];
+    if (existingRun?.status === 'completed') {
+      continue;
+    }
     let run = {
-      ...currentSheet.runs[runIndex],
+      ...existingRun,
       status: 'running',
       startedAt: new Date().toISOString(),
       progressSummary: '开始执行',
@@ -65,10 +71,24 @@ async function runMockAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx = 
     };
     onSheetUpdate?.(currentSheet);
     emit('artifact_created', { agentId: agent.agentId, artifact, run });
+    if (currentSheet.taskId) {
+      try {
+        runRegistry.updateRun(currentSheet.taskId, { sheet: currentSheet });
+      } catch {}
+    }
 
     const gate = currentSheet.gates.find((item) => item.afterAgentId === agent.agentId && item.status === 'pending');
     if (gate) {
       emit('gate_reached', { gate });
+      if (ctx.haltOnPendingQualityGate && gate.gateType === 'quality_review') {
+        currentSheet = {
+          ...currentSheet,
+          overallStatus: 'awaiting_review',
+          updatedAt: new Date().toISOString(),
+        };
+        onSheetUpdate?.(currentSheet);
+        return currentSheet;
+      }
       await wait(500, signal);
       const approvedGate = { ...gate, status: 'approved', relatedArtifactId: artifact.artifactId };
       currentSheet = {

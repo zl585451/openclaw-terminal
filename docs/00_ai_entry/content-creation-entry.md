@@ -43,4 +43,7 @@
    - Week 5 起，`adapter.audiobook_text_rewriter@1.0`、`classifier.voice_role_marker@1.0`、`designer.performance_audio@1.0`、`reviewer.production_quality@1.0` 可按 `SCRIPT_ADAPTER_REAL_AGENTS` 走真实 LLM；`packager.content_delivery@1.0` 固定为纯 JS 收口，不调 LLM。
    - 任一真实 Agent 失败时 dispatcher 必须回退占位产物，不让 pipeline 中断；前端执行页会以红色边条标识失败产物，并允许继续复制 JSON / 查看交付预览。
    - Week 4 Track 1：可从 AI.library 书库选章经 **Electron `window.electronAPI.library.*`** 填入 `sourceText`（不经 Gateway）。详见 `docs/02_architecture/script-adapter-gateway-protocol.md` 与 `docs/05_changelog/` 下相关 changelog。
+   - P0 起，批次执行通过 Gateway 维护运行中订阅表；主进程 WebSocket 重连后会自动补订阅正在执行的批次，避免进度事件在断线后静默丢失。
+   - `quality_review` 通过后不再自动放行，批次章会进入 `awaiting_review`，等待前端人工批准或拒绝。
 6. 任务持久化和最近任务列表。
+   - P0 起，单次执行历史落盘到 SQLite；Gateway 重启会把未完成 run 恢复为 `interrupted`。

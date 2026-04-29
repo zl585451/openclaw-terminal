@@ -4671,6 +4671,28 @@
   border-color: rgba(55, 138, 221, 0.28);
 }
 
+.gateReviewBlock {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(210, 162, 87, 0.35);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255, 248, 232, 0.95), rgba(255, 239, 212, 0.88));
+}
+
+.gateReviewBlock p {
+  margin: 6px 0 0;
+  color: rgba(77, 54, 20, 0.78);
+}
+
+.gateReviewActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .metricsGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

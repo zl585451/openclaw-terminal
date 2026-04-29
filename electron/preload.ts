@@ -37,6 +37,11 @@ const electronAPI = {
     list: (params?: { limit?: number; offset?: number }) =>
       ipcRenderer.invoke('script-adapter-batch-list', params || {}),
     cancel: (batchId: string) => ipcRenderer.invoke('script-adapter-batch-cancel', { batchId }),
+    subscribe: (batchId: string) => ipcRenderer.invoke('script-adapter-batch-subscribe', batchId),
+    approveGate: (batchId: string, gateId: string, reviewerNote?: string) =>
+      ipcRenderer.invoke('script-adapter-batch-approve-gate', { batchId, gateId, reviewerNote }),
+    rejectGate: (batchId: string, gateId: string, reviewerNote?: string) =>
+      ipcRenderer.invoke('script-adapter-batch-reject-gate', { batchId, gateId, reviewerNote }),
     rerunChapter: (batchId: string, chapterIndex: number) =>
       ipcRenderer.invoke('script-adapter-batch-rerun', { batchId, chapterIndex }),
     remove: (batchId: string) => ipcRenderer.invoke('script-adapter-batch-delete', { batchId }),

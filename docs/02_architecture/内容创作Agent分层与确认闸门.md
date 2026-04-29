@@ -150,3 +150,12 @@
 3. Agent 注册表，区分通用 Agent 和产物团队 Agent。
 4. ExecutionGate 的状态机。
 5. 创建任务 UI 和 Gateway 的最小闭环。
+
+---
+
+## 6. 当前实现备注（P0）
+
+1. `quality_review` Gate 已从展示性文案升级为真实运行期闸门。
+2. 章运行到 Gate 后会写入持久化层，`chapter_runs.status` 进入 `awaiting_review`，批次循环暂停。
+3. 人工批准后，同一章会基于已保存的 `sheet` 继续执行剩余 Agent，而不是从头丢失上下文。
+4. Gateway 断线重连场景下，批次事件通过订阅表补投递；单次运行和 Gate 决策都写入 SQLite，支持重启恢复与追踪。

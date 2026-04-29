@@ -5,6 +5,7 @@ export type ScriptAdapterBatchEvent =
   | { event: 'chapter_started'; batchId: string; chapterIndex: number; runId: string; chapterTitle?: string }
   | { event: 'chapter_progress'; batchId: string; chapterIndex: number; runId: string; agentId: string; progressSummary: string; progressPercent: number }
   | { event: 'chapter_completed'; batchId: string; chapterIndex: number; runId: string; sheet: unknown }
+  | { event: 'gate_reached'; batchId: string; chapterIndex: number; runId: string; gate: unknown }
   | { event: 'chapter_failed'; batchId: string; chapterIndex: number; runId: string; error: string }
   | { event: 'batch_completed'; batchId: string; batch?: BatchJob }
   | { event: 'batch_cancelled'; batchId: string; batch?: BatchJob }
@@ -49,11 +50,36 @@ export async function cancelGatewayBatch(batchId: string) {
   return window.electronAPI.scriptAdapterBatch.cancel(batchId);
 }
 
+export async function subscribeGatewayBatch(batchId: string) {
+  if (!window.electronAPI?.scriptAdapterBatch?.subscribe) {
+    return { success: false, error: '当前环境未暴露批次订阅入口' };
+  }
+  try {
+    return await window.electronAPI.scriptAdapterBatch.subscribe(batchId);
+  } catch {
+    return { success: false, error: 'batch_subscribe_failed' };
+  }
+}
+
 export async function rerunGatewayBatchChapter(batchId: string, chapterIndex: number) {
   if (!window.electronAPI?.scriptAdapterBatch?.rerunChapter) {
     return { success: false, error: '当前环境未暴露批次重跑入口' };
   }
   return window.electronAPI.scriptAdapterBatch.rerunChapter(batchId, chapterIndex);
+}
+
+export async function approveGatewayGate(batchId: string, gateId: string, reviewerNote?: string) {
+  if (!window.electronAPI?.scriptAdapterBatch?.approveGate) {
+    return { success: false, error: '当前环境未暴露批准入口' };
+  }
+  return window.electronAPI.scriptAdapterBatch.approveGate(batchId, gateId, reviewerNote);
+}
+
+export async function rejectGatewayGate(batchId: string, gateId: string, reviewerNote?: string) {
+  if (!window.electronAPI?.scriptAdapterBatch?.rejectGate) {
+    return { success: false, error: '当前环境未暴露拒绝入口' };
+  }
+  return window.electronAPI.scriptAdapterBatch.rejectGate(batchId, gateId, reviewerNote);
 }
 
 export async function deleteGatewayBatch(batchId: string) {

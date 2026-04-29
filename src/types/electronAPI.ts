@@ -242,6 +242,9 @@ export interface ElectronAPI {
     status: (batchId: string) => Promise<ApiResult & { batch?: unknown; chapterRuns?: unknown[] }>;
     list: (params?: { limit?: number; offset?: number }) => Promise<ApiResult & { batches?: unknown[] }>;
     cancel: (batchId: string) => Promise<ApiResult>;
+    subscribe: (batchId: string) => Promise<ApiResult & { subscribed?: boolean; batchId?: string }>;
+    approveGate: (batchId: string, gateId: string, reviewerNote?: string) => Promise<ApiResult>;
+    rejectGate: (batchId: string, gateId: string, reviewerNote?: string) => Promise<ApiResult>;
     rerunChapter: (batchId: string, chapterIndex: number) => Promise<ApiResult>;
     remove: (batchId: string) => Promise<ApiResult>;
   };

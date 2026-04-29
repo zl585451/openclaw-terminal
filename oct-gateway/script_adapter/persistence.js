@@ -46,9 +46,41 @@ function ensureSchema() {
       FOREIGN KEY (batch_id) REFERENCES batch_jobs(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS single_runs (
+      task_id TEXT PRIMARY KEY,
+      plan_id TEXT,
+      task_title TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      sheet TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS gate_decisions (
+      gate_id TEXT PRIMARY KEY,
+      batch_id TEXT NOT NULL,
+      chapter_run_id TEXT NOT NULL,
+      gate_type TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewer_note TEXT,
+      created_at TEXT NOT NULL,
+      decided_at TEXT,
+      FOREIGN KEY (chapter_run_id) REFERENCES chapter_runs(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_chapter_runs_batch ON chapter_runs(batch_id, chapter_index);
     CREATE INDEX IF NOT EXISTS idx_batch_jobs_status ON batch_jobs(status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_single_runs_status ON single_runs(status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_gate_decisions_run ON gate_decisions(chapter_run_id, status);
   `);
+  try {
+    database.exec('ALTER TABLE chapter_runs ADD COLUMN pending_gate_id TEXT');
+  } catch {}
+  try {
+    database.exec('ALTER TABLE chapter_runs ADD COLUMN pending_gate_type TEXT');
+  } catch {}
 }
 
 function createBatch(batch) {
@@ -232,7 +264,9 @@ function updateChapterRun(runId, updates = {}) {
         completed_at = @completed_at,
         duration_ms = @duration_ms,
         cost = @cost,
-        attempt = @attempt
+        attempt = @attempt,
+        pending_gate_id = @pending_gate_id,
+        pending_gate_type = @pending_gate_type
     WHERE id = @id
   `).run({
     id: existing.id,
@@ -249,6 +283,8 @@ function updateChapterRun(runId, updates = {}) {
     duration_ms: next.durationMs ?? null,
     cost: next.cost ?? 0,
     attempt: next.attempt ?? 1,
+    pending_gate_id: next.pendingGateId || null,
+    pending_gate_type: next.pendingGateType || null,
   });
   refreshBatchCounters(next.batchId);
   return getChapterRun(next.batchId, next.chapterIndex);
@@ -338,6 +374,123 @@ function refreshBatchCounters(batchId) {
   });
 }
 
+function createSingleRun({ taskId, planId, taskTitle }) {
+  const now = new Date().toISOString();
+  getDb().prepare(`
+    INSERT OR IGNORE INTO single_runs
+      (task_id, plan_id, task_title, status, created_at, updated_at)
+    VALUES (@taskId, @planId, @taskTitle, 'running', @now, @now)
+  `).run({
+    taskId,
+    planId: planId || null,
+    taskTitle: taskTitle || '',
+    now,
+  });
+  return getSingleRun(taskId);
+}
+
+function updateSingleRun(taskId, patch = {}) {
+  const now = new Date().toISOString();
+  const updates = [];
+  const params = { taskId, now };
+
+  if (patch.status !== undefined) {
+    updates.push('status = @status');
+    params.status = patch.status;
+  }
+  if (patch.sheet !== undefined) {
+    updates.push('sheet = @sheet');
+    params.sheet = typeof patch.sheet === 'string' ? patch.sheet : JSON.stringify(patch.sheet);
+  }
+  if (patch.error !== undefined) {
+    updates.push('error = @error');
+    params.error = patch.error;
+  }
+  if (patch.completedAt !== undefined) {
+    updates.push('completed_at = @completedAt');
+    params.completedAt = patch.completedAt;
+  }
+  if (patch.planId !== undefined) {
+    updates.push('plan_id = @planId');
+    params.planId = patch.planId;
+  }
+
+  if (updates.length === 0) return getSingleRun(taskId);
+  updates.push('updated_at = @now');
+  getDb().prepare(`UPDATE single_runs SET ${updates.join(', ')} WHERE task_id = @taskId`).run(params);
+  return getSingleRun(taskId);
+}
+
+function getSingleRun(taskId) {
+  const row = getDb().prepare('SELECT * FROM single_runs WHERE task_id = ?').get(String(taskId || ''));
+  if (!row) return null;
+  return {
+    taskId: row.task_id,
+    planId: row.plan_id,
+    taskTitle: row.task_title,
+    status: row.status,
+    sheet: parseJson(row.sheet, null),
+    error: row.error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at,
+  };
+}
+
+function listSingleRuns(limit = 20, offset = 0) {
+  const rows = getDb().prepare(`
+    SELECT * FROM single_runs ORDER BY datetime(created_at) DESC LIMIT ? OFFSET ?
+  `).all(Number(limit) || 20, Number(offset) || 0);
+  return rows.map((row) => getSingleRun(row.task_id)).filter(Boolean);
+}
+
+function recoverInterruptedRuns() {
+  getDb().prepare(`
+    UPDATE single_runs
+    SET status = 'interrupted', updated_at = ?
+    WHERE status IN ('running', 'pending')
+  `).run(new Date().toISOString());
+}
+
+function createGateDecision({ gateId, batchId, chapterRunId, gateType }) {
+  const now = new Date().toISOString();
+  getDb().prepare(`
+    INSERT OR IGNORE INTO gate_decisions
+      (gate_id, batch_id, chapter_run_id, gate_type, status, created_at)
+    VALUES (@gateId, @batchId, @chapterRunId, @gateType, 'pending', @now)
+  `).run({
+    gateId,
+    batchId,
+    chapterRunId,
+    gateType: gateType || 'review',
+    now,
+  });
+}
+
+function resolveGateDecision(gateId, { status, reviewerNote }) {
+  const now = new Date().toISOString();
+  getDb().prepare(`
+    UPDATE gate_decisions
+    SET status = @status, reviewer_note = @reviewerNote, decided_at = @now
+    WHERE gate_id = @gateId
+  `).run({
+    gateId,
+    status,
+    reviewerNote: reviewerNote || null,
+    now,
+  });
+}
+
+function getGateDecision(gateId) {
+  return getDb().prepare('SELECT * FROM gate_decisions WHERE gate_id = ?').get(String(gateId || '')) || null;
+}
+
+function getPendingGatesForBatch(batchId) {
+  return getDb().prepare(`
+    SELECT * FROM gate_decisions WHERE batch_id = ? AND status = 'pending'
+  `).all(String(batchId || ''));
+}
+
 function getDb() {
   if (db) return db;
   ensureDir(getUserDataDir());
@@ -400,6 +553,8 @@ function normalizeChapterRunRow(row) {
     durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
     cost: row.cost == null ? 0 : Number(row.cost),
     attempt: Number(row.attempt || 1),
+    pendingGateId: row.pending_gate_id || null,
+    pendingGateType: row.pending_gate_type || null,
   };
 }
 
@@ -427,4 +582,13 @@ module.exports = {
   findNextPendingChapter,
   listRunningBatches,
   refreshBatchCounters,
+  createSingleRun,
+  updateSingleRun,
+  getSingleRun,
+  listSingleRuns,
+  recoverInterruptedRuns,
+  createGateDecision,
+  resolveGateDecision,
+  getGateDecision,
+  getPendingGatesForBatch,
 };

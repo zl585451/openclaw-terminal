@@ -1,3 +1,5 @@
+const connectionRegistry = require('./connectionRegistry');
+
 function createScriptAdapterEmitter(connection, taskId) {
   return (event, payload = {}) => {
     if (!connection?.isOpen?.()) return;
@@ -13,10 +15,9 @@ function createScriptAdapterEmitter(connection, taskId) {
   };
 }
 
-function createBatchScriptAdapterEmitter(connection, batchId) {
+function createBatchScriptAdapterEmitter(batchId) {
   return (event, payload = {}) => {
-    if (!connection?.isOpen?.()) return;
-    connection.send({
+    connectionRegistry.broadcast(batchId, {
       type: 'event',
       event: 'script-adapter',
       payload: {

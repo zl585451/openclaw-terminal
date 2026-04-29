@@ -16,6 +16,8 @@ class WsTransport {
     capabilityProvider,
     authTokenProvider,
     onAuthenticatedMessage,
+    onAuthenticatedConnection,
+    onConnectionClose,
   }) {
     this.port = port;
     this.host = host;
@@ -24,6 +26,8 @@ class WsTransport {
     this.capabilityProvider = capabilityProvider || (() => ({}));
     this.authTokenProvider = authTokenProvider || (() => '');
     this.onAuthenticatedMessage = onAuthenticatedMessage;
+    this.onAuthenticatedConnection = onAuthenticatedConnection || null;
+    this.onConnectionClose = onConnectionClose || null;
     this.wss = null;
     this.authenticatedClients = new Set();
   }
@@ -169,6 +173,7 @@ class WsTransport {
           },
         });
         this.log.info('client authenticated', { clientId });
+        this.onAuthenticatedConnection?.(connection);
         return;
       }
 
@@ -205,6 +210,7 @@ class WsTransport {
       connection.setAbort(null);
       connection.stopThinkingPulse();
       this.authenticatedClients.delete(ws);
+      this.onConnectionClose?.(connection);
       this.log.info('client disconnected', { clientId });
     });
 

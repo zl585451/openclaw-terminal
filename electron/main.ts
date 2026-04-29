@@ -4786,6 +4786,20 @@ ipcMain.handle('script-adapter-batch-cancel', (_event, payload: { batchId: strin
   });
 });
 
+ipcMain.handle('script-adapter-batch-subscribe', (_event, batchId: string) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.subscribe', {
+    batchId: String(batchId || ''),
+  });
+});
+
+ipcMain.handle('script-adapter-batch-approve-gate', (_event, payload: { batchId: string; gateId: string; reviewerNote?: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.approveGate', payload || {});
+});
+
+ipcMain.handle('script-adapter-batch-reject-gate', (_event, payload: { batchId: string; gateId: string; reviewerNote?: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.rejectGate', payload || {});
+});
+
 ipcMain.handle('script-adapter-batch-rerun', (_event, payload: { batchId: string; chapterIndex: number }) => {
   return sendScriptAdapterRunRequest('scriptAdapter.batch.rerunChapter', {
     batchId: String(payload?.batchId || ''),

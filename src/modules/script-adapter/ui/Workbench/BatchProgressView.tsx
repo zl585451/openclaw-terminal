@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { BatchJob, ChapterRunRecord } from '../../types/batch';
+import { approveGatewayGate, rejectGatewayGate } from '../../services/gatewayBatch';
 import { DeliveryPreview } from './DeliveryPreview';
 import styles from '../../styles/scriptAdapter.module.css';
 
@@ -97,7 +98,8 @@ export function BatchProgressView({
             {visible.map((run) => {
               const checked = run.status === 'completed';
               const failed = run.status === 'failed';
-              const symbol = checked ? '✓' : failed ? '✗' : run.status === 'running' ? '⟳' : '○';
+              const awaitingReview = run.status === 'awaiting_review';
+              const symbol = checked ? '✓' : failed ? '✗' : awaitingReview ? '⏸' : run.status === 'running' ? '⟳' : '○';
               return (
                 <div
                   key={`${run.chapterIndex}-${run.attempt || 1}`}
@@ -125,6 +127,35 @@ export function BatchProgressView({
           </div>
         </div>
       </div>
+
+      {sortedRuns.some((run) => run.status === 'awaiting_review') ? (
+        <div className={styles.gateReviewBlock}>
+          {sortedRuns
+            .filter((run) => run.status === 'awaiting_review' && run.pendingGateId)
+            .map((run) => (
+              <div key={run.id} className={styles.gateReviewActions}>
+                <div>
+                  <strong>质检完成，等待你复核</strong>
+                  <p>{run.chapterTitle || `第 ${run.chapterIndex + 1} 章`} 的质检节点已暂停，批准后会继续进入打包。</p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.confirmStartButton}
+                  onClick={() => void approveGatewayGate(batch.id, run.pendingGateId!, '').then(onRefresh)}
+                >
+                  批准，继续制作
+                </button>
+                <button
+                  type="button"
+                  className={styles.ghostButton}
+                  onClick={() => void rejectGatewayGate(batch.id, run.pendingGateId!, '需要重做').then(onRefresh)}
+                >
+                  拒绝，重新执行此章
+                </button>
+              </div>
+            ))}
+        </div>
+      ) : null}
 
       {batchVoiceRegistry.length > 0 ? (
         <div className={styles.batchVoiceRegistrySummary}>

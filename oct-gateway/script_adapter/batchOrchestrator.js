@@ -2,12 +2,14 @@
 
 const config = require('../config');
 const persistence = require('./persistence');
+const connectionRegistry = require('./connectionRegistry');
 const { createBatchScriptAdapterEmitter } = require('./eventEmitter');
 const { createExecutionPlan, runSingleScriptAdapterChapter } = require('./mock_execution');
 
 const activeBatches = new Map();
 
 persistence.ensureSchema();
+persistence.recoverInterruptedRuns();
 recoverInterruptedBatches();
 
 async function startBatch(params = {}, connection, logger) {
@@ -27,6 +29,7 @@ async function startBatch(params = {}, connection, logger) {
 
   const now = new Date().toISOString();
   const batchId = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  connectionRegistry.subscribe(batchId, connection);
   const deliveryOptions = {
     adaptedScript: true,
     voiceRegistry: params?.config?.deliveryOptions?.voiceRegistry !== false,
@@ -65,7 +68,7 @@ async function startBatch(params = {}, connection, logger) {
     })),
   });
 
-  const emit = createBatchScriptAdapterEmitter(connection, batchId);
+  const emit = createBatchScriptAdapterEmitter(batchId);
   emit('batch_created', batchRecord);
   void runBatchLoop(batchId, connection, logger);
   return { success: true, batchId };
@@ -75,7 +78,7 @@ async function runBatchLoop(batchId, connection, logger) {
   if (activeBatches.has(batchId)) return;
   const controller = new AbortController();
   activeBatches.set(batchId, { abortController: controller });
-  const emit = createBatchScriptAdapterEmitter(connection, batchId);
+  const emit = createBatchScriptAdapterEmitter(batchId);
 
   try {
     let snapshot = persistence.getBatch(batchId);
@@ -89,18 +92,20 @@ async function runBatchLoop(batchId, connection, logger) {
     while (!controller.signal.aborted) {
       snapshot = persistence.getBatch(batchId);
       if (!snapshot) break;
+      if (snapshot.chapterRuns.some((run) => run.status === 'awaiting_review')) break;
       const nextChapterIndex = persistence.findNextPendingChapter(batchId);
       if (nextChapterIndex == null) break;
       await executeChapter(snapshot.batch, nextChapterIndex, emit, controller.signal, logger);
       await sleep(isRealAgentsEnabled(snapshot.batch) ? 1200 : 150, controller.signal).catch(() => {});
     }
 
-    const finalSnapshot = persistence.getBatch(batchId);
-    if (finalSnapshot) {
-      const pendingLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'pending');
-      const nextStatus = controller.signal.aborted
-        ? 'cancelled'
-        : pendingLeft
+      const finalSnapshot = persistence.getBatch(batchId);
+      if (finalSnapshot) {
+        const pendingLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'pending');
+        const awaitingReview = finalSnapshot.chapterRuns.some((run) => run.status === 'awaiting_review');
+        const nextStatus = controller.signal.aborted
+          ? 'cancelled'
+          : awaitingReview || pendingLeft
           ? 'paused'
           : finalSnapshot.batch.failedChapters > 0
             ? 'completed'
@@ -147,7 +152,7 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
   });
 
   try {
-    const sheet = createExecutionPlan(
+    const sheet = chapterRun.sheet || createExecutionPlan(
       chapterRun.id,
       `《${batch.bookTitle}》第 ${chapterIndex + 1} 章`,
       {
@@ -164,6 +169,7 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
         realAgentsOverride: batch.config?.realAgents || 'off',
         deliveryOptions: batch.config?.deliveryOptions || {},
         sharedVoiceRegistry: batch.config?.sharedContext?.voiceRegistry || [],
+        haltOnPendingQualityGate: true,
       },
       onProgress: (payload) => {
         emit('chapter_progress', {
@@ -182,7 +188,35 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
       completedAt: new Date().toISOString(),
       durationMs,
       cost: chapterCost,
+      pendingGateId: null,
+      pendingGateType: null,
     });
+    const pendingGate = findPendingGateAfterAgent(normalizedSheet);
+    if (pendingGate) {
+      persistence.createGateDecision({
+        gateId: pendingGate.gateId,
+        batchId: batch.id,
+        chapterRunId: chapterRun.id,
+        gateType: pendingGate.gateType,
+      });
+      persistence.updateChapterRun(chapterRun.id, {
+        status: 'awaiting_review',
+        sheet: normalizedSheet,
+        pendingGateId: pendingGate.gateId,
+        pendingGateType: pendingGate.gateType,
+        completedAt: null,
+      });
+      persistence.updateBatch(batch.id, {
+        status: 'paused',
+        completedAt: null,
+      });
+      emit('gate_reached', {
+        chapterIndex,
+        runId: chapterRun.id,
+        gate: pendingGate,
+      });
+      return;
+    }
     updateSharedContext(batch.id, chapterIndex, normalizedSheet);
     emit('chapter_completed', {
       chapterIndex,
@@ -268,6 +302,65 @@ function recoverInterruptedBatches() {
       completedAt: null,
     });
   }
+}
+
+function approveGate(params = {}, connection, logger) {
+  const batchId = String(params.batchId || '').trim();
+  const gateId = String(params.gateId || '').trim();
+  const reviewerNote = String(params.reviewerNote || '').trim();
+  if (!batchId || !gateId) {
+    return { success: false, error: 'batchId and gateId required' };
+  }
+
+  persistence.resolveGateDecision(gateId, { status: 'approved', reviewerNote });
+  const snapshot = persistence.getBatch(batchId);
+  const run = snapshot?.chapterRuns?.find((item) => item.pendingGateId === gateId);
+  if (!snapshot || !run) {
+    return { success: false, error: 'gate_not_found' };
+  }
+
+  persistence.updateChapterRun(run.id, {
+    status: 'pending',
+    sheet: updateGateStatus(run.sheet, gateId, 'approved', reviewerNote),
+    pendingGateId: null,
+    pendingGateType: null,
+    errorMessage: null,
+    completedAt: null,
+  });
+  persistence.updateBatch(batchId, {
+    status: activeBatches.has(batchId) ? 'running' : 'paused',
+    completedAt: null,
+  });
+  if (!activeBatches.has(batchId)) {
+    void runBatchLoop(batchId, connection, logger);
+  }
+  return { success: true, approved: true, gateId };
+}
+
+function rejectGate(params = {}) {
+  const batchId = String(params.batchId || '').trim();
+  const gateId = String(params.gateId || '').trim();
+  const reviewerNote = String(params.reviewerNote || '').trim();
+  if (!batchId || !gateId) {
+    return { success: false, error: 'batchId and gateId required' };
+  }
+
+  persistence.resolveGateDecision(gateId, { status: 'rejected', reviewerNote });
+  const snapshot = persistence.getBatch(batchId);
+  const run = snapshot?.chapterRuns?.find((item) => item.pendingGateId === gateId);
+  if (!snapshot || !run) {
+    return { success: false, error: 'gate_not_found' };
+  }
+
+  persistence.updateChapterRun(run.id, {
+    status: 'failed',
+    sheet: updateGateStatus(run.sheet, gateId, 'rejected', reviewerNote),
+    errorMessage: `Gate rejected: ${reviewerNote || '人工拒绝'}`,
+    pendingGateId: null,
+    pendingGateType: null,
+    completedAt: new Date().toISOString(),
+  });
+  return { success: true, rejected: true, gateId };
 }
 
 async function fetchBook(bookId) {
@@ -383,6 +476,30 @@ function estimateChapterCost(batch) {
   return Number((total / count).toFixed(4));
 }
 
+function findPendingGateAfterAgent(sheet) {
+  if (!sheet || !Array.isArray(sheet.gates)) return null;
+  return sheet.gates.find(
+    (gate) => gate.status === 'pending' && gate.gateType === 'quality_review',
+  ) || null;
+}
+
+function updateGateStatus(sheet, gateId, status, reviewerNote) {
+  if (!sheet || !Array.isArray(sheet.gates)) return sheet;
+  return {
+    ...sheet,
+    gates: sheet.gates.map((gate) => (
+      gate.gateId === gateId
+        ? {
+          ...gate,
+          status,
+          reviewerNote: reviewerNote || gate.reviewerNote || '',
+        }
+        : gate
+    )),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -407,6 +524,8 @@ module.exports = {
   getBatchStatus,
   listBatches,
   cancelBatch,
+  approveGate,
+  rejectGate,
   rerunChapter,
   deleteBatch,
 };

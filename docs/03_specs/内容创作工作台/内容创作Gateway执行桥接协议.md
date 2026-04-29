@@ -71,6 +71,17 @@ Electron 主进程收到 Gateway 的：
 window.electronAPI.onScriptAdapterEvent((payload) => {})
 ```
 
+### 2.3 批次执行 IPC
+
+当前内容工作台批次链路补充了以下桥接能力：
+
+1. `script-adapter-batch-subscribe`
+   用于前端在切回批次或主进程重连后，主动补订阅某个运行中批次的推送事件。
+2. `script-adapter-batch-approve-gate`
+   用于人工批准 `quality_review` Gate，批准后该章会继续进入后续打包阶段。
+3. `script-adapter-batch-reject-gate`
+   用于人工拒绝 Gate，当前章标记为失败，等待用户后续手动重跑。
+
 ---
 
 ## 3. Gateway 事件
@@ -106,6 +117,26 @@ window.electronAPI.onScriptAdapterEvent((payload) => {})
    本轮执行完成，携带最终 `TaskExecutionSheet`。
 8. `run_failed`
    本轮执行失败，携带错误信息。
+
+批次执行额外支持：
+
+1. `batch_created`
+2. `chapter_started`
+3. `chapter_progress`
+4. `gate_reached`
+   批次章运行在 `quality_review` 后暂停，前端应展示 `awaiting_review` 和人工操作按钮。
+5. `chapter_completed`
+6. `chapter_failed`
+7. `batch_completed`
+8. `batch_cancelled`
+9. `batch_failed`
+
+补充约束：
+
+1. Gateway 端使用 `batchId -> Set<connection>` 的订阅表广播批次事件，不再把事件绑定到单一 WebSocket 连接。
+2. 新连接认证完成后，会自动补订阅所有运行中的批次；前端也可调用 `scriptAdapter.batch.subscribe` 做显式补订阅。
+3. `chapter_runs.status = 'awaiting_review'` 时，批次循环必须暂停，不允许继续跑后续章节。
+4. `single_runs` 与 `gate_decisions` 会落盘到 SQLite，Gateway 重启后单次执行中的 `running/pending` 会恢复为 `interrupted`。
 
 ---
 

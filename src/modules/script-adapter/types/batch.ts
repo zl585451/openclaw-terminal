@@ -74,7 +74,7 @@ export interface ChapterRunRecord {
   chapterIndex: number;
   chapterTitle?: string | null;
   sourceChars?: number | null;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'awaiting_review';
   sheet?: TaskExecutionSheet | null;
   errorMessage?: string | null;
   startedAt?: string | null;
@@ -82,4 +82,6 @@ export interface ChapterRunRecord {
   durationMs?: number | null;
   cost?: number | null;
   attempt?: number;
+  pendingGateId?: string | null;
+  pendingGateType?: string | null;
 }

@@ -24,6 +24,7 @@ import {
   listGatewayBatches,
   rerunGatewayBatchChapter,
   startGatewayBatch,
+  subscribeGatewayBatch,
   subscribeGatewayBatchEvents,
 } from '../../services/gatewayBatch';
 import { exportBatchDeliveryAsDocx, exportBatchDeliveryAsMarkdown } from '../../services/exportClient';
@@ -477,6 +478,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
       setCurrentBatchRuns([]);
       return;
     }
+    void subscribeGatewayBatch(currentBatchId);
     void loadBatchStatus(currentBatchId);
   }, [currentBatchId]);
 

@@ -109,11 +109,15 @@ const {
   cancelMockScriptAdapterRun,
   listMockScriptAdapterRuns,
 } = require('./script_adapter/mock_execution');
+const persistence = require('./script_adapter/persistence');
+const connectionRegistry = require('./script_adapter/connectionRegistry');
 const {
   startBatch: startScriptAdapterBatch,
   getBatchStatus: getScriptAdapterBatchStatus,
   listBatches: listScriptAdapterBatches,
   cancelBatch: cancelScriptAdapterBatch,
+  approveGate: approveScriptAdapterBatchGate,
+  rejectGate: rejectScriptAdapterBatchGate,
   rerunChapter: rerunScriptAdapterBatchChapter,
   deleteBatch: deleteScriptAdapterBatch,
 } = require('./script_adapter/batchOrchestrator');
@@ -589,6 +593,51 @@ async function handleTransportMessage(msg, connection) {
     return true;
   }
 
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.subscribe') {
+    const batchId = String(msg.params?.batchId || '').trim();
+    if (batchId) {
+      connectionRegistry.subscribe(batchId, connection);
+    }
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(batchId),
+      method: msg.method,
+      payload: {
+        subscribed: Boolean(batchId),
+        batchId,
+      },
+      error: batchId ? undefined : { message: 'batchId required' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.approveGate') {
+    const result = approveScriptAdapterBatchGate(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'approve gate failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.rejectGate') {
+    const result = rejectScriptAdapterBatchGate(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'reject gate failed' },
+    });
+    return true;
+  }
+
   if (msg?.type === 'req' && msg?.method === 'image.generate') {
     const imgProvider = String(config.getEnvOrConfig('IMAGE_PROVIDER') || 'minimax').trim().toLowerCase();
     const imgBaseRaw = String(config.getEnvOrConfig('IMAGE_BASE_URL') || '').trim();
@@ -634,6 +683,12 @@ async function handleTransportMessage(msg, connection) {
 
 const HTTP_PORT = PORT + 1;
 
+function subscribeConnectionToRunningBatches(connection) {
+  for (const batch of persistence.listRunningBatches()) {
+    connectionRegistry.subscribe(batch.id, connection);
+  }
+}
+
 startMemoryMonitor({ logger: memLog });
 startScheduler();
 
@@ -644,6 +699,10 @@ const wsTransport = new WsTransport({
   capabilityProvider: () => getGatewayCapabilities(config.DASHSCOPE_MODEL),
   authTokenProvider: () => process.env.OCT_GATEWAY_TOKEN || '',
   onAuthenticatedMessage: handleTransportMessage,
+  onAuthenticatedConnection: subscribeConnectionToRunningBatches,
+  onConnectionClose: (connection) => {
+    connectionRegistry.onConnectionClose(connection);
+  },
 }).start();
 
 const httpTransport = new HttpTransport({
