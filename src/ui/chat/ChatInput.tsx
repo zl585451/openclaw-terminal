@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import QuickCommandMenu from '../../components/QuickCommandMenu';
 import { useSettings } from '../../contexts/SettingsContext';
-import type { UploadedFile } from './ChatTab.v2';
+import type { UploadedFile } from './chatTypes';
 
 const ipcRenderer =
   typeof window !== 'undefined' && typeof (window as any).require === 'function'

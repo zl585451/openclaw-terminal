@@ -10,7 +10,7 @@ import { toWorkbenchCommand } from '../workbench/types';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
-import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/ChatTab.v2';
+import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTypes';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';

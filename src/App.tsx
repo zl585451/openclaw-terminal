@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import TitleBar from './components/TitleBar';
 import TabBar from './components/TabBar';
-import ChatTab, { ChatMessage } from './ui/chat/ChatTab.v2';
+import ChatTab from './ui/chat/ChatTab.v2';
+import type { ChatMessage } from './ui/chat/chatTypes';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
 import SettingsPanel from './components/SettingsPanel';

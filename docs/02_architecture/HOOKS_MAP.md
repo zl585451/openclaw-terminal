@@ -1,134 +1,193 @@
-## Hooks map（useMessages 重构后）
+# Hooks 职责地图（`src/hooks/`）
 
-本文件记录 `src/hooks/` 下与聊天消息生命周期相关的 hooks 职责划分、输入输出与依赖关系。
+> 目的：业务 Hook 的职责、入参、返回值与依赖关系基准，供改聊天链路或 UI 状态时查阅。  
+> Last Updated: 2026-04-29
 
----
+## useMessages
 
-## `useMessages`
+**职责**：编排单轮对话生命周期（TurnFSM / StreamRouter / BlockIngest）、汇总网关 WebSocket 事件、维护消息列表与发送入口。
 
-- **职责**：
-  - 作为“编排层”hook：聚合 WebSocket 事件、FSM（`oct.fsm`）与 StreamRouter（`oct.stream`）的生命周期
-  - 维护消息列表的写入（`setMessages`）、发送入口（`sendMessage/quickSend`）与回调对外状态（连接状态、streaming 状态、token/ctx、timeline 等）
-  - 组织各子 hook 的调用（usage 统计、timeline、stream painting）
-- **输入（参数）**：`UseMessagesOptions`
-  - `oct`: `{ fsm, stream, ingest }`
-  - `messages/setMessages`
-  - `permissions`
-  - `typewriter`
-  - `scroll`（`reconcile/scrollAfterUserSend`）
-  - `streamSpeedMs/typingSound/typingSoundVolume`
-  - `onStatusChange/onClarifyOpen`（可选回调）
-- **输出（return）**：`UseMessagesReturn`
-  - 连接状态：`wsConnected/wsReconnecting/wsError/nocturneOnline`
-  - 流程状态：`fsmPhase/isStreaming/awaitingResponse/agentPhase/thinkingElapsed`
-  - 工具与 timeline：`activeTools/activityTimeline`
-  - gateway：`gatewayCapabilities/modelName/thinkMode/pendingPills`
-  - token/context：`tokenIn/tokenOut/ctxUsed/ctxMax`
-  - refs：`fullTextRef/streamingDomRef`
-  - 发送入口：`sendMessage/quickSend`
-- **依赖**：
-  - `useWebSocket`（事件源）
-  - `useTokenUsage`（usage 聚合）
-  - `useActivityTimeline`（timeline 与 CoT debounce）
-  - `useStreamPainting`（逐字符渲染）
-  - `TurnFSM/StreamRouter/BlockIngest`（core）
-- **备注（已知技术债/临时实现）**：
-  - 当前通过在 `useMessages` 内部给 `oct` 临时挂载 `__streamPainting` 上下文来向 `useStreamPainting` 传递 refs/callback，这是**临时方案**（不影响对外 API，但不够“纯”）。
+**输入参数**（`UseMessagesOptions` 摘要）：
 
----
+- `oct`: `{ fsm, stream, ingest }` — 核心运行时实例  
+- `typewriter`: 打字机 Hook 返回值 — 非流式或收尾展示  
+- `scroll`: `reconcile`、`scrollAfterUserSend` — 与滚动管理协同  
+- `getNextMessageId` / `messages` / `setMessages` — 消息列表  
+- `permissions` — 发送前权限校验  
+- `streamSpeedMs` / `typingSound` / `typingSoundVolume` — 流式绘制与音效  
+- `onStatusChange` / `onClarifyOpen` — 状态栏与澄清卡回调  
 
-## `useTokenUsage`
+**返回值**（摘要）：连接与 FSM 相位、流式与 `sendMessage` / `quickSend`、token/活动时间线/工具与网关能力、流式 DOM ref 等。
 
-- **职责**：
-  - 维护 token/ctx/cost 的聚合状态（RAF 合并 flush）
-  - 向 `useWebSocket.onUsage` 提供 `onUsage(usage, isSnapshot)` 回调
-  - 在发送新消息时提供 `resetUsage()` 做一次性重置
-  - 在系统回复解析场景提供 `setFromSystemReply({ tokenIn, ctxUsed, ctxMax })`（封装写入入口）
-- **输入**：无（内部 state 管理）
-- **输出**：
-  - 状态：`tokenIn/tokenOut/ctxUsed/ctxMax/cost`
-  - 方法：`onUsage/resetUsage/setFromSystemReply`
-  - **仍暴露的内部 setter**：`setTokenOut/setCost`（目前保留；若要完全封装可在下一轮收敛）
-- **依赖**：无（仅 React hooks）
+**内部依赖**：`useWebSocket`、`useTokenUsage`、`useActivityTimeline`、`useStreamPainting`；`useProject`。
 
----
+**被谁使用**：`ChatTab.v2.tsx`。
 
-## `useActivityTimeline`
+## useTokenUsage
 
-- **职责**：
-  - 管理 `activityTimeline` 状态与 id 生成
-  - `onToolEvent`：追加 tool_call/tool_result 条目
-  - `onKeepalive`：维护 keepalive hint（同类条目合并更新）
-  - `scheduleCotSyncFromFullText`：对 fullText 做 **300ms debounce** 的 CoT/think 同步写入（upsert）
-  - `resetTimeline/resetWithThinkingPlaceholder/removeTypes`：由 `useMessages` 在不同阶段驱动
-- **输入**：当前实现接收 `_messages`（暂未使用，保留签名以匹配执行包）
-- **输出**：
-  - `activityTimeline`
-  - `onToolEvent/onKeepalive`
-  - `resetTimeline/resetWithThinkingPlaceholder/removeTypes/scheduleCotSyncFromFullText`
-- **依赖**：`src/types/gateway`（payload 类型）
+**职责**：聚合网关 `usage` 事件中的输入/输出 token、上下文占用与费用，支持快照与增量累加；同一帧多事件用 RAF 合并。
 
----
+**输入参数**：无（独立 Hook）。
 
-## `useStreamPainting`
+**返回值**：`tokenIn`、`tokenOut`、`ctxUsed`、`ctxMax`、`cost`、`onUsage`、`resetUsage`、`setFromSystemReply` 等。
 
-- **职责**：
-  - RAF 驱动的逐字符“刷字”渲染：从 `fullTextRef` 提取可见正文（`getAssistantVisibleMain`），写入 `streamingDomRef.textContent`
-  - 帧预算/节奏控制（budget accumulation、step cap）
-  - 在 finalize 阶段完成后触发 `finalizeStreamingAssistantMessage(...)`
-  - 控制 `scrollReconcile` 调用频率（120ms 节流）
-- **输入（当前实现）**：
-  - `oct`（带 `__streamPainting` 上下文：refs/callback/配置）
-  - 其余参数 `_setMessages/_scrollReconcile` 目前为占位，不参与逻辑（保持与执行包签名兼容的临时形态）
-- **输出**：`startPainting/stopPainting`
-- **依赖**：
-  - `getAssistantVisibleMain`（正文提取）
-  - `playClickSound`（打字音效）
-- **备注（已知技术债/临时实现）**：
-  - `oct.__streamPainting` 传参属于临时实现（建议后续改为显式参数或 context 对象参数，不通过篡改入参对象传递）。
+**内部依赖**：无其他业务 Hook。
 
----
+**被谁使用**：`useMessages`（注入 `onUsage` / 重置）。
 
-## `useTtsPlayback`
+## useActivityTimeline
 
-- **输入 / 输出签名摘要**：
-  - `useTtsPlayback(settings: { ttsPlayback: boolean; ttsProvider: TtsProvider })`（`TtsProvider` 见 `SettingsContext`）
-  - **仅对外返回**：`speakingMessageId`、`ttsError`、`playTTSForMessage`、`stopTts`（无 ref / 内部 setter 泄漏）
-- **职责**：
-  - 管理回复朗读：`speakingMessageId`、`ttsError`
-  - 浏览器 `speechSynthesis` 与 Electron `tts-speak` + `Audio` 播放路径、auto 回退与错误通知
-  - `ttsPlayback` 关闭时取消正在进行的播放
-- **输入**：`TtsSettings`（`ttsPlayback`、`ttsProvider`，来自 `useSettings`）
-- **输出**：
-  - `speakingMessageId`、`ttsError`
-  - `playTTSForMessage(msg)`：`{ id, content }` 结构即可（与 `ChatMessage` 兼容）
-  - `stopTts`：停止当前朗读并清理 ref
-- **依赖**：
-  - `stripMarkdown`（`src/utils/stripMarkdown.ts`）
-  - `extractAssistantCotAndMain`
-  - 与 `ChatTab`/其他模块相同的 `ipcRenderer` 存根模式（非 Electron 环境下 no-op）
-- **不暴露**：内部 `setState`、audio/utterance ref 不导出。
+**职责**：维护侧边/面板用的「活动时间线」（思考占位、CoT 片段、工具调用与结果、keepalive  Hint）。
 
----
+**输入参数**：`messages`（签名对齐；驱动主要来自网关事件）。
 
-## `useImageStudio`
+**返回值**：`activityTimeline`、`onToolEvent`、`onKeepalive`、`resetTimeline`、`scheduleCotSyncFromFullText` 等。
 
-- **输入 / 输出签名摘要**：
-  - `useImageStudio(messages: ChatMessage[])`（需订阅最新消息以在 assistant 成文后注入优化后的生图 prompt）
-  - **对外返回**：`imageStudioOpen`、`imageStudioInitialPrompt`、`openImageStudio(prefill?)`、`closeImageStudio`、`toggleImageStudio`、`registerPromptInjector`、`markPendingPromptOptimization`
-- **为何需要 `messages` 入参**：用户在工作台触发「让 AMY 优化提示词」等流程时，会先 `quickSend` 请求模型；必须在**本轮最后一条 assistant 消息已非流式落定**（`isStreaming === false` 且内容可用）之后，才能把 `extractOptimizedImagePrompt` 的结果通过 `registerPromptInjector` 写回 `ImageStudio`。hook 若不订阅 `messages`，则无法对齐「哪一条回复、何时可注入」，易过早写入或与历史消息混淆。
-- **职责**：生图工作台侧栏开关、初始 prompt；Escape 关闭；与 `ImageStudio` 的 `registerPromptInjector` / 聊天 `quickSend` 回流配合的 pending 注入逻辑。
-- **依赖**：`extractOptimizedImagePrompt`（`src/utils/extractOptimizedImagePrompt.ts`）
-- **不暴露**：内部 injector / pending / last-id ref 不导出。
+**内部依赖**：无其他业务 Hook。
 
----
+**被谁使用**：`useMessages`；`ActivityEntry` 经其再导出至 `MessageList`、`ActivityPanel`。
 
-## `useOnboarding`
+## useStreamPainting
 
-- **输入 / 输出签名摘要**：
-  - `useOnboarding()`（无参数）
-  - **返回**：`onboardingDismissed`、`dismissOnboarding`（写 `localStorage` key `oct.onboarding.dismissed` = `'1'`）
-  - **另返回**：`resetOnboardingForDev` — 仅 **DEV 调试入口** 调用：移除上述 key 并将 `onboardingDismissed` 置为 `false`；**非产品对外能力**，与执行包最小签名相比为保留原 ChatTab 行为所必需。**调用链路（排查用）**：`ChatTab.v2.tsx` → `handleDevShowWelcomeAgain`（`import.meta.env.DEV` 时渲染在 `ChatInputArea` 的「欢迎页」按钮）→ `resetOnboardingForDev()`；正式用户流程不经过此函数。
-- **职责**：首屏引导是否已关闭；与 `WelcomeHero` 的显示条件（由 ChatTab 组合 `messages.length === 0 && !onboardingDismissed`）配合。
-- **不暴露**：内部 `setOnboardingDismissed` 不导出。
+**职责**：流式回复在 DOM（`pre`）上的逐字/逐段「绘制」：RAF 循环按可视正文长度与速度预算更新 `textContent`，并与滚动 reconcile、打字音效、`finalizeStreamingAssistantMessage` 对齐。
 
+**输入参数**：`oct`（须含 `__streamPainting`，由上层注入）、兼容签名的 `setMessages` 与滚动回调。
+
+**返回值**：`startPainting`、`stopPainting`。
+
+**内部依赖**：无 Hook。
+
+**被谁使用**：仅 `useMessages`。
+
+## useWebSocket
+
+**职责**：`openclaw-send` IPC、解析网关推送并回调 chat/工具/usage/workbench 等；维护连接态与 Nocturne 健康。
+
+**输入参数**：`UseWebSocketOptions`（全套 `onXxx` 回调）。
+
+**返回值**：`wsConnected`、`wsReconnecting`、`wsError`、`nocturneOnline`、`send`。
+
+**内部依赖**：无 Hook（纯 Web 下 ipc 为桩）。
+
+**被谁使用**：仅 `useMessages`。
+
+## useTypewriter
+
+**职责**：RAF 打字机展示（CoT/正文、选项框、音效、`onFinished`）。
+
+**输入参数**：`baseDelayMs`、`typingSound`、`onFinished`、`enabled`。
+
+**返回值**：`feed`、`finish`、`reset`、`displayedText`、`isTyping`。
+
+**内部依赖**：无 Hook。
+
+**被谁使用**：`ChatTab.v2.tsx`；`useMessages` 消费其返回值。
+
+## useScrollManager
+
+**职责**：列表滚动、`ScrollAnchor`、`visibleCount`、流式/用户上滑时的追底与历史展开补偿。
+
+**输入参数**：`fsm`、`isStreaming`、`awaitingResponse`、`messagesLength`。
+
+**返回值**：容器与底部 ref、`scrollToBottom`、`scheduleScrollAfterLayout`、`reconcile`、`scrollAfterUserSend`、`handleChatScroll`、`visibleCount` 等。
+
+**内部依赖**：无 Hook。
+
+**被谁使用**：`ChatTab.v2.tsx`；`useMessages` 使用传入的 `scroll` 对象。
+
+## useTtsPlayback
+
+**职责**：按设置对单条助手消息做 TTS（浏览器 `speechSynthesis` 或 IPC `tts-speak` / 云端音频），含 Strip Markdown、时长截断与错误态。
+
+**输入参数**：`settings`：`ttsPlayback`、`ttsProvider`。
+
+**返回值**：`playTTSForMessage`、`stopTts`、`ttsError`、`speakingMessageId` 等。
+
+**内部依赖**：无 Hook。
+
+**被谁使用**：`ChatTab.v2.tsx`（消息列表朗读按钮等）。
+
+## useImageStudio
+
+**职责**：图片工作台侧栏开关、初始 prompt、注册注入器；在助手非流式成文后把「优化后的生图 prompt」回流进工作台。
+
+**输入参数**：`messages`（监听最后一条 assistant）。
+
+**返回值**：`imageStudioOpen`、`imageStudioInitialPrompt`、`openImageStudio`、`closeImageStudio`、`toggleImageStudio`、`registerPromptInjector`、`markPendingPromptOptimization`。
+
+**内部依赖**：无 Hook。
+
+**被谁使用**：`ChatTab.v2.tsx` 与 `ImageStudio` 组件。
+
+## useOnboarding
+
+**职责**：首次引导是否已关闭（`localStorage`）、关闭与开发态重置。
+
+**输入参数**：无。
+
+**返回值**：`onboardingDismissed`、`dismissOnboarding`、`resetOnboardingForDev`。
+
+**内部依赖**：无。
+
+**被谁使用**：`ChatTab.v2.tsx`（欢迎页 / `WelcomeHero` 等）；与 `useCapabilityActions` 组合（仅注入 `dismissOnboarding`）。
+
+## useCapabilityActions
+
+**职责**：首屏欢迎卡与能力栏（CapabilityBar）的点击/跳过/抽屉入口：发消息、注入输入、`openImageStudio`、`quickSend` 优化生图 prompt、`onSwitchTab`、在未配置 Key 时插入生图/音乐引导助手消息。
+
+**输入参数**（`UseCapabilityActionsOptions`）：`setMessages`、`getNextMessageId`、`sendMessage`、`quickSend`、`openImageStudio`、`markPendingPromptOptimization`、`dismissOnboarding`、`onSwitchTab`、`setInjectInputText`、`setCapBarSetupTarget`。
+
+**返回值**：`handleWelcomeAction`、`handleSkipOnboarding`、`handleCapabilityBarClick`、`handleCapabilityBarSetup`、`insertImageToChat`。内部辅助（不导出）：`buildPromptOptimizeRequest`、`appendImageCapabilityGuideMessage`、`appendMusicCapabilityGuideMessage`。
+
+**内部依赖**：无其他业务 Hook（纯回调组合）。
+
+**被谁使用**：`ChatTab.v2.tsx`。
+
+## useInlineInquiry
+
+**职责**：解析消息中的澄清卡（ClarifyCard）、多页表单向导、草稿与提交/跳过/关闭；提交文案通过回调交给上层发送。
+
+**输入参数**：`onReply: (text: string) => void`。
+
+**返回值**：`activeSpec`、`hasActive`、`currentPage`/`currentField`/`currentDraft`、`maybeTrigger`、`openSpec`、`completeAndSubmit`、`dismiss`、`reset` 等。
+
+**内部依赖**：无 Hook（`parseClarifyCard`、`formatClarifyReply` 等 core）。
+
+**被谁使用**：`ChatTab.v2.tsx`；`InlineInquiry` 组件消费类型与 UI。
+
+## useFileAttachment
+
+**职责**：输入区附件列表、拖放/粘贴、截图捕获（Electron + desktopCapturer）、图片预览与文件转 `UploadedFile`。
+
+**输入参数**：无。
+
+**返回值**：`uploadedFiles`、`handleFileAttach`、`handlePaste`、`handleScreenshot`、`removeFile`、`clearFiles`、`isDragging`、`imagePreview` 等。
+
+**内部依赖**：无 Hook。
+
+**被谁使用**：`ChatTab.v2.tsx`；`sendMessage` 可接收 `files` 参数。
+
+## useCapabilities
+
+**职责**：能力栏用到的能力解析（`resolveCapabilities`）、用户在本机存的 Provider Key、生图/音乐是否已配置（读 `electronAPI.getApiKeys`）、`addUserKey`/`removeUserKey` 与自定义事件同步。
+
+**输入参数**：无。
+
+**返回值**：`capabilities`、`getCapability`、`userKeys`、`addUserKey`、`removeUserKey`、`getSecretKey` 等。
+
+**内部依赖**：无 Hook。
+
+**被谁使用**：`CapabilityBar`、`CapabilityCards`、`CapabilityStatusBar`、`CapabilitySetupDrawer` 等。
+
+## useCanvasBridge
+
+**职责**：画布/工作台与聊天往返：把网关 workbench/canvas 事件转成 `workbenchBus` 命令；构造 `getRoundtripContext` 供发送消息时带上文档快照；打开/关闭侧板。
+
+**输入参数**：无（内部 `useWorkbench`）。
+
+**返回值**：`handleCanvasEvent`、`getRoundtripContext`、`openPanel`、`closePanel`、`openCanvas`、`isOpen`。
+
+**内部依赖**：`useWorkbench`（`WorkbenchContext`）、`workbenchBus`。
+
+**被谁使用**：`ChatTab.v2.tsx`。  
+**说明**：源码文件为 `useWorkbenchBridge.ts`，`useCanvasBridge` 为其再导出别名。

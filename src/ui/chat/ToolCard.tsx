@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import type { ToolEventItem } from './ChatTab.v2';
+import type { ToolEventItem } from './chatTypes';
 
 const TOOL_ICONS: Record<string, string> = {
   web_search: '🔍',

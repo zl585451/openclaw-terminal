@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatMessage } from '../ui/chat/ChatTab.v2';
+import type { ChatMessage } from '../ui/chat/chatTypes';
 import { extractOptimizedImagePrompt } from '../utils/extractOptimizedImagePrompt';
 
 /**

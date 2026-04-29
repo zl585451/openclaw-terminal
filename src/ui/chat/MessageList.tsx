@@ -15,7 +15,7 @@ import ActivityPanel from '../../components/ActivityPanel';
 import AmyAvatar from '../../components/AmyAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown, normalizeCustomEchartBlocks } from '../../utils/markdownPreprocess';
-import type { ChatMessage } from './ChatTab.v2';
+import type { ChatMessage } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
