@@ -3,6 +3,7 @@
 const { chatCompletion, resolveProviderFor } = require('../../services/llmClient');
 const { chunkByChars } = require('../../services/chunker');
 const config = require('../../config');
+const { parseLineProtocol } = require('../lineProtocolParser');
 
 const SYSTEM_PROMPT = `你是有声书台本改编师。把用户给的小说原文改写成更适合多人演播的台本片段。
 
@@ -71,7 +72,7 @@ async function runSinglePass(sourceText) {
     ],
     maxTokens: 2000,
     temperature: 0.6,
-    responseJson: true,
+    responseJson: false,
     timeoutMs: TEXT_REWRITER_TIMEOUT_MS,
   });
 
@@ -130,7 +131,7 @@ async function runChunkedPass(sourceText) {
     lastAnchor = chunk.content.slice(-ANCHOR_SIZE);
   }
 
-  if (succeededChunks !== chunks.length) {
+  if (succeededChunks === 0) {
     throw new Error(`TEXT_REWRITER_CHUNK_FAILED: ${succeededChunks}/${chunks.length} chunks succeeded`);
   }
 
@@ -160,7 +161,7 @@ async function rewriteChunk({ provider, chunkText, chunkIndex, totalChunks, prev
       ],
       maxTokens: 2000,
       temperature: 0.6,
-      responseJson: true,
+      responseJson: false,
       timeoutMs: TEXT_REWRITER_TIMEOUT_MS,
     });
 
@@ -213,24 +214,23 @@ function readPositiveInt(value, fallback, min, max) {
 
 function parseTextRewriterOutput(raw) {
   if (!raw) throw new Error('TEXT_REWRITER_EMPTY_OUTPUT');
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (error) {
-    console.warn('[textRewriterAgent] JSON parse failed', error?.message, raw.slice(0, 200));
-    throw new Error(`TEXT_REWRITER_BAD_JSON: ${error.message}; raw=${raw.slice(0, 200)}`);
-  }
+  const parsed = parseLineProtocol(raw);
   if (!parsed || !Array.isArray(parsed.segments) || parsed.segments.length === 0) {
     throw new Error('TEXT_REWRITER_NO_SEGMENTS');
   }
-  if (typeof parsed.totalCharCount !== 'number') {
-    parsed.totalCharCount = parsed.segments.reduce((sum, s) => sum + (String(s.text || '').length), 0);
-  }
   return parsed;
+}
+
+function extractJsonObject(text) {
+  const cleaned = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start < 0 || end < start) return '';
+  return cleaned.slice(start, end + 1);
 }
 
 module.exports = {
   runTextRewriterAgent,
   parseTextRewriterOutput,
+  extractJsonObject,
 };

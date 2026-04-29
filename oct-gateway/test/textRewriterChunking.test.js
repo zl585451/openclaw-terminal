@@ -59,13 +59,7 @@ async function main() {
     const { runTextRewriterAgent } = loadAgentWithStub(async () => {
       calls += 1;
       return {
-        content: JSON.stringify({
-          chapterTitle: '短章',
-          totalCharCount: 10,
-          segments: [
-            { segmentId: 'seg-001', type: 'narration', text: '短文本改编', rewriteNote: '拆句' },
-          ],
-        }),
+        content: '旁白|短文本改编',
         model: 'stub-model',
         latencyMs: 12,
       };
@@ -82,14 +76,10 @@ async function main() {
     const { runTextRewriterAgent } = loadAgentWithStub(async () => {
       calls += 1;
       return {
-        content: JSON.stringify({
-          chapterTitle: calls === 1 ? '长章' : `长章-${calls}`,
-          totalCharCount: 16,
-          segments: [
-            { segmentId: 'seg-001', type: 'narration', text: `片段${calls}-旁白`, rewriteNote: '保留信息顺序' },
-            { segmentId: 'seg-002', type: 'dialogue', speaker: '林晚', text: `片段${calls}-对白`, rewriteNote: '拉开角色声部' },
-          ],
-        }),
+        content: [
+          `旁白|片段${calls}-旁白`,
+          `林晚|片段${calls}-对白`,
+        ].join('\n'),
         model: 'stub-model',
         latencyMs: 20,
       };
@@ -98,7 +88,7 @@ async function main() {
     const result = await runTextRewriterAgent({ sourceText: makeText(8000) });
     assert.ok(calls >= 2, `expected multiple chunks, got ${calls}`);
     assert.ok(result.model.includes(`chunked × ${calls}`));
-    assert.equal(result.payload.chapterTitle, '长章');
+    assert.equal(result.payload.chapterTitle, '未命名片段');
     assert.equal(result.payload.segments[0].segmentId, 'seg-001');
     assert.equal(result.payload.segments[1].segmentId, 'seg-002');
     assert.equal(result.payload.segments[result.payload.segments.length - 1].segmentId, `seg-${String(result.payload.segments.length).padStart(3, '0')}`);
@@ -110,13 +100,7 @@ async function main() {
       calls += 1;
       if (calls === 2) throw new Error('boom chunk 2');
       return {
-        content: JSON.stringify({
-          chapterTitle: '故障恢复章',
-          totalCharCount: 16,
-          segments: [
-            { segmentId: 'seg-001', type: 'narration', text: `片段${calls}-成功`, rewriteNote: '继续推进' },
-          ],
-        }),
+        content: `旁白|片段${calls}-成功`,
         model: 'stub-model',
         latencyMs: 18,
       };
