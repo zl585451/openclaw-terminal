@@ -4,8 +4,8 @@ const config = require('../config');
 const { runTextRewriterAgent } = require('./agents/textRewriterAgent');
 const { runVoiceClassifierAgent } = require('./agents/voiceClassifierAgent');
 const { runPerformanceDesignerAgent } = require('./agents/performanceDesignerAgent');
-const { runQualityReviewerAgent } = require('./agents/qualityReviewerAgent');
 const { runDeliveryPackagerAgent } = require('./agents/deliveryPackagerAgent');
+const { checkBasicQC } = require('./basicQCChecker');
 
 const REAL_AGENTS_FLAG = 'SCRIPT_ADAPTER_REAL_AGENTS';
 
@@ -104,13 +104,15 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
 
   if (agentId === 'reviewer.production_quality@1.0' && realEnabled) {
     try {
-      const { payload, latencyMs, model } = await runQualityReviewerAgent(ctx);
+      const startedAt = Date.now();
+      const payload = runBasicQC(ctx);
+      const latencyMs = Date.now() - startedAt;
       return envelope(
         'review_report',
         agentId,
         displayName,
         '质检问题清单',
-        `${model} 给出结论:${payload.conclusion}(${payload.issues.length} 条问题),耗时 ${latencyMs}ms`,
+        `规则质检给出结论:${payload.conclusion}(${payload.issues.length} 条问题),耗时 ${latencyMs}ms`,
         payload,
         { issues: payload.issues.length, latencyMs },
       );
@@ -229,31 +231,26 @@ function buildPerformanceDesignFromAdapted(adapted, agentId, displayName) {
 }
 
 function buildReviewFromAdapted(adapted, agentId, displayName) {
-  const segs = adapted.segments;
-  const speakers = [...new Set(
-    segs.filter((s) => s.type === 'dialogue' || s.type === 'inner_monologue').map((s) => String(s.speaker || '').trim()).filter(Boolean),
-  )];
-  const loc = speakers.length ? speakers.slice(0, 3).join('、') : '当前样章';
+  const payload = checkBasicQC({ adaptedScript: adapted });
   return envelope(
     'review_report',
     agentId,
     displayName,
     '质检问题清单',
-    `已对照上游 ${segs.length} 段、约 ${adapted.totalCharCount ?? 0} 字台本做占位质检。`,
-    {
-      conclusion: 'pass_with_changes',
-      issues: [
-        {
-          severity: 'P1',
-          category: '一致性',
-          location: loc,
-          description: `样章共 ${segs.length} 段，涉及说话人：${speakers.length ? speakers.join('、') : '（以旁白为主）'}，交付前请与角色音表再对一遍。`,
-          suggestion: '锁定 CV 后再进入打包。',
-        },
-      ],
-    },
-    { issues: 1, p1: 1 },
+    `已按规则质检 ${adapted.segments.length} 段台本，结论:${payload.conclusion}。`,
+    payload,
+    { issues: payload.issues.length, p0: payload.issues.filter((item) => item.severity === 'P0').length },
   );
+}
+
+function runBasicQC(ctx = {}) {
+  const adapted = findAdaptedScriptPayload(ctx.artifacts);
+  return checkBasicQC({
+    adaptedScript: adapted || { segments: [] },
+    sourceText: ctx.sourceText || '',
+    parseWarnings: ctx.parseWarnings || ctx.lineProtocolWarnings || [],
+    totalLineCount: ctx.totalLineCount || ctx.lineProtocolLineCount || 0,
+  });
 }
 
 function buildFinalPackageFromAdapted(adapted, agentId, displayName) {
