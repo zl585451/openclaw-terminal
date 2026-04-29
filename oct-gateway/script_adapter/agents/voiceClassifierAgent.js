@@ -74,7 +74,7 @@ async function runVoiceClassifierAgent(ctx) {
     maxTokens: 1500,
     temperature: 0.4,
     responseJson: true,
-    timeoutMs: 30000,
+    timeoutMs: 60000,
   });
 
   const payload = parseVoiceClassifierOutput(result.content, stats);
