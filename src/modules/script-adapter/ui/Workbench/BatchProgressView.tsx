@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { BatchJob, ChapterRunRecord } from '../../types/batch';
 import { approveGatewayGate, rejectGatewayGate } from '../../services/gatewayBatch';
+import { ReviewGatePreview } from './ReviewGatePreview';
 import { DeliveryPreview } from './DeliveryPreview';
 import styles from '../../styles/scriptAdapter.module.css';
 
@@ -133,25 +134,38 @@ export function BatchProgressView({
           {sortedRuns
             .filter((run) => run.status === 'awaiting_review' && run.pendingGateId)
             .map((run) => (
-              <div key={run.id} className={styles.gateReviewActions}>
-                <div>
-                  <strong>质检完成，等待你复核</strong>
-                  <p>{run.chapterTitle || `第 ${run.chapterIndex + 1} 章`} 的质检节点已暂停，批准后会继续进入打包。</p>
+              <div key={run.id}>
+                <div className={styles.gateReviewActions}>
+                  <div>
+                    <strong>质检完成，等待你复核</strong>
+                    <p>
+                      {run.chapterTitle || `第 ${run.chapterIndex + 1} 章`}{' '}
+                      的质检节点已暂停，确认后继续打包；拒绝则重跑；跳过则标记此章待人工处理。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.confirmStartButton}
+                    onClick={() => void approveGatewayGate(batch.id, run.pendingGateId!, '').then(onRefresh)}
+                  >
+                    ✓ 批准，继续制作
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={() => void rejectGatewayGate(batch.id, run.pendingGateId!, 'rerun').then(onRefresh)}
+                  >
+                    🔁 重跑此章
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={() => void rejectGatewayGate(batch.id, run.pendingGateId!, 'skip_flag').then(onRefresh)}
+                  >
+                    ⏭ 跳过，标记待处理
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className={styles.confirmStartButton}
-                  onClick={() => void approveGatewayGate(batch.id, run.pendingGateId!, '').then(onRefresh)}
-                >
-                  批准，继续制作
-                </button>
-                <button
-                  type="button"
-                  className={styles.ghostButton}
-                  onClick={() => void rejectGatewayGate(batch.id, run.pendingGateId!, '需要重做').then(onRefresh)}
-                >
-                  拒绝，重新执行此章
-                </button>
+                <ReviewGatePreview run={run} bookId={batch.bookId} />
               </div>
             ))}
         </div>

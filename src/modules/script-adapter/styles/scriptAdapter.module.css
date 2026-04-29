@@ -4693,6 +4693,107 @@
   flex-wrap: wrap;
 }
 
+/* ── ReviewGatePreview ─────────────────────────────────────── */
+
+.reviewGatePreview {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.reviewGateSummary {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(180, 140, 60, 0.22);
+}
+
+.reviewGateConclusion {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.reviewGateIssueList {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: rgba(40, 30, 10, 0.75);
+  line-height: 1.6;
+}
+
+.reviewGateMoreIssues {
+  color: rgba(40, 30, 10, 0.45);
+  font-style: italic;
+}
+
+.reviewGateCompareHeader {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(60, 50, 20, 0.5);
+  padding: 0 4px;
+}
+
+.reviewGateCompareRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.reviewGateOriginal,
+.reviewGateAdapted {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.reviewGateOriginal {
+  background: rgba(245, 240, 228, 0.7);
+  border: 1px solid rgba(180, 160, 100, 0.2);
+  color: rgba(50, 40, 15, 0.8);
+}
+
+.reviewGateAdapted {
+  background: rgba(232, 244, 255, 0.75);
+  border: 1px solid rgba(80, 150, 220, 0.2);
+  color: rgba(15, 40, 70, 0.85);
+}
+
+.reviewGateOriginal p,
+.reviewGateAdapted p {
+  margin: 4px 0 0;
+}
+
+.reviewGateSegLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(30, 80, 160, 0.65);
+  letter-spacing: 0.04em;
+}
+
+.reviewGateNote {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(30, 80, 160, 0.55);
+  font-style: italic;
+  border-left: 2px solid rgba(80, 150, 220, 0.3);
+  padding-left: 6px;
+}
+
+.reviewGateDim {
+  font-size: 12px;
+  color: rgba(80, 70, 40, 0.4);
+  font-style: italic;
+}
+
 .metricsGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
