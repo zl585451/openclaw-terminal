@@ -124,4 +124,10 @@ export interface DeliveryPackagePayload {
   manifest: Array<{ name: string; type: string; size: string }>;
   versionTag: string;
   notes: string;
+  adapted_script?: AdaptedScriptPayload;
+  voice_markers?: VoiceRoleMarkersPayload;
+  voice_registry?: VoiceRoleMarkersPayload;
+  basic_qc_report?: ReviewReportPayload;
+  review_report?: ReviewReportPayload;
+  performance_design?: PerformanceDesignPayload;
 }

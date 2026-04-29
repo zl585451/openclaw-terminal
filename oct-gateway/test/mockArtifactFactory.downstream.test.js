@@ -65,14 +65,16 @@ async function main() {
 
   await test('review_report references segment stats', async () => {
     const art = await createArtifactForAgent('reviewer.production_quality@1.0', '质检', { artifacts });
-    assert.ok(art.payload.issues[0].description.includes('3'));
-    assert.ok(art.payload.issues[0].description.includes('角色甲'));
+    assert.equal(art.payload.conclusion, 'pass');
+    assert.equal(art.payload.issues.length, 0);
   });
 
   await test('final_package manifest uses chapterTitle slug', async () => {
     const art = await createArtifactForAgent('packager.content_delivery@1.0', '打包', { artifacts });
     assert.ok(art.payload.manifest[0].name.includes('测试章'));
     assert.ok(art.payload.versionTag.includes('segments-3'));
+    assert.equal(art.payload.adapted_script.segments.length, 3);
+    assert.equal(art.payload.basic_qc_report.conclusion, 'pass');
   });
 
   const failed = results.filter((item) => !item.ok);

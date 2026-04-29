@@ -33,12 +33,15 @@ export function DeliveryPreview({ sheet }: DeliveryPreviewProps) {
   const performance = findArtifact<PerformanceDesignPayload>(artifacts, 'performance_design');
   const review = findArtifact<ReviewReportPayload>(artifacts, 'review_report');
   const pack = findArtifact<DeliveryPackagePayload>(artifacts, 'final_package');
+  const packagedAdapted = pack?.payload?.adapted_script;
+  const packagedVoices = pack?.payload?.voice_markers || pack?.payload?.voice_registry;
+  const packagedReview = pack?.payload?.basic_qc_report || pack?.payload?.review_report;
   const fullPackage = {
     versionTag: pack?.payload?.versionTag,
-    adapted_script: adapted?.payload,
-    voice_registry: voices?.payload,
-    performance_design: performance?.payload,
-    review_report: review?.payload,
+    adapted_script: packagedAdapted || adapted?.payload,
+    voice_markers: packagedVoices || voices?.payload,
+    performance_design: pack?.payload?.performance_design || performance?.payload,
+    basic_qc_report: packagedReview || review?.payload,
     manifest: pack?.payload?.manifest,
     notes: pack?.payload?.notes,
   };
@@ -81,11 +84,11 @@ export function DeliveryPreview({ sheet }: DeliveryPreviewProps) {
     }
   };
 
-  const segments = adapted?.payload?.segments || [];
-  const registry = voices?.payload?.registry || [];
+  const segments = packagedAdapted?.segments || adapted?.payload?.segments || [];
+  const registry = packagedVoices?.registry || voices?.payload?.registry || [];
   const sfxCount = performance?.payload?.sfxList?.length || 0;
   const cvCount = performance?.payload?.cvDirections?.length || 0;
-  const issueCount = review?.payload?.issues?.length || 0;
+  const issueCount = packagedReview?.issues?.length || review?.payload?.issues?.length || 0;
 
   return (
     <section className={`${styles.card} ${styles.deliveryPreviewCard}`}>
@@ -122,7 +125,7 @@ export function DeliveryPreview({ sheet }: DeliveryPreviewProps) {
         </div>
         <div>
           <strong>质检结论</strong>
-          <p>{CONCLUSION_LABEL[review?.payload?.conclusion || ''] || '-'}({issueCount} 条问题)</p>
+          <p>{CONCLUSION_LABEL[packagedReview?.conclusion || review?.payload?.conclusion || ''] || '-'}({issueCount} 条问题)</p>
         </div>
       </div>
 

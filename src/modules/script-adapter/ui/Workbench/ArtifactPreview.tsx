@@ -220,12 +220,33 @@ function ReviewReportView({ payload }: { payload: ReviewReportPayload }) {
 
 function FinalPackageView({ payload }: { payload: DeliveryPackagePayload }) {
   const manifest = Array.isArray(payload?.manifest) ? payload.manifest : [];
+  const adapted = payload?.adapted_script;
+  const voices = payload?.voice_markers || payload?.voice_registry;
+  const review = payload?.basic_qc_report || payload?.review_report;
   return (
     <div className={styles.deliveryManifestList}>
       <div className={styles.packageVersionRow}>
         <strong>versionTag</strong>
         <code>{payload?.versionTag || '-'}</code>
       </div>
+      {adapted ? (
+        <details open>
+          <summary>多人演播台本 · {adapted.segments?.length || 0} 段</summary>
+          <AdaptedScriptView payload={adapted} />
+        </details>
+      ) : null}
+      {voices ? (
+        <details open>
+          <summary>角色音表 · {voices.registry?.length || 0} 个角色</summary>
+          <VoiceRegistryView payload={voices} />
+        </details>
+      ) : null}
+      {review ? (
+        <details open>
+          <summary>基础质检 · {CONCLUSION_LABEL[review.conclusion] ?? review.conclusion}</summary>
+          <ReviewReportView payload={review} />
+        </details>
+      ) : null}
       <table className={styles.artifactTable}>
         <thead>
           <tr>

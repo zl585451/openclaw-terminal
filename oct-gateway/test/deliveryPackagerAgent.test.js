@@ -41,7 +41,7 @@ async function main() {
     assert.equal(estimateSize(null), '0 B');
   });
 
-  await test('packager returns 5-file manifest and notes with degraded upstreams', async () => {
+  await test('packager returns unified package and notes with degraded upstreams', async () => {
     const artifacts = {
       a1: artifact('adapted_script', {
         chapterTitle: '测试章/别名',
@@ -54,12 +54,14 @@ async function main() {
     };
     const { payload, model } = await runDeliveryPackagerAgent({ artifacts });
     assert.equal(model, 'js-packager');
-    assert.equal(payload.manifest.length, 5);
+    assert.equal(payload.manifest.length, 4);
     assert.ok(payload.versionTag.startsWith('audiobook-mvp-'));
     assert.ok(payload.notes.includes('测试章/别名'));
-    assert.ok(payload.manifest[1].size === '0 B');
-    assert.ok(payload.manifest[2].size === '0 B');
-    assert.ok(payload.manifest[3].size === '0 B');
+    assert.equal(payload.adapted_script.segments.length, 2);
+    assert.equal(payload.voice_markers.registry.length, 0);
+    assert.equal(payload.basic_qc_report.conclusion, 'pass');
+    assert.ok(payload.manifest[1].size !== '0 B');
+    assert.ok(payload.manifest[2].size !== '0 B');
   });
 
   await test('packager uses review conclusion in notes', async () => {
@@ -79,6 +81,9 @@ async function main() {
     const { payload } = await runDeliveryPackagerAgent({ artifacts });
     assert.ok(payload.notes.includes('需返工'));
     assert.ok(payload.notes.includes('1 条问题记录'));
+    assert.equal(payload.basic_qc_report.conclusion, 'reject');
+    assert.equal(payload.review_report.conclusion, 'reject');
+    assert.equal(payload.voice_registry.registry.length, 0);
   });
 
   const failed = results.filter((item) => !item.ok);

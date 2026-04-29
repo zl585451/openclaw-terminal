@@ -258,6 +258,8 @@ function buildFinalPackageFromAdapted(adapted, agentId, displayName) {
   const rawTitle = String(adapted.chapterTitle || '样章').trim() || '样章';
   const safe = rawTitle.replace(/[/\\?%*:|"<>]/g, '_').slice(0, 36);
   const tag = `segments-${segs.length}`;
+  const voicePayload = buildVoiceRegistryPayloadFromAdapted(adapted);
+  const qcPayload = checkBasicQC({ adaptedScript: adapted });
   return envelope(
     'final_package',
     agentId,
@@ -273,9 +275,46 @@ function buildFinalPackageFromAdapted(adapted, agentId, displayName) {
       ],
       versionTag: `audiobook-mvp-${tag}`,
       notes: `本包为 Gateway mock 预览；头部台本共 ${segs.length} 段，与上游 adapted_script 对齐。`,
+      adapted_script: adapted,
+      voice_markers: voicePayload,
+      voice_registry: voicePayload,
+      basic_qc_report: qcPayload,
+      review_report: qcPayload,
     },
     { files: 4, segments: segs.length },
   );
+}
+
+function buildVoiceRegistryPayloadFromAdapted(adapted) {
+  const segments = adapted.segments || [];
+  const narratorCount = segments.filter((s) => s.type === 'narration').length;
+  const registry = [
+    {
+      roleName: '旁白',
+      category: 'narrator',
+      voiceHint: '冷静克制，随场景收紧或放松',
+      appearanceCount: Math.max(1, narratorCount || 1),
+    },
+  ];
+  const speakerCounts = new Map();
+  for (const seg of segments) {
+    if (seg.type !== 'dialogue' && seg.type !== 'inner_monologue') continue;
+    const name = String(seg.speaker || '').trim();
+    if (!name) continue;
+    speakerCounts.set(name, (speakerCounts.get(name) || 0) + 1);
+  }
+  for (const [roleName, appearanceCount] of [...speakerCounts.entries()].sort((a, b) => b[1] - a[1])) {
+    registry.push({
+      roleName,
+      category: 'main',
+      voiceHint: '按对白密度与情绪起伏分配',
+      appearanceCount,
+    });
+  }
+  return {
+    registry,
+    unresolved: [...speakerCounts.entries()].filter(([, count]) => count === 1).map(([name]) => name).slice(0, 2),
+  };
 }
 
 /**

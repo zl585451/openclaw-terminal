@@ -3,34 +3,39 @@
 /**
  * 交付打包员 - 纯 JS 拼接,不调 LLM。
  *
- * 输入:ctx.artifacts(adapted_script + voice_registry + performance_design + review_report)
- * 输出:DeliveryPackagePayload { manifest[], versionTag, notes }
+ * 输入:ctx.artifacts(adapted_script + voice_registry + review_report/basic_qc_report)
+ * 输出:统一交付 JSON payload,包含台本、角色音表、基础质检报告和 manifest。
  */
 async function runDeliveryPackagerAgent(ctx) {
   const startedAt = Date.now();
   const adaptedScript = pickArtifact(ctx?.artifacts, 'adapted_script');
   const voiceRegistry = pickArtifact(ctx?.artifacts, 'voice_registry');
   const performance = pickArtifact(ctx?.artifacts, 'performance_design');
-  const review = pickArtifact(ctx?.artifacts, 'review_report');
+  const review = pickArtifact(ctx?.artifacts, 'basic_qc_report') || pickArtifact(ctx?.artifacts, 'review_report');
   if (!adaptedScript) throw new Error('PACKAGER_NO_ADAPTED_SCRIPT');
 
-  const chapterTitle = String(adaptedScript?.payload?.chapterTitle || '未命名章节');
-  const segmentCount = (adaptedScript?.payload?.segments || []).length;
-  const totalChars = Number(adaptedScript?.payload?.totalCharCount || 0);
-  const roleCount = (voiceRegistry?.payload?.registry || []).length;
+  const adaptedPayload = adaptedScript?.payload || {};
+  const voicePayload = voiceRegistry?.payload || { registry: [], unresolved: [] };
+  const reviewPayload = review?.payload || { conclusion: 'pass', issues: [] };
+  const chapterTitle = String(adaptedPayload?.chapterTitle || '未命名章节');
+  const segmentCount = (adaptedPayload?.segments || []).length;
+  const totalChars = Number(adaptedPayload?.totalCharCount || 0);
+  const roleCount = (voicePayload?.registry || []).length;
   const sfxCount = (performance?.payload?.sfxList || []).length;
   const cvCount = (performance?.payload?.cvDirections || []).length;
-  const issueCount = (review?.payload?.issues || []).length;
-  const conclusion = review?.payload?.conclusion || 'pass';
+  const issueCount = (reviewPayload?.issues || []).length;
+  const conclusion = reviewPayload?.conclusion || 'pass';
   const safeChapter = chapterTitle.replace(/[\\/:*?"<>|]/g, '_').slice(0, 30) || '未命名章节';
 
   const manifest = [
-    { name: `${safeChapter}_多人演播样章.json`, type: '台本', size: estimateSize(adaptedScript?.payload) },
-    { name: `${safeChapter}_角色音标注表.json`, type: '角色音', size: estimateSize(voiceRegistry?.payload) },
-    { name: `${safeChapter}_演播设计稿.json`, type: '演播设计', size: estimateSize(performance?.payload) },
-    { name: `${safeChapter}_质检报告.json`, type: '质检', size: estimateSize(review?.payload) },
+    { name: `${safeChapter}_多人演播样章.json`, type: '台本', size: estimateSize(adaptedPayload) },
+    { name: `${safeChapter}_角色音标注表.json`, type: '角色音', size: estimateSize(voicePayload) },
+    { name: `${safeChapter}_基础质检报告.json`, type: '质检', size: estimateSize(reviewPayload) },
     { name: 'delivery_manifest.json', type: '清单', size: '0.5 KB' },
   ];
+  if (performance?.payload) {
+    manifest.splice(2, 0, { name: `${safeChapter}_演播设计稿.json`, type: '演播设计', size: estimateSize(performance.payload) });
+  }
 
   const versionTag = `audiobook-mvp-${formatLocalDate(new Date())}-v1`;
   const conclusionLabel = {
@@ -45,7 +50,17 @@ async function runDeliveryPackagerAgent(ctx) {
   ].join(' ');
 
   return {
-    payload: { manifest, versionTag, notes },
+    payload: {
+      versionTag,
+      manifest,
+      notes,
+      adapted_script: adaptedPayload,
+      voice_markers: voicePayload,
+      voice_registry: voicePayload,
+      basic_qc_report: reviewPayload,
+      review_report: reviewPayload,
+      ...(performance?.payload ? { performance_design: performance.payload } : {}),
+    },
     latencyMs: Date.now() - startedAt,
     model: 'js-packager',
   };
