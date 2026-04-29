@@ -21,6 +21,8 @@ class ProviderRouter {
       const aliasMap = {
         'google/gemini-2.5-pro-preview-03-25': 'google/gemini-2.5-pro',
         'google/gemini-2.5-flash-preview-04-17': 'google/gemini-2.5-flash',
+        'google/gemini-2.0-flash-001': 'google/gemini-2.0-flash',
+        'google/gemini-3-pro-preview': 'google/gemini-3.1-pro-preview',
       };
       return aliasMap[canonical] || canonical;
     })();

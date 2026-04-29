@@ -3,9 +3,9 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  max-width: 800px;
+  max-width: 780px;
   margin: 0 auto;
-  padding: 6px 10px;
+  padding: 5px 8px;
   border-top: none;
   background: transparent;
   min-height: 40px;
@@ -21,7 +21,7 @@
 .oct-cap-bar-prefix {
   flex-shrink: 0;
   font-size: 12px;
-  color: var(--text-tertiary, #7b8288);
+  color: color-mix(in srgb, var(--text-tertiary, #7b8288) 82%, transparent 18%);
   letter-spacing: 0.5px;
 }
 
@@ -50,12 +50,12 @@
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 10px;
-  border-radius: 14px;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 6px;
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   background: transparent;
-  color: var(--text-secondary, #9aa0a6);
+  color: color-mix(in srgb, var(--text-secondary, #9aa0a6) 84%, transparent 16%);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
@@ -63,7 +63,7 @@
 }
 
 .oct-cap-chip:hover:not(:disabled) {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--bg-hover, rgba(255, 255, 255, 0.04)) 78%, transparent 22%);
   color: var(--text-primary, #e8eaed);
   border-color: var(--border-light, rgba(255, 255, 255, 0.15));
 }
@@ -73,7 +73,8 @@
 }
 
 .oct-cap-chip-icon {
-  font-size: 14px;
+  font-size: 13px;
+  opacity: 0.82;
 }
 
 .oct-cap-chip-lock {
@@ -85,7 +86,7 @@
   flex-shrink: 0;
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: 6px;
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
   background: transparent;
   color: var(--text-secondary, #9aa0a6);

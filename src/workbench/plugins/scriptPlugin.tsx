@@ -34,6 +34,7 @@ import { ScriptPolishPanel } from './script/ScriptPolishPanel';
 import { ScriptRoleDetectPanel } from './script/ScriptRoleDetectPanel';
 import { ScriptSidebar } from './script/ScriptSidebar';
 import { scriptStyles } from './script/styles';
+import { useProjectChapterLink } from '../useProjectChapterLink';
 import {
   buildRoleDetectPanelResult,
   extractStructuredRecordCandidates,
@@ -85,6 +86,13 @@ function mergeCharacterLibrary(
 
 function ScriptViewer({ document }: { document: WorkbenchDocument }) {
   const workbench = useWorkbench();
+  const {
+    linkedProject,
+    currentProjectChapterIndex,
+    isSwitchingChapter,
+    chapterSwitchError,
+    switchToProjectChapter,
+  } = useProjectChapterLink(document);
   const parsed = useMemo(() => parseScript(document.content), [document.content]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -161,6 +169,14 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
   }, [document.id]);
 
   useEffect(() => {
+    if (parsed.chapters.length === 0) {
+      setActiveIdx(0);
+      return;
+    }
+    setActiveIdx((prev) => Math.min(prev, parsed.chapters.length - 1));
+  }, [parsed.chapters.length]);
+
+  useEffect(() => {
     if (document.artifactType !== 'script') return;
     if (!document.draftCachePath) return;
     if (!electronApi?.saveScriptDraftCache) return;
@@ -208,6 +224,17 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
   }, [editingCharacter]);
 
   const chapter = parsed.chapters[activeIdx];
+  const sidebarChapters = linkedProject?.chapters?.length
+    ? linkedProject.chapters.map((entry) => ({
+        title: entry.title || `第 ${entry.chapter_index + 1} 章`,
+      }))
+    : parsed.chapters;
+  const sidebarActiveIdx = linkedProject?.chapters?.length && currentProjectChapterIndex != null
+    ? linkedProject.chapters.findIndex((entry) => entry.chapter_index === currentProjectChapterIndex)
+    : activeIdx;
+  const sidebarStatus = isSwitchingChapter
+    ? '正在切换章节...'
+    : (chapterSwitchError || null);
   const chapterKey = useMemo(
     () => buildScriptChapterKey(activeIdx, chapter?.title || ''),
     [activeIdx, chapter?.title],
@@ -953,10 +980,20 @@ function ScriptViewer({ document }: { document: WorkbenchDocument }) {
     <div style={scriptStyles.root}>
       <ScriptSidebar
         collapsed={isSidebarCollapsed}
-        chapters={parsed.chapters}
-        activeIdx={activeIdx}
+        chapters={sidebarChapters}
+        activeIdx={sidebarActiveIdx >= 0 ? sidebarActiveIdx : 0}
         onToggleCollapsed={() => setIsSidebarCollapsed((prev) => !prev)}
-        onSelectChapter={setActiveIdx}
+        onSelectChapter={(idx) => {
+          if (linkedProject?.chapters?.length) {
+            const nextChapter = linkedProject.chapters[idx];
+            if (nextChapter) {
+              void switchToProjectChapter(nextChapter.chapter_index);
+            }
+            return;
+          }
+          setActiveIdx(idx);
+        }}
+        statusText={sidebarStatus}
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

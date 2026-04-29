@@ -1,6 +1,6 @@
 # Gateway WebSocket 消息协议
 
-> **最后更新时间**：2026-04-21  
+> **最后更新时间**：2026-04-27  
 > **为谁而写**：AI 协作伙伴  
 > **用途**：理解前端与 Gateway 的通信格式，调试连接、消息收发问题
 
@@ -54,6 +54,16 @@
   "params": {
     "sessionKey": "main",
     "message": "用户输入的文本",
+    "projectContext": {
+      "id": "book_xxx",
+      "title": "长夜未瞑",
+      "author": "某作者",
+      "total_chars": 1182440,
+      "chapter_count": 287,
+      "chapters": [
+        { "chapter_index": 0, "title": "樟木箱", "char_count": 3420 }
+      ]
+    },
     "attachments": [
       { "type": "image", "mimeType": "image/png", "content": "base64..." },
       { "type": "audio", "mimeType": "audio/mpeg", "content": "base64..." }
@@ -63,6 +73,7 @@
 ```
 
 - `message`：必填（可为空字符串，图片时可用 `[文件/图片]`）
+- `projectContext`：可选；当前书本项目上下文，供 Gateway 在 system prompt 中注入书名、作者、章节目录等结构信息
 - `attachments`：支持 `image` / `audio`
 - 图片附件会转成 `image_url`
 - 音频附件在 Gemini（Google provider）下会转成 `input_audio` 多模态输入

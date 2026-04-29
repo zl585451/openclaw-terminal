@@ -1,7 +1,7 @@
 # Docs Index
 
 > Status: CURRENT  
-> Last Updated: 2026-04-08  
+> Last Updated: 2026-04-26  
 > Purpose: 统一说明 `docs/` 的用途、入口顺序和归档规则。
 
 ---
@@ -46,6 +46,14 @@
 - `REFACTOR_STEP1_USE_TYPEWRITER.md`
 - `CANVAS_UPGRADE_PLAN.md`
 - `08_for_claude/`
+
+以下内容自 **2026-04-26** 起从主文档区迁入 `_archive/`（过程性交接、Cursor 任务包、迁移执行书等），入口索引见 `_archive/README.md`：
+
+- `docs/03_migration/` 正文 → `docs/_archive/migration/v2-and-gateway/`（本仓库保留 `docs/03_migration/README.md` 作为占位说明）
+- Cowork Week2 交接 / Track-B followup → `docs/_archive/process_handoffs/cowork-week2/`
+- Script Canvas P1 执行包 → `docs/_archive/process_handoffs/script-canvas-p1/`
+- `cursor-task-*`、自动模式 execution pack → `docs/_archive/cursor_tasks/2026-04/`
+- 旧开发计划、设置面板重构计划、Canvas Studio 方案稿等 → `docs/_archive/historical_plans/` 及子目录
 
 ---
 

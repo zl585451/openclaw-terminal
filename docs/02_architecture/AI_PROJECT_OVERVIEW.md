@@ -1,109 +1,73 @@
-# OCT 项目总览 · AI 协作入口
+# AI 架构全景（OCT）
 
-> **状态**：REFERENCE  
-> **最后更新时间**：2026-04-08  
-> **为谁而写**：AI 协作伙伴（Claude/Cursor/GPT 等）  
-> **用途**：快速理解项目结构、关键入口、目录映射，辅助修改/调试  
-> **先读**：具体排错请先看 `docs/00_ai_entry/README.md`
+> 读者：需要做架构级改动、或串联全链路时的 AI / 维护者。  
+> Last Updated: 2026-04-29
 
 ---
 
-## 一、项目定位
+## 1. 系统架构与数据流（Mermaid）
 
-**OCT（OpenClaw Terminal）** = AI 终端应用，基于 Electron + React + Node.js。
+以下为逻辑视图；真实 IPC 与网关端口见 `AGENTS.md`。流式返回在代码里由 `useMessages` 订阅 `StreamRouter` 事件并驱动 `useStreamPainting`，图中将 Router 与 Hook 画在一起权作「缓冲 → 绘制」两段。
 
-- **前端**：React + Vite，运行在 Electron 渲染进程
-- **Gateway**：Node.js（oct-gateway），WebSocket 服务器，AI 对话引擎
-- **主进程**：Electron main.ts，管理子进程、IPC、窗口、配置
-
----
-
-## 二、目录结构（核心）
-
-```
-OpenClaw-Terminal/
-├── electron/           # Electron 主进程
-│   └── main.ts         # 入口，spawn Gateway/Nocturne/AI.library，IPC 注册，WebSocket 转发
-├── src/                # React 前端
-│   ├── components/     # ChatTab、OptionBox、TaskList、SettingsPanel、VaultPanel 等
-│   ├── utils/          # optionBoxParser.ts（消息解析）、permissionCheck.ts
-│   ├── gateway/        # search.ts（多引擎搜索封装）
-│   └── contexts/       # SettingsContext、PermissionsContext
-├── oct-gateway/        # Node.js Gateway（独立进程）
-│   ├── index.js        # WebSocket 服务器、slash 命令、chat.send 路由
-│   ├── ai.js           # streamChat、loadSystemPrompt、工具调用
-│   ├── orchestrator.js # 意图分类、后台任务派发
-│   ├── tools/          # 动态加载的工具（web_search、read_file、vault_ops 等）
-│   ├── tools.js        # 工具注册与执行入口
-│   ├── tool_loader.js  # 扫描 tools/ 目录加载工具
-│   ├── skill_adapter.js# 解析 skills/ 下的 SKILL.md，注入系统提示词
-│   ├── skills/         # 技能目录（子目录含 SKILL.md）
-│   ├── config.js       # 配置加载
-│   └── prompts 相关    # 由 config.PROMPTS_DIR 指向 docs/01_system_prompts
-├── docs/               # 文档
-│   ├── 01_system_prompts/  # 系统提示词（SOUL、AGENTS、USER、OCT_PROTOCOL 等）
-│   ├── 02_architecture/    # 项目架构、功能地图
-│   ├── 03_specs/           # 技术协议、规范文档
-│   ├── 04_dev_guides/      # 开发指南
-│   ├── 05_changelog/       # 更新日志、修复报告
-│   ├── 06_release/         # 发布文档
-│   ├── 07_research/        # 研究文档
-│   ├── _archive/           # 历史资料、旧 review、旧重构稿、旧模型上下文
-│   ├── task-queue.md       # 运行时通信文件（不要移动）
-│   └── task-result.md      # 运行时通信文件（不要移动）
-├── resources/          # Nocturne、打包资源
-└── prompts/            # 部分项目的 MEMORY.md 等（Gateway 默认用 docs/01_system_prompts）
+```mermaid
+graph TD
+  U[用户] --> CT[ChatTab.v2]
+  CT --> UM[useMessages]
+  UM --> UW[useWebSocket / IPC]
+  UW --> GW[oct-gateway]
+  GW --> AI[AI 服务]
+  AI --> GW
+  GW --> UW
+  UW --> UM
+  UM --> SR[StreamRouter]
+  SR -->|batch 事件| UM
+  UM --> USP[useStreamPainting]
+  USP --> DOM[流式 pre / DOM]
 ```
 
----
-
-## 三、关键入口
-
-| 入口 | 文件 | 说明 |
-|------|------|------|
-| 应用启动 | `electron/main.ts` | 创建窗口、启动 Gateway、Nocturne、AI.library |
-| 消息收发 | `electron/main.ts` → `openclaw-send` / `handleMessage` | 前端通过 openclaw-send 发消息，main 转发到 WebSocket |
-| Gateway 消息 | `oct-gateway/index.js` | 收到 `chat.send` → `handleSlashCommand` 或 `streamChat` |
-| AI 调用 | `oct-gateway/ai.js` → `streamChat` | 调用 Provider API、处理 tool_calls |
-| 前端渲染 | `src/ui/chat/ChatTab.v2.tsx` | 当前聊天页宿主；实际流式显示主逻辑在 `useMessages.ts` |
-| 流式显示 | `src/hooks/useMessages.ts` | 当前真实的流式 UI 渲染、收尾、状态更新入口 |
-| 交互解析 | `src/utils/optionBoxParser.ts` | 解析 [pills]/[question]/[tasklist] 等成对标签 |
+**文字补充**：出站由 `send` 经主进程与网关对话；入站增量在 `useMessages` 内推入 `StreamRouter`，TurnFSM 与 flush 语义对齐；完整正文 ref 由 RAF 在 `useStreamPainting` 落屏。`BlockIngest` 并行累积 raw 并产出 bridged 文本供解析（与流式展示同轮）。
 
 ---
 
-## 四、端口一览
+## 2. 核心模块职责表
 
-| 端口 | 服务 | 说明 |
-|------|------|------|
-| 18789 | Gateway WebSocket | 前端 ↔ AI 主通道 |
-| 18790 | Gateway HTTP 工具 | VaultPanel、invoke-gateway-tool 调用 |
-| 8000 | Nocturne 记忆 | Python FastAPI，SQLite 存储 |
-| 8001 | AI.library 知识库 | 可选，search_knowledge 工具 |
-
----
-
-## 五、文档导航（给 AI）
-
-| 主题 | 文档 |
-|------|------|
-| AI 入口总览 | `docs/00_ai_entry/README.md` |
-| 聊天流式链路 | `docs/00_ai_entry/chat-stream-entry.md` |
-| 图片链路 | `docs/00_ai_entry/image-flow-entry.md` |
-| 音频链路 | `docs/00_ai_entry/audio-entry.md` |
-| 功能活地图 | `docs/02_architecture/FEATURE_MAP.md` |
-| IPC 通道 | `docs/03_specs/ELECTRON_IPC_CHANNELS.md` |
-| WebSocket 协议 | `docs/03_specs/WEBSOCKET_PROTOCOL.md` |
+| 模块 | 位置 | 职责 | 高风险 |
+|------|------|------|--------|
+| TurnFSM | `src/core/turnFSM/` | 显式边会话状态机：从用户输入到流结束、渲染完成、回合结束回到 IDLE | ⚠️ |
+| StreamRouter | `src/core/streamRouter/` | 缓冲 token、定时小批量 flush、与 FSM 的流结束/渲染完成信号对齐 | ⚠️ |
+| BlockIngest | `src/core/blockIngest.ts` | 累积流式 batch 的 raw，经块管线得到 bridged 文本 | |
+| blockRouter | `src/core/blockRouter.ts` | 将增量/全文切成 code/text 等块，供 Ingest / 渲染 | |
+| ScrollAnchor | `src/core/viewport/` | 消息列表锚点、用户上滑检测、reconcile | |
+| useMessages | `src/hooks/useMessages.ts` | 回合编排、网关事件分发、消息列表与工具/活动时间线、 sendMessage | ⚠️ |
+| useWebSocket | `src/hooks/useWebSocket.ts` | `openclaw-send` 与事件解析；连接/重试/Nocturne 状态 | |
+| useStreamPainting | `src/hooks/useStreamPainting.ts` | RAF 按预算向 DOM 写字，收尾 finalize 与滚动/音效 | |
+| ChatTab.v2 | `src/ui/chat/ChatTab.v2.tsx` | 主界面组合：输入、列表、侧栏、能力/引导等 | ⚠️ 禁止继续堆功能，宜拆分 |
+| oct-gateway | `oct-gateway/` | Node 网关：路由、会话、调用各 Provider、工具与可选内存服务 | |
 
 ---
 
-## 六、常见修改场景
+## 3. 提示词来源
 
-- **改交互协议**：先看 `docs/00_ai_entry/chat-stream-entry.md` 和 `docs/03_specs/WEBSOCKET_PROTOCOL.md`
-- **加工具**：在 `oct-gateway/tools/` 新增 `.js` 文件，实现 `{ name, definition, execute }`
-- **加 Slash 命令**：在 `oct-gateway/index.js` 的 `handleSlashCommand` 中加分支
-- **加 IPC**：`electron/main.ts` 注册 `ipcMain.handle`，`electron/preload.ts` 暴露 API
-- **改配置**：`oct-gateway/config.js`、`userData/config.json`
+- **`docs/01_system_prompts/`**：维护时的**单一事实源**，说明身份、行为与版本意图应在此落笔。  
+- **`resources/system_prompts/`**：**运行时镜像**（打包/加载用），**不要直接当编辑目标**；改文案以 docs 为准，再按项目流程同步产物。
 
 ---
 
-*本文档为 AI 协作伙伴设计，便于快速定位和修改。*
+## 4. `src/core/__tests__/` 测试覆盖现状
+
+| 测试文件 | 主要覆盖 |
+|----------|----------|
+| `turnFSM.test.ts` | `TurnFSM` 合法语义链、`transition` 非法边、`deriveLegacyFlags` 等 |
+| `streamRouter.test.ts` | `StreamRouter` 全生命周期状态、`flush`、与 FSM 联动、`deriveStreamFlags` 等 |
+| `blockRouter.test.ts` | `blockRouter` 纯文本/代码块/混合内容及 block id |
+| `scrollAnchor.test.ts` | `ScrollAnchor`（`src/core/viewport/`）锁定/释放与 drift reconcile |
+
+**说明**：`src/core/` 下尚有其它单测（例如 `clarifyCard/parser.test.ts`），不在上述目录内；Hook 与 UI 层覆盖以仓库根 `npm test` / Vitest 配置为准。
+
+---
+
+## 5. 延伸阅读
+
+- Hook 级职责：`docs/02_architecture/HOOKS_MAP.md`  
+- 首次接手导读：`docs/00_ai_entry/README.md`  
+- 协议与端口：`docs/03_specs/WEBSOCKET_PROTOCOL.md`（若与实现并列）、`AGENTS.md`

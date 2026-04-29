@@ -528,9 +528,42 @@ class SlashHandler {
           '最近 7 天分布：',
         ];
         stats.byDate.slice(0, 7).forEach((item) => lines.push(`  ${item.date}: ${item.c}`));
+        if (stats.byModelVersion?.length) {
+          lines.push('模型分布：');
+          stats.byModelVersion.slice(0, 5).forEach((item) => lines.push(`  ${item.model || '(empty)'}@v${item.version}: ${item.c}`));
+        }
         this.reply(connection, lines.join('\n'));
       } catch (err) {
         this.reply(connection, `❌ 向量库未初始化或查询失败：${err?.message || String(err)}`);
+      }
+      return;
+    }
+
+    if (subCmd === 'recent') {
+      const rawArg = (parts[2] || '').trim().toLowerCase();
+      const currentModelOnly = rawArg === 'current';
+      const rawLimit = currentModelOnly ? parts[3] : parts[2];
+      const limit = Math.max(1, Math.min(20, Number(rawLimit) || 8));
+      try {
+        const db = require('../memory_vector/db');
+        const rows = db.listRecent(limit, { currentModelOnly });
+        if (!rows.length) {
+          this.reply(connection, currentModelOnly ? '当前 embedding 模型下没有向量记录' : '向量库里还没有可浏览的记录');
+          return;
+        }
+        const lines = [
+          currentModelOnly ? `🧾 当前模型最近 ${rows.length} 条向量记录` : `🧾 向量库最近 ${rows.length} 条记录`,
+        ];
+        rows.forEach((row, idx) => {
+          lines.push('');
+          lines.push(`[${idx + 1}] ${row.date} ${row.source_ts || ''}`.trim());
+          lines.push(`  模型：${row.embedding_model || '(empty)'}@v${row.embedding_version || 1}`);
+          lines.push(`  ${String(row.text_preview || '').slice(0, 160)}`);
+          lines.push(`  ${row.uri}`);
+        });
+        this.reply(connection, lines.join('\n'));
+      } catch (err) {
+        this.reply(connection, `❌ 读取最近记录失败：${err?.message || String(err)}`);
       }
       return;
     }
@@ -543,15 +576,52 @@ class SlashHandler {
       }
       try {
         const recaller = require('../memory_vector/recaller');
-        const result = await recaller.recall(text, 'slash-test');
+        const db = require('../memory_vector/db');
+        const result = await recaller.recall(text, 'slash-test', {
+          mode: 'manual',
+          topK: 5,
+          threshold: this.config.memory.vectorRecall.recall.manualThreshold,
+        });
         if (result.skipped) {
-          this.reply(connection, `⏭️ 已跳过：${result.reason}（耗时 ${result.latencyMs}ms）`);
+          const lexicalHits = db.searchText(text, { limit: 5, currentModelOnly: true });
+          if (!lexicalHits.length) {
+            this.reply(connection, `⏭️ 已跳过：${result.reason}（耗时 ${result.latencyMs}ms）`);
+            return;
+          }
+          const lines = [`🟡 语义召回已跳过：${result.reason}（耗时 ${result.latencyMs}ms）`, '以下是文本候选：'];
+          lexicalHits.forEach((hit, idx) => {
+            lines.push('');
+            lines.push(`[${idx + 1}] ${hit.date} 文本分 ${(hit.lexical_score * 100).toFixed(1)}%`);
+            lines.push(`  ${String(hit.text_preview || '').slice(0, 150)}`);
+            lines.push(`  ${hit.uri}`);
+          });
+          this.reply(connection, lines.join('\n'));
           return;
         }
-        const lines = [`✅ 召回 ${result.hits.length} 条（耗时 ${result.latencyMs}ms）`];
-        result.hits.forEach((hit, idx) => {
+        const lines = [];
+        if (result.hits.length > 0) {
+          lines.push(`✅ 语义候选 ${result.hits.length} 条（耗时 ${result.latencyMs}ms，手动查询不会自动注入主对话）`);
+          result.hits.forEach((hit, idx) => {
+            const lexical = recaller.scoreLexicalOverlap(text, hit);
+            lines.push('');
+            lines.push(`[${idx + 1}] ${hit.date} 相似度 ${(hit.similarity * 100).toFixed(1)}% / 词重叠 ${(lexical.overlap * 100).toFixed(1)}%`);
+            if (lexical.matched.length) lines.push(`  命中词：${lexical.matched.slice(0, 8).join(' / ')}`);
+            lines.push(`  ${String(hit.text_preview || '').slice(0, 150)}`);
+            lines.push(`  ${hit.uri}`);
+          });
+          this.reply(connection, lines.join('\n'));
+          return;
+        }
+        const lexicalHits = db.searchText(text, { limit: 5, currentModelOnly: true });
+        if (!lexicalHits.length) {
+          this.reply(connection, `✅ 高置信语义命中 0 条（耗时 ${result.latencyMs}ms）\n未找到文本候选`);
+          return;
+        }
+        lines.push(`🟡 语义候选 0 条（耗时 ${result.latencyMs}ms）`);
+        lines.push('以下是文本候选，仅供人工核对，不会自动注入主对话：');
+        lexicalHits.forEach((hit, idx) => {
           lines.push('');
-          lines.push(`[${idx + 1}] ${hit.date} 相似度 ${(hit.similarity * 100).toFixed(1)}%`);
+          lines.push(`[${idx + 1}] ${hit.date} 文本分 ${(hit.lexical_score * 100).toFixed(1)}%`);
           lines.push(`  ${String(hit.text_preview || '').slice(0, 150)}`);
           lines.push(`  ${hit.uri}`);
         });
@@ -606,6 +676,8 @@ class SlashHandler {
       '召回口令：',
       '/recall test <文本> — 测试 embedding API',
       '/recall status — 查看向量库状态',
+      '/recall recent [N] — 查看最近写入的向量记录',
+      '/recall recent current [N] — 查看当前模型可见的最近记录',
       '/recall query <文本> — 手动查询向量库',
       '/recall backfill [YYYY-MM-DD|retry] — 回填历史日志',
     ].join('\n'));

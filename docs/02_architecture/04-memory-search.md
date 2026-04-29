@@ -13,6 +13,13 @@
 | 验证 | `/memory search 测试` 返回结果 |
 | 状态 | ✅ 正常 |
 
+补充：
+- 显式工具 `memory_vector_search` 用于语义检索向量记忆库中的历史原始对话片段，适合“之前关于这个主题聊过什么”这类问题。
+- 与 `memory_search` 的区别是：`memory_search` 查 Nocturne 关键词节点，`memory_vector_search` 查 embedding 后的历史对话内容。
+- 自动向量注入只接受高置信整轮历史；手动 `memory_vector_search` 可以返回低置信候选，但 AMY 必须先核对再使用。
+- 主动查询链路现在采用“双轨”：
+  先走高置信语义召回；若语义命中为空，再给出文本候选，仅供人工核对，不进入自动上下文注入。
+
 ---
 
 ## 4.2 启动反馈加载

@@ -10,12 +10,15 @@ const log = createLogger('ai');
 const ProviderRouter = require('./runtime/providerRouter');
 const ToolLoop = require('./runtime/toolLoop');
 const { ProxyAgent } = require('undici');
+const {
+  isGoogleNativeMode,
+  generateNativeChat,
+} = require('./services/googleNative');
 
 // ═══════════════════════════════════════════════════════════════
 // AI 上下文截断优化
 // ═══════════════════════════════════════════════════════════════
 const MAX_HISTORY_ROUNDS = 12; // 最多保留最近 12 轮对话
-const MAX_CONTEXT_CHARS = 60000; // 上下文字符上限（约 15k tokens）
 const MAX_TOOL_ROUNDS = 8;
 const MAX_IDENTICAL_TOOL_SIGNATURES = 2;
 const providerRouter = new ProviderRouter({ config });
@@ -156,8 +159,132 @@ function createGoogleScopedDispatcher(url) {
   }
 }
 
-function truncateHistory(messages) {
+function estimateContentChars(content) {
+  if (typeof content === 'string') return content.length;
+  if (!Array.isArray(content)) return 0;
+
+  let total = 0;
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue;
+
+    if (part.type === 'text') {
+      total += String(part.text || '').length;
+      continue;
+    }
+
+    if (part.type === 'image_url') {
+      // 多模态图片粗略折算：按 1500 字符估算
+      total += 1500;
+      continue;
+    }
+  }
+  return total;
+}
+
+function estimateMessageChars(message) {
+  if (!message || typeof message !== 'object') return 0;
+  return estimateContentChars(message.content);
+}
+
+/**
+ * 防御性消息验证：移除孤立的 tool 消息和不完整的 assistant.tool_calls 组。
+ *
+ * 规则：
+ * - 每个 role='tool' 消息必须属于前面最近一个 assistant.tool_calls 组
+ * - 每个 assistant 消息如果带 tool_calls，则后面必须跟齐所有对应 tool_call_id 的 tool 消息
+ * - 不完整组直接丢弃，避免远端 API 因消息链不合法而报 400
+ *
+ * @param {Array} messages
+ * @returns {Array}
+ */
+function validateAndFixMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+
+  const result = [];
+  let i = 0;
+
+  while (i < messages.length) {
+    const msg = messages[i];
+
+    if (!msg || typeof msg !== 'object') {
+      i++;
+      continue;
+    }
+
+    // 孤立 tool：只允许作为 assistant.tool_calls 组的尾随响应存在
+    if (msg.role === 'tool') {
+      log.debug('validateAndFixMessages drop orphan tool message', {
+        tool_call_id: msg.tool_call_id || null,
+      });
+      i++;
+      continue;
+    }
+
+    // assistant + tool_calls：必须和紧随其后的 tool 消息组成完整组
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      const expectedIds = Array.from(new Set(
+        msg.tool_calls
+          .map((tc) => tc && tc.id)
+          .filter(Boolean)
+      ));
+      const expectedIdSet = new Set(expectedIds);
+
+      const trailing = [];
+      let j = i + 1;
+
+      while (j < messages.length) {
+        const next = messages[j];
+        if (!next || typeof next !== 'object' || next.role !== 'tool') break;
+        trailing.push(next);
+        j++;
+      }
+
+      const matched = [];
+      const seenIds = new Set();
+      const droppedTrailingToolIds = [];
+
+      for (const toolMsg of trailing) {
+        const toolCallId = toolMsg.tool_call_id;
+        if (expectedIdSet.has(toolCallId) && !seenIds.has(toolCallId)) {
+          matched.push(toolMsg);
+          seenIds.add(toolCallId);
+        } else {
+          droppedTrailingToolIds.push(toolCallId || null);
+        }
+      }
+
+      const missingIds = expectedIds.filter((id) => !seenIds.has(id));
+      if (missingIds.length === 0) {
+        result.push(msg);
+        result.push(...matched);
+        if (droppedTrailingToolIds.length > 0) {
+          log.debug('validateAndFixMessages drop unexpected trailing tool messages', {
+            droppedToolCallIds: droppedTrailingToolIds,
+            expectedIds,
+          });
+        }
+      } else {
+        log.debug('validateAndFixMessages drop incomplete tool_call group', {
+          expectedIds,
+          missingIds,
+          trailingToolCallIds: trailing.map((toolMsg) => toolMsg.tool_call_id || null),
+        });
+      }
+
+      i = j;
+      continue;
+    }
+
+    result.push(msg);
+    i++;
+  }
+
+  return result;
+}
+
+function truncateHistory(messages, modelId) {
   if (!messages || messages.length === 0) return messages;
+  const maxContextChars = getMaxContextCharsForModel(modelId);
 
   // 分离系统消息和对话消息
   const systemMsgs = messages.filter(m => m.role === 'system');
@@ -168,12 +295,11 @@ function truncateHistory(messages) {
 
   // 检查总字符数，超限时从最早的开始裁剪
   let combined = [...systemMsgs, ...recentChat];
-  let totalChars = combined.reduce((sum, m) =>
-    sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+  let totalChars = combined.reduce((sum, m) => sum + estimateMessageChars(m), 0);
 
-  while (totalChars > MAX_CONTEXT_CHARS && recentChat.length > 2) {
+  while (totalChars > maxContextChars && recentChat.length > 2) {
     const removed = recentChat.shift();
-    totalChars -= (typeof removed.content === 'string' ? removed.content.length : 0);
+    totalChars -= estimateMessageChars(removed);
     combined = [...systemMsgs, ...recentChat];
   }
 
@@ -183,8 +309,7 @@ function truncateHistory(messages) {
 function getContextUsageRatio(messages, modelId) {
   const limit = getModelContextLimit(modelId);
   // 粗估 token 数 ≈ 字符数 / 2（中文）或 / 4（英文）
-  const totalChars = messages.reduce((sum, m) =>
-    sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+  const totalChars = messages.reduce((sum, m) => sum + estimateMessageChars(m), 0);
   const estimatedTokens = totalChars / 2; // 偏保守（中文为主）
   const ratio = estimatedTokens / limit;
 
@@ -208,6 +333,8 @@ function getModelContextLimit(modelId) {
     'minimax-m2.5': 196608,
     'glm-5': 202752,
     'glm-4.7': 202752,
+    'deepseek-v4-flash': 128000,
+    'deepseek-v4-pro': 128000,
     'deepseek-chat': 64000,
     'deepseek-reasoner': 64000,
   };
@@ -215,6 +342,18 @@ function getModelContextLimit(modelId) {
   const id = modelId.toLowerCase().replace(/\s/g, '');
   if (id.startsWith('gemini-')) return 1000000;
   return MODEL_CONTEXT_LIMITS[id] || MODEL_CONTEXT_LIMITS[modelId.split('/').pop()] || 128000;
+}
+
+function getMaxContextCharsForModel(modelId) {
+  let limit = 0;
+  try {
+    limit = Number(getModelContextLimit(modelId));
+  } catch {}
+  if (!Number.isFinite(limit) || limit <= 0) {
+    // 兼容保守兜底：适配 MiniMax-M2.7 等大窗口模型
+    limit = 200000;
+  }
+  return Math.floor(limit * 0.4);
 }
 
 function getMiniMaxTemperature() {
@@ -426,11 +565,21 @@ async function fetchWithRetry(url, options, maxRetries = 2) {
 
       if (!resp.ok) {
         const errText = await resp.text().catch(() => '');
-        throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+        const error = new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+        error.status = resp.status;
+        error.responseText = errText;
+        throw error;
       }
       return resp;
     } catch (e) {
       lastError = e;
+      if (Number(e?.status) >= 400 && Number(e?.status) < 500) {
+        log.warn('客户端/配额类错误不重试', {
+          status: e.status,
+          url: url.replace(/\/v1.*/, '/v1/...'),
+        });
+        break;
+      }
       if (e.name === 'AbortError') {
         log.error('请求被中止（超时）', { url: url.replace(/\/v1.*/, '/v1/...') });
         break;
@@ -529,8 +678,8 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
 记忆已从${source === 'nocturne' ? ' Nocturne 服务器' : '本地文件'}加载。
 
 记忆系统有两条链路：
-- 自动链路：Gateway 会在回答前注入一部分相关记忆，并在回答后后台保存反馈/摘要/偏好
-- 显式链路：当你需要主动回忆、核对或写入记忆时，应直接调用 memory_search / memory_read / memory_write 工具，不要只在正文里口头描述“我去查记忆”
+- 自动链路：Gateway 只会在高置信时注入少量整轮历史回忆；这些内容只是候选上下文，必须和用户当前话题直接相关才可使用
+- 显式链路：当你需要主动回忆、核对或写入记忆时，应直接调用 memory_search / memory_read / memory_vector_search / memory_write 工具，不要只在正文里口头描述“我去查记忆”
 
 **写入记忆**（遇到以下情况自动触发）：
 - 用户说「记住」「记下来」「停车」→ 立即写入
@@ -551,6 +700,8 @@ URI 路径：core://my_user/[分类]/[具体节点]
 **显式工具使用规则**：
 - 当用户问“你还记得吗 / 之前说过什么 / 上次那个方案 / 我们前面怎么定的”时，优先先用 memory_search 搜关键词，不要直接猜
 - memory_search 命中后，如需核对原文或细节，再用 memory_read 读取最相关的 1-2 个节点
+- 当用户问的是“以前关于这个主题聊过哪些内容 / 你自己查一下历史相关数据”，或者只记得大概时间/大概内容/零散线索时，可优先用 memory_vector_search 做语义检索
+- memory_vector_search 返回的是历史候选，不是事实证明；低置信或文本候选必须先说明“不一定就是那条”，再结合用户确认继续
 - 当用户明确要求“记住这件事 / 以后按这个来 / 把这个偏好记下来”时，可显式使用 memory_write
 - 不要假设 Gateway 会替你完成所有显式记忆查询；需要确认时应主动调记忆工具
 - 不要先拍脑袋回答，再补查记忆；涉及“是否记得 / 之前怎么说的”时，优先查再答
@@ -1069,6 +1220,7 @@ function extractFunctionStyleToolCalls(text) {
     'memory_write',
     'memory_search',
     'memory_read',
+    'memory_vector_search',
     'exec_command',
   ];
   const toolPattern = new RegExp(`(?:^|\\n|\\s)(${knownTools.join('|')})\\s*\\(`, 'g');
@@ -1276,7 +1428,7 @@ function hasUnverifiedExecutionNarrative(text) {
 
   const patterns = [
     /我(去|来)?查(一下|下)?/i,
-    /我(将|会|正在|先)?调用(工具|搜索|查询|检索|web_search|read_file|memory_search)/i,
+    /我(将|会|正在|先)?调用(工具|搜索|查询|检索|web_search|read_file|memory_search|memory_vector_search)/i,
     /正在(调用工具|搜索|查询|检索|联网查)/i,
     /已(调用|执行)(了)?(工具|搜索|查询|检索)/i,
     /\b(let me|i('| wi)?ll|i am)\s+(search|look up|call|use)\b/i,
@@ -1367,6 +1519,69 @@ function normalizeMessagesForProvider(messages, providerId) {
   });
 }
 
+function mergePlainObject(target, source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return target;
+  const out = target && typeof target === 'object' && !Array.isArray(target) ? { ...target } : {};
+  for (const [key, value] of Object.entries(source)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      out[key] = mergePlainObject(out[key], value);
+    } else if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function applyToolCallDelta(existing, delta) {
+  const next = existing || { id: '', type: 'function', function: { name: '', arguments: '' } };
+  if (delta.id) next.id = delta.id;
+  if (delta.type) next.type = delta.type;
+  if (!next.function) next.function = { name: '', arguments: '' };
+  if (delta.function?.name) next.function.name += delta.function.name;
+  if (delta.function?.arguments) next.function.arguments += delta.function.arguments;
+  if (delta.extra_content) {
+    next.extra_content = mergePlainObject(next.extra_content, delta.extra_content);
+  }
+  return next;
+}
+
+function isProtocolOrRateLimitError(error) {
+  const status = Number(error?.status);
+  const message = String(error?.message || '');
+  return status === 429
+    || /thought_signature/i.test(message)
+    || /reasoning_content/i.test(message)
+    || /thinking mode/i.test(message)
+    || /function call .* missing/i.test(message);
+}
+
+function shouldForceFinalFromToolResults(providerId, preserveToolChain, toolRound) {
+  return providerId === 'google' && preserveToolChain && Number(toolRound) >= 1;
+}
+
+function buildToolResultFallbackReply(messages, error) {
+  const toolMessages = Array.isArray(messages)
+    ? messages.filter((message) => message?.role === 'tool' && String(message.content || '').trim())
+    : [];
+  if (toolMessages.length === 0) return '';
+
+  const snippets = toolMessages.slice(-3).map((message, index) => {
+    const raw = String(message.content || '').replace(/\s+/g, ' ').trim();
+    const text = raw.length > 900 ? `${raw.slice(0, 900)}...` : raw;
+    return `${index + 1}. ${text}`;
+  }).join('\n\n');
+
+  return [
+    '⚠️ Gemini 已完成工具检索，但在最终续写时触发 Vertex 429（资源耗尽 / 配额限制），本轮没有继续跨模型 fallback。',
+    '',
+    '已拿到的工具结果摘要如下，你可以稍后发送“基于上面的结果继续总结”继续：',
+    '',
+    snippets,
+    '',
+    `原始错误：${String(error?.message || error || '').slice(0, 240)}`,
+  ].join('\n');
+}
+
 async function streamChat({
   messages,
   onDelta,
@@ -1388,7 +1603,7 @@ async function streamChat({
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 
   // 上下文截断优化：防止消息过长
-  const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages);
+  const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages, model);
   let effectiveMessages = provider.id === 'google'
     ? injectGoogleDiagramGuard(truncatedMessages)
     : truncatedMessages;
@@ -1414,8 +1629,93 @@ async function streamChat({
     return;
   }
 
+  if (provider.id === 'google' && isGoogleNativeMode(config)) {
+    try {
+      if (caps.toolsSupport === 'unknown') {
+        caps.toolsSupport = 'supported';
+        caps.supportsTools = true;
+        caps.capabilitySource = 'google_native_sdk';
+      }
+      if (!caps.toolReliability || caps.toolReliability === 'none') {
+        caps.toolReliability = 'loose';
+      }
+      const effectiveSupportsTools = caps.supportsTools && caps.toolReliability !== 'none';
+      effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveSupportsTools ? 'supported' : 'unsupported');
+      effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
+      const validatedMessages = validateAndFixMessages(effectiveMessages);
+      const droppedCount = effectiveMessages.length - validatedMessages.length;
+      if (droppedCount > 0) {
+        log.info('validateAndFixMessages 丢弃孤立消息', {
+          droppedCount,
+          finalCount: validatedMessages.length,
+          turnId: turnId || null,
+        });
+      }
+
+      log.info('model caps', {
+        turnId: turnId || null,
+        model,
+        toolsSupport: caps.toolsSupport || 'supported',
+        capabilitySource: caps.capabilitySource || 'google_native_sdk',
+        supportsTools: caps.supportsTools,
+        toolReliability: caps.toolReliability,
+        supportsStreamOptions: false,
+      });
+
+      const result = await generateNativeChat({
+        rawConfig: {
+          GOOGLE_AI_API_KEY: apiKey,
+          GOOGLE_AI_BASE_URL: baseUrl,
+          GOOGLE_API_MODE: config.GOOGLE_API_MODE || 'native',
+          GOOGLE_CLOUD_PROJECT: config.GOOGLE_CLOUD_PROJECT || '',
+          GOOGLE_CLOUD_LOCATION: config.GOOGLE_CLOUD_LOCATION || '',
+          GOOGLE_GENAI_API_VERSION: config.GOOGLE_GENAI_API_VERSION || '',
+        },
+        messages: validatedMessages,
+        model,
+        toolDefinitions: effectiveSupportsTools ? toolLoader.getDefinitions() : [],
+        toolChoice,
+        onDelta: (chunk) => {
+          if (chunk) onDelta(chunk);
+        },
+      });
+
+      if (result.toolCalls.length > 0) {
+        await toolLoop.handleToolCalls({
+          toolCalls: result.toolCalls,
+          toolRound,
+          toolSignatures,
+          fullText: result.text || '',
+          totalUsage: result.usage || null,
+          responseModel: result.responseModel || model,
+          assistantResponseMessage: result.assistantResponseMessage,
+          truncatedMessages: effectiveMessages,
+          onDelta,
+          onDone,
+          onError,
+          onToolEvent,
+          flushThinkAtEnd: () => {},
+          turnId,
+        });
+        return;
+      }
+
+      onDone(result.text || '', result.usage || null, result.responseModel || model);
+      return;
+    } catch (e) {
+      log.error('google native streamChat error', {
+        error: e?.message || String(e),
+        model,
+      });
+      onError(e);
+      return;
+    }
+  }
+
   let fullText = '';  // 提升到 try 外，供 catch 中流中断截断逻辑使用
   let assistantResponseContent = '';
+  /** Thinking-mode providers may require this field to be echoed on tool continuation. */
+  let assistantReasoningContent = '';
   const _thinkState = {
     inThink: false,
     cotOpen: false,
@@ -1462,8 +1762,17 @@ async function streamChat({
     const effectiveToolsSupport = caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown');
     effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveToolsSupport);
     effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
+    const validatedMessages = validateAndFixMessages(effectiveMessages);
+    const droppedCount = effectiveMessages.length - validatedMessages.length;
+    if (droppedCount > 0) {
+      log.info('validateAndFixMessages 丢弃孤立消息', {
+        droppedCount,
+        finalCount: validatedMessages.length,
+        turnId: turnId || null,
+      });
+    }
 
-    const hasImage = effectiveMessages.some(m =>
+    const hasImage = validatedMessages.some(m =>
       Array.isArray(m.content) &&
       m.content.some(c => c.type === 'image_url')
     );
@@ -1671,7 +1980,7 @@ async function streamChat({
 
     const requestBody = {
       model,
-      messages: effectiveMessages,
+      messages: validatedMessages,
       stream: true,
       max_tokens: caps.maxTokens || 4096,
     };
@@ -1683,16 +1992,23 @@ async function streamChat({
       requestBody.stream_options = { include_usage: true };
     }
     const effectiveSupportsTools = caps.supportsTools && caps.toolReliability !== 'none';
+    const forceFinalFromToolResults = shouldForceFinalFromToolResults(provider.id, preserveToolChain, toolRound);
     const shouldInjectTools = effectiveSupportsTools && !hasImage;
     if (shouldInjectTools) {
       requestBody.tools = toolLoader.getDefinitions();
       // 部分 OpenAI 兼容服务商（如硅基流动）不支持 tool_choice 指定具体函数名，
       // 只允许 'auto' / 'none'。仅在 provider 明确声明支持时才发对象形式。
       const isObjectToolChoice = toolChoice && typeof toolChoice === 'object';
-      requestBody.tool_choice = (isObjectToolChoice && !provider.supportsToolChoiceFunction)
-        ? 'auto'
-        : toolChoice;
-      if (isObjectToolChoice && !provider.supportsToolChoiceFunction) {
+      requestBody.tool_choice = forceFinalFromToolResults
+        ? 'none'
+        : ((isObjectToolChoice && !provider.supportsToolChoiceFunction) ? 'auto' : toolChoice);
+      if (forceFinalFromToolResults) {
+        log.info('Google 工具续轮强制收束为最终回答', {
+          turnId: turnId || null,
+          toolRound,
+        });
+      }
+      if (!forceFinalFromToolResults && isObjectToolChoice && !provider.supportsToolChoiceFunction) {
         log.warn('tool_choice 对象形式降级为 auto（provider 不支持指定函数）', { provider: provider.id, requested: JSON.stringify(toolChoice) });
       }
     }
@@ -1755,7 +2071,7 @@ async function streamChat({
         if (!delta) continue;
 
         if (delta.reasoning_content) {
-          // qwen3.5-plus thinking tokens - skip silently
+          assistantReasoningContent += delta.reasoning_content;
         }
         if (delta.content) {
           lastChunkTime = Date.now(); // 每次收到真实 chunk 时更新时间
@@ -1765,12 +2081,7 @@ async function streamChat({
         if (delta.tool_calls) {
           for (const tc of delta.tool_calls) {
             const idx = tc.index || 0;
-            if (!toolCalls[idx]) {
-              toolCalls[idx] = { id: tc.id || '', type: 'function', function: { name: '', arguments: '' } };
-            }
-            if (tc.id) toolCalls[idx].id = tc.id;
-            if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
-            if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+            toolCalls[idx] = applyToolCallDelta(toolCalls[idx], tc);
           }
         }
 
@@ -1792,6 +2103,9 @@ async function streamChat({
             assistantResponseMessage: {
               role: 'assistant',
               content: assistantResponseContent || '',
+              ...(assistantReasoningContent
+                ? { reasoning_content: assistantReasoningContent }
+                : {}),
               tool_calls: toolCalls.filter(Boolean),
             },
             truncatedMessages: effectiveMessages,
@@ -1858,7 +2172,7 @@ async function streamChat({
         || /<tool_code>/i.test(textToCheck)
         || /<function=\w+>/i.test(textToCheck)
         || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
-        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
+        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
       if (hasToolCallResidue) {
         log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
           model: responseModel || model,
@@ -1883,6 +2197,9 @@ async function streamChat({
         assistantResponseMessage: {
           role: 'assistant',
           content: '',
+          ...(assistantReasoningContent
+            ? { reasoning_content: assistantReasoningContent }
+            : {}),
           tool_calls: pseudoToolCalls,
         },
         truncatedMessages: effectiveMessages,
@@ -1927,14 +2244,35 @@ async function streamChat({
     const isToolError = e?.message && (
       e.message.includes('tool id') ||
       e.message.includes('tool_call_id') ||
+      e.message.includes('thought_signature') ||
+      e.message.includes('reasoning_content') ||
       e.message.includes('invalid params') ||
       (e.message.includes('HTTP 400') && e.message.includes('tool')) ||
+      (e.message.includes('HTTP 400') && e.message.includes('thinking')) ||
       (e.message.includes('HTTP 401') && e.message.includes('tool')) ||
       (e.message.includes('HTTP 403'))
     );
 
-    if (isToolError) {
-      log.error('工具调用错误，不进行 fallback', { error: e?.message || String(e) });
+    if (Number(e?.status) === 429 && preserveToolChain && toolRound > 0) {
+      const fallbackReply = buildToolResultFallbackReply(effectiveMessages, e);
+      if (fallbackReply) {
+        log.warn('工具续轮 429，返回已取得的工具结果摘要', {
+          turnId: turnId || null,
+          toolRound,
+        });
+        flushThinkAtEnd();
+        onDone(fallbackReply, null, null);
+        return;
+      }
+    }
+
+    if (isToolError || isProtocolOrRateLimitError(e) || preserveToolChain || toolRound > 0) {
+      log.error('工具/协议/配额错误或工具续轮错误，不进行 fallback', {
+        error: e?.message || String(e),
+        status: e?.status || null,
+        preserveToolChain,
+        toolRound,
+      });
       onError(e);
       return;
     }
@@ -1943,9 +2281,12 @@ async function streamChat({
       log.warn('MiniMax API failed, fallback to Bailian MiniMax', { error: e?.message || String(e) });
       const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;
+      const originalModel = model;
+      const fallbackModel = 'MiniMax-M2.5';
       config.currentProvider = 'bailian-coding';
-      config.DASHSCOPE_MODEL = 'MiniMax-M2.5';
+      config.DASHSCOPE_MODEL = fallbackModel;
       try {
+        log.debug('streamChat fallback re-enter', { originalModel, fallbackModel });
         await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
       } finally {
         config.currentProvider = prevProvider;
@@ -1960,9 +2301,12 @@ async function streamChat({
       log.warn('primary provider failed, fallback to deepseek', { error: e?.message || String(e) });
       const prevProvider = config.currentProvider;
       const prevModel = config.DASHSCOPE_MODEL;
+      const originalModel = model;
+      const fallbackModel = 'deepseek-v4-flash';
       config.currentProvider = 'deepseek';
-      config.DASHSCOPE_MODEL = 'deepseek-chat';
+      config.DASHSCOPE_MODEL = fallbackModel;
       try {
+        log.debug('streamChat fallback re-enter', { originalModel, fallbackModel });
         await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
       } finally {
         config.currentProvider = prevProvider;
@@ -1975,4 +2319,16 @@ async function streamChat({
   }
 }
 
-module.exports = { streamChat, loadSystemPrompt, truncateHistory, getContextUsageRatio };
+module.exports = {
+  streamChat,
+  loadSystemPrompt,
+  truncateHistory,
+  getContextUsageRatio,
+  _internals: {
+    applyToolCallDelta,
+    mergePlainObject,
+    isProtocolOrRateLimitError,
+    shouldForceFinalFromToolResults,
+    buildToolResultFallbackReply,
+  },
+};

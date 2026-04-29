@@ -315,7 +315,8 @@ export function useWebSocket(options: UseWebSocketOptions) {
     files?: GatewaySendPayload['files'],
     pacingMs?: number,
     workbenchContext?: WorkbenchRoundtripContext,
-    requestId?: string
+    requestId?: string,
+    projectContext?: GatewaySendPayload['projectContext'],
   ): Promise<GatewaySendResult> => {
     const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
     try {
@@ -327,6 +328,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
         workbenchContext,
         canvasContext: workbenchContext,
         requestId: normalizedRequestId || undefined,
+        projectContext: projectContext ?? null,
       });
       return result || {};
     } catch (error) {

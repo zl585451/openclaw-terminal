@@ -13,6 +13,7 @@ import { DocumentCharacterPanel } from './document/DocumentCharacterPanel';
 import { documentWorkbenchStyles } from './document/styles';
 import type { WorkbenchDocument } from '../types';
 import type { WorkbenchRendererPlugin } from './types';
+import { useProjectChapterLink } from '../useProjectChapterLink';
 
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
 const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
@@ -141,6 +142,13 @@ function buildDocumentSections(document: WorkbenchDocument): {
 }
 
 function DocumentViewer({ document }: { document: WorkbenchDocument }) {
+  const {
+    linkedProject,
+    currentProjectChapterIndex,
+    isSwitchingChapter,
+    chapterSwitchError,
+    switchToProjectChapter,
+  } = useProjectChapterLink(document);
   const { sections, characters } = useMemo(() => buildDocumentSections(document), [document]);
   const [activeChapterId, setActiveChapterId] = useState<string | null>(sections[0]?.id ?? null);
   const [activeCharacter, setActiveCharacter] = useState<string | null>(null);
@@ -157,17 +165,36 @@ function DocumentViewer({ document }: { document: WorkbenchDocument }) {
 
   const jumpToChapter = (chapterId: string | null) => {
     if (!chapterId) return;
+    if (linkedProject?.chapters?.length) {
+      const nextIndex = Number(chapterId);
+      if (Number.isInteger(nextIndex)) {
+        void switchToProjectChapter(nextIndex);
+      }
+      return;
+    }
     setActiveChapterId(chapterId);
     contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const activeSection = sections.find((section) => section.id === activeChapterId) ?? sections[0] ?? null;
+  const sidebarChapters = linkedProject?.chapters?.length
+    ? linkedProject.chapters.map((chapter) => ({
+        id: String(chapter.chapter_index),
+        title: chapter.title || `第 ${chapter.chapter_index + 1} 章`,
+      }))
+    : sections.map((section) => ({ id: section.id, title: section.title }));
+  const effectiveActiveChapterId = linkedProject?.chapters?.length && currentProjectChapterIndex != null
+    ? String(currentProjectChapterIndex)
+    : activeChapterId;
+  const topbarTitle = linkedProject?.chapters?.length
+    ? `${linkedProject.chapters.find((chapter) => chapter.chapter_index === currentProjectChapterIndex)?.title || activeSection?.title || '当前章节'} · 当前项目章节`
+    : (activeSection ? `${activeSection.title} · 仅渲染当前章节` : '正文阅读视图');
 
   return (
     <div style={documentWorkbenchStyles.root}>
       <DocumentChapterSidebar
-        chapters={sections.map((section) => ({ id: section.id, title: section.title }))}
-        activeChapterId={activeChapterId}
+        chapters={sidebarChapters}
+        activeChapterId={effectiveActiveChapterId}
         onSelectChapter={jumpToChapter}
         collapsed={isChapterSidebarCollapsed}
         onToggleCollapsed={() => setIsChapterSidebarCollapsed((prev) => !prev)}
@@ -190,8 +217,11 @@ function DocumentViewer({ document }: { document: WorkbenchDocument }) {
             {isCharacterPanelCollapsed ? '显示角色' : '隐藏角色'}
           </button>
           <div style={documentWorkbenchStyles.topbarTitle}>
-            {activeSection ? `${activeSection.title} · 仅渲染当前章节` : '正文阅读视图'}
+            {isSwitchingChapter ? '正在切换章节...' : topbarTitle}
           </div>
+          {chapterSwitchError && (
+            <div style={documentWorkbenchStyles.topbarHint}>{chapterSwitchError}</div>
+          )}
         </div>
 
         <div className="canvas-preview canvas-preview--document" style={{ height: '100%' }}>

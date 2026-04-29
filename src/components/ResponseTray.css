@@ -23,11 +23,11 @@
   display: inline-flex;
   align-items: center;
   max-width: min(240px, 100%);
-  padding: 6px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
   background: transparent;
-  color: rgba(255, 255, 255, 0.65);
+  color: color-mix(in srgb, var(--text-secondary, rgba(255, 255, 255, 0.65)) 86%, transparent 14%);
   font-size: 13px;
   font-family: var(--font-sans, inherit);
   line-height: 1.4;
@@ -49,8 +49,9 @@
 .response-tray-inline__pill:nth-child(4) { animation-delay: 120ms; }
 
 .response-tray-inline__pill:hover {
-  border-color: rgba(255, 255, 255, 0.55);
-  color: rgba(255, 255, 255, 0.92);
+  border-color: var(--border-light, rgba(255, 255, 255, 0.32));
+  color: var(--text-primary, rgba(255, 255, 255, 0.92));
+  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
 }
 
 .response-tray-inline__pill:active {

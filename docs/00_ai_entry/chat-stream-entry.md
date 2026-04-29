@@ -1,7 +1,7 @@
 # Chat Stream Entry
 
 > Status: CURRENT  
-> Last Updated: 2026-04-19  
+> Last Updated: 2026-04-27  
 > Scope: 聊天发送、Gateway 回复、前端流式显示、状态切换、打字动画主链路
 
 ---
@@ -18,7 +18,7 @@
 flowchart TD
   A[ChatInput.tsx] --> B[ChatTab.v2.tsx]
   B --> C[useMessages.sendMessage]
-  C --> D[useWebSocket.send]
+  C --> D[useWebSocket.send + projectContext]
   D --> E[electron/main.ts openclaw-send]
   E --> F[oct-gateway/index.js chat.send]
   F --> G[contextBuilder.build]
@@ -55,6 +55,7 @@ flowchart TD
 - 当前聊天状态核心
 - 负责：
   - `sendMessage` / `quickSend`
+  - 读取当前书本项目上下文并随消息透传
   - 处理 `useWebSocket` 入站回调
   - `runStreamPaintTick` 直接往流式 DOM 写 `textContent`
   - streaming assistant 占位消息、收尾 finalize、usage 累积
@@ -62,6 +63,7 @@ flowchart TD
 
 ### `src/hooks/useWebSocket.ts`
 - 负责 Electron IPC → renderer 的消息适配
+- 把 `projectContext`、`workbenchContext` 等发送参数传给 `openclaw-send`
 - 解析 `openclaw-message`
 - 区分 `chat` / `tool` / `agent-phase` / `keepalive` / `workbench` / `canvas`(兼容)
 - 读取 `turnId`，避免别的轮次事件串进当前消息
@@ -78,6 +80,7 @@ flowchart TD
 ### `oct-gateway/index.js`
 - `chat.send` 路由入口
 - 生成 `turnId`
+- 读取 `projectContext`
 - 先调 `contextBuilder.build()` 拼装上下文
 - 再调 `chatEngine.execute()` 驱动真正的流式回复
 - 发送 `chat`、`tool`、`agent-phase`、`keepalive` 事件
@@ -90,6 +93,8 @@ flowchart TD
 - 真实的字符逐步显示由 `useMessages.ts -> runStreamPaintTick` 驱动
 - `useMessages.ts` 会按 `turnId` 过滤 delta / done，排查串流问题必须看这一层
 - Gateway 已把中间状态拆成 `agent-phase` 与 `keepalive`，不要再把所有“卡住”都归结到 paint tick
+- 从 2026-04-27 起，聊天发送链路支持透传 `projectContext`，让 AMY 自动感知当前书本项目的结构信息
+- 从 2026-04-27 起，当用户在当前项目下明确提到“第 X 章”时，`contextBuilder` 会临时拉取该章节正文并注入本轮上下文
 - 如果“界面在打字，但某个依赖旧打字机的功能没生效”，优先怀疑职责迁移不完整
 - 从 2026-04-17 起，连接成功后 `hello-ok.capabilities` 会透传到前端（用于工具能力提示）
 - 从 2026-04-17 起，`useMessages` 增加整轮超时兜底（默认 10 分钟），防止无限 awaitingResponse

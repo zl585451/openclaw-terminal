@@ -782,6 +782,76 @@
   line-height: 1.6;
 }
 
+/* ─── 章节加载器 ─────────────────────────────── */
+.canvas-chapter-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.canvas-chapter-loader-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.canvas-chapter-select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(34, 34, 34, 0.92);
+  color: rgba(245, 243, 238, 0.96);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  min-width: 240px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.canvas-chapter-select:focus {
+  outline: none;
+  border-color: rgba(233, 129, 74, 0.7);
+  box-shadow:
+    0 0 0 3px rgba(233, 129, 74, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.canvas-chapter-select option {
+  background: #f7f3ed;
+  color: #1f2326;
+}
+
+.canvas-chapter-select option:disabled {
+  color: #72716d;
+}
+
+.canvas-chapter-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.canvas-chapter-loading {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.canvas-chapter-error {
+  font-size: var(--text-xs);
+  color: var(--color-error, #e05c5c);
+}
+
+.canvas-chapter-loader-hint {
+  margin-top: 8px;
+  max-width: 360px;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary, var(--text-secondary));
+  line-height: 1.5;
+  text-align: center;
+}
+
 /* 确保 markdown 内容在 canvas 中正确显示 */
 .canvas-preview .msg-content.markdown-body {
   background: transparent;

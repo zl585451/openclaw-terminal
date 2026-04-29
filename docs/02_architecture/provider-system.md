@@ -1,6 +1,6 @@
 # Provider 系统 — AI 服务商市场化
 
-> **最后更新**：2026-04-22（含 Google Base URL 清洗 `oct-gateway/shared/googleBaseUrl.js`） | **状态**：✅ 正常
+> **最后更新**：2026-04-28（Google Vertex 原生 SDK 主通道） | **状态**：✅ 正常
 
 ---
 
@@ -15,6 +15,7 @@
 - `oct-gateway/providers.js` — 服务商预设注册表
 - `oct-gateway/config.js` — getProviderConfig、currentProvider
 - `oct-gateway/ai.js` — 按 provider 能力组装请求
+- `oct-gateway/services/googleNative.js` — Google Vertex 原生 SDK 适配层（认证、消息转换、函数调用、生图）
 - `oct-gateway/index.js` — `/model`、`/provider` 命令
 - `src/ui/settings/tabs/ConnectionTabView.tsx` — 连接页：服务商选择器、Key、Base URL、测试连接；**硅基流动**（`OCT_PROVIDER=siliconflow`）下「当前模型」为文本框，直接编辑 `OCT_MODEL`，并附带常用模型快捷填入
 
@@ -32,15 +33,25 @@
 | custom | 自定义 | 用户填写 |
 | google | Google Gemini（Vertex AI API 密钥） | aiplatform.googleapis.com/.../endpoints/openapi（可改） |
 
-### Google：`google` 与 Vertex 文档里的「推理 API」
+### Google：`google` 默认改为 Vertex 原生 SDK
 
-- **OCT 使用**：支持 `aiplatform.googleapis.com` 与 `generativelanguage.googleapis.com` 两类 OpenAI 兼容入口，统一使用 **`x-goog-api-key`** 请求头。
-- 预设 `google` 默认是 Vertex 风格路径（含项目 ID 与 location），可用 `GOOGLE_AI_BASE_URL` 覆盖。
-- 若在网页/控制台里能通而网关失败，先确认 **代理与计费** 已就绪，再对照网关日志中的 HTTP 状态与错误体。
-- 若日志为 **400 *Multiple authentication credentials***：勿在 Base URL 上带 `?key=`；网关对 Google 仅发 **`x-goog-api-key`**；启用 `HTTPS_PROXY` 时勿再依赖 **`NODE_USE_ENV_PROXY`**（网关在启用 undici 代理时会清除该变量）。
-- 若希望“Google 独立网络配置、不影响其他 Provider”，可使用：
-  - `GOOGLE_HTTPS_PROXY`：仅 Google 请求生效（其他 Provider 不受影响）
-  - `GOOGLE_TOOLS_MODE=off|auto|on`：仅 Google 工具能力策略（默认 `auto`，会做 runtime probe）
+- **2026-04-28 起默认主通道**：`google` provider 优先走 `@google/genai` 的 **Vertex AI 原生 SDK**，不再把 Google 只当作 OpenAI 兼容分支特判。
+- **Base URL 的新职责**：`GOOGLE_AI_BASE_URL` 仍保留，但主要用于从
+  `https://aiplatform.googleapis.com/v1beta1/projects/PROJECT_ID/locations/LOCATION/endpoints/openapi`
+  里解析 `PROJECT_ID` 与 `LOCATION`，供原生 SDK 初始化 Vertex 客户端。
+- **认证**：
+  - 首选 `GOOGLE_AI_API_KEY` / Vertex API Key
+  - 也可通过 `GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION` 配合标准 Vertex 认证使用
+- **兼容开关**：
+  - `GOOGLE_API_MODE=native`：默认，走原生 SDK
+  - `GOOGLE_API_MODE=openai_compat`：显式回退旧的 OpenAI 兼容链路
+- **Google 独立运行时开关**：
+  - `GOOGLE_HTTPS_PROXY`：仅 Google 请求生效
+  - `GOOGLE_TOOLS_MODE=off|auto|on`：仅影响旧兼容层工具策略；原生 SDK 路径下函数调用能力由模型原生声明处理
+- **图像能力**：
+  - Gemini 图像模型：`gemini-2.5-flash-image`、`gemini-3-pro-image-preview`
+  - Imagen：`imagen-*`
+  - `image.generate` 现在可通过 Google 原生服务层路由到 Gemini 图像模型或 Imagen
 
 ## 数据流
 ```
@@ -84,6 +95,12 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 
 ## 能力声明
 每个 provider 的 models 声明 `tools`、`thinking`。仅 `tools: true` 的模型才会传 `tools`/`tool_choice`，避免 deepseek-v3 等报错。
+
+### Thinking 模型 + 工具调用续轮
+
+当 OpenAI 兼容流式响应在 `delta.reasoning_content` 中返回思考片段，并且同一轮触发 `tool_calls` 时，Gateway 会把该 `reasoning_content` 写回随后追加的 `assistant` 工具调用消息，再与 `tool` 结果一起发起续轮请求。
+
+这条规则不限定 DeepSeek；Google Gemini 3.x 预览等 thinking-mode 模型也可能要求工具续轮原样回传该字段，否则会返回 `HTTP 400`：`The reasoning_content in the thinking mode must be passed back to the API.`。
 
 从 2026-04-17 起，网关内部能力升级为三态：
 
@@ -131,6 +148,7 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
+| 2026-04-26 | thinking-mode 工具续轮不再只对 DeepSeek 回传 `reasoning_content`；凡流式响应实际返回该字段，Gateway 都会在 assistant tool-call 消息中原样带回，修复 Google Gemini 3.x 预览工具调用后的 400 |
 | 2026-04-23 | `moonshot` provider 对齐 Kimi 官方平台：控制台链接改为 `platform.kimi.com`，默认模型切到 `kimi-k2.6`，并补齐 `kimi-k2.5 / kimi-k2-turbo-preview` 等官方模型；`moonshot-v1-*` 仅作为兼容选项保留 |
 | 2026-04-22 | 连接页新增 beginner / advanced 两层：新手模式只暴露 3 个默认 provider 卡片与单一 Key 入口；不改 Gateway provider 注册与能力声明 |
 | 2026-04-21 | MiniMax 独立接口不接受 `role=system`，Gateway 改为仅对 `provider=minimax` 将 system 内容并入第一条 user 消息，避免 400 invalid params |
@@ -138,6 +156,7 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 | 2026-04-17 | 能力协商升级为三态（supported/unknown/unsupported），并在 `/status` 与 `hello-ok.capabilities` 透出来源；`custom` 模型默认工具关闭，可由 `CUSTOM_MODEL_SUPPORTS_TOOLS=true` 显式开启 |
 | 2026-04-14 | `google` 主对话改为仅 `x-goog-api-key`，避免与 Bearer 叠用导致 400；文档与测试连接 IPC 同步 |
 | 2026-04-14 | 文档：`google` 出现 400 *Multiple authentication credentials* 时的排查（Base URL 勿带 `?key=`、`NODE_USE_ENV_PROXY` 与 undici 代理勿叠用）；网关侧已做 URL 净化与代理启动时清理 `NODE_USE_ENV_PROXY` |
+| 2026-04-28 | Google 型号清单同步官方命名：保留 `gemini-3.1-pro-preview`，新增 `gemini-3.1-flash-lite-preview`，移除前端已停用的 `gemini-3-pro-preview` 展示，并修正历史错误降级映射 |
 | 2026-04-13 | 扩充 `google` 预设模型（2.5 / 3.x 预览），默认 `gemini-2.5-flash`；文档区分 Generative Language OpenAI 兼容层与 Vertex 原生推理 API |
 | 2026-04-13 | 新增 `google` Provider（Vertex AI Studio API 密钥 + Gemini OpenAI 兼容端点）；配置键 `GOOGLE_AI_API_KEY` / `GOOGLE_AI_BASE_URL` |
 | 2026-04-19 | 新增 `GOOGLE_HTTPS_PROXY`（Google 独立代理）与 `GOOGLE_TOOLS_MODE`（`off/auto/on`）；默认 `auto` 下 Google 工具能力走 runtime probe，不影响其他 Provider |

@@ -1,3 +1,9 @@
+const {
+  archiveToolResult,
+  truncateToolResult,
+} = require('./toolResultArchive');
+const { summarizeToolResult } = require('./toolResultSummarizer');
+
 class ToolLoop {
   constructor({
     toolLoader,
@@ -138,10 +144,73 @@ class ToolLoop {
         } catch {}
       }
 
+      // 1. 先把完整结果归档
+      try {
+        archiveToolResult({
+          callId: toolCall.id,
+          toolName,
+          args,
+          result,
+          turnId: turnId || null,
+        });
+      } catch (e) {
+        this.log.warn('archiveToolResult 失败', { error: e?.message });
+      }
+
+      // 2. 截断后再放进 messages
+      const { truncated, value: truncatedResult, originalSize } = truncateToolResult(
+        toolName,
+        result,
+        toolCall.id,
+      );
+
+      if (truncated) {
+        this.log.info('工具结果已截断', {
+          tool: toolName,
+          callId: toolCall.id,
+          originalSize,
+          turnId: turnId || null,
+        });
+      }
+
+      const contentForModel = typeof truncatedResult === 'string'
+        ? truncatedResult
+        : JSON.stringify(truncatedResult);
+      const summarized = await summarizeToolResult(toolName, contentForModel);
+
+      if (summarized.mode === 'noop') {
+        this.log.debug?.('tool result summarizer noop', {
+          toolName,
+          reason: summarized.reason,
+        });
+      } else {
+        this.log.info('tool result summarizer', {
+          toolName,
+          mode: summarized.mode,
+          latencyMs: summarized.latencyMs,
+          originalChars: contentForModel.length,
+          finalChars: summarized.text.length,
+        });
+      }
+
       toolResults.push({
         tool_call_id: toolCall.id,
+        tool_name: toolName,
         role: 'tool',
-        content: JSON.stringify(result),
+        content: summarized.text,
+        ...(toolCall?.extra_content?.google_native
+          ? {
+              google_native_content: {
+                role: 'user',
+                parts: [{
+                  functionResponse: {
+                    name: toolName,
+                    response: { output: summarized.text },
+                  },
+                }],
+              },
+            }
+          : {}),
       });
     }
 
@@ -149,7 +218,14 @@ class ToolLoop {
       ? {
           role: 'assistant',
           content: assistantResponseMessage.content || '',
+          ...(typeof assistantResponseMessage.reasoning_content === 'string'
+            && assistantResponseMessage.reasoning_content.length > 0
+            ? { reasoning_content: assistantResponseMessage.reasoning_content }
+            : {}),
           tool_calls: normalizedToolCalls,
+          ...(assistantResponseMessage.google_native_content
+            ? { google_native_content: assistantResponseMessage.google_native_content }
+            : {}),
         }
       : {
           role: 'assistant',

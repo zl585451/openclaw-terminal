@@ -1,20 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import TitleBar from './components/TitleBar';
 import TabBar from './components/TabBar';
-import ChatTab, { ChatMessage } from './ui/chat/ChatTab.v2';
+import ChatTab from './ui/chat/ChatTab.v2';
+import type { ChatMessage } from './ui/chat/chatTypes';
 import SoundTab from './components/SoundTab';
 import ReaperTab from './components/ReaperTab';
 import SettingsPanel from './components/SettingsPanel';
 import WorkbenchHost from './components/workbench/WorkbenchHost';
 import FirstLaunchSetup from './components/FirstLaunchSetup';
+import { ScriptAdapterApp } from './modules/script-adapter';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { WorkbenchProvider } from './workbench/WorkbenchContext';
 import './styles/App.css';
 
 
 export type TabType = 'chat' | 'sound' | 'reaper';
+type AppView = 'chat' | 'script-adapter';
+type ScriptAdapterEntry = 'home' | 'workspace' | 'library';
 
 const App: React.FC = () => {
+  const [appView, setAppView] = useState<AppView>('chat');
+  const [scriptAdapterEntry, setScriptAdapterEntry] = useState<ScriptAdapterEntry>('home');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vaultUnlocked, setVaultUnlocked] = useState(false);
@@ -101,6 +107,11 @@ const App: React.FC = () => {
 
   const getNextMessageId = () => ++messageIdRef.current;
 
+  const openScriptAdapter = (entry: ScriptAdapterEntry) => {
+    setScriptAdapterEntry(entry);
+    setAppView('script-adapter');
+  };
+
   return (
     <ThemeProvider>
       <WorkbenchProvider>
@@ -118,31 +129,65 @@ const App: React.FC = () => {
         <TitleBar />
         
         {/* 标签栏 + 右侧 portal 插槽 */}
-        <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-panel)', borderBottom: '1px solid var(--border-subtle)' }}>
-          <TabBar
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            vaultOpen={vaultOpen}
-            setVaultOpen={setVaultOpen}
-            vaultUnlocked={vaultUnlocked}
-            onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
-          />
-          <div id="chat-header-portal" />
+        <div className="app-shell-bar">
+          {appView === 'chat' ? (
+            <>
+              <TabBar
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                vaultOpen={vaultOpen}
+                setVaultOpen={setVaultOpen}
+                vaultUnlocked={vaultUnlocked}
+                onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
+              />
+              <div className="app-shell-actions">
+                <button
+                  type="button"
+                  className="script-adapter-entry-button"
+                  data-entry-tone="library"
+                  onClick={() => openScriptAdapter('library')}
+                >
+                  📚 项目素材库
+                </button>
+                <button
+                  type="button"
+                  className="script-adapter-entry-button"
+                  data-temp-entry="script-adapter"
+                  onClick={() => openScriptAdapter('home')}
+                >
+                  内容制作工作台
+                </button>
+                <div id="chat-header-portal" />
+              </div>
+            </>
+          ) : (
+            <div className="app-shell-module-title">内容创作</div>
+          )}
         </div>
 
         {/* 内容区域 */}
         <div className="content-area">
-          {activeTab === 'chat' && (
-            <ChatTab
-              messages={messages}
-              setMessages={setMessages}
-              getNextMessageId={getNextMessageId}
-              onStatusChange={() => {}}
-              onSwitchTab={setActiveTab}
+          {appView === 'chat' ? (
+            <>
+              {activeTab === 'chat' && (
+                <ChatTab
+                  messages={messages}
+                  setMessages={setMessages}
+                  getNextMessageId={getNextMessageId}
+                  onStatusChange={() => {}}
+                  onSwitchTab={setActiveTab}
+                />
+              )}
+              {activeTab === 'sound' && <SoundTab />}
+              {activeTab === 'reaper' && <ReaperTab />}
+            </>
+          ) : (
+            <ScriptAdapterApp
+              key={scriptAdapterEntry}
+              initialScreen={scriptAdapterEntry}
+              onBack={() => setAppView('chat')}
             />
           )}
-          {activeTab === 'sound' && <SoundTab />}
-          {activeTab === 'reaper' && <ReaperTab />}
         </div>
         <WorkbenchHost />
         {showSettings && (

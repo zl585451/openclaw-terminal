@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { UploadedFile } from '../ui/chat/ChatTab.v2';
+import type { UploadedFile } from '../ui/chat/chatTypes';
 
 const ipcRenderer =
   typeof window !== 'undefined' && typeof (window as any).require === 'function'

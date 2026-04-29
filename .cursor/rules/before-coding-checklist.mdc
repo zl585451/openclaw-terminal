@@ -15,7 +15,7 @@ alwaysApply: true
 | 前后端协议 | `docs/03_specs/WEBSOCKET_PROTOCOL.md` |
 | 渲染/Markdown | `docs/03_specs/RENDER_PROTOCOL.md` |
 | 已知问题 | `docs/03_specs/99_known_issues.md` |
-| 迁移状态 | `docs/03_migration/migration-status.md` |
+| 迁移状态（历史快照） | `docs/_archive/migration/v2-and-gateway/migration-status.md`；目录说明见 `docs/03_migration/README.md` |
 
 **如果文档里说这个功能已经做过或有决策记录，不要重复实现。**
 

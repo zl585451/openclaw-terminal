@@ -70,8 +70,22 @@ export interface NocturneStatusResult {
   path: string;
   backendAlive?: boolean;
   frontendAlive?: boolean;
-  domains?: Array<{ domain: string }>;
+  domains?: Array<{ domain: string; root_count?: number }>;
   coreMemoryUris?: string[];
+  coreMemoryStatus?: Array<{
+    uri: string;
+    ok: boolean;
+    hasContent: boolean;
+    contentLength: number;
+    error?: string;
+  }>;
+  coreMemoryReadyCount?: number;
+  coreMemoryMissingCount?: number;
+  dbPath?: string;
+  dbUrl?: string;
+  envPath?: string;
+  diagnosticLogPath?: string;
+  stderrLogPath?: string;
 }
 
 export interface NocturneDashboardStatus {
@@ -196,6 +210,72 @@ export interface ElectronAPI {
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
+  startScriptAdapterRun?: (payload: {
+    taskId: string;
+    taskTitle: string;
+    source?: string;
+    useMock?: boolean;
+    sourceText?: string;
+    config?: unknown;
+  }) => Promise<ApiResult & { taskId?: string; planId?: string }>;
+  cancelScriptAdapterRun?: (payload: { taskId: string; reason?: string }) => Promise<ApiResult & { taskId?: string; status?: string }>;
+  listScriptAdapterRuns?: () => Promise<ApiResult & {
+    runs?: Array<{
+      taskId: string;
+      planId?: string;
+      taskTitle?: string;
+      status?: string;
+      createdAt?: string;
+      updatedAt?: string;
+      completedAt?: string;
+      error?: string;
+    }>;
+  }>;
+  scriptAdapterBatch?: {
+    start: (payload: {
+      bookId: string;
+      chapterIndices: number[];
+      bookTitle?: string;
+      config?: unknown;
+      estimate?: unknown;
+    }) => Promise<ApiResult & { batchId?: string }>;
+    status: (batchId: string) => Promise<ApiResult & { batch?: unknown; chapterRuns?: unknown[] }>;
+    list: (params?: { limit?: number; offset?: number }) => Promise<ApiResult & { batches?: unknown[] }>;
+    cancel: (batchId: string) => Promise<ApiResult>;
+    rerunChapter: (batchId: string, chapterIndex: number) => Promise<ApiResult>;
+    remove: (batchId: string) => Promise<ApiResult>;
+  };
+  onScriptAdapterEvent?: (callback: (payload: UnknownRecord) => void) => (() => void);
+  /** AI.library 项目书库：Electron/Node 原生内置实现，不依赖 Python 后端 */
+  library?: {
+    list: (params?: { limit?: number; offset?: number }) => Promise<
+      { success: true; data: unknown } | { success: false; error: string }
+    >;
+    get: (bookId: string) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    chapters: (bookId: string) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    chapter: (
+      bookId: string,
+      chapterIndex: number,
+    ) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    pickFile: () => Promise<{ success: true; filePath: string } | { success: false; error: string }>;
+    upload: (params: {
+      filePath: string;
+      title: string;
+      author?: string;
+    }) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    remove: (bookId: string) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+  };
+  delivery?: {
+    exportMarkdown: (params: {
+      filename: string;
+      content: string;
+    }) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+    exportDocx: (params: {
+      filename: string;
+      documentTitle: string;
+      data: unknown;
+    }) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  };
   chatHistoryLoad?: () => Promise<ChatHistoryItem[]>;
   chatHistorySave?: (items: ChatHistoryItem[]) => Promise<void>;
   imageGenerate?: (payload: ImageGeneratePayload) => Promise<ApiResult>;

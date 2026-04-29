@@ -1,0 +1,1 @@
+export { ScriptAdapterApp } from './ScriptAdapterApp';

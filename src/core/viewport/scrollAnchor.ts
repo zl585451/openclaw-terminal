@@ -23,6 +23,7 @@ const raf = typeof requestAnimationFrame === 'function'
 
 export class ScrollAnchor {
   private static readonly RECONCILE_THRESHOLD_PX = 8;
+  private static readonly USER_SCROLL_RELEASE_THRESHOLD_PX = 24;
   private container: HTMLElement | null = null;
   private anchorEl: HTMLElement | null = null;
   private anchorTopOffset: number = 0;
@@ -104,9 +105,14 @@ export class ScrollAnchor {
    * Let the user break free of anchor lock by scrolling away.
    * Call with distance-from-bottom from the scroll handler.
    */
-  onUserScroll(_distFromBottom: number): void {
+  onUserScroll(_distFromBottom: number, scrollDelta = 0): void {
     if (this.programmaticScroll) return;
     if (!this.locked) return;
+
+    if (scrollDelta < -ScrollAnchor.USER_SCROLL_RELEASE_THRESHOLD_PX) {
+      this.locked = false;
+      return;
+    }
 
     if (!this.anchorEl || !this.container) {
       this.locked = false;

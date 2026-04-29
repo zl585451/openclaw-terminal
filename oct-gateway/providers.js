@@ -81,10 +81,13 @@ const PROVIDERS = {
     keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
     keyLink: 'https://platform.deepseek.com/',
     keyEnvVars: ['DEEPSEEK_API_KEY'],
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-flash',
     models: [
-      { id: 'deepseek-chat',     label: 'DeepSeek Chat（通用）',     tools: true,  thinking: false },
-      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（推理）', tools: false, thinking: true  },
+      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash（通用，推荐）', tools: true,  thinking: false },
+      { id: 'deepseek-v4-pro',   label: 'DeepSeek V4 Pro（深度推理）',    tools: false, thinking: true  },
+      // 以下旧模型将于 2026/07/24 弃用，仅作兼容保留
+      { id: 'deepseek-chat',     label: 'DeepSeek Chat（旧版）',         tools: true,  thinking: false },
+      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（旧版）',     tools: false, thinking: true  },
     ],
     supportsStreamOptions: false,
   },
@@ -196,16 +199,16 @@ const PROVIDERS = {
   },
 
   /**
-   * Google Gemini：Vertex AI Express OpenAI 兼容层。
-   * - Key 格式：AQ.xxxx（在 Google Cloud Console → Vertex AI → API Keys 创建）
-   * - 端点：aiplatform.googleapis.com，认证用 x-goog-api-key 头（不是 Bearer）
-   * - Base URL 格式：https://aiplatform.googleapis.com/v1beta1/projects/PROJECT_ID/locations/LOCATION/endpoints/openapi
-   *   将 PROJECT_ID 替换为你的 Google Cloud 项目 ID，LOCATION 通常为 us-central1
-   * @see https://cloud.google.com/vertex-ai/docs/generative-ai/start/quickstarts/api-quickstart
+   * Google Gemini：默认走 Vertex AI 原生 SDK（@google/genai）。
+   * - Key 格式：AQ.xxxx（Vertex API Key / Express Mode API Key），也支持 Vertex 标准项目认证
+   * - Base URL 主要用于解析项目与区域：
+   *   https://aiplatform.googleapis.com/v1beta1/projects/PROJECT_ID/locations/LOCATION/endpoints/openapi
+   * - 若显式设置 GOOGLE_API_MODE=openai_compat，可退回旧的 OpenAI 兼容层
+   * @see https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstart?usertype=apikey
    */
   google: {
     id: 'google',
-    name: 'Google Gemini（Vertex AI Express，AQ Key）',
+    name: 'Google Gemini（Vertex AI 原生）',
     baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/gemini-key-493216/locations/us-central1/endpoints/openapi',
     keyPlaceholder: 'AQ.xxxxxxxxxxxxxxxxxx（Vertex AI API Key）',
     keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
@@ -213,11 +216,13 @@ const PROVIDERS = {
     defaultModel: 'google/gemini-2.5-flash',
     models: [
       { id: 'google/gemini-2.5-flash',           label: 'Gemini 2.5 Flash（推荐）', tools: false, thinking: true },
+      { id: 'google/gemini-2.5-flash-lite',      label: 'Gemini 2.5 Flash-Lite（低延迟）', tools: false, thinking: true },
       { id: 'google/gemini-2.5-pro',             label: 'Gemini 2.5 Pro（深度推理）', tools: false, thinking: true },
       { id: 'google/gemini-3-flash-preview',     label: 'Gemini 3 Flash（预览）', tools: false, thinking: true },
-      { id: 'google/gemini-3.1-pro-preview',     label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
       { id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash-Lite（预览）', tools: false, thinking: true },
-      { id: 'google/gemini-2.0-flash-001',       label: 'Gemini 2.0 Flash（兼容）', tools: false, thinking: false },
+      { id: 'google/gemini-3.1-pro-preview',     label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
+      { id: 'google/gemini-2.0-flash',           label: 'Gemini 2.0 Flash（兼容）', tools: false, thinking: false },
+      { id: 'google/gemini-2.0-flash-lite',      label: 'Gemini 2.0 Flash-Lite（低成本）', tools: false, thinking: false },
       { id: '__custom__', label: '✏️ 自定义模型 ID', tools: false, thinking: false, custom: true },
     ],
     supportsStreamOptions: false,

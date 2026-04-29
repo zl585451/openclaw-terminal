@@ -1,5 +1,6 @@
 import type { WorkbenchRoundtripContext } from '../workbench/types';
-import type { UploadedFile } from '../ui/chat/ChatTab.v2';
+import type { UploadedFile } from '../ui/chat/chatTypes';
+import type { ActiveProject } from '../contexts/ProjectContext';
 
 export interface GatewayCapabilities {
   model?: string;
@@ -83,6 +84,7 @@ export interface GatewaySendPayload {
   workbenchContext?: WorkbenchRoundtripContext;
   canvasContext?: WorkbenchRoundtripContext;
   requestId?: string;
+  projectContext?: ActiveProject | null;
 }
 
 export interface GatewaySendResult {

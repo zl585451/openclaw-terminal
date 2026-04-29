@@ -16,9 +16,24 @@
 
 ## P3 语义召回
 
-启用 `memory.vectorRecall.enabled` 后，L3 原始日志写入成功会异步生成 embedding 并保存到本地 sqlite-vec 数据库。每轮对话构建上下文时，Gateway 会对用户本轮输入做一次带超时保护的向量召回，并将相关历史作为临时 system 消息注入本次请求。
+启用 `memory.vectorRecall.enabled` 后，L3 原始日志写入成功会异步生成 embedding 并保存到本地 sqlite-vec 数据库。每轮对话构建上下文时，Gateway 会对用户本轮输入做一次带超时保护的向量召回。
+
+自动召回与手动查询使用不同策略：
+
+- 自动召回：严格门控，只注入高置信整轮历史，避免污染当前闲聊。
+- 手动查询：`/recall query` 和 `memory_vector_search` 使用更宽阈值，允许探索低置信候选。
+- 手动查询结果里的低置信/文本候选只适合核对，不应直接当作确定记忆。
 
 向量召回配置可在设置面板“记忆系统 → 向量召回配置”中填写，面向普通用户预置百炼和火山两种供应商。
+
+关键配置位于 `memory.vectorRecall.recall`：
+
+- `autoThreshold`：自动注入基础阈值。
+- `strongThreshold`：强命中阈值，达到后可直接进入自动候选。
+- `recallIntentThreshold`：用户有明确回忆意图时的阈值。
+- `manualThreshold`：手动查询阈值。
+- `minLexicalOverlap`：自动注入所需关键词重叠比例。
+- `candidateTopK`：自动召回第一阶段候选数量。
 
 参数：
 

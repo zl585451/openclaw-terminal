@@ -11,7 +11,7 @@ module.exports = {
         type: 'object',
         properties: {
           title: { type: 'string', description: '任务标题' },
-          priority: { type: 'string', description: '优先级', enum: ['P0', 'P1', 'P2', ''] },
+          priority: { type: 'string', description: '优先级', enum: ['P0', 'P1', 'P2'] },
         },
         required: ['title'],
       },

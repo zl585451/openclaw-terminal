@@ -8,9 +8,10 @@ dotenv.config({ path: envPath });
 
 import { app, BrowserWindow, ipcMain, Notification, dialog, screen, globalShortcut, shell } from 'electron';
 import * as fs from 'fs';
+import * as http from 'http';
 import * as os from 'os';
 import * as net from 'net';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import * as pty from 'node-pty';
 import * as crypto from 'crypto';
 import WebSocket from 'ws';
@@ -22,6 +23,11 @@ let terminalWindow: BrowserWindow | null = null;
 let terminalPty: pty.IPty | null = null;
 let openclawWs: WebSocket | null = null;
 let requestId = 0;
+const SCRIPT_ADAPTER_REQUEST_TIMEOUT_MS = 10000;
+const scriptAdapterPendingRequests = new Map<string, {
+  resolve: (value: any) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}>();
 const MAX_RECONNECT_RETRIES = 999; // 增加重连次数上限
 let reconnectRetryCount = 0;
 /** 应用/主窗口正在关闭，避免 WebSocket 断开回调里向已销毁的窗口 send 导致报错 */
@@ -53,8 +59,8 @@ const DEFAULT_CONFIG = {
   OCT_USER_NAME: '用户',
   OCT_PERSONA_STYLE: 'warm',
   TTS_MINIMAX_VOICE_ID: 'male-qn-qingse',
-  /** 随 OCT 启动 AI.library（知识库 HTTP 服务，默认端口 8001，与 Nocturne :8000 错开） */
-  OCT_AI_LIBRARY_AUTO_START: false,
+  /** 随 OCT 启动内置项目书库服务（默认端口 8001，与 Nocturne :8000 错开） */
+  OCT_AI_LIBRARY_AUTO_START: true,
   OCT_AI_LIBRARY_PATH: '',
   OCT_AI_LIBRARY_PORT: 8001,
   /** SQLite busy_timeout(ms)，缓解 database is locked，默认 10000，可设为 5000~60000 */
@@ -162,27 +168,102 @@ function getPythonForNocturne(): string[] {
   return process.platform === 'win32' ? ['py', '-3'] : ['python3'];
 }
 
+const DEFAULT_NOCTURNE_CORE_MEMORY_URIS = [
+  'core://agent/identity',
+  'core://my_user/profile',
+  'core://agent/rules/output_format',
+  'core://my_user/preferences',
+  'core://my_user/communication',
+  'core://project/oct/status',
+  'core://project/oct/decisions',
+];
+
+function getNocturneStderrLogPath(): string {
+  return path.join(app.getPath('userData'), 'nocturne_stderr.log');
+}
+
+function getNocturneDiagnosticLogPath(): string {
+  return path.join(app.getPath('userData'), 'nocturne_diagnostics.log');
+}
+
+function readNocturneEnvConfig(base: string): {
+  envPath: string;
+  dbUrl: string;
+  dbPath: string;
+  coreMemoryUris: string[];
+} {
+  const envPath = path.join(base, '.env');
+  const defaultDbPath = path.join(app.getPath('userData'), 'nocturne_memory.db');
+  let dbUrl = `sqlite+aiosqlite:///${defaultDbPath.replace(/\\/g, '/')}`;
+  let dbPath = defaultDbPath;
+  let coreMemoryUris = [...DEFAULT_NOCTURNE_CORE_MEMORY_URIS];
+
+  if (fs.existsSync(envPath)) {
+    try {
+      const envContent = fs.readFileSync(envPath, 'utf-8');
+      const dbMatch = envContent.match(/^DATABASE_URL=(.+)$/m);
+      if (dbMatch?.[1]?.trim()) {
+        dbUrl = dbMatch[1].trim();
+        const sqlitePrefix = 'sqlite+aiosqlite:///';
+        if (dbUrl.startsWith(sqlitePrefix)) {
+          dbPath = dbUrl.slice(sqlitePrefix.length).replace(/\//g, '\\');
+        }
+      }
+      const coreMatch = envContent.match(/^CORE_MEMORY_URIS=(.+)$/m);
+      if (coreMatch?.[1]?.trim()) {
+        const parsed = coreMatch[1]
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (parsed.length > 0) coreMemoryUris = parsed;
+      }
+    } catch {}
+  }
+
+  return { envPath, dbUrl, dbPath, coreMemoryUris };
+}
+
+function buildNocturneEnvContent(dbUrl: string): string {
+  return `# OCT + Nocturne Memory - auto-generated
+DATABASE_URL=${dbUrl}
+VALID_DOMAINS=core,writer,notes,system
+
+# 热记忆（L1）：每次 system://boot 自动加载
+# 与 Gateway 启动健康检查保持一致，避免“后端在线但基础记忆未注入”
+CORE_MEMORY_URIS=${DEFAULT_NOCTURNE_CORE_MEMORY_URIS.join(',')}
+`;
+}
+
+function appendNocturneDiagnostic(event: string, payload?: Record<string, unknown>): void {
+  const logPath = getNocturneDiagnosticLogPath();
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    event,
+    ...(payload || {}),
+  });
+  try {
+    fs.appendFileSync(logPath, line + '\n', 'utf-8');
+  } catch (e) {
+    console.warn('[NocturneDiag] 写入失败:', (e as Error)?.message);
+  }
+}
+
+function emitNocturneUiLog(message: string): void {
+  mainWindow?.webContents.send('openclaw-log-lines', [message]);
+}
+
 // 确保 Nocturne 的 .env 存在（DATABASE_URL 指向 userData）
 // 同时写入 nocturne_memory/.env 与 backend/.env，保证 uvicorn cwd=backend 时能加载到
 function ensureNocturneEnv(): void {
   const base = getNocturnePath();
   if (!base) return;
   const rootEnvPath = path.join(base, '.env');
-  if (fs.existsSync(rootEnvPath)) return;
   const userDataDir = app.getPath('userData');
   try {
     if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
   } catch {}
-  const dbPath = path.join(userDataDir, 'nocturne_memory.db');
-  const dbUrl = `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
-  const envContent = `# OCT + Nocturne Memory - auto-generated
-DATABASE_URL=${dbUrl}
-VALID_DOMAINS=core,writer,notes,system
-
-# 热记忆（L1）：每次 system://boot 自动加载
-# 按优先级排列：AI 身份 → 用户信息（发布版不含个人记忆路径，用户可自行添加）
-CORE_MEMORY_URIS=core://agent/identity,core://agent/principles,core://my_user,core://my_user/profile,core://agent/my_user
-`;
+  const existing = readNocturneEnvConfig(base);
+  const envContent = buildNocturneEnvContent(existing.dbUrl);
   const envPaths = [rootEnvPath, path.join(base, 'backend', '.env')];
   for (const envPath of envPaths) {
     try {
@@ -190,10 +271,71 @@ CORE_MEMORY_URIS=core://agent/identity,core://agent/principles,core://my_user,co
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(envPath, envContent, 'utf-8');
       console.log('[Nocturne] .env ready:', envPath);
+      appendNocturneDiagnostic('env_sync', {
+        envPath,
+        dbPath: existing.dbPath,
+        coreMemoryUris: DEFAULT_NOCTURNE_CORE_MEMORY_URIS,
+      });
     } catch (e) {
       console.warn('[Nocturne] Failed to write .env at', envPath, e);
     }
   }
+}
+
+async function repairNocturneRootNode(dbPath: string): Promise<void> {
+  const gatewayEntry = getOctGatewayEntry();
+  if (!gatewayEntry) return;
+
+  const betterSqlitePath = path.join(path.dirname(gatewayEntry), 'node_modules', 'better-sqlite3');
+  if (!fs.existsSync(betterSqlitePath) && !fs.existsSync(`${betterSqlitePath}.js`)) {
+    appendNocturneDiagnostic('root_repair_skipped', {
+      dbPath,
+      reason: 'better-sqlite3 not found',
+      betterSqlitePath,
+    });
+    return;
+  }
+
+  const script = `
+    const fs = require('fs');
+    const path = require('path');
+    const Database = require(process.argv[1]);
+    const dbPath = process.argv[2];
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new Database(dbPath);
+    db.pragma('foreign_keys = ON');
+    db.pragma('journal_mode = WAL');
+    db.exec("CREATE TABLE IF NOT EXISTS nodes (uuid VARCHAR(36) NOT NULL, created_at DATETIME, PRIMARY KEY (uuid))");
+    db.prepare("INSERT OR IGNORE INTO nodes (uuid, created_at) VALUES (?, CURRENT_TIMESTAMP)")
+      .run('00000000-0000-0000-0000-000000000000');
+    db.close();
+  `;
+
+  const runtime = app.isPackaged ? process.execPath : 'node';
+  await new Promise<void>((resolve) => {
+    const child = spawn(runtime, ['-e', script, betterSqlitePath, dbPath], {
+      cwd: path.dirname(gatewayEntry),
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+      env: buildOctChildEnv(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+    });
+    let stderr = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+    });
+    child.on('error', (e) => {
+      appendNocturneDiagnostic('root_repair_failed', { dbPath, error: e.message });
+      resolve();
+    });
+    child.on('exit', (code) => {
+      appendNocturneDiagnostic(code === 0 ? 'root_repair_ok' : 'root_repair_failed', {
+        dbPath,
+        code,
+        error: stderr.trim() || undefined,
+      });
+      resolve();
+    });
+  });
 }
 
 function isPortInUse(port: number): Promise<boolean> {
@@ -477,10 +619,12 @@ function getFallbackProviders() {
       baseUrl: 'https://api.deepseek.com/v1',
       keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
       keyLink: 'https://platform.deepseek.com/',
-      defaultModel: 'deepseek-chat',
+      defaultModel: 'deepseek-v4-flash',
       models: [
-        { id: 'deepseek-chat', label: 'DeepSeek Chat（通用）', tools: true, thinking: false },
-        { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（推理）', tools: false, thinking: true },
+        { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash（通用，推荐）', tools: true, thinking: false },
+        { id: 'deepseek-v4-pro',   label: 'DeepSeek V4 Pro（深度推理）',    tools: false, thinking: true },
+        { id: 'deepseek-chat',     label: 'DeepSeek Chat（旧版）',          tools: true, thinking: false },
+        { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（旧版）',      tools: false, thinking: true },
       ],
     },
     minimax: {
@@ -525,20 +669,20 @@ function getFallbackProviders() {
     },
     google: {
       id: 'google',
-      name: 'Google Gemini（Vertex AI Studio API 密钥）',
-      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      keyPlaceholder: 'Vertex AI Studio 创建的 API 密钥',
+      name: 'Google Gemini（Vertex AI 原生）',
+      baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/YOUR_PROJECT_ID/locations/us-central1/endpoints/openapi',
+      keyPlaceholder: 'AQ.xxxxx 或绑定 Vertex 的 API Key',
       keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: 'google/gemini-2.5-flash',
       models: [
-        { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash（稳定，推荐）', tools: false, thinking: true },
-        { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', tools: false, thinking: true },
-        { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', tools: false, thinking: true },
-        { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: false, thinking: true },
-        { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
-        { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash（将弃用）', tools: false, thinking: false },
-        { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', tools: false, thinking: false },
-        { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', tools: false, thinking: false },
+        { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash（推荐）', tools: true, thinking: true },
+        { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite（低延迟）', tools: true, thinking: true },
+        { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro（深度推理）', tools: true, thinking: true },
+        { id: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: true, thinking: true },
+        { id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash-Lite（预览）', tools: true, thinking: true },
+        { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: true, thinking: true },
+        { id: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash（兼容）', tools: true, thinking: false },
+        { id: 'google/gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite（低成本）', tools: true, thinking: false },
       ],
     },
     custom: {
@@ -708,23 +852,410 @@ function synthesizeMiniMaxViaWebSocket({
   });
 }
 
-// ── AI.library 插件（与 Nocturne :8000 错开，默认 :8001）────────────────
+// ── 内置项目书库（与 Nocturne :8000 错开，默认 :8001）────────────────
 let aiLibraryProcess: ReturnType<typeof spawn> | null = null;
-let octAiLibraryAutoStart = false;
+let aiLibraryHttpServer: http.Server | null = null;
+let octAiLibraryAutoStart = true;
 let octAiLibraryPath = '';
 let octAiLibraryPort = AI_LIBRARY_DEFAULT_PORT;
 /** 注入子进程 Gateway 的 AI_LIBRARY_URL；空则让 oct-gateway 用自身默认 */
 let resolvedAiLibraryUrlForGateway = '';
 
+type NativeLibraryBook = {
+  id: string;
+  title: string;
+  author: string | null;
+  source_type: string;
+  source_format: string;
+  source_path: string;
+  total_chars: number;
+  chapter_count: number;
+  uploaded_at: string;
+  metadata: Record<string, unknown>;
+};
+
+type NativeLibraryChapter = {
+  id: string;
+  book_id: string;
+  chapter_index: number;
+  title: string | null;
+  start_char: number;
+  end_char: number;
+  char_count: number;
+  preview: string;
+};
+
+type NativeLibraryIndex = {
+  version: 1;
+  books: NativeLibraryBook[];
+  chapters: NativeLibraryChapter[];
+};
+
+function getNativeLibraryRoot(): string {
+  return path.join(app.getPath('userData'), 'ai_library_data', 'library');
+}
+
+function getNativeLibrarySourcesRoot(): string {
+  return path.join(getNativeLibraryRoot(), 'sources');
+}
+
+function getNativeLibraryIndexPath(): string {
+  return path.join(getNativeLibraryRoot(), 'library.json');
+}
+
+function ensureNativeLibraryDirs(): void {
+  fs.mkdirSync(getNativeLibrarySourcesRoot(), { recursive: true });
+}
+
+function readNativeLibraryIndex(): NativeLibraryIndex {
+  ensureNativeLibraryDirs();
+  const indexPath = getNativeLibraryIndexPath();
+  if (!fs.existsSync(indexPath)) {
+    return { version: 1, books: [], chapters: [] };
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+    return {
+      version: 1,
+      books: Array.isArray(parsed.books) ? parsed.books : [],
+      chapters: Array.isArray(parsed.chapters) ? parsed.chapters : [],
+    };
+  } catch {
+    return { version: 1, books: [], chapters: [] };
+  }
+}
+
+function writeNativeLibraryIndex(index: NativeLibraryIndex): void {
+  ensureNativeLibraryDirs();
+  fs.writeFileSync(getNativeLibraryIndexPath(), JSON.stringify(index, null, 2), 'utf-8');
+}
+
+function decodeLibraryText(buffer: Buffer): string {
+  const utf8 = buffer.toString('utf-8').replace(/^\ufeff/, '');
+  const replacementCount = (utf8.match(/\ufffd/g) || []).length;
+  if (replacementCount === 0) return utf8;
+  try {
+    const decoder = new TextDecoder('gb18030');
+    const decoded = decoder.decode(buffer).replace(/^\ufeff/, '');
+    const decodedReplacementCount = (decoded.match(/\ufffd/g) || []).length;
+    return decodedReplacementCount < replacementCount ? decoded : utf8;
+  } catch {
+    return utf8;
+  }
+}
+
+function normalizeChapterTitle(title: string): string {
+  let normalized = String(title || '').trim();
+  const patterns = [/^(第[一二三四五六七八九十百千零\d]+[章回])/, /^(Chapter\s+\d+)\b/i];
+  for (const pattern of patterns) {
+    while (true) {
+      const match = normalized.match(pattern);
+      if (!match) break;
+      const prefix = match[1];
+      const rest = normalized.slice(prefix.length).trimStart();
+      if (!rest.startsWith(prefix)) break;
+      normalized = `${prefix} ${rest.slice(prefix.length).trimStart()}`.trim();
+    }
+  }
+  return normalized;
+}
+
+function bodyTextWithoutTitle(content: string): string {
+  const lines = content.replace(/^\ufeff/, '').split(/\r?\n/);
+  if (lines.length === 0) return '';
+  return lines.slice(1).join('\n').trimStart();
+}
+
+function bodySignalChars(content: string): number {
+  const body = bodyTextWithoutTitle(content);
+  const compact = body.trim();
+  if (!compact || /^[\s\-_=~*#·.。…—]+$/.test(compact)) return 0;
+  return (body.match(/[\u4e00-\u9fffA-Za-z0-9]/g) || []).length;
+}
+
+function splitNativeLibraryChapters(text: string, bookId: string): NativeLibraryChapter[] {
+  const cleanText = String(text || '').replace(/^\ufeff/, '');
+  if (!cleanText) return [];
+  const patterns = [
+    /(?:^|\n)\s*(第[一二三四五六七八九十百千零\d]+[章回][^\n]*)/g,
+    /(?:^|\n)\s*(Chapter\s+\d+[^\n]*)/gi,
+    /(?:^|\n)\s*(#{1,3}\s+[^\n]+)/g,
+  ];
+  let matches: Array<{ start: number; title: string }> = [];
+  for (const pattern of patterns) {
+    matches = [];
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(cleanText)) !== null) {
+      const title = normalizeChapterTitle(match[1] || '');
+      const start = match.index + match[0].lastIndexOf(match[1] || '');
+      matches.push({ start, title });
+    }
+    if (matches.length > 0) break;
+  }
+  matches.sort((a, b) => a.start - b.start);
+  const deduped = matches.filter((entry, index) => index === 0 || entry.start !== matches[index - 1].start);
+
+  if (deduped.length === 0) {
+    return [{
+      id: crypto.randomUUID().replace(/-/g, '').slice(0, 12),
+      book_id: bookId,
+      chapter_index: 0,
+      title: '全文',
+      start_char: 0,
+      end_char: cleanText.length,
+      char_count: cleanText.length,
+      preview: cleanText.slice(0, 200),
+    }];
+  }
+
+  const candidates = deduped.map((entry, index) => {
+    const end = index + 1 < deduped.length ? deduped[index + 1].start : cleanText.length;
+    const content = cleanText.slice(entry.start, end);
+    return { ...entry, end, content, bodySignal: bodySignalChars(content) };
+  });
+  let startIndex = 0;
+  for (let i = 0; i < Math.min(candidates.length, 24); i += 1) {
+    if (candidates[i].bodySignal >= 80) {
+      startIndex = i;
+      break;
+    }
+  }
+  const filtered = candidates.slice(startIndex).filter((candidate) => candidate.bodySignal > 0);
+  const finalCandidates = filtered.length > 0 ? filtered : [{
+    start: 0,
+    end: cleanText.length,
+    title: '全文',
+    content: cleanText,
+    bodySignal: cleanText.length,
+  }];
+  return finalCandidates.map((candidate, index) => ({
+    id: crypto.randomUUID().replace(/-/g, '').slice(0, 12),
+    book_id: bookId,
+    chapter_index: index,
+    title: candidate.title,
+    start_char: candidate.start,
+    end_char: candidate.end,
+    char_count: candidate.content.length,
+    preview: candidate.content.slice(0, 200),
+  }));
+}
+
+function listNativeLibraryBooks(limit = 50, offset = 0): NativeLibraryBook[] {
+  const index = readNativeLibraryIndex();
+  return [...index.books]
+    .sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at)))
+    .slice(offset, offset + limit);
+}
+
+function getNativeLibraryBook(bookId: string): NativeLibraryBook | null {
+  const index = readNativeLibraryIndex();
+  return index.books.find((book) => book.id === bookId) || null;
+}
+
+function listNativeLibraryChapters(bookId: string): NativeLibraryChapter[] {
+  const index = readNativeLibraryIndex();
+  return index.chapters
+    .filter((chapter) => chapter.book_id === bookId)
+    .sort((a, b) => a.chapter_index - b.chapter_index);
+}
+
+function getNativeLibraryChapterText(bookId: string, chapterIndex: number): { chapter: NativeLibraryChapter; text: string } | null {
+  const book = getNativeLibraryBook(bookId);
+  if (!book) return null;
+  const chapter = listNativeLibraryChapters(bookId).find((item) => item.chapter_index === chapterIndex);
+  if (!chapter) return null;
+  const sourcePath = path.join(getNativeLibraryRoot(), book.source_path);
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Source file missing: ${book.source_path}`);
+  }
+  const text = decodeLibraryText(fs.readFileSync(sourcePath));
+  return {
+    chapter,
+    text: text.slice(chapter.start_char, chapter.end_char),
+  };
+}
+
+async function uploadNativeLibraryBook(params: { filePath: string; title: string; author?: string }): Promise<{
+  book_id: string;
+  chapter_count: number;
+  total_chars: number;
+}> {
+  const filePath = String(params.filePath || '').trim();
+  const title = String(params.title || '').trim();
+  const author = String(params.author || '').trim();
+  if (!filePath) throw new Error('filePath required');
+  if (!title) throw new Error('title required');
+  const ext = path.extname(filePath).toLowerCase();
+  if (!['.txt', '.md'].includes(ext)) {
+    throw new Error('暂不支持该格式，请使用 .txt 或 .md 文件');
+  }
+  const buffer = await fs.promises.readFile(filePath);
+  const text = decodeLibraryText(buffer);
+  const bookId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  const suffix = ext.slice(1);
+  const sourceRel = path.join('sources', `${bookId}.${suffix}`).replace(/\\/g, '/');
+  const sourceAbs = path.join(getNativeLibraryRoot(), sourceRel);
+  ensureNativeLibraryDirs();
+  await fs.promises.writeFile(sourceAbs, text, 'utf-8');
+  const chapters = splitNativeLibraryChapters(text, bookId);
+  const book: NativeLibraryBook = {
+    id: bookId,
+    title,
+    author: author || null,
+    source_type: 'novel',
+    source_format: suffix,
+    source_path: sourceRel,
+    total_chars: text.length,
+    chapter_count: chapters.length,
+    uploaded_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    metadata: {},
+  };
+  const index = readNativeLibraryIndex();
+  index.books = [book, ...index.books.filter((item) => item.id !== bookId)];
+  index.chapters = [...index.chapters.filter((item) => item.book_id !== bookId), ...chapters];
+  writeNativeLibraryIndex(index);
+  return {
+    book_id: bookId,
+    chapter_count: chapters.length,
+    total_chars: text.length,
+  };
+}
+
+function deleteNativeLibraryBook(bookId: string): boolean {
+  const index = readNativeLibraryIndex();
+  const book = index.books.find((item) => item.id === bookId);
+  if (!book) return false;
+  index.books = index.books.filter((item) => item.id !== bookId);
+  index.chapters = index.chapters.filter((item) => item.book_id !== bookId);
+  writeNativeLibraryIndex(index);
+  const sourcePath = path.join(getNativeLibraryRoot(), book.source_path);
+  if (fs.existsSync(sourcePath)) {
+    try {
+      fs.unlinkSync(sourcePath);
+    } catch {
+      /* ignore orphan source cleanup failures */
+    }
+  }
+  return true;
+}
+
+function sendNativeLibraryJson(res: http.ServerResponse, status: number, payload: unknown): void {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+  });
+  res.end(body);
+}
+
+function startNativeLibraryHttpServer(): Promise<boolean> {
+  if (aiLibraryHttpServer?.listening) return Promise.resolve(true);
+  ensureNativeLibraryDirs();
+  aiLibraryHttpServer = http.createServer((req, res) => {
+    try {
+      if (req.method === 'OPTIONS') {
+        sendNativeLibraryJson(res, 200, { success: true });
+        return;
+      }
+      const parsed = new URL(req.url || '/', `http://127.0.0.1:${octAiLibraryPort}`);
+      const pathname = decodeURIComponent(parsed.pathname);
+      if (req.method === 'GET' && pathname === '/health') {
+        sendNativeLibraryJson(res, 200, {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          version: 'native-library-core-1',
+          knowledge_base_ready: false,
+          library_ready: true,
+        });
+        return;
+      }
+      if (req.method === 'GET' && pathname === '/api/library/list') {
+        const limit = Math.max(1, Number(parsed.searchParams.get('limit') || 50));
+        const offset = Math.max(0, Number(parsed.searchParams.get('offset') || 0));
+        const books = listNativeLibraryBooks(limit, offset);
+        sendNativeLibraryJson(res, 200, { success: true, books, total: books.length });
+        return;
+      }
+      const chapterMatch = pathname.match(/^\/api\/library\/([^/]+)\/chapter\/(\d+)$/);
+      if (req.method === 'GET' && chapterMatch) {
+        const data = getNativeLibraryChapterText(chapterMatch[1], Number(chapterMatch[2]));
+        if (!data) {
+          sendNativeLibraryJson(res, 404, { success: false, detail: 'Chapter not found' });
+          return;
+        }
+        sendNativeLibraryJson(res, 200, { success: true, book_id: chapterMatch[1], ...data });
+        return;
+      }
+      const chaptersMatch = pathname.match(/^\/api\/library\/([^/]+)\/chapters$/);
+      if (req.method === 'GET' && chaptersMatch) {
+        const book = getNativeLibraryBook(chaptersMatch[1]);
+        if (!book) {
+          sendNativeLibraryJson(res, 404, { success: false, detail: 'Book not found' });
+          return;
+        }
+        sendNativeLibraryJson(res, 200, {
+          success: true,
+          book_id: chaptersMatch[1],
+          chapters: listNativeLibraryChapters(chaptersMatch[1]),
+        });
+        return;
+      }
+      const bookMatch = pathname.match(/^\/api\/library\/([^/]+)$/);
+      if (bookMatch && req.method === 'GET') {
+        const book = getNativeLibraryBook(bookMatch[1]);
+        if (!book) {
+          sendNativeLibraryJson(res, 404, { success: false, detail: 'Book not found' });
+          return;
+        }
+        sendNativeLibraryJson(res, 200, { success: true, book });
+        return;
+      }
+      if (bookMatch && req.method === 'DELETE') {
+        const deleted = deleteNativeLibraryBook(bookMatch[1]);
+        sendNativeLibraryJson(res, deleted ? 200 : 404, deleted
+          ? { success: true, deleted: bookMatch[1] }
+          : { success: false, detail: 'Book not found' });
+        return;
+      }
+      if (req.method === 'POST' && pathname === '/api/search') {
+        sendNativeLibraryJson(res, 501, {
+          results: [],
+          error: 'knowledge_search_disabled',
+          message: 'Native Project Library only provides /api/library/* in this build.',
+        });
+        return;
+      }
+      sendNativeLibraryJson(res, 404, { success: false, detail: 'Not Found' });
+    } catch (error: any) {
+      sendNativeLibraryJson(res, 500, { success: false, detail: error?.message || String(error) });
+    }
+  });
+  return new Promise((resolve) => {
+    aiLibraryHttpServer?.once('error', (error: any) => {
+      console.warn('[AI.library] Native library HTTP failed:', error?.message || String(error));
+      aiLibraryHttpServer = null;
+      resolve(false);
+    });
+    aiLibraryHttpServer?.listen(octAiLibraryPort, '127.0.0.1', () => {
+      console.log(`[AI.library] Native project library ready http://127.0.0.1:${octAiLibraryPort}`);
+      resolve(true);
+    });
+  });
+}
+
 function syncAiLibraryPluginConfigFromDisk(): void {
-  octAiLibraryAutoStart = false;
+  octAiLibraryAutoStart = true;
   octAiLibraryPath = '';
   octAiLibraryPort = AI_LIBRARY_DEFAULT_PORT;
 
   if (fs.existsSync(CONFIG_FILE)) {
     try {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      if (data.OCT_AI_LIBRARY_AUTO_START === true) octAiLibraryAutoStart = true;
+      if (typeof data.OCT_AI_LIBRARY_AUTO_START === 'boolean') {
+        octAiLibraryAutoStart = data.OCT_AI_LIBRARY_AUTO_START;
+      }
       if (typeof data.OCT_AI_LIBRARY_PATH === 'string') octAiLibraryPath = data.OCT_AI_LIBRARY_PATH.trim();
       if (typeof data.OCT_AI_LIBRARY_PORT === 'number' && data.OCT_AI_LIBRARY_PORT > 0) {
         octAiLibraryPort = data.OCT_AI_LIBRARY_PORT;
@@ -745,20 +1276,11 @@ function syncAiLibraryPluginConfigFromDisk(): void {
   const explicitUrl = (process.env.AI_LIBRARY_URL || '').trim();
   if (explicitUrl) {
     resolvedAiLibraryUrlForGateway = explicitUrl;
-  } else if (octAiLibraryAutoStart && octAiLibraryPath) {
+  } else if (octAiLibraryAutoStart) {
     resolvedAiLibraryUrlForGateway = `http://127.0.0.1:${octAiLibraryPort}`;
   } else {
     resolvedAiLibraryUrlForGateway = '';
   }
-}
-
-function getAiLibraryPythonCommand(root: string): { cmd: string; args: string[] } {
-  const winVenv = path.join(root, 'venv', 'Scripts', 'python.exe');
-  if (fs.existsSync(winVenv)) return { cmd: winVenv, args: ['api_server.py'] };
-  const unixVenv = path.join(root, 'venv', 'bin', 'python3');
-  if (fs.existsSync(unixVenv)) return { cmd: unixVenv, args: ['api_server.py'] };
-  const py = getPythonForNocturne();
-  return { cmd: py[0], args: [...py.slice(1), 'api_server.py'] };
 }
 
 /** OCT 托管启动 AI.library；端口已占用时视为已运行 */
@@ -767,20 +1289,9 @@ async function startAiLibraryBackend(): Promise<boolean> {
   if (!octAiLibraryAutoStart) {
     return false;
   }
-  if (!octAiLibraryPath) {
-    console.warn('[AI.library] 已启用自动启动但未配置 OCT_AI_LIBRARY_PATH');
-    mainWindow?.webContents.send('openclaw-log-lines', ['[AI.library] 请在设置中填写知识库目录路径']);
-    return false;
-  }
-
-  const root = path.resolve(octAiLibraryPath.replace(/^["']|["']$/g, ''));
-  if (!fs.existsSync(path.join(root, 'api_server.py'))) {
-    console.warn('[AI.library] 目录无效（缺少 api_server.py）:', root);
-    mainWindow?.webContents.send('openclaw-log-lines', [`[AI.library] 路径无效: ${root}`]);
-    return false;
-  }
 
   if (aiLibraryProcess && !aiLibraryProcess.killed) return true;
+  if (aiLibraryHttpServer?.listening) return true;
 
   if (await isPortInUse(octAiLibraryPort)) {
     console.log('[AI.library] 端口', octAiLibraryPort, '已占用，跳过启动（可能已在运行）');
@@ -788,52 +1299,14 @@ async function startAiLibraryBackend(): Promise<boolean> {
     return true;
   }
 
-  const { cmd, args } = getAiLibraryPythonCommand(root);
-  console.log('[AI.library] 启动:', cmd, args.join(' '), 'cwd=', root);
-  aiLibraryProcess = spawn(cmd, args, {
-    cwd: root,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-    detached: false,
-    env: buildOctChildEnv({
-      API_HOST: '0.0.0.0',
-      API_PORT: String(octAiLibraryPort),
-      PYTHONIOENCODING: 'utf-8',
-    }),
-  });
-
-  aiLibraryProcess.stderr?.on('data', (data: Buffer) => {
-    const msg = data.toString().trim();
-    if (msg) console.log('[AI.library]', msg);
-  });
-  aiLibraryProcess.on('exit', (code) => {
-    console.log('[AI.library] 进程退出 code:', code);
-    aiLibraryProcess = null;
-  });
-  aiLibraryProcess.on('error', (err) => {
-    console.error('[AI.library] 启动失败:', err.message);
-    aiLibraryProcess = null;
-  });
-
-  for (let i = 0; i < 40; i++) {
-    await new Promise((r) => setTimeout(r, 250));
-    try {
-      const res = await fetch(`http://127.0.0.1:${octAiLibraryPort}/health`, {
-        signal: AbortSignal.timeout(1500),
-      });
-      if (res.ok) {
-        console.log('[AI.library] 已就绪 http://127.0.0.1:' + octAiLibraryPort);
-        mainWindow?.webContents.send('openclaw-log-lines', [
-          `[AI.library] 知识库服务已启动 ✅ http://127.0.0.1:${octAiLibraryPort}`,
-        ]);
-        return true;
-      }
-    } catch {
-      /* retry */
-    }
+  const ok = await startNativeLibraryHttpServer();
+  if (ok) {
+    mainWindow?.webContents.send('openclaw-log-lines', [
+      `[AI.library] 内置项目书库已启动 ✅ http://127.0.0.1:${octAiLibraryPort}`,
+    ]);
+    return true;
   }
-  console.warn('[AI.library] 启动超时，请检查 api_server 日志');
-  mainWindow?.webContents.send('openclaw-log-lines', ['[AI.library] 启动超时，对话仍可继续（检索将静默跳过）']);
+  mainWindow?.webContents.send('openclaw-log-lines', ['[AI.library] 内置项目书库启动失败，对话仍可继续']);
   return false;
 }
 
@@ -1183,6 +1656,11 @@ function sendImageResult(payload: any) {
   mainWindow.webContents.send('image-result', payload);
 }
 
+function sendScriptAdapterEvent(payload: any) {
+  if (appQuitting || !mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send('script-adapter-event', payload);
+}
+
 function floatFlash() {
   if (floatWindow && !floatWindow.isDestroyed()) {
     floatWindow.webContents.send('float-flash');
@@ -1252,6 +1730,8 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   'glm-4.7': 131072,
   'deepseek-v3': 65536,
   'deepseek-r1': 65536,
+  'deepseek-v4-flash': 128000,
+  'deepseek-v4-pro': 128000,
   'deepseek-chat': 65536,
   'deepseek-reasoner': 65536,
 };
@@ -1383,6 +1863,8 @@ function handleMessage(msg: any) {
       } else if (msg.event === 'task-board-update') {
         mainWindow?.webContents.send('task-board-update');
         mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
+      } else if (msg.event === 'script-adapter') {
+        sendScriptAdapterEvent(msg.payload || {});
       } else if (msg.event === 'tool' || msg.event === 'agent-phase') {
         // 工具调用事件和 agent 阶段事件：直接透传，不经过 forwardChatToFrontend（避免 state:'done' 被误判为 chat done）
         sendMessage(msg);
@@ -1419,7 +1901,21 @@ function handleMessage(msg: any) {
       
     case 'res':
       console.log('[OCT] Response: ok=', msg.ok, 'payload=', msg.payload ? JSON.stringify(msg.payload).slice(0, 200) : null);
-      if (msg.method === 'image.generate') {
+      if (
+        typeof msg.method === 'string'
+        && (msg.method.startsWith('scriptAdapter.run.') || msg.method.startsWith('scriptAdapter.batch.'))
+      ) {
+        const pending = scriptAdapterPendingRequests.get(String(msg.id || ''));
+        if (pending) {
+          clearTimeout(pending.timeout);
+          scriptAdapterPendingRequests.delete(String(msg.id || ''));
+          pending.resolve({
+            success: Boolean(msg.ok),
+            ...(msg.payload || {}),
+            error: msg.ok ? undefined : (msg.error?.message || msg.payload?.error || 'Gateway 请求失败'),
+          });
+        }
+      } else if (msg.method === 'image.generate') {
         sendImageResult(msg.payload || {});
       } else if (msg.ok && (msg.payload?.type === 'hello-ok' || msg.method === 'connect')) {
         const model = msg.payload?.model || msg.payload?.agent?.model || undefined;
@@ -1493,7 +1989,8 @@ function sendChatMessage(
   files?: UploadedFile[],
   pacingMs?: number,
   workbenchContext?: any,
-  requestId?: string
+  requestId?: string,
+  projectContext?: any,
 ): { success: boolean; error?: string } {
   if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
     return { success: false, error: 'WebSocket not connected' };
@@ -1519,6 +2016,7 @@ function sendChatMessage(
     pacingMs?: number;
     workbenchContext?: any;
     canvasContext?: any;
+    projectContext?: any;
   } = {
     sessionKey: currentSessionKey,
     idempotencyKey,
@@ -1528,6 +2026,9 @@ function sendChatMessage(
   if (workbenchContext) {
     params.workbenchContext = workbenchContext;
     params.canvasContext = workbenchContext;
+  }
+  if (projectContext) {
+    params.projectContext = projectContext;
   }
 
   // OpenClaw chat.send attachments: Gateway 期望 { type, mimeType, content }
@@ -2254,6 +2755,40 @@ function resolveGatewayConfigFileForSpawn(entry: string): string {
   return CONFIG_FILE;
 }
 
+function ensureGatewayNativeModules(entry: string): { ok: boolean; error?: string } {
+  const ensureScript = path.join(__dirname, '..', 'scripts', 'ensure-oct-gateway-native.js');
+  if (!fs.existsSync(ensureScript)) return { ok: true };
+
+  const rootDir = path.resolve(path.join(path.dirname(entry), '..'));
+  const runtime = app.isPackaged ? 'electron' : 'node';
+  const command = app.isPackaged ? process.execPath : 'node';
+  const result = spawnSync(command, [ensureScript, '--runtime', runtime], {
+    cwd: rootDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+    env: buildOctChildEnv(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+    encoding: 'utf8',
+  });
+
+  const forwardLogs = (prefix: string, content: string | null | undefined) => {
+    if (!content) return;
+    content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((line) => sendGatewayLogLine(`${prefix} ${line}`));
+  };
+
+  forwardLogs('[OCT Native]', result.stdout);
+  forwardLogs('[OCT Native ERR]', result.stderr);
+
+  if (result.status === 0) return { ok: true };
+  return {
+    ok: false,
+    error: result.error?.message || `exit code ${result.status ?? -1}`,
+  };
+}
+
 let octGatewayProcess: ReturnType<typeof spawn> | null = null;
 
 async function startOctGateway(): Promise<{ success: boolean; error?: string }> {
@@ -2275,6 +2810,15 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   const runtimeCommand = app.isPackaged ? process.execPath : 'node';
   const runtimeArgs = [entry];
   const gatewayConfigFile = resolveGatewayConfigFileForSpawn(entry);
+  const nativeCheck = ensureGatewayNativeModules(entry);
+
+  if (!nativeCheck.ok) {
+    console.warn('[OCT Gateway] native preflight failed:', nativeCheck.error);
+    return {
+      success: false,
+      error: `Gateway native 模块检查失败：${nativeCheck.error || 'unknown error'}`,
+    };
+  }
 
   try {
     octGatewayProcess = spawn(runtimeCommand, runtimeArgs, {
@@ -2335,41 +2879,260 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   }
 }
 
+async function collectNocturneStatusSnapshot(base: string): Promise<{
+  domains: Array<{ domain: string; root_count?: number }>;
+  coreMemoryUris: string[];
+  coreMemoryStatus: Array<{
+    uri: string;
+    ok: boolean;
+    hasContent: boolean;
+    contentLength: number;
+    error?: string;
+  }>;
+  dbPath: string;
+  dbUrl: string;
+  envPath: string;
+  diagnosticLogPath: string;
+  stderrLogPath: string;
+}> {
+  const envInfo = readNocturneEnvConfig(base);
+  let domains: Array<{ domain: string; root_count?: number }> = [];
+  const coreMemoryStatus: Array<{
+    uri: string;
+    ok: boolean;
+    hasContent: boolean;
+    contentLength: number;
+    error?: string;
+  }> = [];
+
+  if (await isNocturneBackendAlive()) {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/browse/domains', { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) domains = data;
+        else if (data?.data && Array.isArray(data.data)) domains = data.data;
+      }
+    } catch {}
+
+    for (const uri of envInfo.coreMemoryUris) {
+      const parts = splitUri(uri);
+      if (!parts) {
+        coreMemoryStatus.push({ uri, ok: false, hasContent: false, contentLength: 0, error: 'invalid uri' });
+        continue;
+      }
+      const result = await nocturneRequest('GET', '/browse/node', { path: parts.path, domain: parts.domain });
+      if (!result.ok) {
+        coreMemoryStatus.push({
+          uri,
+          ok: false,
+          hasContent: false,
+          contentLength: 0,
+          error: result.error || 'unknown error',
+        });
+        continue;
+      }
+      const data = result.data as any;
+      const content = String(data?.node?.content || data?.content || '').trim();
+      coreMemoryStatus.push({
+        uri,
+        ok: true,
+        hasContent: content.length > 0 && content !== '[DELETED]',
+        contentLength: content.length,
+      });
+    }
+  }
+
+  return {
+    domains,
+    coreMemoryUris: envInfo.coreMemoryUris,
+    coreMemoryStatus,
+    dbPath: envInfo.dbPath,
+    dbUrl: envInfo.dbUrl,
+    envPath: envInfo.envPath,
+    diagnosticLogPath: getNocturneDiagnosticLogPath(),
+    stderrLogPath: getNocturneStderrLogPath(),
+  };
+}
+
+async function logNocturneStatusSnapshot(reason: string): Promise<void> {
+  const base = getNocturnePath();
+  if (!base) return;
+  const snapshot = await collectNocturneStatusSnapshot(base);
+  const readyCount = snapshot.coreMemoryStatus.filter((item) => item.ok && item.hasContent).length;
+  const missing = snapshot.coreMemoryStatus
+    .filter((item) => !item.ok || !item.hasContent)
+    .map((item) => item.uri);
+  appendNocturneDiagnostic('status_snapshot', {
+    reason,
+    dbPath: snapshot.dbPath,
+    domains: snapshot.domains.map((item) => item.domain),
+    domainCount: snapshot.domains.length,
+    coreReadyCount: readyCount,
+    coreTotalCount: snapshot.coreMemoryUris.length,
+    missingCoreUris: missing,
+  });
+}
+
+async function seedNocturneCoreMemories(reason: string): Promise<{ success: boolean; output: string; error?: string }> {
+  const cfg = readAppConfig();
+  const aiName = String(cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME || 'OpenClaw').trim() || 'OpenClaw';
+  const userName = String(cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME || '用户').trim() || '用户';
+  const plan = [
+    {
+      uri: 'core://agent/identity',
+      priority: 0,
+      disclosure: '当用户问“你是谁”或需要说明身份时',
+      content: `我是 ${aiName}，${userName} 的智能助手。我的职责是提供清晰、可靠、诚实的帮助；不确定时要明确说明，不假装已经完成未执行的事。`,
+    },
+    {
+      uri: 'core://my_user/profile',
+      priority: 1,
+      disclosure: '当需要了解用户基本身份时',
+      content: `${userName} 是 ${aiName} 当前服务的默认用户。这个节点用于保存用户身份、习惯与长期资料；若信息不足，先保持为空白占位，等待后续补充。`,
+    },
+    {
+      uri: 'core://agent/rules/output_format',
+      priority: 1,
+      disclosure: '当需要约束输出风格时',
+      content: '默认输出要求：先给结论，再给关键依据；不要编造执行结果；需要用户操作时给最短可执行步骤；信息不足时明确说缺什么。',
+    },
+    {
+      uri: 'core://my_user/preferences',
+      priority: 1,
+      disclosure: '当需要读取用户偏好时',
+      content: '用户偏好默认占位节点。记录展示风格、常用工具、语言习惯等长期偏好；没有明确信息前不要杜撰。',
+    },
+    {
+      uri: 'core://my_user/communication',
+      priority: 1,
+      disclosure: '当需要调整交流方式时',
+      content: '交流原则默认占位节点。保持真诚、直接、可执行；避免夸大、避免空泛安慰；必要时用短步骤帮助用户定位问题。',
+    },
+    {
+      uri: 'core://project/oct/status',
+      priority: 1,
+      disclosure: '当用户提到 OCT 项目现状时',
+      content: 'OCT 是一个 Electron 桌面 AI 助手项目，前端为 React + Vite，桌面主进程负责拉起 Gateway 与 Nocturne 记忆后端。',
+    },
+    {
+      uri: 'core://project/oct/decisions',
+      priority: 1,
+      disclosure: '当需要了解 OCT 的关键约束时',
+      content: '关键约束：优先保证真实可验证；记忆系统在线不代表基础记忆已初始化；发布版功能不应依赖用户额外安装 Python 才能完成基础初始化。',
+    },
+  ];
+
+  appendNocturneDiagnostic('seed_begin', {
+    reason,
+    plannedUris: plan.map((item) => item.uri),
+    aiName,
+    userName,
+  });
+
+  for (const item of plan) {
+    const parts = splitUri(item.uri);
+    if (!parts) {
+      appendNocturneDiagnostic('seed_invalid_uri', { reason, uri: item.uri });
+      return { success: false, output: '', error: `无效 URI: ${item.uri}` };
+    }
+  }
+
+  const lines: string[] = [];
+  for (const item of plan) {
+    const parts = splitUri(item.uri)!;
+    const existing = await nocturneRequest('GET', '/browse/node', { path: parts.path, domain: parts.domain });
+    const existingContent = existing.ok
+      ? String((existing.data as any)?.node?.content || (existing.data as any)?.content || '').trim()
+      : '';
+
+    if (existing.ok && existingContent.length > 0 && existingContent !== '[DELETED]') {
+      lines.push(`[SKIP] ${item.uri}`);
+      appendNocturneDiagnostic('seed_skip_existing', {
+        reason,
+        uri: item.uri,
+        contentLength: existingContent.length,
+      });
+      continue;
+    }
+
+    const action = existing.ok ? 'PUT' : 'POST';
+    const result = await nocturneRequest(
+      action,
+      '/browse/node',
+      { path: parts.path, domain: parts.domain },
+      { content: item.content, priority: item.priority, disclosure: item.disclosure }
+    );
+
+    if (!result.ok) {
+      appendNocturneDiagnostic('seed_write_failed', {
+        reason,
+        uri: item.uri,
+        method: action,
+        error: result.error || 'unknown error',
+      });
+      return {
+        success: false,
+        output: lines.join('\n'),
+        error: `写入失败 ${item.uri}: ${result.error || '未知错误'}\n诊断日志：${getNocturneDiagnosticLogPath()}`,
+      };
+    }
+
+    lines.push(`[${action}] ${item.uri}`);
+    appendNocturneDiagnostic('seed_write_ok', {
+      reason,
+      uri: item.uri,
+      method: action,
+      contentLength: item.content.length,
+    });
+  }
+
+  await logNocturneStatusSnapshot(`seed:${reason}`);
+
+  return {
+    success: true,
+    output: `${lines.join('\n')}\n\n诊断日志：${getNocturneDiagnosticLogPath()}`,
+  };
+}
+
 // Nocturne Memory 集成
 ipcMain.handle('get-nocturne-status', async () => {
   const base = getNocturnePath();
   const available = !!base;
   let backendAlive = false;
   let frontendAlive = false;
-  let domains: Array<{ domain: string }> = [];
-  let coreMemoryUris: string[] = [];
+  let snapshot = {
+    domains: [] as Array<{ domain: string; root_count?: number }>,
+    coreMemoryUris: [] as string[],
+    coreMemoryStatus: [] as Array<{ uri: string; ok: boolean; hasContent: boolean; contentLength: number; error?: string }>,
+    dbPath: '',
+    dbUrl: '',
+    envPath: '',
+    diagnosticLogPath: getNocturneDiagnosticLogPath(),
+    stderrLogPath: getNocturneStderrLogPath(),
+  };
+
   if (base) {
-    try {
-      const envPath = path.join(base, '.env');
-      const envContent = fs.readFileSync(envPath, 'utf-8');
-      const m = envContent.match(/CORE_MEMORY_URIS=(.+)/);
-      if (m) coreMemoryUris = m[1]!.split(',').map((s: string) => s.trim()).filter(Boolean);
-    } catch {}
     backendAlive = await isPortInUse(8000);
     frontendAlive = await isPortInUse(3000);
-    if (backendAlive) {
-      try {
-        const res = await fetch('http://127.0.0.1:8000/browse/domains', { signal: AbortSignal.timeout(3000) });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) domains = data;
-          else if (data?.data && Array.isArray(data.data)) domains = data.data;
-        }
-      } catch {}
-    }
+    snapshot = await collectNocturneStatusSnapshot(base);
   }
+
   return {
     available,
     path: base || '',
     backendAlive,
     frontendAlive,
-    domains,
-    coreMemoryUris,
+    domains: snapshot.domains,
+    coreMemoryUris: snapshot.coreMemoryUris,
+    coreMemoryStatus: snapshot.coreMemoryStatus,
+    coreMemoryReadyCount: snapshot.coreMemoryStatus.filter((item) => item.ok && item.hasContent).length,
+    coreMemoryMissingCount: snapshot.coreMemoryStatus.filter((item) => !item.ok || !item.hasContent).length,
+    dbPath: snapshot.dbPath,
+    dbUrl: snapshot.dbUrl,
+    envPath: snapshot.envPath,
+    diagnosticLogPath: snapshot.diagnosticLogPath,
+    stderrLogPath: snapshot.stderrLogPath,
   };
 });
 ipcMain.handle('open-nocturne-management', () => {
@@ -2398,18 +3161,20 @@ ipcMain.handle('get-ai-library-plugin', async () => {
   } catch {
     healthy = false;
   }
-  const managed = !!(aiLibraryProcess && !aiLibraryProcess.killed);
+  const managed = !!(aiLibraryHttpServer?.listening || (aiLibraryProcess && !aiLibraryProcess.killed));
   const portInUse = await isPortInUse(octAiLibraryPort);
   return {
     success: true,
     data: {
       OCT_AI_LIBRARY_AUTO_START: octAiLibraryAutoStart,
-      OCT_AI_LIBRARY_PATH: octAiLibraryPath,
+      OCT_AI_LIBRARY_PATH: '',
       OCT_AI_LIBRARY_PORT: octAiLibraryPort,
       resolvedGatewayUrl: resolvedAiLibraryUrlForGateway,
       managed,
       portInUse,
       healthy,
+      mode: 'native',
+      dataRoot: getNativeLibraryRoot(),
     },
   };
 });
@@ -2446,6 +3211,12 @@ ipcMain.handle(
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
       loadOpenClawConfig();
 
+      if (aiLibraryHttpServer?.listening) {
+        await new Promise<void>((resolve) => {
+          aiLibraryHttpServer?.close(() => resolve());
+        });
+        aiLibraryHttpServer = null;
+      }
       if (aiLibraryProcess && !aiLibraryProcess.killed) {
         try {
           aiLibraryProcess.kill('SIGTERM');
@@ -2753,31 +3524,31 @@ ipcMain.handle('mcp-remove-server', async (_, name: string) => {
 ipcMain.handle('seed-nocturne-memories', async (): Promise<{ success: boolean; error?: string; output?: string }> => {
   const base = getNocturnePath();
   if (!base) return { success: false, error: 'Nocturne 未找到' };
-  const scriptPath = path.join(base, 'backend', 'scripts', 'seed_oct_memories.py');
-  if (!fs.existsSync(scriptPath)) return { success: false, error: 'seed 脚本未找到' };
-  const { execSync } = require('child_process');
-  const pythonCmd = getPythonForNocturne().join(' ');
   try {
-    const cwd = path.join(base, 'backend');
-    const cfg: Record<string, string> = fs.existsSync(CONFIG_FILE)
-      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
-      : {};
-    const out = execSync(`${pythonCmd} -m scripts.seed_oct_memories`, {
-      cwd,
-      encoding: 'utf8',
-      timeout: 30000,
-      env: {
-        ...process.env,
-        PYTHONPATH: cwd,
-        PYTHONIOENCODING: 'utf-8',
-        OCT_AI_NAME: (cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME).toString(),
-        OCT_USER_NAME: (cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME).toString(),
-      },
-    });
-    return { success: true, output: out };
+    ensureNocturneEnv();
+    const alive = await isNocturneBackendAlive();
+    if (!alive) {
+      appendNocturneDiagnostic('seed_backend_not_alive', { base });
+      emitNocturneUiLog('[Nocturne] 初始化预设记忆前，先尝试拉起后端...');
+      const started = await startNocturneBackend();
+      if (!started || !(await isNocturneBackendAlive())) {
+        const error = `Nocturne 后端未就绪，无法初始化预设记忆。\n诊断日志：${getNocturneDiagnosticLogPath()}`;
+        appendNocturneDiagnostic('seed_backend_start_failed', { base, error });
+        return { success: false, error };
+      }
+    }
+
+    const result = await seedNocturneCoreMemories('ipc');
+    if (result.success) {
+      emitNocturneUiLog('[Nocturne] 预设核心记忆已完成初始化');
+      return { success: true, output: result.output };
+    }
+    emitNocturneUiLog('[Nocturne] 预设核心记忆初始化失败，请查看诊断日志');
+    return { success: false, error: result.error || '执行失败', output: result.output };
   } catch (e: any) {
     const msg = e?.stderr || e?.stdout || e?.message || String(e);
-    return { success: false, error: msg || '执行失败' };
+    appendNocturneDiagnostic('seed_exception', { error: msg || '执行失败' });
+    return { success: false, error: `${msg || '执行失败'}\n诊断日志：${getNocturneDiagnosticLogPath()}` };
   }
 });
 ipcMain.handle('setup-nocturne-memory', async (): Promise<{ success: boolean; error?: string }> => {
@@ -2821,9 +3592,17 @@ function getLocalIP(): string {
 async function startNocturneBackend(): Promise<boolean> {
   if (nocturneBackendProcess && !nocturneBackendProcess.killed) return true;
 
+  ensureNocturneEnv();
+  const userDataDir = app.getPath('userData');
+  const envInfo = getNocturnePath() ? readNocturneEnvConfig(getNocturnePath()) : null;
+  const dbPath = envInfo?.dbPath || path.join(userDataDir, 'nocturne_memory.db');
+  const dbUrl = envInfo?.dbUrl || `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
+  await repairNocturneRootNode(dbPath);
+
   const portInUse = await isPortInUse(8000);
   if (portInUse) {
     console.log('[Nocturne] 端口 8000 已被占用，跳过启动');
+    appendNocturneDiagnostic('backend_port_in_use', { port: 8000 });
     return true;
   }
 
@@ -2840,15 +3619,18 @@ async function startNocturneBackend(): Promise<boolean> {
     })()
   );
 
-  const userDataDir = app.getPath('userData');
-  const dbPath = path.join(userDataDir, 'nocturne_memory.db');
-  const dbUrl = `sqlite+aiosqlite:///${dbPath.replace(/\\/g, '/')}`;
-
   // 优先使用预编译 exe（打包后无需 Python）
   const exePath = getNocturneExePath();
   if (exePath) {
     const exeDir = path.dirname(exePath);
     console.log('[Nocturne] 使用预编译 exe:', exePath);
+    appendNocturneDiagnostic('backend_spawn', {
+      mode: 'exe',
+      exePath,
+      dbPath,
+      envPath: envInfo?.envPath || '',
+      coreMemoryUris: DEFAULT_NOCTURNE_CORE_MEMORY_URIS,
+    });
     nocturneBackendProcess = spawn(exePath, [], {
       cwd: exeDir,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -2856,7 +3638,7 @@ async function startNocturneBackend(): Promise<boolean> {
       detached: false,
       env: buildOctChildEnv({
         DATABASE_URL: dbUrl,
-        CORE_MEMORY_URIS: 'core://agent/identity,core://agent/principles,core://my_user,core://my_user/profile,core://agent/my_user',
+        CORE_MEMORY_URIS: DEFAULT_NOCTURNE_CORE_MEMORY_URIS.join(','),
         VALID_DOMAINS: 'core,writer,notes,system',
         NOCTURNE_BUSY_TIMEOUT: nocturneBusyTimeout,
         PYTHONIOENCODING: 'utf-8',
@@ -2867,11 +3649,19 @@ async function startNocturneBackend(): Promise<boolean> {
     const base = getNocturnePath();
     if (!base) {
       console.warn('[Nocturne] 未找到 nocturne_memory 目录或 nocturne_server.exe，跳过自动启动');
+      appendNocturneDiagnostic('backend_missing_resources', { dbPath });
       return false;
     }
-    ensureNocturneEnv();
     const [pyExe, ...pyArgs] = getPythonForNocturne();
     const backendPath = path.join(base, 'backend');
+    appendNocturneDiagnostic('backend_spawn', {
+      mode: 'python',
+      python: [pyExe, ...pyArgs].join(' '),
+      backendPath,
+      dbPath,
+      envPath: envInfo?.envPath || '',
+      coreMemoryUris: DEFAULT_NOCTURNE_CORE_MEMORY_URIS,
+    });
     nocturneBackendProcess = spawn(pyExe, [...pyArgs, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'], {
       cwd: backendPath,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -2887,7 +3677,7 @@ async function startNocturneBackend(): Promise<boolean> {
   }
 
   // Nocturne stderr 持久化到 userData，便于排查 DB 锁等问题
-  const nocturneLogPath = path.join(userDataDir, 'nocturne_stderr.log');
+  const nocturneLogPath = getNocturneStderrLogPath();
   let nocturneStderrStream: fs.WriteStream | null = null;
   try {
     nocturneStderrStream = fs.createWriteStream(nocturneLogPath, { flags: 'a' });
@@ -2908,6 +3698,7 @@ async function startNocturneBackend(): Promise<boolean> {
     nocturneStderrStream?.end();
     nocturneStderrStream = null;
     console.log('[Nocturne] 后端退出，code:', code);
+    appendNocturneDiagnostic('backend_exit', { code });
     nocturneBackendProcess = null;
     if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
       mainWindow.webContents.send('nocturne-status', { backendAlive: false });
@@ -2915,6 +3706,7 @@ async function startNocturneBackend(): Promise<boolean> {
   });
   nocturneBackendProcess.on('error', (err) => {
     console.error('[Nocturne] 启动失败:', err.message);
+    appendNocturneDiagnostic('backend_error', { error: err.message });
     nocturneBackendProcess = null;
     if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
       mainWindow.webContents.send('nocturne-status', { backendAlive: false, error: err.message });
@@ -2927,6 +3719,7 @@ async function startNocturneBackend(): Promise<boolean> {
   }
   if (!(await isPortInUse(8000))) {
     console.warn('[Nocturne] 端口 8000 未就绪，启动超时');
+    appendNocturneDiagnostic('backend_timeout', { port: 8000, dbPath });
     return false;
   }
 
@@ -2937,12 +3730,24 @@ async function startNocturneBackend(): Promise<boolean> {
       if (res.ok) {
         console.log('[Nocturne] 后端已就绪 port 8000 + DB 健康');
         mainWindow?.webContents.send('openclaw-log-lines', ['[Nocturne] 记忆系统已启动 ✅']);
+        appendNocturneDiagnostic('backend_ready', {
+          port: 8000,
+          dbPath,
+          stderrLogPath: nocturneLogPath,
+          diagnosticLogPath: getNocturneDiagnosticLogPath(),
+        });
+        await logNocturneStatusSnapshot('backend_ready');
         return true;
       }
     } catch {}
   }
   console.warn('[Nocturne] /health 未返回 200，可能数据库未连接');
   mainWindow?.webContents.send('openclaw-log-lines', ['[Nocturne] 端口已监听，若仍显示不可用请点「重启 Nocturne 后端」']);
+  appendNocturneDiagnostic('backend_health_unready', {
+    port: 8000,
+    dbPath,
+    stderrLogPath: nocturneLogPath,
+  });
   return true;
 }
 
@@ -3309,6 +4114,7 @@ ipcMain.handle('get-api-keys', async () => {
     keys.OCT_SETTINGS_MODE = pick('OCT_SETTINGS_MODE', cfg.OCT_SETTINGS_MODE);
     keys.OCT_PROVIDER = pick('OCT_PROVIDER', cfg.OCT_PROVIDER);
     keys.OCT_MODEL = pick('OCT_MODEL', cfg.OCT_MODEL);
+    keys.SCRIPT_ADAPTER_REAL_AGENTS = pick('SCRIPT_ADAPTER_REAL_AGENTS', cfg.SCRIPT_ADAPTER_REAL_AGENTS);
     keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);
     keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
     keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
@@ -3385,6 +4191,7 @@ ipcMain.handle('get-api-keys', async () => {
         OCT_SETTINGS_MODE: keys.OCT_SETTINGS_MODE || '',
         OCT_PROVIDER: keys.OCT_PROVIDER || '',
         OCT_MODEL: keys.OCT_MODEL || '',
+        SCRIPT_ADAPTER_REAL_AGENTS: keys.SCRIPT_ADAPTER_REAL_AGENTS || '',
         DASHSCOPE_BASE_URL: keys.DASHSCOPE_BASE_URL || '',
         DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
         MINIMAX_BASE_URL: keys.MINIMAX_BASE_URL || '',
@@ -3435,6 +4242,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     OCT_SETTINGS_MODE?: string;
     OCT_PROVIDER?: string;
     OCT_MODEL?: string;
+    SCRIPT_ADAPTER_REAL_AGENTS?: string;
     CUSTOM_MODEL?: string;
     DASHSCOPE_BASE_URL?: string;
     DEEPSEEK_BASE_URL?: string;
@@ -3490,6 +4298,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
     if (keys.OCT_PROVIDER !== undefined) cfg.OCT_PROVIDER = keys.OCT_PROVIDER || '';
     if (keys.OCT_MODEL !== undefined) cfg.OCT_MODEL = keys.OCT_MODEL || '';
+    if (keys.SCRIPT_ADAPTER_REAL_AGENTS !== undefined) cfg.SCRIPT_ADAPTER_REAL_AGENTS = keys.SCRIPT_ADAPTER_REAL_AGENTS || '';
     if (keys.CUSTOM_MODEL !== undefined) cfg.CUSTOM_MODEL = keys.CUSTOM_MODEL || '';
     if (keys.DASHSCOPE_BASE_URL !== undefined) cfg.DASHSCOPE_BASE_URL = keys.DASHSCOPE_BASE_URL || '';
     if (keys.DEEPSEEK_BASE_URL !== undefined) cfg.DEEPSEEK_BASE_URL = keys.DEEPSEEK_BASE_URL || '';
@@ -3537,6 +4346,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
     // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
     const aiConfigChanged = keys.OCT_PROVIDER !== undefined || keys.OCT_MODEL !== undefined
+      || keys.SCRIPT_ADAPTER_REAL_AGENTS !== undefined
       || keys.OPENCLAW_TOKEN !== undefined
       || keys.CUSTOM_MODEL !== undefined
       || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
@@ -3706,6 +4516,33 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
     if (!baseUrl || !apiKey) {
       return { success: false, error: '请先填写 API Key 并选择服务商' };
     }
+    if (providerId === 'google') {
+      const googleApiMode = String(cfg.GOOGLE_API_MODE || 'native').trim().toLowerCase();
+      if (googleApiMode !== 'openai_compat') {
+        const googleNativePath = path.join(gatewayDir, 'services', 'googleNative.js');
+        const googleNative = fs.existsSync(googleNativePath) ? require(googleNativePath) : null;
+        if (!googleNative?.resolveGoogleClientConfig || !googleNative?.sanitizeGoogleModelId) {
+          return { success: false, error: 'Google 原生 SDK 未就绪，请重启应用后重试。' };
+        }
+        const clientConfig = googleNative.resolveGoogleClientConfig({
+          GOOGLE_AI_API_KEY: apiKey,
+          GOOGLE_AI_BASE_URL: baseUrl,
+          GOOGLE_API_MODE: googleApiMode,
+          GOOGLE_CLOUD_PROJECT: cfg.GOOGLE_CLOUD_PROJECT || '',
+          GOOGLE_CLOUD_LOCATION: cfg.GOOGLE_CLOUD_LOCATION || '',
+          GOOGLE_GENAI_API_VERSION: cfg.GOOGLE_GENAI_API_VERSION || '',
+        });
+        const normalizedModel = googleNative.sanitizeGoogleModelId(model);
+        const response = await clientConfig.client.models.generateContent({
+          model: normalizedModel,
+          contents: 'hi',
+        });
+        if (!response?.text && !response?.data && !response?.functionCalls) {
+          return { success: false, error: 'Google 原生连接未返回可识别内容，请检查模型和配额。' };
+        }
+        return { success: true, message: 'Google 原生连接成功' };
+      }
+    }
     const fetchBaseUrl =
       providerId === 'google' ? getGoogleBaseUrlHelper().sanitizeGoogleOpenAiBaseUrl(baseUrl) : baseUrl;
     if (providerId === 'minimax' && !String(apiKey).trim().startsWith('sk-cp-')) {
@@ -3812,6 +4649,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
   workbenchContext?: any;
   canvasContext?: any;
   requestId?: string;
+  projectContext?: any;
 }) => {
   let content: string;
   let imageDataUrl: string | null | undefined;
@@ -3819,6 +4657,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
   let pacingMs: number | undefined;
   let workbenchContext: any;
   let requestId: string | undefined;
+  let projectContext: any;
 
   if (typeof payload === 'string') {
     content = payload;
@@ -3827,6 +4666,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
     pacingMs = undefined;
     workbenchContext = undefined;
     requestId = undefined;
+    projectContext = undefined;
   } else if (payload && typeof payload === 'object') {
     const c = payload.content;
     content = typeof c === 'string' ? c : (c ? String(c) : '');
@@ -3837,6 +4677,7 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
     requestId = typeof payload.requestId === 'string'
       ? String(payload.requestId).trim()
       : undefined;
+    projectContext = payload.projectContext ?? undefined;
   } else {
     content = '';
     imageDataUrl = null;
@@ -3844,9 +4685,377 @@ ipcMain.handle('openclaw-send', (_, payload: string | {
     pacingMs = undefined;
     workbenchContext = undefined;
     requestId = undefined;
+    projectContext = undefined;
   }
 
-  return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext, requestId);
+  return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext, requestId, projectContext);
+});
+
+function sendScriptAdapterRunRequest(method: string, params: Record<string, unknown>) {
+  if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
+    return Promise.resolve({ success: false, error: 'Gateway 未连接，请先启动 Gateway' });
+  }
+
+  const reqId = `script_adapter_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const msg = {
+    type: 'req',
+    id: reqId,
+    method,
+    params,
+  };
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      scriptAdapterPendingRequests.delete(reqId);
+      resolve({ success: false, error: 'Gateway 请求超时' });
+    }, SCRIPT_ADAPTER_REQUEST_TIMEOUT_MS);
+    scriptAdapterPendingRequests.set(reqId, { resolve, timeout });
+
+    try {
+      openclawWs?.send(JSON.stringify(msg));
+    } catch (err: any) {
+      clearTimeout(timeout);
+      scriptAdapterPendingRequests.delete(reqId);
+      resolve({ success: false, error: err?.message || '发送失败' });
+    }
+  });
+}
+
+ipcMain.handle('script-adapter-run-start', (_event, payload: {
+  taskId: string;
+  taskTitle: string;
+  source?: string;
+  useMock?: boolean;
+  sourceText?: string;
+  config?: Record<string, unknown>;
+}) => {
+  const taskId = String(payload?.taskId || `script-adapter-${Date.now()}`);
+  return sendScriptAdapterRunRequest('scriptAdapter.run.start', {
+    taskId,
+    taskTitle: String(payload?.taskTitle || '多人演播有声书样章'),
+    source: String(payload?.source || 'content-workbench'),
+    useMock: payload?.useMock !== false,
+    sourceText: String(payload?.sourceText || ''),
+    config: payload?.config || {},
+  });
+});
+
+ipcMain.handle('script-adapter-run-cancel', (_event, payload: { taskId: string; reason?: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.run.cancel', {
+    taskId: String(payload?.taskId || ''),
+    reason: String(payload?.reason || 'cancelled_by_user'),
+  });
+});
+
+ipcMain.handle('script-adapter-run-list', () => {
+  return sendScriptAdapterRunRequest('scriptAdapter.run.list', {});
+});
+
+ipcMain.handle('script-adapter-batch-start', (_event, payload: {
+  bookId: string;
+  chapterIndices: number[];
+  bookTitle?: string;
+  config?: Record<string, unknown>;
+  estimate?: Record<string, unknown>;
+}) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.start', {
+    bookId: String(payload?.bookId || ''),
+    chapterIndices: Array.isArray(payload?.chapterIndices) ? payload.chapterIndices : [],
+    bookTitle: payload?.bookTitle ? String(payload.bookTitle) : undefined,
+    config: payload?.config || {},
+    estimate: payload?.estimate || {},
+  });
+});
+
+ipcMain.handle('script-adapter-batch-status', (_event, payload: { batchId: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.status', {
+    batchId: String(payload?.batchId || ''),
+  });
+});
+
+ipcMain.handle('script-adapter-batch-list', (_event, payload: { limit?: number; offset?: number } | undefined) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.list', {
+    limit: Number(payload?.limit) > 0 ? Math.floor(Number(payload?.limit)) : 20,
+    offset: Number(payload?.offset) >= 0 ? Math.floor(Number(payload?.offset)) : 0,
+  });
+});
+
+ipcMain.handle('script-adapter-batch-cancel', (_event, payload: { batchId: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.cancel', {
+    batchId: String(payload?.batchId || ''),
+  });
+});
+
+ipcMain.handle('script-adapter-batch-rerun', (_event, payload: { batchId: string; chapterIndex: number }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.rerunChapter', {
+    batchId: String(payload?.batchId || ''),
+    chapterIndex: Number(payload?.chapterIndex),
+  });
+});
+
+ipcMain.handle('script-adapter-batch-delete', (_event, payload: { batchId: string }) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.batch.delete', {
+    batchId: String(payload?.batchId || ''),
+  });
+});
+
+// ── AI.library 书库 Phase 2：Electron 原生实现（不经 Python）────────────────
+ipcMain.handle('library:list', async (_event, payload: { limit?: number; offset?: number }) => {
+  const limit = Number(payload?.limit) > 0 ? Math.floor(Number(payload.limit)) : 50;
+  const offset = Number(payload?.offset) >= 0 ? Math.floor(Number(payload.offset)) : 0;
+  try {
+    const books = listNativeLibraryBooks(limit, offset);
+    return { success: true, data: { success: true, books, total: books.length } };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_LIST_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('library:get', async (_event, payload: { bookId: string }) => {
+  if (!payload?.bookId) return { success: false, error: 'bookId required' };
+  try {
+    const book = getNativeLibraryBook(payload.bookId);
+    if (!book) return { success: false, error: `Book ${payload.bookId} not found` };
+    return { success: true, data: { success: true, book } };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_GET_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('library:chapters', async (_event, payload: { bookId: string }) => {
+  if (!payload?.bookId) return { success: false, error: 'bookId required' };
+  try {
+    const book = getNativeLibraryBook(payload.bookId);
+    if (!book) return { success: false, error: `Book ${payload.bookId} not found` };
+    return {
+      success: true,
+      data: { success: true, book_id: payload.bookId, chapters: listNativeLibraryChapters(payload.bookId) },
+    };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_CHAPTERS_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('library:chapter', async (_event, payload: { bookId: string; chapterIndex: number }) => {
+  if (!payload?.bookId) return { success: false, error: 'bookId required' };
+  if (typeof payload?.chapterIndex !== 'number' || Number.isNaN(payload.chapterIndex)) {
+    return { success: false, error: 'chapterIndex required' };
+  }
+  try {
+    const data = getNativeLibraryChapterText(payload.bookId, payload.chapterIndex);
+    if (!data) return { success: false, error: `Chapter ${payload.chapterIndex} not found in book ${payload.bookId}` };
+    return { success: true, data: { success: true, book_id: payload.bookId, ...data } };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_CHAPTER_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('library:pickFile', async () => {
+  try {
+    const result = await dialog.showOpenDialog({
+      title: '选择小说文件',
+      filters: [
+        { name: '文本文件', extensions: ['txt', 'md'] },
+        { name: '所有文件', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, error: 'cancelled' };
+    }
+    return { success: true, filePath: result.filePaths[0] };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `PICK_FILE_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('library:upload', async (_event, payload: {
+  filePath: string;
+  title: string;
+  author?: string;
+}) => {
+  const filePath = String(payload?.filePath || '').trim();
+  const title = String(payload?.title || '').trim();
+  const author = String(payload?.author || '').trim();
+
+  if (!filePath) return { success: false, error: 'filePath required' };
+  if (!title) return { success: false, error: 'title required' };
+
+  try {
+    const data = await uploadNativeLibraryBook({ filePath, title, author });
+    return { success: true, data };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `UPLOAD_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('library:delete', async (_event, payload: { bookId: string }) => {
+  if (!payload?.bookId) return { success: false, error: 'bookId required' };
+  try {
+    const deleted = deleteNativeLibraryBook(payload.bookId);
+    if (!deleted) return { success: false, error: `Book ${payload.bookId} not found` };
+    return { success: true, data: { success: true, deleted: payload.bookId } };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `LIBRARY_DELETE_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('delivery:exportMarkdown', async (_event, payload: { filename: string; content: string }) => {
+  try {
+    const result = await dialog.showSaveDialog({
+      title: '保存交付包',
+      defaultPath: String(payload?.filename || 'delivery.md'),
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Text', extensions: ['txt'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, error: 'cancelled' };
+    }
+    await fs.promises.writeFile(result.filePath, String(payload?.content || ''), 'utf8');
+    return { success: true, filePath: result.filePath };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `WRITE_FAILED: ${msg}` };
+  }
+});
+
+ipcMain.handle('delivery:exportDocx', async (_event, payload: {
+  filename: string;
+  documentTitle: string;
+  data: any;
+}) => {
+  try {
+    const result = await dialog.showSaveDialog({
+      title: '保存 Word 交付包',
+      defaultPath: String(payload?.filename || 'delivery.docx'),
+      filters: [
+        { name: 'Word', extensions: ['docx'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, error: 'cancelled' };
+    }
+
+    const docxModule = await import('docx');
+    const {
+      AlignmentType,
+      BorderStyle,
+      Document,
+      HeadingLevel,
+      Packer,
+      Paragraph,
+      Table,
+      TableCell,
+      TableRow,
+      TextRun,
+      WidthType,
+    } = docxModule;
+    const sections = Array.isArray(payload?.data?.sections) ? payload.data.sections : [];
+    const metadata = Array.isArray(payload?.data?.metadata) ? payload.data.metadata : [];
+    const children: any[] = [];
+
+    children.push(new Paragraph({
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: String(payload?.documentTitle || '多人演播交付包'), bold: true })],
+    }));
+
+    for (const item of metadata) {
+      children.push(new Paragraph({
+        children: [
+          new TextRun({ text: `${String(item?.label || '')}：`, bold: true }),
+          new TextRun(String(item?.value || '')),
+        ],
+      }));
+    }
+
+    children.push(new Paragraph({ text: '' }));
+
+    for (const section of sections) {
+      children.push(new Paragraph({
+        heading: section.level === 1 ? HeadingLevel.HEADING_1 : section.level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
+        children: [new TextRun(String(section.title || ''))],
+      }));
+
+      for (const block of Array.isArray(section.blocks) ? section.blocks : []) {
+        if (block.type === 'paragraph') {
+          children.push(new Paragraph(String(block.text || '')));
+          continue;
+        }
+        if (block.type === 'scriptLine') {
+          children.push(new Paragraph({
+            children: [
+              new TextRun({ text: `[${String(block.speaker || '旁白')}] `, bold: true }),
+              new TextRun(String(block.text || '')),
+            ],
+          }));
+          if (block.note) {
+            children.push(new Paragraph({
+              children: [new TextRun({ text: `改编说明：${String(block.note)}`, italics: true })],
+            }));
+          }
+          continue;
+        }
+        if (block.type === 'bullet') {
+          for (const item of Array.isArray(block.items) ? block.items : []) {
+            children.push(new Paragraph({
+              text: String(item || ''),
+              bullet: { level: 0 },
+            }));
+          }
+          continue;
+        }
+        if (block.type === 'table') {
+          const rows = [];
+          rows.push(new TableRow({
+            children: (Array.isArray(block.columns) ? block.columns : []).map((column: string) => new TableCell({
+              children: [new Paragraph({ children: [new TextRun({ text: String(column || ''), bold: true })] })],
+            })),
+          }));
+          for (const row of Array.isArray(block.rows) ? block.rows : []) {
+            rows.push(new TableRow({
+              children: row.map((cell: string) => new TableCell({
+                children: [new Paragraph(String(cell || ''))],
+              })),
+            }));
+          }
+          children.push(new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows,
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
+              bottom: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
+              left: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
+              right: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
+              insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: 'E6E9EF' },
+              insideVertical: { style: BorderStyle.SINGLE, size: 1, color: 'E6E9EF' },
+            },
+          }));
+        }
+      }
+
+      children.push(new Paragraph({ text: '' }));
+    }
+
+    const document = new Document({
+      sections: [{ properties: {}, children }],
+    });
+    const buffer = await Packer.toBuffer(document);
+    await fs.promises.writeFile(result.filePath, buffer);
+    return { success: true, filePath: result.filePath };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `DOCX_WRITE_FAILED: ${msg}` };
+  }
 });
 
 ipcMain.handle('image-generate', async (_event, payload: {
@@ -4445,6 +5654,10 @@ app.on('will-quit', async () => {
     try { aiLibraryProcess.kill('SIGTERM'); } catch {}
     aiLibraryProcess = null;
   }
+  if (aiLibraryHttpServer?.listening) {
+    await new Promise<void>((resolve) => aiLibraryHttpServer?.close(() => resolve()));
+    aiLibraryHttpServer = null;
+  }
   
   // 强制清理端口，确保下次启动时不会被占用
   try {
@@ -4489,6 +5702,10 @@ app.on('before-quit', async (e) => {
   if (aiLibraryProcess && !aiLibraryProcess.killed) {
     try { aiLibraryProcess.kill('SIGTERM'); } catch {}
     aiLibraryProcess = null;
+  }
+  if (aiLibraryHttpServer?.listening) {
+    await new Promise<void>((resolve) => aiLibraryHttpServer?.close(() => resolve()));
+    aiLibraryHttpServer = null;
   }
 
   // 3. 强制清理端口

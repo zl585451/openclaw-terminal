@@ -31,6 +31,7 @@ export interface ApiKeysState {
   OCT_SETTINGS_MODE: SettingsMode | '';
   OCT_PROVIDER: string;
   OCT_MODEL: string;
+  SCRIPT_ADAPTER_REAL_AGENTS: string;
   CUSTOM_MODEL: string;
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
@@ -70,10 +71,12 @@ const FALLBACK_PROVIDERS: ProvidersState = {
     baseUrl: 'https://api.deepseek.com/v1',
     keyLink: 'https://platform.deepseek.com/',
     keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-flash',
     models: [
-      { id: 'deepseek-chat', label: 'DeepSeek Chat（通用）', tools: true, thinking: false },
-      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（推理）', tools: false, thinking: true },
+      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash（通用，推荐）', tools: true, thinking: false },
+      { id: 'deepseek-v4-pro',   label: 'DeepSeek V4 Pro（深度推理）',    tools: false, thinking: true },
+      { id: 'deepseek-chat',     label: 'DeepSeek Chat（旧版）',          tools: true, thinking: false },
+      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（旧版）',      tools: false, thinking: true },
     ],
   },
   minimax: {
@@ -118,20 +121,20 @@ const FALLBACK_PROVIDERS: ProvidersState = {
   },
   google: {
     id: 'google',
-    name: 'Google Gemini（Vertex AI Studio API 密钥）',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    name: 'Google Gemini（Vertex AI 原生）',
+    baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/YOUR_PROJECT_ID/locations/us-central1/endpoints/openapi',
     keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
-    keyPlaceholder: 'Vertex AI Studio 创建的 API 密钥',
-    defaultModel: 'gemini-2.5-flash',
+    keyPlaceholder: 'AQ.xxxxx 或绑定 Vertex 的 API Key',
+    defaultModel: 'google/gemini-2.5-flash',
     models: [
-      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash（稳定，推荐）', tools: false, thinking: true },
-      { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', tools: false, thinking: true },
-      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', tools: false, thinking: true },
-      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: false, thinking: true },
-      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: false, thinking: true },
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash（将弃用）', tools: false, thinking: false },
-      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', tools: false, thinking: false },
-      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', tools: false, thinking: false },
+      { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash（推荐）', tools: true, thinking: true },
+      { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite（低延迟）', tools: true, thinking: true },
+      { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro（深度推理）', tools: true, thinking: true },
+      { id: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: true, thinking: true },
+      { id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash-Lite（预览）', tools: true, thinking: true },
+      { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: true, thinking: true },
+      { id: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash（兼容）', tools: true, thinking: false },
+      { id: 'google/gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite（低成本）', tools: true, thinking: false },
     ],
   },
   custom: {
@@ -172,6 +175,7 @@ type GatewayConfigPayload = {
   CUSTOM_API_KEY: string;
   OCT_PROVIDER: string;
   OCT_MODEL: string;
+  SCRIPT_ADAPTER_REAL_AGENTS: string;
   CUSTOM_MODEL: string;
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
@@ -295,6 +299,7 @@ function buildGatewayPayload(
     CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
     OCT_PROVIDER: currentProviderId || 'bailian-coding',
     OCT_MODEL: effectiveModel,
+    SCRIPT_ADAPTER_REAL_AGENTS: apiKeys.SCRIPT_ADAPTER_REAL_AGENTS || '',
     CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
     DASHSCOPE_BASE_URL:
       currentProviderId === 'deepseek' || currentProviderId === 'custom' || currentProviderId === 'minimax'
@@ -347,6 +352,7 @@ export function useApiKeys() {
     OCT_SETTINGS_MODE: '',
     OCT_PROVIDER: '',
     OCT_MODEL: '',
+    SCRIPT_ADAPTER_REAL_AGENTS: '',
     CUSTOM_MODEL: '',
     DASHSCOPE_BASE_URL: '',
     DEEPSEEK_BASE_URL: '',

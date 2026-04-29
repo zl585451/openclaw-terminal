@@ -10,6 +10,7 @@ const log = createLogger('ai_library');
 
 const aiLibCfg = config.ai_library || {};
 const AI_LIBRARY_ENABLED = aiLibCfg.enabled !== false;
+const KNOWLEDGE_SEARCH_ENABLED = aiLibCfg.knowledge_search_enabled === true;
 const AI_LIBRARY_URL = aiLibCfg.url || config.AI_LIBRARY_URL || 'http://127.0.0.1:8001';
 const DEFAULT_TIMEOUT_MS = aiLibCfg.timeout_ms ?? 3000;
 const DEFAULT_TOP_K = aiLibCfg.default_top_k ?? 3;
@@ -93,6 +94,9 @@ function setCache(query, top_k, results) {
  * @returns {Promise<{results: Array, error?: string}>} 成功返回 {results}，失败返回 {results: [], error: string}
  */
 async function searchKnowledge(query, top_k = DEFAULT_TOP_K) {
+  if (!KNOWLEDGE_SEARCH_ENABLED) {
+    return { results: [], error: 'knowledge_search_disabled' };
+  }
   if (!AI_LIBRARY_ENABLED) {
     return { results: [], error: '📚 AI.library 未启动，请先运行 api_server.py' };
   }

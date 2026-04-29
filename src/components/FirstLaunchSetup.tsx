@@ -21,7 +21,7 @@ export default function FirstLaunchSetup({ onOpenSettings, onDismiss }: FirstLau
             <span className="first-launch-step-index">1</span>
             <div>
               <div className="first-launch-step-title">推荐先申请 DeepSeek Key</div>
-              <div className="first-launch-step-copy">在设置页选择 `DeepSeek`，填写 `deepseek-chat` 或 `deepseek-reasoner` 即可开始。</div>
+              <div className="first-launch-step-copy">在设置页选择 `DeepSeek`，填写 `deepseek-v4-flash` 或 `deepseek-v4-pro` 即可开始。</div>
             </div>
           </div>
           <div className="first-launch-step">

@@ -10,11 +10,17 @@ import { toWorkbenchCommand } from '../workbench/types';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
-import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/ChatTab.v2';
+import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTypes';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
-import { playClickSound, resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
+import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
+import { useProject } from '../contexts/ProjectContext';
+import { useTokenUsage } from './useTokenUsage';
+import { useActivityTimeline } from './useActivityTimeline';
+import { useStreamPainting } from './useStreamPainting';
+import type { ActivityEntry } from './useActivityTimeline';
+export type { ActivityEntryType, ActivityEntry } from './useActivityTimeline';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
 function isSystemCommand(text: string): boolean {
@@ -52,28 +58,6 @@ export interface ActiveTool {
   tool: string;
   state: 'executing' | 'done' | 'error';
   resultPreview?: string;
-}
-
-export type ActivityEntryType =
-  | 'thinking_placeholder'
-  | 'cot'
-  | 'tool_call'
-  | 'tool_result'
-  | 'keepalive_hint';
-
-export interface ActivityEntry {
-  id: string;
-  type: ActivityEntryType;
-  timestamp: number;
-  content?: string;
-  toolName?: string;
-  argsPreview?: string;
-  callId?: string;
-  resultPreview?: string;
-  elapsedMs?: number;
-  isError?: boolean;
-  hint?: string;
-  keepaliveElapsedMs?: number;
 }
 
 export interface GatewayCapabilities {
@@ -155,6 +139,7 @@ export function useMessages({
   onClarifyOpen,
 }: UseMessagesOptions): UseMessagesReturn {
   const transportPacingMs = 4;
+  const { activeProject } = useProject();
   const scrollRef = useRef(scroll);
   scrollRef.current = scroll;
   const streamSpeedMsRef = useRef(streamSpeedMs);
@@ -163,17 +148,8 @@ export function useMessages({
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
   const [activeTools, setActiveTools] = useState<ActiveTool[]>([]);
-  const [activityTimeline, setActivityTimeline] = useState<ActivityEntry[]>([]);
   const [gatewayCapabilities, setGatewayCapabilities] = useState<GatewayCapabilities | null>(null);
-  const activityIdCounter = useRef(0);
-  const nextActivityId = () => `act_${++activityIdCounter.current}`;
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
-  const [tokenIn, setTokenIn] = useState<number | null>(null);
-  const [tokenOut, setTokenOut] = useState<number | null>(null);
-  const [ctxUsed, setCtxUsed] = useState<number | null>(null);
-  const [ctxMax, setCtxMax] = useState<number | null>(null);
-  const [, setCost] = useState<number | null>(null);
-  const [, setSession] = useState<string | null>(null);
   const [, setApiKeyInfo] = useState<string>('--');
   const [thinkMode, setThinkMode] = useState<string>('off');
   const [, setRuntimeMode] = useState<string>('direct');
@@ -184,29 +160,35 @@ export function useMessages({
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
   /** 流式阶段 reconcile 每帧调用会引发大量 layout；限制频率 */
   const lastStreamReconcileMsRef = useRef(0);
-  /** usage 事件 RAF 合并：同一帧多条合并后再 setState */
-  const usageBatchRef = useRef<Array<{ usage: any; isSnapshot: boolean }>>([]);
-  const usageFlushRafRef = useRef<number | null>(null);
+  const {
+    tokenIn,
+    tokenOut,
+    ctxUsed,
+    ctxMax,
+    onUsage,
+    resetUsage,
+    setFromSystemReply,
+  } = useTokenUsage();
+  const {
+    activityTimeline,
+    onToolEvent: onToolEventTimeline,
+    onKeepalive: onKeepaliveTimeline,
+    resetTimeline,
+    resetWithThinkingPlaceholder,
+    removeTypes: removeTimelineTypes,
+    scheduleCotSyncFromFullText,
+  } = useActivityTimeline(messages);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const streamingMessageRef = useRef('');
   const fullTextRef = useRef<string>('');
   const streamingDomRef = useRef<HTMLPreElement | null>(null);
   const pendingFullTextSyncRafRef = useRef<number | null>(null);
-  /** 流式正文 DOM 直写 RAF 链（把大 chunk 拆成多帧铺开，像刷油漆） */
-  const streamPaintRafRef = useRef<number | null>(null);
-  /** 已向 <pre> 展示的「正文」字符数（相对 extract 后的 main） */
-  const streamPaintShownLenRef = useRef(0);
-  /** 直写节奏预算，限制每帧只追加极少字符，减少“蹦字感” */
-  const streamPaintBudgetRef = useRef(0);
-  const streamPaintLastTsRef = useRef(0);
   const pendingStreamFinalizeRef = useRef(false);
   const finalizeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const runStreamPaintTickRef = useRef<() => void>(() => {});
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
-  const cotSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ROUND_TIMEOUT_MS = 10 * 60 * 1000;
   // ── isStreaming (memo) ────────────────────────────────────────────────────
@@ -228,9 +210,6 @@ export function useMessages({
       finalizeFallbackTimerRef.current = null;
     }
     pendingStreamFinalizeRef.current = false;
-    streamPaintShownLenRef.current = 0;
-    streamPaintBudgetRef.current = 0;
-    streamPaintLastTsRef.current = 0;
     // Advance FSM through any intermediate states that may have been skipped,
     // then complete the turn. If anything throws, force-reset to IDLE so the
     // next turn can start cleanly.
@@ -292,94 +271,24 @@ export function useMessages({
     }, 180);
   }, [oct, setMessages]);
 
-  runStreamPaintTickRef.current = () => {
-    streamPaintRafRef.current = null;
-    const now = performance.now();
-    if (!streamPaintLastTsRef.current) streamPaintLastTsRef.current = now;
-    const dt = Math.min(80, now - streamPaintLastTsRef.current);
-    if (dt < 24 && !pendingStreamFinalizeRef.current) {
-      streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-      return;
-    }
-    streamPaintLastTsRef.current = now;
-    const raw = fullTextRef.current;
-    const el = streamingDomRef.current;
-    const main = getAssistantVisibleMain(raw);
-    const targetLen = main.length;
-    let shown = streamPaintShownLenRef.current;
-    if (shown > targetLen) {
-      shown = targetLen;
-      streamPaintShownLenRef.current = shown;
-    }
-    const behind = targetLen - shown;
-
-    if (!el) {
-      if (behind > 0) {
-        streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-      }
-      return;
-    }
-
-    if (behind > 0) {
-      // effectiveMs: controls chars/sec via budget accumulation.
-      // Deliberately avoid large catch-up multipliers — they make text
-      // feel like it "dumps all at once" when the model responds fast.
-      let effectiveMs = Math.max(6, streamSpeedMsRef.current);
-      // Mild catch-up when far behind (still streaming): slightly faster
-      if (!pendingStreamFinalizeRef.current && behind > 80) effectiveMs *= 0.85;
-      // After stream ends: finish at a capped speed, not an instant dump
-      if (pendingStreamFinalizeRef.current) effectiveMs = Math.max(6, effectiveMs * 0.75);
-
-      streamPaintBudgetRef.current += dt / effectiveMs;
-      let step = Math.floor(streamPaintBudgetRef.current);
-      if (step <= 0 && streamPaintBudgetRef.current >= 0.82) {
-        step = 1;
-      }
-      // Step cap: 4 chars/tick max — keeps animation visible at any speed setting
-      step = Math.min(behind, Math.max(0, Math.min(step, 4)));
-
-      if (step > 0) {
-        streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
-        shown = Math.min(targetLen, shown + step);
-        streamPaintShownLenRef.current = shown;
-        el.textContent = main.slice(0, shown);
-        if (typingSound !== 'off') {
-          for (let i = 0; i < step; i++) {
-            playClickSound(typingSound, typingSoundVolume);
-          }
-        }
-      }
-    } else if (targetLen > 0) {
-      el.textContent = main;
-    }
-
-    try {
-      const t = performance.now();
-      // 略拉长间隔，减轻与 textContent 触发布局在同一帧内叠 getBoundingClientRect 的「拖住」感
-      if (t - lastStreamReconcileMsRef.current >= 120) {
-        lastStreamReconcileMsRef.current = t;
-        scrollRef.current.reconcile();
-      }
-    } catch {
-      /* ignore */
-    }
-
-    const rawEnd = fullTextRef.current;
-    const mainEnd = getAssistantVisibleMain(rawEnd).length;
-    if (streamPaintShownLenRef.current < mainEnd) {
-      streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-      return;
-    }
-
-    if (pendingStreamFinalizeRef.current) {
-      finalizeStreamingAssistantMessage(rawEnd);
-    }
-  };
-
-  const scheduleStreamUiTick = useCallback(() => {
-    if (streamPaintRafRef.current != null) return;
-    streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-  }, []);
+  const { startPainting, stopPainting } = useStreamPainting(
+    {
+      ...oct,
+      __streamPainting: {
+        scrollReconcile: scrollRef.current.reconcile,
+        streamSpeedMsRef,
+        typingSound,
+        typingSoundVolume,
+        fullTextRef,
+        streamingDomRef,
+        finalizeStreamingAssistantMessage,
+        pendingStreamFinalizeRef,
+        lastStreamReconcileMsRef,
+      },
+    },
+    setMessages,
+    scrollRef.current.reconcile,
+  );
 
   // ── ensureStreamingAssistantMessage ───────────────────────────────────────
   const ensureStreamingAssistantMessage = useCallback(() => {
@@ -408,33 +317,6 @@ export function useMessages({
     });
   }, [getNextMessageId, setMessages]);
 
-  const scheduleUsageFlush = useCallback(() => {
-    if (usageFlushRafRef.current != null) return;
-    usageFlushRafRef.current = requestAnimationFrame(() => {
-      usageFlushRafRef.current = null;
-      const batch = usageBatchRef.current;
-      usageBatchRef.current = [];
-      if (batch.length === 0) return;
-      for (const { usage, isSnapshot } of batch) {
-        if (usage.inputTokens != null) {
-          if (isSnapshot) setTokenIn(usage.inputTokens);
-          else setTokenIn((v) => (v ?? 0) + usage.inputTokens);
-        }
-        if (usage.outputTokens != null) {
-          if (isSnapshot) setTokenOut(usage.outputTokens);
-          else setTokenOut((v) => (v ?? 0) + usage.outputTokens);
-        }
-        if (usage.cost != null) {
-          if (isSnapshot) setCost(Number(usage.cost));
-          else setCost((v) => (v ?? 0) + Number(usage.cost));
-        }
-        if (usage.ctxUsed != null) setCtxUsed(usage.ctxUsed);
-        if (usage.ctxMax != null) setCtxMax(usage.ctxMax);
-        if (usage.session != null) setSession(usage.session);
-      }
-    });
-  }, []);
-
   const clearRoundTimeout = useCallback(() => {
     if (roundTimeoutRef.current != null) {
       clearTimeout(roundTimeoutRef.current);
@@ -449,7 +331,7 @@ export function useMessages({
       setAwaitingResponse(false);
       setAgentPhase('idle');
       setActiveTools([]);
-      setActivityTimeline((prev) => prev.filter((entry) => entry.type !== 'keepalive_hint'));
+      removeTimelineTypes(['keepalive_hint']);
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         const timeoutText = '⏱️ 本轮请求超时（10 分钟），已自动结束。你可以重试，或先让我用不依赖工具的方式回答。';
@@ -513,65 +395,13 @@ export function useMessages({
         }
         fullTextRef.current = streamingMessageRef.current;
 
-        if (!cotSyncTimerRef.current) {
-          cotSyncTimerRef.current = setTimeout(() => {
-            cotSyncTimerRef.current = null;
-            const currentFull = fullTextRef.current;
-            const syncCotEntry = (cotText: string) => {
-              const trimmedCot = cotText.trim();
-              setActivityTimeline((prev) => {
-                const existingCotIdx = prev.findIndex((entry) => entry.type === 'cot');
-                if (existingCotIdx !== -1) {
-                  const updated = [...prev];
-                  updated[existingCotIdx] = { ...updated[existingCotIdx], content: trimmedCot };
-                  return updated;
-                }
-                const filtered = prev.filter((entry) => entry.type !== 'thinking_placeholder');
-                return [
-                  ...filtered,
-                  {
-                    id: nextActivityId(),
-                    type: 'cot',
-                    timestamp: Date.now(),
-                    content: trimmedCot,
-                  },
-                ];
-              });
-            };
-
-            const cotOpen = currentFull.indexOf('[cot]');
-            if (cotOpen !== -1) {
-              const afterOpen = currentFull.slice(cotOpen + 5);
-              const cotClose = afterOpen.indexOf('[/cot]');
-              const cotText = cotClose !== -1 ? afterOpen.slice(0, cotClose) : afterOpen;
-              syncCotEntry(cotText);
-              return;
-            }
-
-            const thinkOpen = currentFull.indexOf('<think>');
-            if (thinkOpen !== -1) {
-              const afterThink = currentFull.slice(thinkOpen + 7);
-              const thinkClose = afterThink.indexOf('</think>');
-              const thinkText = thinkClose !== -1 ? afterThink.slice(0, thinkClose) : afterThink;
-              syncCotEntry(thinkText);
-              return;
-            }
-
-            const redactedThinkOpen = currentFull.indexOf('<redacted_thinking>');
-            if (redactedThinkOpen !== -1) {
-              const afterThink = currentFull.slice(redactedThinkOpen + '<redacted_thinking>'.length);
-              const thinkClose = afterThink.indexOf('</redacted_thinking>');
-              const thinkText = thinkClose !== -1 ? afterThink.slice(0, thinkClose) : afterThink;
-              syncCotEntry(thinkText);
-            }
-          }, 300);
-        }
+        scheduleCotSyncFromFullText(fullTextRef.current);
 
         if (isDelta && oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
           try { oct.fsm.onToken(); } catch {}
         }
 
-        scheduleStreamUiTick();
+        startPainting();
         ensureStreamingAssistantMessage();
       }
     },
@@ -588,9 +418,7 @@ export function useMessages({
         setAwaitingResponse(false);
         setAgentPhase('idle');
         setActiveTools([]);
-        setActivityTimeline((prev) =>
-          prev.filter((entry) => entry.type !== 'keepalive_hint' && entry.type !== 'thinking_placeholder')
-        );
+        removeTimelineTypes(['keepalive_hint', 'thinking_placeholder']);
       }
 
       if (!systemReply) {
@@ -612,7 +440,7 @@ export function useMessages({
             streamingMessageRef.current = fb;
             fullTextRef.current = fb;
             pendingStreamFinalizeRef.current = true;
-            scheduleStreamUiTick();
+            stopPainting();
             ensureStreamingAssistantMessage();
           } else {
             scheduleFinalizeFallback('');
@@ -639,14 +467,20 @@ export function useMessages({
 
         if (modelMatch) setModelName(modelMatch[1].trim());
         if (tokensMatch) {
-          setTokenIn(parseFloat(tokensMatch[1]) * 1000);
-          setCtxMax(parseFloat(tokensMatch[2]) * 1000);
+          setFromSystemReply({
+            tokenIn: parseFloat(tokensMatch[1]) * 1000,
+            ctxMax: parseFloat(tokensMatch[2]) * 1000,
+          });
         }
         if (ctxMatch1) {
-          setCtxUsed(parseFloat(ctxMatch1[1]) * 1000);
-          setCtxMax(parseFloat(ctxMatch1[2]) * 1000);
+          setFromSystemReply({
+            ctxUsed: parseFloat(ctxMatch1[1]) * 1000,
+            ctxMax: parseFloat(ctxMatch1[2]) * 1000,
+          });
         } else if (ctxMatch2) {
-          setCtxUsed(parseFloat(ctxMatch2[1]) * 1000);
+          setFromSystemReply({
+            ctxUsed: parseFloat(ctxMatch2[1]) * 1000,
+          });
         }
 
         const apiKeyMatch = text.match(/api-key\s*\(([^)]+)\)/i);
@@ -728,30 +562,7 @@ export function useMessages({
           };
           return [...prev.slice(0, lastIdx), { ...last, toolEvents: [...(last.toolEvents || []), newEvent] }];
         });
-        setActivityTimeline((prev) => {
-          const filtered = prev.filter((entry, index) =>
-            !(index === prev.length - 1 && entry.type === 'keepalive_hint')
-          );
-          const argsStr = payload.args
-            ? Object.entries(payload.args as Record<string, unknown>)
-                .map(([key, value]) =>
-                  `${key}: ${typeof value === 'string' ? value.slice(0, 60) : JSON.stringify(value).slice(0, 60)}`
-                )
-                .join(', ')
-                .slice(0, 120)
-            : '';
-          return [
-            ...filtered,
-            {
-              id: nextActivityId(),
-              type: 'tool_call',
-              timestamp: Date.now(),
-              toolName: payload.tool,
-              callId: payload.callId,
-              argsPreview: argsStr,
-            },
-          ];
-        });
+        onToolEventTimeline(payload);
       } else if (payload.type === 'tool_result') {
         const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
         setActiveTools((prev) =>
@@ -777,19 +588,7 @@ export function useMessages({
           );
           return [...prev.slice(0, lastIdx), { ...last, toolEvents: updatedEvents }];
         });
-        setActivityTimeline((prev) => [
-          ...prev,
-          {
-            id: nextActivityId(),
-            type: 'tool_result',
-            timestamp: Date.now(),
-            toolName: payload.tool,
-            callId: payload.callId,
-            resultPreview: payload.resultPreview?.slice(0, 120),
-            elapsedMs: payload.elapsedMs,
-            isError: payload.state === 'error',
-          },
-        ]);
+        onToolEventTimeline(payload);
       }
     },
 
@@ -798,38 +597,7 @@ export function useMessages({
     },
 
     onKeepalive: (payload) => {
-      const { phase, elapsedMs, toolName } = payload;
-
-      let hint = '';
-      if (phase === 'waiting_first_token') {
-        if (elapsedMs < 2000) hint = '让我想想...';
-        else if (elapsedMs < 6000) hint = '分析你的问题中...';
-        else if (elapsedMs < 12000) hint = '这个需要好好想一下...';
-        else hint = '还在努力思考，请稍等...';
-      } else if (phase === 'tool_running') {
-        hint = toolName ? `正在使用 ${toolName}...` : '正在调用工具...';
-      } else if (phase === 'waiting_continuation') {
-        hint = '整理工具返回的结果...';
-      } else if (phase === 'streaming') {
-        hint = '继续整理中...';
-      }
-
-      setActivityTimeline((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.type === 'keepalive_hint') {
-          return [...prev.slice(0, -1), { ...last, hint, keepaliveElapsedMs: elapsedMs }];
-        }
-        return [
-          ...prev,
-          {
-            id: nextActivityId(),
-            type: 'keepalive_hint',
-            timestamp: Date.now(),
-            hint,
-            keepaliveElapsedMs: elapsedMs,
-          },
-        ];
-      });
+      onKeepaliveTimeline(payload);
     },
 
     onWorkbenchEvent: (event) => {
@@ -837,8 +605,7 @@ export function useMessages({
     },
 
     onUsage: (usage, isSnapshot) => {
-      usageBatchRef.current.push({ usage, isSnapshot });
-      scheduleUsageFlush();
+      onUsage(usage, isSnapshot);
     },
 
     onModelName: (name) => setModelName(name),
@@ -894,7 +661,7 @@ export function useMessages({
         streamingMessageRef.current = raw;
         fullTextRef.current = raw;
         applyRawToMessages();
-        scheduleStreamUiTick();
+        startPainting();
       }
         if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
         queueMicrotask(() => {
@@ -904,14 +671,14 @@ export function useMessages({
             finalizeFallbackTimerRef.current = null;
           }
           pendingStreamFinalizeRef.current = true;
-          scheduleStreamUiTick();
+          stopPainting();
           try { stream.close(); } catch (e) { console.warn('[useMessages] stream.close', e); }
         });
       }
     });
 
     return () => { unsubscribe(); };
-  }, [oct, getNextMessageId, setMessages, scheduleStreamUiTick]);
+  }, [oct, getNextMessageId, setMessages, startPainting, stopPainting]);
 
   // ── pendingPills: reset on messages change ────────────────────────────────
   useEffect(() => {
@@ -923,13 +690,9 @@ export function useMessages({
     onStatusChange?.(ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
   }, [ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
 
-  // ── streamPaintRafRef / usageFlushRafRef cleanup ───────────────────────────
+  // ── cleanup ────────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      if (cotSyncTimerRef.current != null) {
-        clearTimeout(cotSyncTimerRef.current);
-        cotSyncTimerRef.current = null;
-      }
       if (roundTimeoutRef.current != null) {
         clearTimeout(roundTimeoutRef.current);
         roundTimeoutRef.current = null;
@@ -938,16 +701,120 @@ export function useMessages({
         clearTimeout(finalizeFallbackTimerRef.current);
         finalizeFallbackTimerRef.current = null;
       }
-      if (streamPaintRafRef.current != null) {
-        cancelAnimationFrame(streamPaintRafRef.current);
-        streamPaintRafRef.current = null;
-      }
-      if (usageFlushRafRef.current != null) {
-        cancelAnimationFrame(usageFlushRafRef.current);
-        usageFlushRafRef.current = null;
-      }
+      stopPainting();
     };
-  }, []);
+  }, [stopPainting]);
+
+  async function _sendMessageCore(options: {
+    text: string;
+    displayContent: string;
+    fullContentForAMY: string;
+    isSystem: boolean;
+    newRequestId: string;
+    imageDataUrl?: string;
+    files?: UploadedFile[];
+    workbenchContext?: WorkbenchRoundtripContext;
+  }): Promise<void> {
+    const {
+      text,
+      displayContent,
+      fullContentForAMY,
+      isSystem,
+      newRequestId,
+      imageDataUrl,
+      files,
+      workbenchContext,
+    } = options;
+
+    lastSentRequestId.current = newRequestId;
+    const thinkCmdMatch = text.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
+    if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
+    pendingSystemReplyMap.current.set(newRequestId, isSystem);
+    resetUsage();
+    resetTimeline();
+    streamingMessageRef.current = '';
+    fullTextRef.current = '';
+    stopPainting();
+    pendingStreamFinalizeRef.current = false;
+    if (finalizeFallbackTimerRef.current != null) {
+      clearTimeout(finalizeFallbackTimerRef.current);
+      finalizeFallbackTimerRef.current = null;
+    }
+    typewriter.reset();
+    resetSoundCounter();
+    oct.ingest.reset();
+    if (!isSystem) {
+      setAwaitingResponse(true);
+      setAgentPhase('thinking');
+      startRoundTimeout();
+    }
+    setActiveTools([]);
+    resetWithThinkingPlaceholder();
+    setPendingPills(null);
+    setMessages((prev) => {
+      const next: ChatMessage[] = [
+        ...prev,
+        {
+          id: getNextMessageId(),
+          role: 'user' as const,
+          content: displayContent,
+          timestamp: Date.now(),
+          imageDataUrl: imageDataUrl || undefined,
+          files: files,
+        },
+      ];
+      if (!isSystem) {
+        next.push({
+          id: getNextMessageId(),
+          role: 'assistant' as const,
+          content: '',
+          isStreaming: true,
+          isStreamingRaw: true,
+          timestamp: Date.now(),
+        });
+      }
+      return next;
+    });
+    scroll.scrollAfterUserSend();
+
+    if (!isSystem) {
+      try {
+        oct.stream.abortToIdle();
+        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
+          oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
+        }
+        oct.fsm.onUserTyping();
+        oct.fsm.onUserSubmit();
+        oct.fsm.onRequestStart();
+        oct.ingest.reset();
+        oct.stream.open();
+      } catch (e) {
+        console.warn('[useMessages] oct runtime (_sendMessageCore)', e);
+      }
+    }
+
+    const roundtripContext = workbenchContext ?? workbenchBus.getContext('continue');
+    const result = await ws.send(
+      fullContentForAMY,
+      imageDataUrl,
+      files,
+      transportPacingMs,
+      roundtripContext,
+      newRequestId,
+      activeProject,
+    );
+    if (!result?.success && !isSystem) {
+      clearRoundTimeout();
+      setAwaitingResponse(false);
+      console.warn('[useMessages] Send failed:', result);
+      try {
+        oct.stream.abortToIdle();
+        recoverOctStreamFromEndFailure(oct);
+      } catch (e) {
+        console.warn('[useMessages] send failed cleanup', e);
+      }
+    }
+  }
 
   // ── sendMessage ───────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (
@@ -990,107 +857,18 @@ export function useMessages({
       if (!ok) return;
     }
 
-    const newRequestId = Date.now().toString();
-    lastSentRequestId.current = newRequestId;
     const cmdIsSystem = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
-    const thinkCmdMatch = fullContentForAMY.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
-    if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
-    pendingSystemReplyMap.current.set(newRequestId, cmdIsSystem);
-    streamingMessageRef.current = '';
-    fullTextRef.current = '';
-    streamPaintShownLenRef.current = 0;
-    streamPaintBudgetRef.current = 0;
-    streamPaintLastTsRef.current = 0;
-    pendingStreamFinalizeRef.current = false;
-    if (finalizeFallbackTimerRef.current != null) {
-      clearTimeout(finalizeFallbackTimerRef.current);
-      finalizeFallbackTimerRef.current = null;
-    }
-    if (streamPaintRafRef.current != null) {
-      cancelAnimationFrame(streamPaintRafRef.current);
-      streamPaintRafRef.current = null;
-    }
-    typewriter.reset();
-    resetSoundCounter();
-    oct.ingest.reset();
-    if (!cmdIsSystem) {
-      setAwaitingResponse(true);
-      setAgentPhase('thinking');
-      startRoundTimeout();
-    }
-    setActiveTools([]);
-    setActivityTimeline([]);
-    activityIdCounter.current = 0;
-    setActivityTimeline([{
-      id: nextActivityId(),
-      type: 'thinking_placeholder',
-      timestamp: Date.now(),
-      hint: '让我想想...',
-    }]);
-    setPendingPills(null);
-    setMessages((prev) => {
-      const next: ChatMessage[] = [
-        ...prev,
-        {
-          id: getNextMessageId(),
-          role: 'user' as const,
-          content: displayContent,
-          timestamp: Date.now(),
-          imageDataUrl: imageDataUrl || undefined,
-          files: files,
-        },
-      ];
-      if (!cmdIsSystem) {
-        next.push({
-          id: getNextMessageId(),
-          role: 'assistant' as const,
-          content: '',
-          isStreaming: true,
-          isStreamingRaw: true,
-          timestamp: Date.now(),
-        });
-      }
-      return next;
-    });
-    scroll.scrollAfterUserSend();
-
-    if (!cmdIsSystem) {
-      try {
-        oct.stream.abortToIdle();
-        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
-          oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
-        }
-        oct.fsm.onUserTyping();
-        oct.fsm.onUserSubmit();
-        oct.fsm.onRequestStart();
-        oct.ingest.reset();
-        oct.stream.open();
-      } catch (e) {
-        console.warn('[useMessages] oct runtime (send)', e);
-      }
-    }
-
-    const roundtripContext = workbenchContext ?? workbenchBus.getContext('continue');
-    const result = await ws.send(
+    await _sendMessageCore({
+      text: fullContentForAMY,
+      displayContent,
       fullContentForAMY,
-      imageDataUrl || undefined,
+      isSystem: cmdIsSystem,
+      newRequestId: Date.now().toString(),
+      imageDataUrl: imageDataUrl || undefined,
       files,
-      transportPacingMs,
-      roundtripContext,
-      newRequestId,
-    );
-    if (!result?.success && !cmdIsSystem) {
-      clearRoundTimeout();
-      setAwaitingResponse(false);
-      console.warn('[useMessages] Send failed:', result);
-      try {
-        oct.stream.abortToIdle();
-        recoverOctStreamFromEndFailure(oct);
-      } catch (e) {
-        console.warn('[useMessages] send failed cleanup', e);
-      }
-    }
-  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
+      workbenchContext,
+    });
+  }, [activeProject, getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── quickSend ─────────────────────────────────────────────────────────────
   const quickSend = useCallback((content: string) => {
@@ -1109,97 +887,15 @@ export function useMessages({
       if (!ok) return;
     }
 
-    const newRequestId = Date.now().toString();
-    lastSentRequestId.current = newRequestId;
     const isSystem = isSystemCommand(content.trim());
-    const thinkCmdMatch = content.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
-    if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
-    pendingSystemReplyMap.current.set(newRequestId, isSystem);
-    streamingMessageRef.current = '';
-    fullTextRef.current = '';
-    streamPaintShownLenRef.current = 0;
-    streamPaintBudgetRef.current = 0;
-    streamPaintLastTsRef.current = 0;
-    pendingStreamFinalizeRef.current = false;
-    if (finalizeFallbackTimerRef.current != null) {
-      clearTimeout(finalizeFallbackTimerRef.current);
-      finalizeFallbackTimerRef.current = null;
-    }
-    if (streamPaintRafRef.current != null) {
-      cancelAnimationFrame(streamPaintRafRef.current);
-      streamPaintRafRef.current = null;
-    }
-    typewriter.reset();
-    resetSoundCounter();
-    oct.ingest.reset();
-    if (!isSystem) {
-      setAwaitingResponse(true);
-      setAgentPhase('thinking');
-      startRoundTimeout();
-    }
-    setActiveTools([]);
-    setActivityTimeline([]);
-    activityIdCounter.current = 0;
-    setActivityTimeline([{
-      id: nextActivityId(),
-      type: 'thinking_placeholder',
-      timestamp: Date.now(),
-      hint: '让我想想...',
-    }]);
-    setPendingPills(null);
-    setMessages((prev) => {
-      const next: ChatMessage[] = [
-        ...prev,
-        { id: getNextMessageId(), role: 'user', content: content.trim(), timestamp: Date.now() },
-      ];
-      if (!isSystem) {
-        next.push({
-          id: getNextMessageId(),
-          role: 'assistant' as const,
-          content: '',
-          isStreaming: true,
-          isStreamingRaw: true,
-          timestamp: Date.now(),
-        });
-      }
-      return next;
+    void _sendMessageCore({
+      text: content.trim(),
+      displayContent: content.trim(),
+      fullContentForAMY: content.trim(),
+      isSystem,
+      newRequestId: Date.now().toString(),
     });
-    scroll.scrollAfterUserSend();
-    if (!isSystem) {
-      try {
-        oct.stream.abortToIdle();
-        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
-          oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
-        }
-        oct.fsm.onUserTyping();
-        oct.fsm.onUserSubmit();
-        oct.fsm.onRequestStart();
-        oct.ingest.reset();
-        oct.stream.open();
-      } catch (e) {
-        console.warn('[useMessages] oct runtime (quickSend)', e);
-      }
-    }
-    ws.send(
-      content.trim(),
-      undefined,
-      undefined,
-      transportPacingMs,
-      workbenchBus.getContext('continue'),
-      newRequestId,
-    ).then((result) => {
-      if (!result?.success && !isSystem) {
-        clearRoundTimeout();
-        setAwaitingResponse(false);
-        try {
-          oct.stream.abortToIdle();
-          recoverOctStreamFromEndFailure(oct);
-        } catch (e) {
-          console.warn('[useMessages] quickSend failed cleanup', e);
-        }
-      }
-    });
-  }, [getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProject, getNextMessageId, permissions, scroll.scrollAfterUserSend, oct, ws]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     wsConnected: ws.wsConnected,

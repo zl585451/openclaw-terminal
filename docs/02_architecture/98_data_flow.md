@@ -1,6 +1,12 @@
 # 数据流向总览
 
-> 最后更新：2026-03-20
+> 最后更新：2026-04-26
+
+---
+
+## 前端聊天列表滚动（补充）
+
+当会话消息数超过窗口展示上限时，`useScrollManager` 用 `visibleCount` + `messages.slice(-visibleCount)` 做尾部窗口。用户上滚接近顶部加载更早消息时，`visibleCount` 变大会在 DOM **上方**插入行；实现上在扩大前后记录 `scrollHeight` 并在 `useLayoutEffect` 内补偿 `scrollTop`，避免视口跳变。详见 `src/hooks/useScrollManager.ts`。
 
 ---
 

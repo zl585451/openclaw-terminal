@@ -104,6 +104,19 @@ const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
 const { handleImageGenerate } = require('./image_gen');
+const {
+  startMockScriptAdapterRun,
+  cancelMockScriptAdapterRun,
+  listMockScriptAdapterRuns,
+} = require('./script_adapter/mock_execution');
+const {
+  startBatch: startScriptAdapterBatch,
+  getBatchStatus: getScriptAdapterBatchStatus,
+  listBatches: listScriptAdapterBatches,
+  cancelBatch: cancelScriptAdapterBatch,
+  rerunChapter: rerunScriptAdapterBatchChapter,
+  deleteBatch: deleteScriptAdapterBatch,
+} = require('./script_adapter/batchOrchestrator');
 const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const { startScheduler, stopScheduler } = require('./summarizer/scheduler');
@@ -266,6 +279,7 @@ async function handleChatRequest(request, connection) {
   const userMessage = params?.message || '';
   const attachments = params?.attachments || [];
   const workbenchContext = params?.workbenchContext || params?.canvasContext || null;
+  const projectContext = params?.projectContext || null;
   let keepalivePhase = 'waiting_first_token';
   let keepaliveToolName = null;
   const keepaliveStartTime = Date.now();
@@ -367,6 +381,7 @@ async function handleChatRequest(request, connection) {
     workbenchContext,
     orchestratorResult: orchResult,
     systemPrompt,
+    projectContext,
   });
 
   connection.send({ type: 'event', event: 'agent-phase', phase: 'thinking' });
@@ -452,6 +467,128 @@ async function handleChatRequest(request, connection) {
 }
 
 async function handleTransportMessage(msg, connection) {
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.start') {
+    const run = startMockScriptAdapterRun(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: true,
+      method: msg.method,
+      payload: {
+        type: 'script-adapter-run-started',
+        ...run,
+      },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.cancel') {
+    const result = cancelMockScriptAdapterRun(msg.params?.taskId, msg.params?.reason);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: {
+        type: 'script-adapter-run-cancelled',
+        ...result,
+      },
+      error: result.success ? undefined : { message: result.error || 'cancel failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.list') {
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: true,
+      method: msg.method,
+      payload: {
+        type: 'script-adapter-run-list',
+        runs: listMockScriptAdapterRuns(),
+      },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.start') {
+    const result = await startScriptAdapterBatch(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'batch start failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.status') {
+    const result = getScriptAdapterBatchStatus(msg.params?.batchId);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'batch not found' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.list') {
+    const result = listScriptAdapterBatches(msg.params || {});
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: true,
+      method: msg.method,
+      payload: result,
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.cancel') {
+    const result = cancelScriptAdapterBatch(msg.params?.batchId);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'batch cancel failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.rerunChapter') {
+    const result = rerunScriptAdapterBatchChapter(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'rerun failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.batch.delete') {
+    const result = deleteScriptAdapterBatch(msg.params?.batchId);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'delete failed' },
+    });
+    return true;
+  }
+
   if (msg?.type === 'req' && msg?.method === 'image.generate') {
     const imgProvider = String(config.getEnvOrConfig('IMAGE_PROVIDER') || 'minimax').trim().toLowerCase();
     const imgBaseRaw = String(config.getEnvOrConfig('IMAGE_BASE_URL') || '').trim();

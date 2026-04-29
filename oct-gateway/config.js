@@ -74,6 +74,10 @@ const GOOGLE_SCOPED_KEYS = new Set([
   'GOOGLE_AI_BASE_URL',
   'GOOGLE_HTTPS_PROXY',
   'GOOGLE_TOOLS_MODE',
+  'GOOGLE_API_MODE',
+  'GOOGLE_CLOUD_PROJECT',
+  'GOOGLE_CLOUD_LOCATION',
+  'GOOGLE_GENAI_API_VERSION',
 ]);
 
 function loadGoogleScopedConfig() {
@@ -328,17 +332,33 @@ const MODEL_REGISTRY = {
     maxTokens: 4096,
   },
   // ─── DeepSeek 官方 API ───
-  'deepseek-chat': {
+  'deepseek-v4-flash': {
     provider: 'deepseek',
-    label: 'DeepSeek Chat（官方 API）',
+    label: 'DeepSeek V4 Flash（通用，推荐）',
     supportsTools: true,
     supportsStreamOptions: false,  // DeepSeek 官方不支持
+    supportsThinking: false,
+    maxTokens: 8192,
+  },
+  'deepseek-v4-pro': {
+    provider: 'deepseek',
+    label: 'DeepSeek V4 Pro（深度推理）',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'deepseek-chat': {
+    provider: 'deepseek',
+    label: 'DeepSeek Chat（旧版，2026/07/24 弃用）',
+    supportsTools: true,
+    supportsStreamOptions: false,
     supportsThinking: false,
     maxTokens: 4096,
   },
   'deepseek-reasoner': {
     provider: 'deepseek',
-    label: 'DeepSeek Reasoner（官方深度推理）',
+    label: 'DeepSeek Reasoner（旧版，2026/07/24 弃用）',
     supportsTools: false,
     supportsStreamOptions: false,
     supportsThinking: true,
@@ -380,6 +400,14 @@ const MODEL_REGISTRY = {
   'gemini-3.1-pro-preview': {
     provider: 'google',
     label: 'Gemini 3.1 Pro Preview',
+    supportsTools: false,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
+  'gemini-3.1-flash-lite-preview': {
+    provider: 'google',
+    label: 'Gemini 3.1 Flash-Lite Preview',
     supportsTools: false,
     supportsStreamOptions: false,
     supportsThinking: true,
@@ -517,7 +545,9 @@ function loadAvailableModels() {
       { id: 'MiniMax-M2.5', provider: 'bailian' },
       { id: 'glm-5', provider: 'bailian' },
       { id: 'glm-4.7', provider: 'bailian' },
-      { id: 'deepseek-chat', provider: 'deepseek' },
+      { id: 'deepseek-v4-flash', provider: 'deepseek' },
+      { id: 'deepseek-v4-pro',   provider: 'deepseek' },
+      { id: 'deepseek-chat',     provider: 'deepseek' },
     ];
   }
   return models;
@@ -740,6 +770,12 @@ function readBoolConfig(key, fallback = false) {
   return /^(1|true|yes|on)$/i.test(String(raw).trim());
 }
 
+function readPositiveIntConfig(key, fallback) {
+  const parsed = Number(getEnvOrConfig(key));
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
 function readOptionalBoolConfig(key) {
   const raw = getEnvOrConfig(key);
   if (raw === '' || raw === null || raw === undefined) return null;
@@ -959,12 +995,21 @@ const defaultVectorRecallConfig = {
   dbPath: process.env.VECTOR_DB_PATH || path.join(os.homedir(), '.openclaw', 'vector_recall', 'vectors.db'),
   recall: {
     threshold: parseFloat(process.env.VECTOR_RECALL_THRESHOLD || '0.75'),
+    autoThreshold: parseFloat(process.env.VECTOR_RECALL_AUTO_THRESHOLD || '0.78'),
+    strongThreshold: parseFloat(process.env.VECTOR_RECALL_STRONG_THRESHOLD || '0.84'),
+    recallIntentThreshold: parseFloat(process.env.VECTOR_RECALL_INTENT_THRESHOLD || '0.72'),
+    manualThreshold: parseFloat(process.env.VECTOR_RECALL_MANUAL_THRESHOLD || '0.62'),
+    candidateThreshold: parseFloat(process.env.VECTOR_RECALL_CANDIDATE_THRESHOLD || '0.58'),
     topK: parseInt(process.env.VECTOR_RECALL_TOP_K || '3', 10),
+    candidateTopK: parseInt(process.env.VECTOR_RECALL_CANDIDATE_TOP_K || '12', 10),
     maxLatencyMs: parseInt(process.env.VECTOR_RECALL_MAX_LATENCY || '2000', 10),
     minInputLen: 4,
+    minSignalTokens: 2,
+    minLexicalOverlap: 0.18,
     cooldownMs: 5000,
     excludeSameSession: true,
     sameSessionWindowMs: 10 * 60 * 1000,
+    maxInjectCharsPerHit: 420,
   },
   write: {
     async: true,
@@ -1047,6 +1092,13 @@ function normalizeAgentPermissions(raw) {
 const config = {
   PORT: parseInt(process.env.OCT_GATEWAY_PORT || '18789', 10),
   ENABLE_BACKGROUND_TASK_DISPATCH: readBoolConfig('ENABLE_BACKGROUND_TASK_DISPATCH', false),
+  toolResultSummarizer: {
+    enabled: readBoolConfig('TOOL_RESULT_SUMMARIZER_ENABLED', false),
+    triggerChars: readPositiveIntConfig('TOOL_RESULT_SUMMARIZER_TRIGGER_CHARS', 2400),
+    targetChars: readPositiveIntConfig('TOOL_RESULT_SUMMARIZER_TARGET_CHARS', 600),
+    fallbackKeepChars: readPositiveIntConfig('TOOL_RESULT_SUMMARIZER_FALLBACK_KEEP', 1500),
+    tools: String(getEnvOrConfig('TOOL_RESULT_SUMMARIZER_TOOLS') || '').trim(),
+  },
 
   DASHSCOPE_API_KEY: pickKey(process.env.DASHSCOPE_API_KEY, _fileConfig.DASHSCOPE_API_KEY, legacyConfig.DASHSCOPE_API_KEY),
   DASHSCOPE_BASE_URL: process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1',
@@ -1109,13 +1161,26 @@ const config = {
     return merged;
   })(),
   ai_library: (() => {
-    const def = {
-      enabled: true,
-      url: 'http://127.0.0.1:8001',
-      timeout_ms: 3000,
-      default_top_k: 3,
-    };
+      const def = {
+        enabled: true,
+        url: 'http://127.0.0.1:8001',
+        timeout_ms: 3000,
+        default_top_k: 3,
+        knowledge_search_enabled: false,
+      };
     const fromFile = _fileConfig.ai_library && typeof _fileConfig.ai_library === 'object' ? _fileConfig.ai_library : {};
+    return { ...def, ...fromFile };
+  })(),
+
+  /** 内容创作 script_adapter：真实 LLM 开关与专用端点（空则走 SUMMARIZER_* / 当前 provider） */
+  scriptAdapter: (() => {
+    const def = {
+      realAgents: String(getEnvOrConfig('SCRIPT_ADAPTER_REAL_AGENTS') || '').trim(),
+      baseUrl: String(getEnvOrConfig('SCRIPT_ADAPTER_BASE_URL') || '').trim(),
+      apiKey: String(getEnvOrConfig('SCRIPT_ADAPTER_API_KEY') || '').trim(),
+      model: String(getEnvOrConfig('SCRIPT_ADAPTER_MODEL') || '').trim(),
+    };
+    const fromFile = _fileConfig.scriptAdapter && typeof _fileConfig.scriptAdapter === 'object' ? _fileConfig.scriptAdapter : {};
     return { ...def, ...fromFile };
   })(),
 
@@ -1135,6 +1200,13 @@ const config = {
     if (raw === 'on' || raw === 'off' || raw === 'auto') return raw;
     return 'auto';
   })(),
+  GOOGLE_API_MODE: (() => {
+    const raw = String(getEnvOrConfig('GOOGLE_API_MODE') || '').trim().toLowerCase();
+    return raw || 'native';
+  })(),
+  GOOGLE_CLOUD_PROJECT: getEnvOrConfig('GOOGLE_CLOUD_PROJECT') || '',
+  GOOGLE_CLOUD_LOCATION: getEnvOrConfig('GOOGLE_CLOUD_LOCATION') || '',
+  GOOGLE_GENAI_API_VERSION: getEnvOrConfig('GOOGLE_GENAI_API_VERSION') || '',
 };
 
 Object.defineProperty(config, 'DASHSCOPE_MODEL', {

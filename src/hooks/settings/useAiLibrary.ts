@@ -8,8 +8,7 @@ export interface AiLibraryStatus {
 }
 
 export function useAiLibrary() {
-  const [aiLibAutoStart, setAiLibAutoStart] = useState(false);
-  const [aiLibPath, setAiLibPath] = useState('');
+  const [aiLibAutoStart, setAiLibAutoStart] = useState(true);
   const [aiLibPort, setAiLibPort] = useState(8001);
   const [aiLibStatus, setAiLibStatus] = useState<AiLibraryStatus | null>(null);
   const [aiLibSaving, setAiLibSaving] = useState(false);
@@ -40,7 +39,6 @@ export function useAiLibrary() {
         .then((r: any) => {
           if (r?.success && r.data) {
             setAiLibAutoStart(!!r.data.OCT_AI_LIBRARY_AUTO_START);
-            setAiLibPath(String(r.data.OCT_AI_LIBRARY_PATH || ''));
             setAiLibPort(Number(r.data.OCT_AI_LIBRARY_PORT) || 8001);
             setAiLibStatus({
               healthy: !!r.data.healthy,
@@ -57,8 +55,6 @@ export function useAiLibrary() {
   return {
     aiLibAutoStart,
     setAiLibAutoStart,
-    aiLibPath,
-    setAiLibPath,
     aiLibPort,
     setAiLibPort,
     aiLibStatus,
