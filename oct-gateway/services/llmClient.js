@@ -93,7 +93,17 @@ function buildHeaders(baseUrl, apiKey) {
  * script_adapter：SCRIPT_ADAPTER_* → SUMMARIZER_*（含 memory.summarizer.api）→ 当前 Gateway provider。
  */
 function resolveProviderFor(purpose = 'general') {
-  const prefixes = purpose === 'script_adapter' ? ['SCRIPT_ADAPTER', 'SUMMARIZER'] : ['SUMMARIZER'];
+  if (purpose === 'script_adapter') {
+    const scriptAdapterProvider = resolveScriptAdapterProvider();
+    if (scriptAdapterProvider) return scriptAdapterProvider;
+    const currentProvider = resolveCurrentProvider();
+    if (currentProvider) return currentProvider;
+    const summarizerProvider = resolveSummarizerProvider();
+    if (summarizerProvider) return summarizerProvider;
+    throw new Error('LLM_NOT_CONFIGURED: 当前 provider 不完整,请先在设置面板配置 baseUrl/apiKey/model');
+  }
+
+  const prefixes = ['SUMMARIZER'];
   for (const prefix of prefixes) {
     let baseUrl;
     let apiKey;
@@ -122,14 +132,43 @@ function resolveProviderFor(purpose = 'general') {
       return { baseUrl: baseUrl.replace(/\/$/, ''), apiKey, model };
     }
   }
+  const currentProvider = resolveCurrentProvider();
+  if (currentProvider) return currentProvider;
+  throw new Error('LLM_NOT_CONFIGURED: 当前 provider 不完整,请先在设置面板配置 baseUrl/apiKey/model');
+}
+
+function resolveScriptAdapterProvider() {
+  const sa = config.scriptAdapter && typeof config.scriptAdapter === 'object' ? config.scriptAdapter : {};
+  const baseUrl = String(sa.baseUrl || config.getEnvOrConfig?.('SCRIPT_ADAPTER_BASE_URL') || '').trim();
+  const apiKey = String(sa.apiKey || config.getEnvOrConfig?.('SCRIPT_ADAPTER_API_KEY') || '').trim();
+  const model = String(sa.model || config.getEnvOrConfig?.('SCRIPT_ADAPTER_MODEL') || '').trim();
+  if (!baseUrl || !apiKey || !model) return null;
+  return { baseUrl: baseUrl.replace(/\/$/, ''), apiKey, model, source: 'script_adapter' };
+}
+
+function resolveSummarizerProvider() {
+  const baseUrl = String(
+    config.getEnvOrConfig?.('SUMMARIZER_BASE_URL') || config.memory?.summarizer?.api?.baseUrl || '',
+  ).trim();
+  const apiKey = String(
+    config.getEnvOrConfig?.('SUMMARIZER_API_KEY') || config.memory?.summarizer?.api?.apiKey || '',
+  ).trim();
+  const model = String(
+    config.getEnvOrConfig?.('SUMMARIZER_MODEL') || config.memory?.summarizer?.api?.model || '',
+  ).trim();
+  if (!baseUrl || !apiKey || !model) return null;
+  return { baseUrl: baseUrl.replace(/\/$/, ''), apiKey, model, source: 'summarizer' };
+}
+
+function resolveCurrentProvider() {
   const providerConfig = config.getProviderConfig?.() || {};
   const baseUrl = String(providerConfig.baseUrl || '').trim().replace(/\/$/, '');
   const apiKey = String(providerConfig.apiKey || '').trim();
   const model = String(providerConfig.model || config.DASHSCOPE_MODEL || '').trim();
   if (!baseUrl || !apiKey || !model) {
-    throw new Error('LLM_NOT_CONFIGURED: 当前 provider 不完整,请先在设置面板配置 baseUrl/apiKey/model');
+    return null;
   }
-  return { baseUrl, apiKey, model };
+  return { baseUrl, apiKey, model, source: 'current_provider' };
 }
 
 module.exports = {

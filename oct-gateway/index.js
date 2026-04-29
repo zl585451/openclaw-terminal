@@ -121,6 +121,15 @@ const {
   rerunChapter: rerunScriptAdapterBatchChapter,
   deleteBatch: deleteScriptAdapterBatch,
 } = require('./script_adapter/batchOrchestrator');
+const {
+  startIntake: startScriptAdapterIntake,
+} = require('./script_adapter/intakeOrchestrator');
+const {
+  startAnalysis: startScriptAdapterAnalysis,
+} = require('./script_adapter/businessAnalysisOrchestrator');
+const {
+  startProductionHandoff: startScriptAdapterProductionHandoff,
+} = require('./script_adapter/productionHandoffOrchestrator');
 const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const { startScheduler, stopScheduler } = require('./summarizer/scheduler');
@@ -471,6 +480,45 @@ async function handleChatRequest(request, connection) {
 }
 
 async function handleTransportMessage(msg, connection) {
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.intake.start') {
+    const result = await startScriptAdapterIntake(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'intake failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.analysis.start') {
+    const result = await startScriptAdapterAnalysis(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'analysis failed' },
+    });
+    return true;
+  }
+
+  if (msg?.type === 'req' && msg?.method === 'scriptAdapter.production.handoff') {
+    const result = await startScriptAdapterProductionHandoff(msg.params || {}, connection, log);
+    connection.send({
+      type: 'res',
+      id: msg.id,
+      ok: Boolean(result.success),
+      method: msg.method,
+      payload: result,
+      error: result.success ? undefined : { message: result.error || 'production handoff failed' },
+    });
+    return true;
+  }
+
   if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.start') {
     const run = startChapterPipelineRun(msg.params || {}, connection, log);
     connection.send({

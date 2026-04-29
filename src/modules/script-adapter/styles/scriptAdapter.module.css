@@ -1132,6 +1132,81 @@
   line-height: 1.45;
 }
 
+.nextAgentBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(30, 117, 91, 0.14);
+  border-radius: 12px;
+  background: rgba(239, 247, 242, 0.92);
+}
+
+.nextAgentBox strong {
+  color: #15191b;
+  font-size: 14px;
+}
+
+.nextAgentBox span,
+.nextAgentBox em {
+  color: #667075;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.stateEvidenceBanner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid rgba(30, 117, 91, 0.16);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(239, 159, 39, 0.13), transparent 34%),
+    rgba(239, 247, 242, 0.9);
+}
+
+.stateEvidenceBanner strong {
+  display: block;
+  color: #15191b;
+  font-size: 13px;
+}
+
+.stateEvidenceBanner span {
+  display: block;
+  margin-top: 3px;
+  color: #596165;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.stateEvidenceBanner details {
+  min-width: 220px;
+}
+
+.stateEvidenceBanner summary {
+  color: #1e755b;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.compactEvidenceList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.evidenceGroupTitle {
+  margin: 12px 0 7px;
+  color: #667075;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .backgroundStepList {
   display: flex;
   flex-direction: column;
@@ -1140,6 +1215,7 @@
 
 .backgroundStepDone,
 .backgroundStepRunning,
+.backgroundStepFailed,
 .backgroundStepPending {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
@@ -1161,12 +1237,18 @@
   background: rgba(255, 248, 232, 0.92);
 }
 
+.backgroundStepFailed {
+  border-color: rgba(190, 58, 52, 0.26);
+  background: rgba(255, 241, 239, 0.92);
+}
+
 .backgroundStepPending {
   opacity: 0.72;
 }
 
 .backgroundStepDone span,
 .backgroundStepRunning span,
+.backgroundStepFailed span,
 .backgroundStepPending span {
   display: inline-flex;
   align-items: center;
@@ -1190,8 +1272,14 @@
   color: #ffffff;
 }
 
+.backgroundStepFailed span {
+  background: #be3a34;
+  color: #ffffff;
+}
+
 .backgroundStepDone strong,
 .backgroundStepRunning strong,
+.backgroundStepFailed strong,
 .backgroundStepPending strong {
   color: #15191b;
   font-size: 12px;
@@ -1200,6 +1288,7 @@
 
 .backgroundStepDone div,
 .backgroundStepRunning div,
+.backgroundStepFailed div,
 .backgroundStepPending div {
   display: flex;
   flex-direction: column;
@@ -1208,6 +1297,7 @@
 
 .backgroundStepDone em,
 .backgroundStepRunning em,
+.backgroundStepFailed em,
 .backgroundStepPending em {
   color: #667075;
   font-size: 11px;
@@ -2582,6 +2672,31 @@
   background:
     radial-gradient(circle at 100% 0%, rgba(30, 117, 91, 0.14), transparent 34%),
     linear-gradient(135deg, rgba(239, 247, 242, 0.98), rgba(255, 255, 253, 0.98));
+}
+
+.deliveryFailedCard {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid rgba(191, 60, 50, 0.24);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(191, 60, 50, 0.1), transparent 34%),
+    linear-gradient(135deg, rgba(255, 242, 240, 0.98), rgba(255, 255, 253, 0.98));
+}
+
+.deliveryFailedCard h2 {
+  margin: 6px 0 6px;
+  color: #101718;
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.deliveryFailedCard p {
+  margin: 0;
+  color: #73413b;
+  font-size: 13px;
+  line-height: 1.65;
 }
 
 .deliveryCompleteCard h2 {
@@ -5248,7 +5363,8 @@
   .teamLockBox,
   .executionImpactBox,
   .queueSummaryGrid,
-  .intakeResultHeader {
+  .intakeResultHeader,
+  .stateEvidenceBanner {
     grid-template-columns: 1fr;
   }
 
@@ -6202,6 +6318,16 @@
   border: 1px solid rgba(191, 60, 50, 0.22);
   border-radius: 12px;
   background: rgba(255, 242, 240, 0.98);
+}
+
+.batchRunErrorText {
+  max-width: 420px;
+  overflow: hidden;
+  color: #9a352e;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .batchRunRowMain,

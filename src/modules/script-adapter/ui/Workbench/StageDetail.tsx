@@ -198,7 +198,7 @@ export function StageDetail() {
         <MetricCard label="负责角色" value={agent?.role ?? stage.name} sub="制作团队成员" />
         <MetricCard label="当前产物" value={stage.artifactCount} sub="本阶段已产出" />
         <MetricCard label="当前状态" value={STAGE_STATUS_LABEL[stage.status] ?? '待执行'} sub={stage.status === 'running' ? '正在处理' : '等待推进'} />
-        <MetricCard label="人工复核" value={stage.requiresHumanReview ? '需要' : '不需要'} sub="进入下一步前" />
+        <MetricCard label="质量检查" value={stage.requiresHumanReview ? '需要关注' : '自动通过'} sub="非阻塞" />
       </div>
 
       <div className={styles.contractGrid}>

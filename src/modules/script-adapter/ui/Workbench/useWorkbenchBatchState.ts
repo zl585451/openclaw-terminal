@@ -7,7 +7,12 @@ import {
 } from '../../services/gatewayBatch';
 import type { BatchJob, ChapterRunRecord } from '../../types/batch';
 
-export function useWorkbenchBatchState() {
+interface UseWorkbenchBatchStateOptions {
+  autoResumeActiveBatch?: boolean;
+}
+
+export function useWorkbenchBatchState(options: UseWorkbenchBatchStateOptions = {}) {
+  const { autoResumeActiveBatch = true } = options;
   const [batchHistory, setBatchHistory] = useState<BatchJob[]>([]);
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [currentBatch, setCurrentBatch] = useState<BatchJob | null>(null);
@@ -20,7 +25,9 @@ export function useWorkbenchBatchState() {
     if (!result.success) return;
     const nextBatches = result.batches || [];
     setBatchHistory(nextBatches);
-    const runningBatch = nextBatches.find((item) => item.status === 'running' || item.status === 'paused') ?? null;
+    const runningBatch = autoResumeActiveBatch
+      ? nextBatches.find((item) => item.status === 'running' || item.status === 'paused') ?? null
+      : null;
     setCurrentBatchId(preferBatchId || currentBatchIdRef.current || runningBatch?.id || null);
   };
 
@@ -33,7 +40,7 @@ export function useWorkbenchBatchState() {
 
   useEffect(() => {
     void refreshBatchHistory();
-  }, []);
+  }, [autoResumeActiveBatch]);
 
   useEffect(() => {
     if (!currentBatchId) {

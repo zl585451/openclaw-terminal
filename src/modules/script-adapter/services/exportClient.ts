@@ -278,7 +278,7 @@ function buildSingleDocxPayload(
     { label: '项目', value: options.bookTitle || sheet.taskTitle || '多人演播试产' },
     { label: '章节范围', value: options.chapterRange || adapted?.payload?.chapterTitle || sheet.taskTitle || '单章' },
     { label: '生成时间', value: new Date(sheet.createdAt).toLocaleString('zh-CN') },
-    { label: '试产模式', value: options.executionMode === 'real' ? '真实 Agent 试产' : '模拟演示' },
+    { label: '执行方式', value: options.executionMode === 'real' ? '真实 Agent 制作' : '未启用真实 Agent' },
     { label: 'BGM/SFX', value: includeBgmSfx ? '已启用' : '未启用' },
   ];
   const sections: Array<{ title: string; level: 1 | 2 | 3; blocks: any[] }> = [];
@@ -388,7 +388,7 @@ function buildBatchDocxPayload(batch: BatchJob, chapterRuns: ChapterRunRecord[])
     { label: '项目', value: batch.bookTitle },
     { label: '章节范围', value: formatChapterRange(batch.selectedChapterIndices) },
     { label: '生成时间', value: new Date(batch.createdAt).toLocaleString('zh-CN') },
-    { label: '试产模式', value: batch.config?.executionMode === 'real' ? '真实 Agent 试产' : '模拟演示' },
+    { label: '执行方式', value: batch.config?.executionMode === 'real' ? '真实 Agent 制作' : '未启用真实 Agent' },
     { label: '完成情况', value: `${batch.completedChapters}/${batch.totalChapters} 完成，${batch.failedChapters} 失败` },
   ];
   const sections: Array<{ title: string; level: 1 | 2 | 3; blocks: any[] }> = [];

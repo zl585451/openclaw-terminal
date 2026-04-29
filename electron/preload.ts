@@ -25,6 +25,12 @@ const electronAPI = {
   cancelScriptAdapterRun: (payload: { taskId: string; reason?: string }) =>
     ipcRenderer.invoke('script-adapter-run-cancel', payload),
   listScriptAdapterRuns: () => ipcRenderer.invoke('script-adapter-run-list'),
+  startScriptAdapterIntake: (payload: Record<string, unknown>) =>
+    ipcRenderer.invoke('script-adapter-intake-start', payload),
+  startScriptAdapterAnalysis: (payload: Record<string, unknown>) =>
+    ipcRenderer.invoke('script-adapter-analysis-start', payload),
+  startScriptAdapterProductionHandoff: (payload: Record<string, unknown>) =>
+    ipcRenderer.invoke('script-adapter-production-handoff', payload),
   scriptAdapterBatch: {
     start: (payload: {
       bookId: string;

@@ -43,6 +43,13 @@
     "timeout_ms": 3000,
     "default_top_k": 3
   },
+  "scriptAdapter": {
+    "_comment": "有声书台本 Agent 配置。realAgents: 'off'=全 mock, 'all'=全部真实 LLM, 'agent-id1,agent-id2'=指定 agent。baseUrl/apiKey/model 留空时复用主 gateway provider。",
+    "realAgents": "off",
+    "baseUrl": "",
+    "apiKey": "",
+    "model": ""
+  },
   "AGENT_PERMISSIONS": {
     "shellCommands": false,
     "fileWrite": false,

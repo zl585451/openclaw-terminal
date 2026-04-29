@@ -45,6 +45,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
 
   const executionSheetRef = useRef(executionSheet);
   executionSheetRef.current = executionSheet;
+  const shouldAutoResumeExistingBatch = !taskContract;
   const {
     batchHistory,
     currentBatchId,
@@ -54,7 +55,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
     currentBatchIdRef,
     refreshBatchHistory,
     loadBatchStatus,
-  } = useWorkbenchBatchState();
+  } = useWorkbenchBatchState({ autoResumeActiveBatch: shouldAutoResumeExistingBatch });
 
   const currentChapter = chapters.find((chapter) => chapter.id === project?.meta.currentChapterId) ?? chapters[0];
   const retryDeliveryOptions = taskContract?.deliveryOptions ?? DEFAULT_DELIVERY_OPTIONS;
@@ -98,7 +99,7 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
       source: 'content-workbench',
       sourceText: '',
       config: {
-        realAgents: 'off',
+        realAgents: 'all',
         includePerformanceDesign: retryDeliveryOptions.cvDirections || retryDeliveryOptions.bgmSfx,
         deliveryOptions: retryDeliveryOptions,
       },

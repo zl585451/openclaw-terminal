@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import type { BatchJob, ChapterRunRecord } from '../../types/batch';
-import { approveGatewayGate, rejectGatewayGate } from '../../services/gatewayBatch';
 import { ReviewGatePreview } from './ReviewGatePreview';
 import { DeliveryPreview } from './DeliveryPreview';
 import styles from '../../styles/scriptAdapter.module.css';
@@ -45,7 +44,8 @@ export function BatchProgressView({
   const visible = sortedRuns.slice(start, Math.min(sortedRuns.length, start + Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + 8));
   const currentRun = sortedRuns.find((run) => run.chapterIndex === expandedChapterIndex && run.sheet);
   const batchVoiceRegistry = batch.config?.sharedContext?.voiceRegistry || [];
-  const completed = batch.status === 'completed';
+  const completed = batch.status === 'completed' && batch.failedChapters === 0;
+  const failedBatch = batch.status === 'failed' || batch.failedChapters > 0;
   const progressPercent = batch.totalChapters > 0
     ? Math.round(((batch.completedChapters + batch.failedChapters) / batch.totalChapters) * 100)
     : 0;
@@ -73,10 +73,23 @@ export function BatchProgressView({
         </div>
       ) : null}
 
+      {failedBatch ? (
+        <div className={styles.deliveryFailedCard}>
+          <div>
+            <div className={styles.workOrderKicker}>执行失败</div>
+            <h2>本批次有章节失败，暂不能导出交付物。</h2>
+            <p>
+              已完成 {batch.completedChapters}/{batch.totalChapters} 章，失败 {batch.failedChapters} 章。
+              请查看失败章节错误，修复后重跑。
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className={styles.batchProgressHeader}>
         <div>
           <div className={styles.workOrderKicker}>批次进度</div>
-          <h2>{completed ? '已完成' : batch.status === 'running' ? '正在试产' : '批次状态'}</h2>
+          <h2>{completed ? '已完成' : failedBatch ? '执行失败' : batch.status === 'running' ? '正在制作' : '批次状态'}</h2>
           <p>{batch.bookTitle}</p>
         </div>
         <div className={styles.batchProgressActions}>
@@ -107,8 +120,7 @@ export function BatchProgressView({
             {visible.map((run) => {
               const checked = run.status === 'completed';
               const failed = run.status === 'failed';
-              const awaitingReview = run.status === 'awaiting_review';
-              const symbol = checked ? '✓' : failed ? '✗' : awaitingReview ? '⏸' : run.status === 'running' ? '⟳' : '○';
+              const symbol = checked ? '✓' : failed ? '✗' : run.status === 'awaiting_review' ? '⏸' : run.status === 'running' ? '⟳' : '○';
               return (
                 <div
                   key={`${run.chapterIndex}-${run.attempt || 1}`}
@@ -130,54 +142,15 @@ export function BatchProgressView({
                       重跑
                     </button>
                   ) : null}
+                  {failed && run.errorMessage ? (
+                    <div className={styles.batchRunErrorText}>{run.errorMessage}</div>
+                  ) : null}
                 </div>
               );
             })}
           </div>
         </div>
       </div>
-
-      {sortedRuns.some((run) => run.status === 'awaiting_review') ? (
-        <div className={styles.gateReviewBlock}>
-          {sortedRuns
-            .filter((run) => run.status === 'awaiting_review' && run.pendingGateId)
-            .map((run) => (
-              <div key={run.id}>
-                <div className={styles.gateReviewActions}>
-                  <div>
-                    <strong>质检完成，等待你复核</strong>
-                    <p>
-                      {run.chapterTitle || `第 ${run.chapterIndex + 1} 章`}{' '}
-                      的质检节点已暂停，确认后继续打包；拒绝则重跑；跳过则标记此章待人工处理。
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className={styles.confirmStartButton}
-                    onClick={() => void approveGatewayGate(batch.id, run.pendingGateId!, '').then(onRefresh)}
-                  >
-                    ✓ 批准，继续制作
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.ghostButton}
-                    onClick={() => void rejectGatewayGate(batch.id, run.pendingGateId!, 'rerun').then(onRefresh)}
-                  >
-                    🔁 重跑此章
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.ghostButton}
-                    onClick={() => void rejectGatewayGate(batch.id, run.pendingGateId!, 'skip_flag').then(onRefresh)}
-                  >
-                    ⏭ 跳过，标记待处理
-                  </button>
-                </div>
-                <ReviewGatePreview run={run} bookId={batch.bookId} />
-              </div>
-            ))}
-        </div>
-      ) : null}
 
       {batchVoiceRegistry.length > 0 ? (
         <details className={styles.voiceRegistryPanel}>
@@ -212,6 +185,7 @@ export function BatchProgressView({
       {currentRun?.sheet ? (
         <div className={styles.batchExpandedSheet}>
           <div className={styles.sectionTitle}>展开产物预览</div>
+          <ReviewGatePreview run={currentRun} bookId={batch.bookId} />
           <DeliveryPreview sheet={currentRun.sheet} />
         </div>
       ) : null}

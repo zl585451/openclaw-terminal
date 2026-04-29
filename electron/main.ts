@@ -1903,7 +1903,13 @@ function handleMessage(msg: any) {
       console.log('[OCT] Response: ok=', msg.ok, 'payload=', msg.payload ? JSON.stringify(msg.payload).slice(0, 200) : null);
       if (
         typeof msg.method === 'string'
-        && (msg.method.startsWith('scriptAdapter.run.') || msg.method.startsWith('scriptAdapter.batch.'))
+        && (
+          msg.method.startsWith('scriptAdapter.run.')
+          || msg.method.startsWith('scriptAdapter.batch.')
+          || msg.method.startsWith('scriptAdapter.intake.')
+          || msg.method.startsWith('scriptAdapter.analysis.')
+          || msg.method.startsWith('scriptAdapter.production.')
+        )
       ) {
         const pending = scriptAdapterPendingRequests.get(String(msg.id || ''));
         if (pending) {
@@ -4749,6 +4755,18 @@ ipcMain.handle('script-adapter-run-cancel', (_event, payload: { taskId: string; 
 
 ipcMain.handle('script-adapter-run-list', () => {
   return sendScriptAdapterRunRequest('scriptAdapter.run.list', {});
+});
+
+ipcMain.handle('script-adapter-intake-start', (_event, payload: Record<string, unknown>) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.intake.start', payload || {});
+});
+
+ipcMain.handle('script-adapter-analysis-start', (_event, payload: Record<string, unknown>) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.analysis.start', payload || {});
+});
+
+ipcMain.handle('script-adapter-production-handoff', (_event, payload: Record<string, unknown>) => {
+  return sendScriptAdapterRunRequest('scriptAdapter.production.handoff', payload || {});
 });
 
 ipcMain.handle('script-adapter-batch-start', (_event, payload: {

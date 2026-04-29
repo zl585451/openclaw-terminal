@@ -46,11 +46,35 @@ async function runChapterAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx
     }
 
     await wait(360, signal);
-    const artifact = await createArtifactForAgent(agent.agentId, agent.displayName, {
-      sourceText: ctx.sourceText,
-      agent,
-      artifacts: currentSheet.artifacts || {},
-    });
+    let artifact;
+    try {
+      artifact = await createArtifactForAgent(agent.agentId, agent.displayName, {
+        ...ctx,
+        sourceText: ctx.sourceText,
+        agent,
+        artifacts: currentSheet.artifacts || {},
+      });
+    } catch (error) {
+      const reason = error?.message || String(error);
+      run = {
+        ...run,
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        durationMs: run.startedAt ? Date.now() - new Date(run.startedAt).getTime() : undefined,
+        progressSummary: reason,
+        progressPercent: run.progressPercent || 88,
+        error: reason,
+      };
+      currentSheet = {
+        ...updateAgentRun(currentSheet, runIndex, run),
+        overallStatus: 'failed',
+        updatedAt: new Date().toISOString(),
+      };
+      onSheetUpdate?.(currentSheet);
+      emit('agent_failed', { agentId: agent.agentId, run, error: reason });
+      error.sheet = currentSheet;
+      throw error;
+    }
     const completedAt = new Date().toISOString();
     run = {
       ...run,
@@ -80,15 +104,6 @@ async function runChapterAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx
     const gate = currentSheet.gates.find((item) => item.afterAgentId === agent.agentId && item.status === 'pending');
     if (gate) {
       emit('gate_reached', { gate });
-      if (ctx.haltOnPendingQualityGate && gate.gateType === 'quality_review') {
-        currentSheet = {
-          ...currentSheet,
-          overallStatus: 'awaiting_review',
-          updatedAt: new Date().toISOString(),
-        };
-        onSheetUpdate?.(currentSheet);
-        return currentSheet;
-      }
       await wait(500, signal);
       const approvedGate = { ...gate, status: 'approved', relatedArtifactId: artifact.artifactId };
       currentSheet = {

@@ -230,6 +230,18 @@ export interface ElectronAPI {
       error?: string;
     }>;
   }>;
+  startScriptAdapterIntake?: (payload: UnknownRecord) => Promise<ApiResult & {
+    intakeRun?: UnknownRecord;
+    result?: UnknownRecord;
+  }>;
+  startScriptAdapterAnalysis?: (payload: UnknownRecord) => Promise<ApiResult & {
+    analysisRun?: UnknownRecord;
+    result?: UnknownRecord;
+  }>;
+  startScriptAdapterProductionHandoff?: (payload: UnknownRecord) => Promise<ApiResult & {
+    productionRun?: UnknownRecord;
+    result?: UnknownRecord;
+  }>;
   scriptAdapterBatch?: {
     start: (payload: {
       bookId: string;

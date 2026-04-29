@@ -350,6 +350,16 @@ function listRunningBatches() {
   return rows.map(normalizeBatchRow);
 }
 
+function listCompletedBatchesWithFailures() {
+  const database = getDb();
+  const rows = database.prepare(`
+    SELECT * FROM batch_jobs
+    WHERE status = 'completed' AND failed_chapters > 0
+    ORDER BY datetime(updated_at) DESC
+  `).all();
+  return rows.map(normalizeBatchRow);
+}
+
 function refreshBatchCounters(batchId) {
   const database = getDb();
   const summary = database.prepare(`
@@ -491,6 +501,15 @@ function getPendingGatesForBatch(batchId) {
   `).all(String(batchId || ''));
 }
 
+function listAwaitingReviewRuns() {
+  const rows = getDb().prepare(`
+    SELECT * FROM chapter_runs
+    WHERE status = 'awaiting_review'
+    ORDER BY datetime(completed_at) DESC, batch_id ASC, chapter_index ASC, attempt ASC
+  `).all();
+  return rows.map(normalizeChapterRunRow);
+}
+
 function getDb() {
   if (db) return db;
   ensureDir(getUserDataDir());
@@ -581,6 +600,7 @@ module.exports = {
   deleteBatch,
   findNextPendingChapter,
   listRunningBatches,
+  listCompletedBatchesWithFailures,
   refreshBatchCounters,
   createSingleRun,
   updateSingleRun,
@@ -591,4 +611,5 @@ module.exports = {
   resolveGateDecision,
   getGateDecision,
   getPendingGatesForBatch,
+  listAwaitingReviewRuns,
 };

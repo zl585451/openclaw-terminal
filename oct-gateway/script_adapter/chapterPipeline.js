@@ -67,7 +67,7 @@ function createExecutionPlan(taskId, taskTitle, options = {}) {
       gateId: `gate-quality-${taskId}`,
       afterAgentId: 'reviewer.production_quality@1.0',
       gateType: 'quality_review',
-      description: '质检结果需要复核，MVP 演示中自动通过。',
+      description: '质检结果会展示为提示卡，不阻塞批次继续执行。',
       status: 'pending',
     },
   ].filter((gate) => agents.some((agent) => agent.agentId === gate.afterAgentId));

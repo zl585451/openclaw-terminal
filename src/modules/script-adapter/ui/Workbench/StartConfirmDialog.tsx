@@ -1,13 +1,13 @@
 import styles from '../../styles/scriptAdapter.module.css';
-import type { BatchEstimate, TrialExecutionMode } from '../../types/batch';
+import type { BatchEstimate } from '../../types/batch';
 
 interface StartConfirmDialogProps {
   open: boolean;
   loading: boolean;
   bookTitle: string;
   rangeLabel: string;
+  chapterSummary: string;
   estimate: BatchEstimate;
-  executionMode: TrialExecutionMode;
   deliveryItemLabels: string[];
   warnings: string[];
   confirmButtonText: string;
@@ -20,8 +20,8 @@ export function StartConfirmDialog({
   loading,
   bookTitle,
   rangeLabel,
+  chapterSummary,
   estimate,
-  executionMode,
   deliveryItemLabels,
   warnings,
   confirmButtonText,
@@ -56,6 +56,7 @@ export function StartConfirmDialog({
           <span>素材</span>
           <strong>《{bookTitle}》</strong>
           <em>{rangeLabel}</em>
+          <small>{chapterSummary}</small>
         </div>
 
         <div className={styles.startConfirmStats}>
@@ -67,8 +68,8 @@ export function StartConfirmDialog({
 
         <div className={styles.startConfirmInfoGrid}>
           <div>
-            <span>试产模式</span>
-            <strong>{executionMode === 'real' ? '真实 Agent 试产' : '模拟演示'}</strong>
+            <span>执行方式</span>
+            <strong>真实 Agent 制作</strong>
           </div>
           <div>
             <span>交付项</span>

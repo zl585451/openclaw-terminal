@@ -2,6 +2,7 @@
 
 const { chatCompletion, resolveProviderFor } = require('../../services/llmClient');
 const { chunkByChars } = require('../../services/chunker');
+const config = require('../../config');
 
 const SYSTEM_PROMPT = `你是有声书台本改编师。把用户给的小说原文改写成更适合多人演播的台本片段。
 
@@ -33,6 +34,12 @@ const HARD_LIMIT = 12000;
 const CHUNK_TARGET = 3500;
 const CHUNK_MAX = 4000;
 const ANCHOR_SIZE = 200;
+const TEXT_REWRITER_TIMEOUT_MS = readPositiveInt(
+  config.scriptAdapter?.textRewriterTimeoutMs || config.getEnvOrConfig?.('SCRIPT_ADAPTER_TEXT_REWRITER_TIMEOUT_MS'),
+  120000,
+  30000,
+  300000,
+);
 
 /**
  * 真实文本改编 Agent。
@@ -65,7 +72,7 @@ async function runSinglePass(sourceText) {
     maxTokens: 2000,
     temperature: 0.6,
     responseJson: true,
-    timeoutMs: 45000,
+    timeoutMs: TEXT_REWRITER_TIMEOUT_MS,
   });
 
   return {
@@ -85,6 +92,7 @@ async function runChunkedPass(sourceText) {
   });
 
   const mergedSegments = [];
+  let succeededChunks = 0;
   let chapterTitle = '';
   let lastAnchor = '';
   let model = provider.model;
@@ -100,6 +108,7 @@ async function runChunkedPass(sourceText) {
     });
 
     if (result.ok) {
+      succeededChunks += 1;
       const payload = normalizePayload(result.payload);
       if (!chapterTitle && payload.chapterTitle) chapterTitle = payload.chapterTitle;
       model = result.model || model;
@@ -119,6 +128,10 @@ async function runChunkedPass(sourceText) {
     }
 
     lastAnchor = chunk.content.slice(-ANCHOR_SIZE);
+  }
+
+  if (succeededChunks !== chunks.length) {
+    throw new Error(`TEXT_REWRITER_CHUNK_FAILED: ${succeededChunks}/${chunks.length} chunks succeeded`);
   }
 
   return {
@@ -148,7 +161,7 @@ async function rewriteChunk({ provider, chunkText, chunkIndex, totalChunks, prev
       maxTokens: 2000,
       temperature: 0.6,
       responseJson: true,
-      timeoutMs: 45000,
+      timeoutMs: TEXT_REWRITER_TIMEOUT_MS,
     });
 
     return {
@@ -190,6 +203,12 @@ function normalizeSegmentType(type) {
 
 function formatSegmentId(index) {
   return `seg-${String(index).padStart(3, '0')}`;
+}
+
+function readPositiveInt(value, fallback, min, max) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function parseTextRewriterOutput(raw) {

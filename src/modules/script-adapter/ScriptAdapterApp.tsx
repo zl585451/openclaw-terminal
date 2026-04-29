@@ -19,25 +19,35 @@ import { MOCK_TEAM_TEMPLATES } from './mockData/mockTemplates';
 import {
   type AnalysisReport,
   type AnalysisStatus,
-  MOCK_INTAKE_STEPS,
   type IntakeResult,
   type IntakeStatus,
-  runMockInitialAnalysis,
-  runMockTaskIntake,
 } from './services/mockTaskIntake';
+import {
+  GATEWAY_INTAKE_STEPS,
+  startGatewayIntake,
+  type GatewayIntakeRun,
+  type GatewayIntakeStep,
+} from './services/gatewayIntake';
+import {
+  GATEWAY_ANALYSIS_STEPS,
+  startGatewayAnalysis,
+  toEvidenceStep,
+  type GatewayAnalysisRun,
+} from './services/gatewayAnalysis';
+import {
+  buildProductionQueuePreview,
+  GATEWAY_PRODUCTION_STEPS,
+  productionStepToEvidence,
+  startGatewayProductionHandoff,
+  type GatewayProductionRun,
+  type ProductionQueueItem,
+} from './services/gatewayProduction';
 import type { DeliveryOptions, TaskCreationContract } from './types/batch';
 import styles from './styles/scriptAdapter.module.css';
 
 type ScriptAdapterScreen = 'home' | 'create' | 'workspace' | 'library';
 type WizardStep = 1 | 2 | 3;
 type CreationRangeMode = 'single' | 'range' | 'all';
-
-const AGENT_QUEUE_SUMMARY = [
-  { label: '已预分配', value: '3', desc: '文件解析、内容识别、任务安排' },
-  { label: '即将执行', value: '1', desc: '业务分析 Agent' },
-  { label: '后续候选', value: '3', desc: '场景拆分、文本改编、角色音标注' },
-  { label: '人工确认', value: '是', desc: '分析方向和冲突要求需要确认' },
-];
 
 const getGoalConfirmationCopy = (goal: string) => {
   if (goal.includes('广播剧')) {
@@ -292,10 +302,16 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [intakeStatus, setIntakeStatus] = useState<IntakeStatus>('idle');
   const [intakeStepIndex, setIntakeStepIndex] = useState(0);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
+  const [intakeRun, setIntakeRun] = useState<GatewayIntakeRun | null>(null);
   const [intakeError, setIntakeError] = useState('');
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
+  const [analysisRun, setAnalysisRun] = useState<GatewayAnalysisRun | null>(null);
   const [analysisError, setAnalysisError] = useState('');
+  const [productionStatus, setProductionStatus] = useState<IntakeStatus>('idle');
+  const [productionRun, setProductionRun] = useState<GatewayProductionRun | null>(null);
+  const [productionError, setProductionError] = useState('');
+  const [productionQueue, setProductionQueue] = useState<ProductionQueueItem[]>([]);
   const [selectedStrategyId, setSelectedStrategyId] = useState('');
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptions>({
     adaptedScript: true,
@@ -310,17 +326,10 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const sourceConfirmed = intakeStatus === 'completed' && Boolean(intakeResult);
   const isIntakeRunning = intakeStatus === 'running';
   const isAnalysisRunning = analysisStatus === 'running';
+  const isProductionRunning = productionStatus === 'running';
   const analysisCompleted = analysisStatus === 'completed' && Boolean(analysisReport);
   const selectedStrategy = analysisReport?.strategyOptions.find((option) => option.id === selectedStrategyId);
   const progressValue = analysisCompleted ? 96 : isAnalysisRunning ? 86 : sourceConfirmed ? 72 : isIntakeRunning ? 48 : 34;
-  const agentQueueSummary = intakeResult
-    ? [
-        { label: '已预分配', value: String(intakeResult.agentPreAllocation.assignedCount), desc: '文件解析、内容识别、任务安排' },
-        { label: '即将执行', value: analysisCompleted ? String(analysisReport?.executionImpact.nextAgents.length ?? 0) : '1', desc: analysisCompleted ? (analysisReport?.executionImpact.nextAgents.join('、') ?? '') : intakeResult.agentPreAllocation.nextAgent },
-        { label: '后续候选', value: String(intakeResult.agentPreAllocation.candidateCount), desc: analysisCompleted ? '按策略进入制作队列' : '场景拆分、文本改编、角色音标注' },
-        { label: '人工确认', value: analysisReport?.executionImpact.requiresReview ? '是' : intakeResult.agentPreAllocation.requiresHumanConfirm ? '是' : '否', desc: analysisCompleted ? '修改策略已待确认' : '分析方向和冲突要求需要确认' },
-      ]
-    : AGENT_QUEUE_SUMMARY;
   const createSteps = [
     {
       index: 1,
@@ -448,6 +457,72 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     };
   }, [selectedBookId, selectedChapterIndex]);
 
+  useEffect(() => {
+    if (!window.electronAPI?.onScriptAdapterEvent) return undefined;
+    return window.electronAPI.onScriptAdapterEvent((payload) => {
+      const eventName = typeof payload.event === 'string' ? payload.event : '';
+      if (!eventName.startsWith('intake.')) return;
+      const nextRun = payload.intakeRun as GatewayIntakeRun | undefined;
+      if (!nextRun?.id || !Array.isArray(nextRun.steps)) return;
+      setIntakeRun(nextRun);
+      const runningIndex = nextRun.steps.findIndex((step) => step.status === 'running');
+      const doneCount = nextRun.steps.filter((step) => step.status === 'succeeded').length;
+      setIntakeStepIndex(runningIndex >= 0 ? runningIndex : doneCount);
+      if (nextRun.status === 'running') setIntakeStatus('running');
+      if (nextRun.status === 'succeeded') setIntakeStatus('completed');
+      if (nextRun.status === 'failed') {
+        setIntakeStatus('failed');
+        setIntakeError(nextRun.error || '素材摄入失败');
+      }
+      return;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onScriptAdapterEvent) return undefined;
+    return window.electronAPI.onScriptAdapterEvent((payload) => {
+      const eventName = typeof payload.event === 'string' ? payload.event : '';
+      if (!eventName.startsWith('analysis.')) return;
+      const nextRun = payload.analysisRun as GatewayAnalysisRun | undefined;
+      if (!nextRun?.id || !Array.isArray(nextRun.steps)) return;
+      setAnalysisRun(nextRun);
+      if (nextRun.status === 'running') setAnalysisStatus('running');
+      if (nextRun.status === 'succeeded') {
+        if (nextRun.result) {
+          setAnalysisReport(nextRun.result);
+          setSelectedStrategyId(nextRun.result.recommendedStrategyId);
+          setAnalysisStatus('completed');
+          setActiveStep(3);
+        } else {
+          setAnalysisStatus('failed');
+          setAnalysisError('ANALYSIS_RESULT_EMPTY: 业务分析完成但没有返回报告');
+        }
+      }
+      if (nextRun.status === 'failed') {
+        setAnalysisStatus('failed');
+        setAnalysisError(nextRun.error || '业务分析失败');
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onScriptAdapterEvent) return undefined;
+    return window.electronAPI.onScriptAdapterEvent((payload) => {
+      const eventName = typeof payload.event === 'string' ? payload.event : '';
+      if (!eventName.startsWith('production.')) return;
+      const nextRun = payload.productionRun as GatewayProductionRun | undefined;
+      if (!nextRun?.id || !Array.isArray(nextRun.steps)) return;
+      setProductionRun(nextRun);
+      if (nextRun.result?.productionQueue) setProductionQueue(nextRun.result.productionQueue);
+      if (nextRun.status === 'running') setProductionStatus('running');
+      if (nextRun.status === 'succeeded') setProductionStatus('completed');
+      if (nextRun.status === 'failed') {
+        setProductionStatus('failed');
+        setProductionError(nextRun.error || '制作交接失败');
+      }
+    });
+  }, []);
+
   const canOpenStep = (step: WizardStep) => {
     if (step === 1) return true;
     if (step === 2) return sourceConfirmed;
@@ -547,6 +622,25 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     : sourceMode === 'paste' && pastedText.trim()
       ? `约 ${pastedText.trim().length.toLocaleString('zh-CN')} 字`
       : '待真实解析';
+  const displayedIntakeSteps: GatewayIntakeStep[] = intakeRun?.steps?.length
+    ? intakeRun.steps
+    : GATEWAY_INTAKE_STEPS;
+  const displayedAnalysisSteps: GatewayIntakeStep[] = (analysisRun?.steps?.length
+    ? analysisRun.steps.map(toEvidenceStep)
+    : GATEWAY_ANALYSIS_STEPS.map(toEvidenceStep));
+  const displayedProductionSteps: GatewayIntakeStep[] = (productionRun?.steps?.length
+    ? productionRun.steps.map(productionStepToEvidence)
+    : GATEWAY_PRODUCTION_STEPS.map(productionStepToEvidence));
+  const intakeSucceededCount = displayedIntakeSteps.filter((step) => step.status === 'succeeded').length;
+  const analysisSucceededCount = displayedAnalysisSteps.filter((step) => step.status === 'succeeded').length;
+  const productionSucceededCount = displayedProductionSteps.filter((step) => step.status === 'succeeded').length;
+  const businessAgentStep = displayedAnalysisSteps.find((step) => step.mode === 'agent');
+  const productionQueuePreview = productionQueue.length > 0 ? productionQueue : buildProductionQueuePreview(deliveryOptions);
+  const evidenceSummary = activeStep === 2
+    ? `素材摄入 ${intakeSucceededCount}/${displayedIntakeSteps.length} 成功 · 当前页无 Agent 执行`
+    : isProductionRunning || productionStatus === 'completed' || productionStatus === 'failed'
+      ? `制作交接 ${productionSucceededCount}/${displayedProductionSteps.length} 成功 · ${productionStatus === 'completed' ? '工作台合同已生成' : productionStatus === 'failed' ? '交接失败' : '交接中'}`
+      : `业务分析 ${analysisSucceededCount}/${displayedAnalysisSteps.length} 成功 · ${businessAgentStep?.status === 'succeeded' ? 'Agent 已完成' : businessAgentStep?.status === 'running' ? 'Agent 执行中' : businessAgentStep?.status === 'failed' ? 'Agent 失败' : '等待 Agent'}`;
 
   const handleConfirmSource = async () => {
     if (isIntakeRunning || !sourceReady) return;
@@ -554,17 +648,46 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     setIntakeStatus('running');
     setIntakeStepIndex(0);
     setIntakeResult(null);
+    setIntakeRun({
+      id: `local-pending-${Date.now()}`,
+      status: 'running',
+      source: {
+        mode: sourceMode,
+        bookId: selectedBookId || null,
+        bookTitle: sourceSummary,
+        rangeLabel: sourceMode === 'library' ? selectedRangeLabel : sourceMode === 'paste' ? '临时文本' : '待选择',
+        chapterIndices: selectedRangeChapters.map((chapter) => chapter.chapter_index),
+      },
+      steps: GATEWAY_INTAKE_STEPS.map((step) => ({ ...step })),
+      result: null,
+      error: null,
+    });
     setIntakeError('');
 
     try {
-      const result = await runMockTaskIntake((stepIndex) => {
-        setIntakeStepIndex(stepIndex);
-      }, {
+      const chapters = sourceMode === 'library'
+        ? await Promise.all(selectedRangeChapters.map(async (chapter) => {
+            const detail = await getChapterText(selectedBookId, chapter.chapter_index);
+            return {
+              chapter_index: chapter.chapter_index,
+              title: chapter.title,
+              preview: chapter.preview,
+              char_count: chapter.char_count,
+              text: detail.text,
+            };
+          }))
+        : [];
+      const { intakeRun: completedRun, result } = await startGatewayIntake({
+        sourceMode,
+        bookId: selectedBookId || undefined,
         sourceTitle: sourceSummary,
         rangeLabel: sourceMode === 'library' ? selectedRangeLabel : sourceMode === 'paste' ? '临时文本' : '待选择',
-        wordCountLabel: sourceWordCountLabel,
         sourceTypeLabel,
+        chapterIndices: selectedRangeChapters.map((chapter) => chapter.chapter_index),
+        chapters,
+        pastedText: sourceMode === 'paste' ? pastedText : undefined,
       });
+      setIntakeRun(completedRun);
       setIntakeResult(result);
       setDecisionOverrides({});
       setEditingDecisionId(null);
@@ -577,13 +700,24 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     } catch (error) {
       setIntakeStatus('failed');
       setIntakeError(error instanceof Error ? error.message : '素材摄入失败，请重试。');
+      setIntakeRun((current) => current
+        ? { ...current, status: 'failed', error: error instanceof Error ? error.message : '素材摄入失败，请重试。' }
+        : current);
     }
   };
 
-  const getIntakeStepClassName = (stepIndex: number) => {
-    if (intakeStatus === 'completed' || intakeStepIndex > stepIndex) return styles.backgroundStepDone;
-    if (isIntakeRunning && intakeStepIndex === stepIndex) return styles.backgroundStepRunning;
+  const getIntakeStepClassName = (step: GatewayIntakeStep, stepIndex: number) => {
+    if (step.status === 'succeeded' || intakeStatus === 'completed' || intakeStepIndex > stepIndex) return styles.backgroundStepDone;
+    if (step.status === 'failed') return styles.backgroundStepFailed;
+    if (step.status === 'running' || (isIntakeRunning && intakeStepIndex === stepIndex)) return styles.backgroundStepRunning;
     return styles.backgroundStepPending;
+  };
+
+  const getIntakeStepMeta = (step: GatewayIntakeStep) => {
+    const modeLabel = step.mode === 'agent' ? 'Agent' : step.mode === 'mock' ? 'Mock' : step.mode === 'system' ? 'System' : 'Rule';
+    const statusLabel = step.status === 'succeeded' ? '成功' : step.status === 'running' ? '执行中' : step.status === 'failed' ? '失败' : '待执行';
+    const duration = typeof step.durationMs === 'number' ? ` · ${step.durationMs}ms` : '';
+    return `${modeLabel} · ${statusLabel}${duration} · ${step.executor}`;
   };
 
   const getDecisionView = (item: IntakeResult['taskDraft']['confirmItems'][number]) => {
@@ -617,8 +751,13 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     if (itemId === 'work_goal') {
       setAnalysisStatus('idle');
       setAnalysisReport(null);
+      setAnalysisRun(null);
       setAnalysisError('');
       setSelectedStrategyId('');
+      setProductionStatus('idle');
+      setProductionRun(null);
+      setProductionError('');
+      setProductionQueue([]);
     }
   };
 
@@ -642,34 +781,95 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const selectedWorkGoal = getDecisionSummaryValue('work_goal', '多人演播有声书');
   const goalConfirmationCopy = getGoalConfirmationCopy(selectedWorkGoal);
 
+  const buildTaskContract = (): TaskCreationContract | null => {
+    if (!selectedBook || selectedRangeChapters.length === 0 || !selectedStrategy) return null;
+    return {
+      bookId: selectedBook.id,
+      bookTitle: selectedBook.title,
+      chapterIndices: selectedRangeChapters.map((chapter) => chapter.chapter_index),
+      rangeLabel: selectedRangeLabel,
+      totalChars: selectedRangeTotalChars,
+      chapterCount: selectedRangeChapters.length,
+      workGoal: getDecisionSummaryValue('work_goal', '多人演播有声书'),
+      strategyTitle: selectedStrategy.title,
+      strategyDesc: selectedStrategy.desc,
+      deliveryOptions,
+    };
+  };
+
+  const handleProductionHandoff = async () => {
+    if (isProductionRunning) return;
+    const contract = buildTaskContract();
+    if (!contract) return;
+
+    setProductionStatus('running');
+    setProductionError('');
+    setProductionQueue([]);
+    setProductionRun({
+      id: `local-production-${Date.now()}`,
+      status: 'running',
+      steps: GATEWAY_PRODUCTION_STEPS.map((step) => ({ ...step })),
+      result: null,
+      error: null,
+    });
+
+    try {
+      const result = await startGatewayProductionHandoff(contract);
+      setProductionRun(result.productionRun);
+      setProductionQueue(result.productionQueue);
+      setProductionStatus('completed');
+      onStart(result.contract);
+    } catch (error) {
+      setProductionStatus('failed');
+      setProductionError(error instanceof Error ? error.message : '制作交接失败');
+      setProductionRun((current) => current
+        ? { ...current, status: 'failed', error: error instanceof Error ? error.message : '制作交接失败' }
+        : current);
+    }
+  };
+
   const handleRunAnalysis = async () => {
     if (!sourceConfirmed || isAnalysisRunning) return;
 
     setAnalysisStatus('running');
     setAnalysisReport(null);
+    setAnalysisRun({
+      id: `local-analysis-${Date.now()}`,
+      status: 'running',
+      steps: GATEWAY_ANALYSIS_STEPS.map((step) => ({ ...step })),
+      result: null,
+      error: null,
+    });
     setAnalysisError('');
     setSelectedStrategyId('');
     setActiveStep(3);
 
     try {
-      const report = await runMockInitialAnalysis({
-        rangeLabel: selectedRangeLabel,
-        chapterCount: selectedRangeChapters.length,
-        totalChars: selectedRangeTotalChars,
+      const chapters = await Promise.all(selectedRangeChapters.map(async (chapter) => {
+        const detail = await getChapterText(selectedBookId, chapter.chapter_index);
+        return {
+          chapter_index: chapter.chapter_index,
+          title: chapter.title,
+          preview: chapter.preview,
+          char_count: chapter.char_count,
+          text: detail.text,
+        };
+      }));
+      const { analysisRun: startedRun } = await startGatewayAnalysis({
         workGoal: selectedWorkGoal,
-        chapters: selectedRangeChapters.map((chapter) => ({
-          title: chapter.title || `第 ${chapter.chapter_index + 1} 章`,
-          preview: chapter.preview || '',
-          charCount: Number(chapter.char_count || 0),
-        })),
+        rangeLabel: selectedRangeLabel,
+        customNotes: Object.values(decisionOverrides).map((item) => item.customNote).filter(Boolean).join('\n'),
+        chapters,
       });
-      setAnalysisReport(report);
-      setSelectedStrategyId(report.recommendedStrategyId);
-      setAnalysisStatus('completed');
+      setAnalysisRun(startedRun);
+      setAnalysisStatus('running');
       setActiveStep(3);
     } catch (error) {
       setAnalysisStatus('failed');
       setAnalysisError(error instanceof Error ? error.message : 'AI 初读分析失败，请重试。');
+      setAnalysisRun((current) => current
+        ? { ...current, status: 'failed', error: error instanceof Error ? error.message : 'AI 初读分析失败，请重试。' }
+        : current);
     }
   };
 
@@ -682,25 +882,31 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     if (activeStep === 2) {
       return isAnalysisRunning ? 'AI 初读分析中' : sourceConfirmed ? '等待确认目标和范围' : '请先完成素材确认';
     }
+    if (isProductionRunning) return '正在生成制作执行单';
+    if (productionStatus === 'failed') return '制作交接失败';
     return analysisCompleted ? '等待确认修改方向' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围确认';
   };
 
   const getFooterDesc = () => {
     if (activeStep === 1) return '确认后会进入目标和范围配置；后台解析会自动完成，不需要你理解技术链路。';
     if (activeStep === 2) return '确认后只进入 AI 初读分析，不会直接改稿；分析完成会自动进入第 3 步。';
-    return '确认修改方向和交付清单后，才进入制作 Agent，并生成工作台执行单。';
+    if (isProductionRunning) return '正在校验策略、生成执行合同并解析制作队列。';
+    if (productionStatus === 'failed') return productionError || '请查看状态机证据后重试。';
+    return '确认修改方向和交付清单后，生成工作台执行单；制作 Agent 仍会在工作台开工后启动。';
   };
 
   const getFooterButtonText = () => {
     if (activeStep === 1) return isIntakeRunning ? '正在确认素材' : sourceConfirmed ? '重新确认素材' : '确认这份素材，继续配置目标';
     if (activeStep === 2) return isAnalysisRunning ? 'AI 初读分析中' : analysisCompleted ? '重新分析并进入第 3 步' : '确认目标和范围，进入第 3 步';
+    if (isProductionRunning) return '正在生成执行单';
+    if (productionStatus === 'failed') return '重试生成执行单';
     return '确认方向，进入工作台';
   };
 
   const isFooterButtonDisabled = () => {
     if (activeStep === 1) return isIntakeRunning || !sourceReady;
     if (activeStep === 2) return !sourceConfirmed || isAnalysisRunning;
-    return !analysisCompleted || !selectedStrategyId;
+    return !analysisCompleted || !selectedStrategyId || isProductionRunning;
   };
 
   const handleFooterAction = () => {
@@ -712,19 +918,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
       void handleRunAnalysis();
       return;
     }
-    if (!selectedBook || selectedRangeChapters.length === 0 || !selectedStrategy) return;
-    onStart({
-      bookId: selectedBook.id,
-      bookTitle: selectedBook.title,
-      chapterIndices: selectedRangeChapters.map((chapter) => chapter.chapter_index),
-      rangeLabel: selectedRangeLabel,
-      totalChars: selectedRangeTotalChars,
-      chapterCount: selectedRangeChapters.length,
-      workGoal: getDecisionSummaryValue('work_goal', '多人演播有声书'),
-      strategyTitle: selectedStrategy.title,
-      strategyDesc: selectedStrategy.desc,
-      deliveryOptions,
-    });
+    void handleProductionHandoff();
   };
 
   return (
@@ -754,10 +948,10 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                 : isAnalysisRunning
                   ? '业务分析 Agent 正在输出问题、证据和修改方向。'
                   : sourceConfirmed
-                ? '已生成任务草案，等待你确认目标订单。'
-                : isIntakeRunning
-                  ? `正在执行第 ${Math.min(intakeStepIndex + 1, MOCK_INTAKE_STEPS.length)} 步素材摄入。`
-                  : '先确认素材，系统再自动生成任务草案。'}
+                    ? '已生成任务草案，等待你确认目标订单。'
+                    : isIntakeRunning
+                      ? `正在执行第 ${Math.min(intakeStepIndex + 1, displayedIntakeSteps.length)} 步素材摄入。`
+                      : '先确认素材，系统再自动生成任务草案。'}
             </div>
           </div>
 
@@ -1052,6 +1246,27 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
             {sourceConfirmed && intakeResult ? (
               <>
+                <div className={styles.stateEvidenceBanner}>
+                  <div>
+                    <strong>{evidenceSummary}</strong>
+                    <span>第二页只确认目标订单；业务分析 Agent 会在点击确认后才启动。</span>
+                  </div>
+                  <details>
+                    <summary>查看链路证据</summary>
+                    <div className={styles.compactEvidenceList}>
+                      {displayedIntakeSteps.map((step, index) => (
+                        <div key={step.id} className={getIntakeStepClassName(step, index)}>
+                          <span>{index + 1}</span>
+                          <div>
+                            <strong>{step.title}</strong>
+                            <em>{getIntakeStepMeta(step)}</em>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+
                 <div className={styles.planHeroCard}>
                   <div className={styles.planHeroHeader}>
                     <div>
@@ -1190,6 +1405,18 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <div className={styles.analysisRunningPanel}>
                 <strong>业务分析 Agent 正在读取第 2 步的目标订单</strong>
                 <span>正在基于已锁定目标和范围生成问题证据、可修改方向、推荐策略和执行影响。这里仍不会改稿，只做开工前决策。</span>
+                <div className={styles.compactEvidenceList}>
+                  {displayedAnalysisSteps.map((step, index) => (
+                    <div key={step.id} className={getIntakeStepClassName(step, index)}>
+                      <span>{index + 1}</span>
+                      <div>
+                        <strong>{step.title}</strong>
+                        <em>{getIntakeStepMeta(step)}</em>
+                        {step.error ? <em>{step.error}</em> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
 
@@ -1230,7 +1457,7 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                   <div className={styles.composerSectionHeader}>
                     <div>
                       <div className={styles.taskFieldLabel}>选择修改方向</div>
-                      <span className={styles.mutedText}>这里才决定“怎么改、改多深、交给哪些制作 Agent”。</span>
+                      <span className={styles.mutedText}>这里决定“怎么改、改多深”，不会在你确认前启动制作 Agent。</span>
                     </div>
                   </div>
                   <div className={styles.strategyGrid}>
@@ -1299,19 +1526,43 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
                 <div className={styles.executionImpactBox}>
                   <div>
-                    <strong>确认后将进入制作队列</strong>
-                    <span>下一步 Agent：{analysisReport.executionImpact.nextAgents.join('、')}</span>
+                    <strong>{isProductionRunning ? '正在生成制作执行单' : productionStatus === 'failed' ? '制作交接失败' : '确认后生成制作执行单'}</strong>
+                    <span>待启用队列：{productionQueuePreview.map((item) => item.label).join('、')}</span>
                     <span>预计产物：{analysisReport.executionImpact.outputs.join('、')}</span>
                     {selectedStrategy ? <span>当前策略：{selectedStrategy.title}，{selectedStrategy.impact}</span> : null}
+                    {productionError ? <span>错误：{productionError}</span> : null}
                   </div>
                 </div>
+
+                {(isProductionRunning || productionStatus === 'failed') ? (
+                  <div className={styles.analysisRunningPanel}>
+                    <strong>{isProductionRunning ? '制作交接状态机正在执行' : '制作交接状态机失败'}</strong>
+                    <span>{isProductionRunning ? '正在校验策略、生成执行合同并解析制作队列。制作 Agent 仍未启动。' : productionError}</span>
+                    <div className={styles.compactEvidenceList}>
+                      {displayedProductionSteps.map((step, index) => (
+                        <div key={step.id} className={getIntakeStepClassName(step, index)}>
+                          <span>{index + 1}</span>
+                          <div>
+                            <strong>{step.title}</strong>
+                            <em>{getIntakeStepMeta(step)}</em>
+                            {step.error ? <em>{step.error}</em> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </>
             ) : null}
 
             {!analysisCompleted && !isAnalysisRunning ? (
               <div className={styles.intakeWaitingPanel}>
-                <strong>等待第 2 步确认后生成 AI 初读分析</strong>
-                <span>确认产品方向和工作范围后，这里会展示文本问题、证据、可修改建议和策略选择。</span>
+                <strong>{analysisStatus === 'failed' ? '业务分析启动失败' : '等待第 2 步确认后生成 AI 初读分析'}</strong>
+                <span>
+                  {analysisStatus === 'failed'
+                    ? (analysisError || analysisRun?.error || '业务分析失败，请查看右侧状态机证据。')
+                    : '确认产品方向和工作范围后，这里会展示文本问题、证据、可修改建议和策略选择。'}
+                </span>
               </div>
             ) : null}
           </div>
@@ -1350,12 +1601,13 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
               <details className={`${styles.card} ${styles.technicalDetailsCard}`}>
                 <summary>查看后台处理细节</summary>
                 <div className={styles.backgroundStepList}>
-                  {MOCK_INTAKE_STEPS.map((step, index) => (
-                    <div key={step.id} className={getIntakeStepClassName(index)}>
+                  {displayedIntakeSteps.map((step, index) => (
+                    <div key={step.id} className={getIntakeStepClassName(step, index)}>
                       <span>{index + 1}</span>
                       <div>
                         <strong>{step.title}</strong>
-                        <em>{step.desc}</em>
+                        <em>{getIntakeStepMeta(step)}</em>
+                        {step.error ? <em>{step.error}</em> : <em>{step.desc}</em>}
                       </div>
                     </div>
                   ))}
@@ -1385,63 +1637,80 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           </div>
 
           <div className={`${styles.card} ${styles.taskMapCard}`}>
-            <div className={styles.sidebarSectionLabel}>后台摄入链路</div>
+            <div className={styles.sidebarSectionLabel}>{activeStep === 3 ? '制作队列预览' : '下一步 Agent'}</div>
+            <div className={styles.nextAgentBox}>
+              <strong>{activeStep === 3 ? '待创建制作队列' : '业务分析 Agent'}</strong>
+              <span>
+                {activeStep === 3
+                  ? isProductionRunning
+                    ? '正在生成执行合同，制作 Agent 尚未启动'
+                    : productionStatus === 'completed'
+                      ? '已生成执行合同，正在进入工作台'
+                      : productionStatus === 'failed'
+                        ? '生成失败：请查看错误后重试'
+                        : '确认方向后生成执行合同，再进入工作台开工页'
+                  : isAnalysisRunning ? '执行中：正在生成初读分析' : analysisCompleted ? '已完成：等待选择修改方向' : analysisStatus === 'failed' ? '失败：请查看错误后重试' : '等待你确认目标和范围后启动'}
+              </span>
+              <em>
+                {activeStep === 3
+                  ? productionQueuePreview.map((item) => item.label).join(' -> ')
+                  : analysisStatus === 'failed'
+                    ? (analysisError || analysisRun?.error || '业务分析失败')
+                    : analysisRun?.steps.find((step) => step.mode === 'agent')?.model || '未启动前不会占用模型调用'}
+              </em>
+            </div>
+          </div>
+
+          <details className={`${styles.card} ${styles.technicalDetailsCard}`}>
+            <summary>查看状态机证据</summary>
+            <div className={styles.evidenceGroupTitle}>素材摄入</div>
             <div className={styles.backgroundStepList}>
-              {MOCK_INTAKE_STEPS.map((step, index) => (
-                <div key={step.id} className={getIntakeStepClassName(index)}>
+              {displayedIntakeSteps.map((step, index) => (
+                <div key={step.id} className={getIntakeStepClassName(step, index)}>
                   <span>{index + 1}</span>
                   <div>
                     <strong>{step.title}</strong>
-                    <em>{step.desc}</em>
+                    <em>{getIntakeStepMeta(step)}</em>
+                    {step.error ? <em>{step.error}</em> : null}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-
-          <div className={`${styles.card} ${styles.taskMapCard}`}>
-            <div className={styles.sidebarSectionLabel}>确认闸门</div>
-            <div className={styles.gateMapList}>
-              <div className={sourceConfirmed ? styles.gateMapItemDone : styles.gateMapItemActive}>
-                <span>1</span>
-                <div>
-                  <strong>素材确认</strong>
-                  <em>{sourceConfirmed ? '已通过' : '当前步骤'}</em>
-                </div>
-              </div>
-              <div className={sourceConfirmed ? styles.gateMapItemActive : styles.gateMapItemPending}>
-                <span>2</span>
-                <div>
-                  <strong>目标和范围确认</strong>
-                  <em>{sourceConfirmed ? '等待确认目标和范围' : isIntakeRunning ? '等待摄入完成' : '等待素材确认'}</em>
-                </div>
-              </div>
-              <div className={analysisCompleted ? styles.gateMapItemActive : isAnalysisRunning ? styles.gateMapItemActive : styles.gateMapItemPending}>
-                <span>3</span>
-                <div>
-                  <strong>修改方向确认</strong>
-                  <em>{analysisCompleted ? '等待确认策略' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围'}</em>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className={`${styles.card} ${styles.taskMapCard}`}>
-            <div className={styles.sidebarSectionLabel}>Agent 队列总览</div>
-            <div className={styles.queueSummaryGrid}>
-              {agentQueueSummary.map((item) => (
-                <div key={item.label} className={styles.queueSummaryItem}>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                  <em>{item.desc}</em>
+            <div className={styles.evidenceGroupTitle}>业务分析</div>
+            <div className={styles.backgroundStepList}>
+              {displayedAnalysisSteps.map((step, index) => (
+                <div key={step.id} className={getIntakeStepClassName(step, index)}>
+                  <span>{index + 1}</span>
+                  <div>
+                    <strong>{step.title}</strong>
+                    <em>{getIntakeStepMeta(step)}</em>
+                    {step.error ? <em>{step.error}</em> : null}
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+            {activeStep === 3 ? (
+              <>
+                <div className={styles.evidenceGroupTitle}>制作交接</div>
+                <div className={styles.backgroundStepList}>
+                  {displayedProductionSteps.map((step, index) => (
+                    <div key={step.id} className={getIntakeStepClassName(step, index)}>
+                      <span>{index + 1}</span>
+                      <div>
+                        <strong>{step.title}</strong>
+                        <em>{getIntakeStepMeta(step)}</em>
+                        {step.error ? <em>{step.error}</em> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </details>
 
           <div className={styles.requirementBoundaryBox}>
             <strong>执行边界</strong>
-            <span>第 2 步只确认目标订单和处理范围；第 3 步才确认修改方向、交付清单和制作 Agent 队列。</span>
+            <span>{activeStep === 3 ? '第 3 步只生成制作执行单；制作 Agent 会在工作台开工页确认后才真正启动。' : '第 2 步只确认目标订单和处理范围；确认后才启动业务分析 Agent，第 3 步才确认制作队列。'}</span>
           </div>
           </>
           )}

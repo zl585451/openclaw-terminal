@@ -5,7 +5,6 @@ const TASK_STEPS = [
   { label: '确认目标和范围', desc: '多人演播有声书 · 第1章', status: 'done' },
   { label: '确认修改策略', desc: '轻度听感改编已锁定', status: 'done' },
   { label: '执行制作', desc: '按 Agent 队列生成产物', status: 'running' },
-  { label: '人工复核', desc: '检查样章、角色音和演播标注', status: 'pending' },
 ] as const;
 
 interface TaskWorkbenchRailProps {

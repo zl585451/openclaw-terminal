@@ -3,7 +3,7 @@ import { listBooks, listChapters, type LibraryBook, type LibraryChapter } from '
 import { estimateBatchCost } from '../../services/batchBudget';
 import { startGatewayBatch } from '../../services/gatewayBatch';
 import { scriptAdapterActions } from '../../store/actions';
-import type { DeliveryOptions, TaskCreationContract, TrialExecutionMode } from '../../types/batch';
+import type { DeliveryOptions, TaskCreationContract } from '../../types/batch';
 import { StartConfirmDialog } from './StartConfirmDialog';
 import styles from '../../styles/scriptAdapter.module.css';
 
@@ -17,7 +17,6 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
   const [batchChapters, setBatchChapters] = useState<LibraryChapter[]>([]);
   const [selectedBatchBookId, setSelectedBatchBookId] = useState('');
   const [selectedBatchChapterIndices, setSelectedBatchChapterIndices] = useState<number[]>([]);
-  const [executionMode, setExecutionMode] = useState<TrialExecutionMode>('mock');
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptions>({
     adaptedScript: true,
     voiceRegistry: true,
@@ -76,6 +75,12 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
           if (current.length > 0 && current.every((index) => chapters.some((chapter) => chapter.chapter_index === index))) {
             return current;
           }
+          if (taskContract?.bookId === selectedBatchBookId) {
+            const lockedIndices = taskContract.chapterIndices.filter((index) =>
+              chapters.some((chapter) => chapter.chapter_index === index),
+            );
+            return lockedIndices;
+          }
           return chapters[0] ? [chapters[0].chapter_index] : [];
         });
       })
@@ -89,7 +94,7 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
     return () => {
       cancelled = true;
     };
-  }, [selectedBatchBookId]);
+  }, [selectedBatchBookId, taskContract]);
 
   const selectedBatchBook = libraryBooks.find((book) => book.id === selectedBatchBookId)
     || (taskContract ? {
@@ -145,23 +150,41 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
 
   const startWarnings = useMemo(() => {
     const warnings: string[] = [];
-    if (executionMode === 'real' && batchEstimate.chapterCount > 5) {
-      warnings.push('真实 Agent 试产超过 5 章，建议先跑 1 章或 3-5 章。');
+    if (batchEstimate.chapterCount > 5) {
+      warnings.push('真实 Agent 制作超过 5 章，建议先跑 1 章或 3-5 章。');
     }
     if (deliveryOptions.bgmSfx && batchEstimate.chapterCount > 5) {
       warnings.push('已开启 BGM/SFX 建议，批量成本会明显上升。');
     }
     return warnings;
-  }, [batchEstimate.chapterCount, deliveryOptions.bgmSfx, executionMode]);
+  }, [batchEstimate.chapterCount, deliveryOptions.bgmSfx]);
 
   const contractRangeLabel = taskContract?.rangeLabel
     || (batchEstimate.chapterCount === 1 ? '单章试产' : `${batchEstimate.chapterCount} 章小批量试产`);
+  const chapterSummary = useMemo(() => {
+    const selected = effectiveBatchChapters.filter((chapter) => selectedBatchChapterIndices.includes(chapter.chapter_index));
+    if (selected.length === 0) return '未锁定具体章节';
+    if (selected.length === 1) {
+      const chapter = selected[0];
+      return `${chapter.title || `第 ${chapter.chapter_index + 1} 章`} · 索引 ${chapter.chapter_index}`;
+    }
+    const first = selected[0];
+    const last = selected[selected.length - 1];
+    return `${first.title || `第 ${first.chapter_index + 1} 章`} -> ${last.title || `第 ${last.chapter_index + 1} 章`}（共 ${selected.length} 章）`;
+  }, [effectiveBatchChapters, selectedBatchChapterIndices]);
+  const lockedSelectionMismatch = useMemo(() => {
+    if (!taskContract) return false;
+    const current = [...selectedBatchChapterIndices].sort((a, b) => a - b);
+    const locked = [...taskContract.chapterIndices].sort((a, b) => a - b);
+    if (current.length !== locked.length) return true;
+    return current.some((value, index) => value !== locked[index]);
+  }, [selectedBatchChapterIndices, taskContract]);
 
   const startBatchButtonText = batchEstimate.chapterCount <= 1
-    ? '确认开工，开始单章试产'
+    ? '确认开工，启动真实单章制作'
     : batchEstimate.chapterCount <= 5
-      ? '确认开工，开始小批量试产'
-      : '确认高成本预算，开始批次';
+      ? '确认开工，启动真实小批量制作'
+      : '确认高成本预算，启动真实批次';
 
   const deliverySummary = [
     'Word DOCX',
@@ -177,8 +200,12 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
       setError('请先选择一本书和至少一个章节。');
       return;
     }
-    if (executionMode === 'real' && taskContract?.rangeLabel.includes('全书')) {
-      setError('首次真实试产不建议直接跑全书，请先选择 1 章或 3-5 章。');
+    if (lockedSelectionMismatch) {
+      setError('当前开工页拿到的章节范围与任务锁定范围不一致，已阻止默认回退到第 1 章。请返回重新选章后再开工。');
+      return;
+    }
+    if (taskContract?.rangeLabel.includes('全书')) {
+      setError('首次真实制作不建议直接跑全书，请先选择 1 章或 3-5 章。');
       return;
     }
     setError('');
@@ -197,8 +224,8 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
         chapterIndices: selectedBatchChapterIndices,
         estimate: batchEstimate,
         config: {
-          executionMode,
-          realAgents: executionMode === 'real' ? 'all' : 'off',
+          executionMode: 'real',
+          realAgents: 'all',
           includePerformanceDesign: deliveryOptions.cvDirections || deliveryOptions.bgmSfx,
           deliveryOptions,
         },
@@ -219,10 +246,10 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
         <div className={styles.workOrderHeroMain}>
           <div className={styles.workOrderHeroCopy}>
             <div className={styles.workOrderKicker}>开工确认书</div>
-            <h2>请最后确认预算、试产模式和交付物。</h2>
+            <h2>请最后确认预算、真实制作队列和交付物。</h2>
             <p>
               你前面确认的素材、章节范围、目标和修改策略已经锁定。这里不再重新选章节，
-              只做开工前拍板；如需改范围，请返回修改方案。
+              只做真实制作开工前拍板；如需改范围，请返回修改方案。
             </p>
             <div className={styles.workOrderSealRow}>
               <span>不改剧情</span>
@@ -260,7 +287,7 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
 
       <section className={styles.contractApprovalGrid}>
         <div className={`${styles.card} ${styles.batchBudgetCard}`}>
-          <div className={styles.sectionTitle}>最终预算与试产模式</div>
+          <div className={styles.sectionTitle}>最终预算与真实制作队列</div>
           <div className={styles.batchBudgetStats}>
             <div><span>已选章节</span><strong>{batchEstimate.chapterCount}</strong></div>
             <div><span>总字数</span><strong>{batchEstimate.totalChars.toLocaleString('zh-CN')}</strong></div>
@@ -268,15 +295,8 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
             <div><span>预计费用</span><strong>¥{batchEstimate.estimatedCostCny.toFixed(2)}</strong></div>
           </div>
           <div className={styles.batchModeBlock}>
-            <strong>试产模式</strong>
-            <label className={styles.batchOptionToggle}>
-              <input type="radio" checked={executionMode === 'mock'} onChange={() => setExecutionMode('mock')} />
-              <span>模拟演示：不调用真实模型，适合看流程</span>
-            </label>
-            <label className={styles.batchOptionToggle}>
-              <input type="radio" checked={executionMode === 'real'} onChange={() => setExecutionMode('real')} />
-              <span>真实 Agent 试产：会调用模型并产生费用，建议先跑 1 章或 3-5 章</span>
-            </label>
+            <strong>真实 Agent 制作</strong>
+            <p>本页只支持真实 Agent 制作。点击开工后会调用真实模型并产生费用，失败会在执行页显示具体 Agent 与错误。</p>
           </div>
           <div className={styles.batchModeBlock}>
             <strong>本次交付内容已锁定</strong>
@@ -312,9 +332,9 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
         bookTitle={selectedBatchBook?.title || taskContract?.bookTitle || '待选择素材'}
         rangeLabel={contractRangeLabel}
         estimate={batchEstimate}
-        executionMode={executionMode}
         deliveryItemLabels={deliveryItemLabels}
         warnings={startWarnings}
+        chapterSummary={chapterSummary}
         confirmButtonText={startBatchButtonText}
         onClose={() => setConfirmOpen(false)}
         onConfirm={() => void confirmStart()}

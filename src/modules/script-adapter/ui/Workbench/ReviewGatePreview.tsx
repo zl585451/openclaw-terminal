@@ -55,6 +55,7 @@ export function ReviewGatePreview({ run, bookId }: ReviewGatePreviewProps) {
   const allArtifacts = Object.values(sheet.artifacts) as ArtifactEnvelope[];
   const adapted = findArtifact<AdaptedScriptPayload>(allArtifacts, 'adapted_script');
   const reviewed = findArtifact<ReviewReportPayload>(allArtifacts, 'review_report');
+  if (!adapted || !reviewed) return null;
 
   const segments = adapted?.payload?.segments ?? [];
   const conclusion = reviewed?.payload?.conclusion;

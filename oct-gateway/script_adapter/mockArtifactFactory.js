@@ -33,12 +33,15 @@ function isRealAgentEnabled(agentId, ctx = {}) {
 
 async function createArtifactForAgent(agentId, displayName, ctx = {}) {
   const sourceText = String(ctx?.sourceText || '').trim();
+  const realEnabled = isRealAgentEnabled(agentId, ctx);
 
   if (
     agentId === 'adapter.audiobook_text_rewriter@1.0'
-    && isRealAgentEnabled(agentId, ctx)
-    && sourceText
+    && realEnabled
   ) {
+    if (!sourceText) {
+      throw new Error('TEXT_REWRITER_NO_INPUT: 真实 Agent 模式没有拿到章节原文');
+    }
     try {
       const { payload, latencyMs, model } = await runTextRewriterAgent({ ...ctx, sourceText });
       return envelope(
@@ -51,32 +54,18 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
         { segments: payload.segments.length, chars: payload.totalCharCount, latencyMs },
       );
     } catch (error) {
-      return envelope(
-        'adapted_script',
-        agentId,
-        displayName,
-        '改编失败',
-        `真实 LLM 调用失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
-        {
-          chapterTitle: '改编失败',
-          totalCharCount: 0,
-          segments: [
-            {
-              segmentId: 'seg-001',
-              type: 'narration',
-              text: '[改编失败,请检查模型配置后重试]',
-              rewriteNote: String(error?.message || 'unknown').slice(0, 200),
-            },
-          ],
-        },
-        { error: 1 },
-      );
+      throw new Error(`TEXT_REWRITER_REAL_FAILED: ${String(error?.message || error)}`);
     }
   }
 
-  if (agentId === 'classifier.voice_role_marker@1.0' && isRealAgentEnabled(agentId, ctx)) {
+  if (agentId === 'classifier.voice_role_marker@1.0' && realEnabled) {
     try {
       const { payload, latencyMs, model } = await runVoiceClassifierAgent(ctx);
+      const hasNonNarrator = Array.isArray(payload.registry)
+        && payload.registry.some((role) => role.roleName !== '旁白' && role.category !== 'narrator');
+      if (!hasNonNarrator) {
+        throw new Error('VOICE_CLASSIFIER_ONLY_NARRATOR: 真实角色音阶段只识别到旁白,疑似上游台本没有拆出对白');
+      }
       return envelope(
         'voice_registry',
         agentId,
@@ -91,19 +80,11 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
         },
       );
     } catch (error) {
-      return envelope(
-        'voice_registry',
-        agentId,
-        displayName,
-        '分类失败',
-        `角色音真实分类失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
-        { registry: [], unresolved: [] },
-        { error: 1 },
-      );
+      throw new Error(`VOICE_CLASSIFIER_REAL_FAILED: ${String(error?.message || error)}`);
     }
   }
 
-  if (agentId === 'designer.performance_audio@1.0' && isRealAgentEnabled(agentId, ctx)) {
+  if (agentId === 'designer.performance_audio@1.0' && realEnabled) {
     try {
       const { payload, latencyMs, model } = await runPerformanceDesignerAgent(ctx);
       const filteredPayload = filterPerformancePayload(payload, ctx?.deliveryOptions || {});
@@ -117,23 +98,11 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
         { sfx: filteredPayload.sfxList.length, cv: filteredPayload.cvDirections.length, latencyMs },
       );
     } catch (error) {
-      return envelope(
-        'performance_design',
-        agentId,
-        displayName,
-        '设计失败',
-        `演播设计真实调用失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
-        {
-          bgmTrack: { mood: '未设计', suggestion: '真实演播设计失败,请人工补充。' },
-          sfxList: [],
-          cvDirections: [],
-        },
-        { error: 1 },
-      );
+      throw new Error(`PERFORMANCE_DESIGN_REAL_FAILED: ${String(error?.message || error)}`);
     }
   }
 
-  if (agentId === 'reviewer.production_quality@1.0' && isRealAgentEnabled(agentId, ctx)) {
+  if (agentId === 'reviewer.production_quality@1.0' && realEnabled) {
     try {
       const { payload, latencyMs, model } = await runQualityReviewerAgent(ctx);
       return envelope(
@@ -146,30 +115,11 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
         { issues: payload.issues.length, latencyMs },
       );
     } catch (error) {
-      return envelope(
-        'review_report',
-        agentId,
-        displayName,
-        '质检失败',
-        `质检真实调用失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
-        {
-          conclusion: 'pass_with_changes',
-          issues: [
-            {
-              severity: 'P1',
-              category: '系统',
-              location: '全局',
-              description: '质检 Agent 失败,本轮使用占位报告继续流转。',
-              suggestion: '交付前请人工补充质检。',
-            },
-          ],
-        },
-        { error: 1 },
-      );
+      throw new Error(`QUALITY_REVIEW_REAL_FAILED: ${String(error?.message || error)}`);
     }
   }
 
-  if (agentId === 'packager.content_delivery@1.0' && isRealAgentEnabled(agentId, ctx)) {
+  if (agentId === 'packager.content_delivery@1.0' && realEnabled) {
     try {
       const { payload, latencyMs, model } = await runDeliveryPackagerAgent(ctx);
       return envelope(
@@ -182,15 +132,7 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
         { files: payload.manifest.length, latencyMs },
       );
     } catch (error) {
-      return envelope(
-        'final_package',
-        agentId,
-        displayName,
-        '打包失败',
-        `打包失败,已回退占位:${String(error?.message || error).slice(0, 80)}`,
-        { manifest: [], versionTag: 'failed', notes: '打包失败,请检查上游台本产物。' },
-        { error: 1 },
-      );
+      throw new Error(`DELIVERY_PACKAGER_REAL_FAILED: ${String(error?.message || error)}`);
     }
   }
 
@@ -339,29 +281,105 @@ function buildFinalPackageFromAdapted(adapted, agentId, displayName) {
   );
 }
 
+/**
+ * 用真实 sourceText 构建 mock 改编台本。
+ * 按段落拆分，通过引号启发式判断旁白 vs 对白，不调用 LLM。
+ * 返回值是 envelope() 的结果。
+ */
+function buildMockAdaptedScriptFromSource(sourceText, agentId, displayName) {
+  // 提取章节标题：第一行非空内容
+  const lines = sourceText.split('\n');
+  let chapterTitle = '';
+  for (const line of lines) {
+    const t = line.trim();
+    if (t) { chapterTitle = t.slice(0, 40); break; }
+  }
+  if (!chapterTitle) chapterTitle = '本章';
+
+  // 按双换行（段落）或单换行拆分，过滤空行
+  const rawParas = sourceText.split(/\n{2,}|\n/).map((p) => p.trim()).filter((p) => p.length > 0);
+
+  // 最多取前 30 段，避免段数过多
+  const paras = rawParas.slice(0, 30);
+
+  let segIdx = 0;
+  const segments = [];
+
+  for (const para of paras) {
+    segIdx += 1;
+    const segmentId = `seg-${String(segIdx).padStart(3, '0')}`;
+
+    // 启发式：行内有中文引号 "…" / 「…」 或以说话人格式开头 → 对白
+    const hasQuote = /[""「」『』]/.test(para);
+    // 检测 "角色：对白" 格式
+    const speakerMatch = para.match(/^([^\s：:，,。.…]{1,6})[：:](.+)/);
+
+    if (speakerMatch) {
+      segments.push({
+        segmentId,
+        type: 'dialogue',
+        speaker: speakerMatch[1].trim(),
+        text: speakerMatch[2].trim(),
+        rewriteNote: '[mock] 对白段，演播时注意角色口吻与情绪。',
+      });
+    } else if (hasQuote) {
+      // 提取引号前面可能是旁白，引号部分是对白——简化为 dialogue
+      segments.push({
+        segmentId,
+        type: 'dialogue',
+        speaker: '',
+        text: para,
+        rewriteNote: '[mock] 含引号段，暂归对白，确认说话人后修正。',
+      });
+    } else {
+      segments.push({
+        segmentId,
+        type: 'narration',
+        text: para,
+        rewriteNote: '[mock] 旁白段，注意节奏与停顿。',
+      });
+    }
+  }
+
+  const totalCharCount = segments.reduce((sum, s) => sum + (s.text ? s.text.length : 0), 0);
+
+  return envelope(
+    'adapted_script',
+    agentId,
+    displayName,
+    '多人演播样章台本（Mock 预处理）',
+    `[mock] 已将原文 ${rawParas.length} 段（取前 ${segments.length} 段）按启发式规则拆分，共 ${totalCharCount} 字。切换真实 Agent 可获得 LLM 改编版本。`,
+    {
+      chapterTitle,
+      totalCharCount,
+      segments,
+    },
+    { segments: segments.length, chars: totalCharCount },
+  );
+}
+
 function createMockArtifact(agentId, displayName, ctx = {}) {
   const adapted = findAdaptedScriptPayload(ctx.artifacts);
 
   if (agentId === 'adapter.audiobook_text_rewriter@1.0') {
-    return envelope('adapted_script', agentId, displayName, '多人演播样章台本', '已完成第1章前半段的听感改编样稿。', {
-      chapterTitle: '第1章 · 樟木箱',
-      totalCharCount: 286,
+    // 使用实际 sourceText 构建 mock 台本，不再硬编码第1章内容
+    const sourceText = String(ctx?.sourceText || '').trim();
+    if (sourceText) {
+      return buildMockAdaptedScriptFromSource(sourceText, agentId, displayName);
+    }
+    // 无 sourceText 时才回退到占位内容（明确标注为占位）
+    return envelope('adapted_script', agentId, displayName, '多人演播样章台本（占位）', '[mock] 未提供原文，以下为占位台本，不代表实际章节内容。', {
+      chapterTitle: '（未提供原文）',
+      totalCharCount: 0,
       segments: [
         {
           segmentId: 'seg-001',
           type: 'narration',
-          text: '三月的风从楼道窗缝里灌进来，带着一股灰尘和旧木头的味道。周佳宁站在门口，看着周婉云把钥匙插进那把发涩的锁里。',
-          rewriteNote: '保留原场景信息，拆短句并增加可听化停顿。',
-        },
-        {
-          segmentId: 'seg-002',
-          type: 'dialogue',
-          speaker: '周婉云',
-          text: '东西都搬得差不多了。就剩阁楼上那些旧东西，你自己上去收拾一下。',
-          rewriteNote: '对白改得更自然，保留人物冷淡的交代感。',
+          text: '[占位] 请提供原文后重新执行，或切换到真实 Agent 模式。',
+          rewriteNote: '无原文，无法生成台本。',
         },
       ],
-    }, { segments: 2, chars: 286 });
+    }, { segments: 1, chars: 0 });
   }
 
   if (agentId === 'classifier.voice_role_marker@1.0') {

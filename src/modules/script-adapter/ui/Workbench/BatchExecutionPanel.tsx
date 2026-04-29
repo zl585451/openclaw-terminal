@@ -52,8 +52,8 @@ export function BatchExecutionPanel({
   onRefresh,
   onBatchRefreshHistory,
 }: BatchExecutionPanelProps) {
-  const completed = batch.status === 'completed';
-  const running = !completed;
+  const completed = batch.status === 'completed' && batch.failedChapters === 0;
+  const running = batch.status === 'running';
   const teamKeys = Object.keys(TEAM_ROLE_COPY);
 
   const handleExportMarkdown = async () => {

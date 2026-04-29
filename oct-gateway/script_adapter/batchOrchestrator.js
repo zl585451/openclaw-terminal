@@ -11,6 +11,8 @@ const activeBatches = new Map();
 persistence.ensureSchema();
 persistence.recoverInterruptedRuns();
 recoverInterruptedBatches();
+recoverLegacyAwaitingReviewBatches();
+recoverCompletedBatchesWithFailures();
 
 async function startBatch(params = {}, connection, logger) {
   const bookId = String(params.bookId || '').trim();
@@ -20,8 +22,8 @@ async function startBatch(params = {}, connection, logger) {
   if (!bookId) return { success: false, error: 'bookId required' };
   if (chapterIndices.length === 0) return { success: false, error: 'chapterIndices required' };
 
-  const book = await fetchBook(bookId);
-  const chapters = await fetchChapters(bookId);
+  const book = await fetchBook(bookId, params);
+  const chapters = await fetchChapters(bookId, params);
   const selectedChapters = chapterIndices.map((index) => chapters.find((chapter) => chapter.chapter_index === index)).filter(Boolean);
   if (selectedChapters.length === 0) {
     return { success: false, error: '未找到可执行章节' };
@@ -57,6 +59,17 @@ async function startBatch(params = {}, connection, logger) {
       deliveryOptions,
       budget: params?.estimate || null,
       sharedContext: { voiceRegistry: [], lastUpdatedAtChapter: null },
+      // 内联章节文本缓存：当 params.chapters[i].text 存在时，跳过 ai_library 章节内容请求
+      inlineChapterTexts: Array.isArray(params?.chapters)
+        ? Object.fromEntries(
+            params.chapters
+              .filter((chapter) => chapter.text)
+              .map((chapter) => [
+                typeof chapter.chapter_index === 'number' ? chapter.chapter_index : 0,
+                String(chapter.text),
+              ]),
+          )
+        : null,
     },
     chapterRuns: selectedChapters.map((chapter) => ({
       id: `run-${batchId}-${chapter.chapter_index}-a1`,
@@ -92,30 +105,30 @@ async function runBatchLoop(batchId, connection, logger) {
     while (!controller.signal.aborted) {
       snapshot = persistence.getBatch(batchId);
       if (!snapshot) break;
-      if (snapshot.chapterRuns.some((run) => run.status === 'awaiting_review')) break;
       const nextChapterIndex = persistence.findNextPendingChapter(batchId);
       if (nextChapterIndex == null) break;
       await executeChapter(snapshot.batch, nextChapterIndex, emit, controller.signal, logger);
       await sleep(isRealAgentsEnabled(snapshot.batch) ? 1200 : 150, controller.signal).catch(() => {});
     }
 
-      const finalSnapshot = persistence.getBatch(batchId);
-      if (finalSnapshot) {
-        const pendingLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'pending');
-        const awaitingReview = finalSnapshot.chapterRuns.some((run) => run.status === 'awaiting_review');
-        const nextStatus = controller.signal.aborted
-          ? 'cancelled'
-          : awaitingReview || pendingLeft
-          ? 'paused'
-          : finalSnapshot.batch.failedChapters > 0
-            ? 'completed'
+    const finalSnapshot = persistence.getBatch(batchId);
+    if (finalSnapshot) {
+      const pendingLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'pending');
+      const failedLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'failed');
+      const nextStatus = controller.signal.aborted
+        ? 'cancelled'
+        : failedLeft
+          ? 'failed'
+          : pendingLeft
+            ? 'paused'
             : 'completed';
       persistence.updateBatch(batchId, {
         status: nextStatus,
-        completedAt: controller.signal.aborted || !pendingLeft ? new Date().toISOString() : null,
+        completedAt: controller.signal.aborted || failedLeft || !pendingLeft ? new Date().toISOString() : null,
       });
-      emit(nextStatus === 'cancelled' ? 'batch_cancelled' : 'batch_completed', {
+      emit(nextStatus === 'cancelled' ? 'batch_cancelled' : nextStatus === 'failed' ? 'batch_failed' : 'batch_completed', {
         batch: persistence.getBatch(batchId)?.batch,
+        error: failedLeft ? 'one_or_more_chapters_failed' : undefined,
       });
     }
   } catch (error) {
@@ -136,7 +149,11 @@ async function runBatchLoop(batchId, connection, logger) {
 async function executeChapter(batch, chapterIndex, emit, signal, logger) {
   const chapterRun = persistence.getChapterRun(batch.id, chapterIndex);
   if (!chapterRun) throw new Error(`chapter_run_missing:${chapterIndex}`);
-  const chapterData = await fetchChapter(batch.bookId, chapterIndex);
+  // 优先使用内联章节文本（绕过 ai_library 依赖）
+  const inlineText = batch.config?.inlineChapterTexts?.[chapterIndex];
+  const chapterData = inlineText
+    ? { chapter: null, text: inlineText }
+    : await fetchChapter(batch.bookId, chapterIndex);
   const startedAt = new Date().toISOString();
   persistence.updateChapterRun(chapterRun.id, {
     status: 'running',
@@ -169,7 +186,6 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
         realAgentsOverride: batch.config?.realAgents || 'off',
         deliveryOptions: batch.config?.deliveryOptions || {},
         sharedVoiceRegistry: batch.config?.sharedContext?.voiceRegistry || [],
-        haltOnPendingQualityGate: true,
       },
       onProgress: (payload) => {
         emit('chapter_progress', {
@@ -179,6 +195,7 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
         });
       },
     });
+    assertNoMockArtifactsInRealBatch(completedSheet, batch);
     const normalizedSheet = applyLockedVoiceRegistry(completedSheet, batch);
     const durationMs = Date.now() - new Date(startedAt).getTime();
     const chapterCost = estimateChapterCost(batch);
@@ -191,32 +208,6 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
       pendingGateId: null,
       pendingGateType: null,
     });
-    const pendingGate = findPendingGateAfterAgent(normalizedSheet);
-    if (pendingGate) {
-      persistence.createGateDecision({
-        gateId: pendingGate.gateId,
-        batchId: batch.id,
-        chapterRunId: chapterRun.id,
-        gateType: pendingGate.gateType,
-      });
-      persistence.updateChapterRun(chapterRun.id, {
-        status: 'awaiting_review',
-        sheet: normalizedSheet,
-        pendingGateId: pendingGate.gateId,
-        pendingGateType: pendingGate.gateType,
-        completedAt: null,
-      });
-      persistence.updateBatch(batch.id, {
-        status: 'paused',
-        completedAt: null,
-      });
-      emit('gate_reached', {
-        chapterIndex,
-        runId: chapterRun.id,
-        gate: pendingGate,
-      });
-      return;
-    }
     updateSharedContext(batch.id, chapterIndex, normalizedSheet);
     emit('chapter_completed', {
       chapterIndex,
@@ -224,6 +215,7 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
       sheet: normalizedSheet,
     });
   } catch (error) {
+    const failedSheet = error?.sheet || null;
     logger?.warn?.('script adapter chapter failed', {
       batchId: batch.id,
       chapterIndex,
@@ -231,6 +223,7 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
     });
     persistence.updateChapterRun(chapterRun.id, {
       status: 'failed',
+      sheet: failedSheet || chapterRun.sheet || null,
       errorMessage: error instanceof Error ? error.message : String(error),
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - new Date(startedAt).getTime(),
@@ -304,6 +297,46 @@ function recoverInterruptedBatches() {
   }
 }
 
+function recoverLegacyAwaitingReviewBatches() {
+  const runs = persistence.listAwaitingReviewRuns();
+  const touchedBatchIds = new Set();
+  for (const run of runs) {
+    persistence.updateChapterRun(run.id, {
+      status: 'completed',
+      sheet: autoApproveQualityGates(run.sheet),
+      pendingGateId: null,
+      pendingGateType: null,
+      errorMessage: null,
+      completedAt: run.completedAt || new Date().toISOString(),
+    });
+    if (run.pendingGateId) {
+      persistence.resolveGateDecision(run.pendingGateId, {
+        status: 'approved',
+        reviewerNote: 'auto_migrated_non_blocking_review',
+      });
+    }
+    touchedBatchIds.add(run.batchId);
+  }
+  for (const batchId of touchedBatchIds) {
+    const snapshot = persistence.getBatch(batchId);
+    if (!snapshot) continue;
+    const pendingLeft = snapshot.chapterRuns.some((item) => item.status === 'pending');
+    persistence.updateBatch(batchId, {
+      status: pendingLeft ? 'paused' : 'completed',
+      completedAt: pendingLeft ? null : new Date().toISOString(),
+    });
+  }
+}
+
+function recoverCompletedBatchesWithFailures() {
+  for (const batch of persistence.listCompletedBatchesWithFailures()) {
+    persistence.updateBatch(batch.id, {
+      status: 'failed',
+      completedAt: batch.completedAt || new Date().toISOString(),
+    });
+  }
+}
+
 function approveGate(params = {}, connection, logger) {
   const batchId = String(params.batchId || '').trim();
   const gateId = String(params.gateId || '').trim();
@@ -363,22 +396,48 @@ function rejectGate(params = {}) {
   return { success: true, rejected: true, gateId };
 }
 
-async function fetchBook(bookId) {
-  const payload = await fetchJson(`${getAiLibraryBase()}/api/library/${encodeURIComponent(bookId)}`);
-  return payload?.book || payload || null;
+async function fetchBook(bookId, params) {
+  // 内联降级路径：调用方直接提供 bookTitle，跳过 HTTP 请求
+  if (params?.bookTitle) {
+    return { id: bookId, title: String(params.bookTitle) };
+  }
+  try {
+    const payload = await fetchJson(`${getAiLibraryBase()}/api/library/${encodeURIComponent(bookId)}`);
+    return payload?.book || payload || null;
+  } catch (error) {
+    throw new Error(`AI_LIBRARY_UNAVAILABLE: 无法获取书籍信息（${error?.message || error}）。请确认 ai_library 服务在 ${getAiLibraryBase()} 上运行，或在批次请求中直接传入 bookTitle。`);
+  }
 }
 
-async function fetchChapters(bookId) {
-  const payload = await fetchJson(`${getAiLibraryBase()}/api/library/${encodeURIComponent(bookId)}/chapters`);
-  return Array.isArray(payload?.chapters) ? payload.chapters : [];
+async function fetchChapters(bookId, params) {
+  // 内联降级路径：调用方直接提供 chapters 数组，跳过 HTTP 请求
+  if (Array.isArray(params?.chapters) && params.chapters.length > 0) {
+    return params.chapters.map((chapter, idx) => ({
+      id: chapter.id || `${bookId}-${idx}`,
+      book_id: bookId,
+      chapter_index: typeof chapter.chapter_index === 'number' ? chapter.chapter_index : idx,
+      title: chapter.title || `第 ${idx + 1} 章`,
+      char_count: chapter.char_count || (chapter.text ? String(chapter.text).length : null),
+    }));
+  }
+  try {
+    const payload = await fetchJson(`${getAiLibraryBase()}/api/library/${encodeURIComponent(bookId)}/chapters`);
+    return Array.isArray(payload?.chapters) ? payload.chapters : [];
+  } catch (error) {
+    throw new Error(`AI_LIBRARY_UNAVAILABLE: 无法获取章节列表（${error?.message || error}）。请确认 ai_library 服务在 ${getAiLibraryBase()} 上运行，或在批次请求中直接传入 chapters 数组。`);
+  }
 }
 
 async function fetchChapter(bookId, chapterIndex) {
-  const payload = await fetchJson(`${getAiLibraryBase()}/api/library/${encodeURIComponent(bookId)}/chapter/${chapterIndex}`);
-  return {
-    chapter: payload?.chapter || null,
-    text: String(payload?.text || ''),
-  };
+  try {
+    const payload = await fetchJson(`${getAiLibraryBase()}/api/library/${encodeURIComponent(bookId)}/chapter/${chapterIndex}`);
+    return {
+      chapter: payload?.chapter || null,
+      text: String(payload?.text || ''),
+    };
+  } catch (error) {
+    throw new Error(`AI_LIBRARY_CHAPTER_UNAVAILABLE: 无法获取第 ${chapterIndex} 章内容（${error?.message || error}）。请确认 ai_library 服务在 ${getAiLibraryBase()} 上运行。`);
+  }
 }
 
 async function fetchJson(url) {
@@ -476,11 +535,16 @@ function estimateChapterCost(batch) {
   return Number((total / count).toFixed(4));
 }
 
-function findPendingGateAfterAgent(sheet) {
-  if (!sheet || !Array.isArray(sheet.gates)) return null;
-  return sheet.gates.find(
-    (gate) => gate.status === 'pending' && gate.gateType === 'quality_review',
-  ) || null;
+function assertNoMockArtifactsInRealBatch(sheet, batch) {
+  const realMode = batch?.config?.executionMode === 'real'
+    || String(batch?.config?.realAgents || '').trim().toLowerCase() === 'all';
+  if (!realMode || !sheet?.artifacts) return;
+  const mockArtifact = Object.values(sheet.artifacts).find((artifact) => {
+    const text = `${artifact?.title || ''}\n${artifact?.summary || ''}`.toLowerCase();
+    return text.includes('mock') || text.includes('[mock]');
+  });
+  if (!mockArtifact) return;
+  throw new Error(`REAL_BATCH_CONTAINS_MOCK_ARTIFACT: ${mockArtifact.artifactType || mockArtifact.title || 'unknown'}`);
 }
 
 function updateGateStatus(sheet, gateId, status, reviewerNote) {
@@ -493,6 +557,23 @@ function updateGateStatus(sheet, gateId, status, reviewerNote) {
           ...gate,
           status,
           reviewerNote: reviewerNote || gate.reviewerNote || '',
+        }
+        : gate
+    )),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function autoApproveQualityGates(sheet) {
+  if (!sheet || !Array.isArray(sheet.gates)) return sheet;
+  return {
+    ...sheet,
+    overallStatus: sheet.overallStatus === 'awaiting_review' ? 'completed' : sheet.overallStatus,
+    gates: sheet.gates.map((gate) => (
+      gate.gateType === 'quality_review' && gate.status === 'pending'
+        ? {
+          ...gate,
+          status: 'approved',
         }
         : gate
     )),
