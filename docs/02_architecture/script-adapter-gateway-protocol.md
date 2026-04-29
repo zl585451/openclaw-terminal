@@ -1,6 +1,6 @@
 # Script Adapter Gateway Protocol
 
-更新时间：2026-04-26（补充真实角色音统筹 `voiceClassifierAgent`、双 Agent 真实分支）
+更新时间：2026-04-29（补充文本改编 JSON 截断重试与真实模式失败约束）
 
 本文记录内容制作工作台 Week 2 Track C 起的 Gateway 状态机骨架。当前为「前两步可选真实 LLM + 后三步 mock」的混合 pipeline；transport、registry、cancel/list 入口已按后续真实 agent runner 的形状拆开。
 
@@ -19,11 +19,11 @@
 - `oct-gateway/script_adapter/eventEmitter.js`
   - 将 runner 事件包装为 Gateway transport event：`{ type: 'event', event: 'script-adapter', payload }`。
 - `oct-gateway/script_adapter/mockArtifactFactory.js`
-  - 默认生成 mock artifact；在 `SCRIPT_ADAPTER_REAL_AGENTS`（见 `isRealAgentEnabled`）启用时：`adapter.audiobook_text_rewriter@1.0` 在开工传入非空 `sourceText` 时走 `agents/textRewriterAgent.js` 真实 LLM，失败则回退占位产物（pipeline 不中断）；`classifier.voice_role_marker@1.0` 走 `agents/voiceClassifierAgent.js` 消费上游 `adapted_script.segments`，失败则回退空 `voice_registry` 占位（pipeline 不中断）。
+  - 默认生成 mock artifact；在 `SCRIPT_ADAPTER_REAL_AGENTS`（见 `isRealAgentEnabled`）启用时：`adapter.audiobook_text_rewriter@1.0` 在开工传入非空 `sourceText` 时走 `agents/textRewriterAgent.js` 真实 LLM；`classifier.voice_role_marker@1.0` 走 `agents/voiceClassifierAgent.js` 消费上游 `adapted_script.segments`。真实模式下任一真实 Agent 失败都应显式抛错，不再静默回退 mock/占位产物。
   - 若 `artifacts` 内已有 `adapted_script`，后续三个 Agent 的 mock 产物从该 payload 推导 speaker、`segmentId`、段数与 manifest 命名，避免与真实头部穿帮。
   - 真实 Agent 开关读取顺序：`config.scriptAdapter.realAgents`（`config.json` 嵌套 `scriptAdapter` 与 env 已在 `config.js` 合并）→ 顶层 `SCRIPT_ADAPTER_REAL_AGENTS` env/配置键。
 - `oct-gateway/script_adapter/agents/textRewriterAgent.js`
-  - 文本改编师真实调用（JSON 台本结构）。
+  - 文本改编师真实调用（JSON 台本结构）。默认切片约 2200 字，输出预算 6000 tokens；若模型返回带前后缀、围栏或不完整 JSON，会先提取 JSON 对象，解析失败时用紧凑提示自动重试一次。
 - `oct-gateway/script_adapter/agents/voiceClassifierAgent.js`
   - 角色音统筹真实调用：本地聚合出场统计 + LLM 输出类别与声线建议。
 - `oct-gateway/services/llmClient.js`

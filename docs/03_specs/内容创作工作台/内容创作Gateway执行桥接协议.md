@@ -104,7 +104,9 @@ Gateway 返回并推送 `analysisRun`：
 
 1. 文本改编 Agent 是产物生成步骤，不得沿用短请求超时；默认超时为 `120000ms`。
 2. 文本改编超时可通过 `SCRIPT_ADAPTER_TEXT_REWRITER_TIMEOUT_MS` 或 `scriptAdapter.textRewriterTimeoutMs` 调整，允许范围为 `30000ms` 到 `300000ms`。
-3. 切片改编中只要存在失败切片，当前章节应显式失败，不得把包含失败占位文本的半成品标记为成功交付。
+3. 文本改编默认输出预算为 `6000` tokens，可通过 `SCRIPT_ADAPTER_TEXT_REWRITER_MAX_TOKENS` 或 `scriptAdapter.textRewriterMaxTokens` 调整，允许范围为 `2000` 到 `16000`。
+4. 文本改编 JSON 解析应容忍模型在 JSON 前后追加解释或 markdown 围栏；若首次输出为空或 JSON 不完整，应使用更低温度和更紧凑提示重试一次。
+5. 切片改编中只要存在失败切片，当前章节应显式失败，不得把包含失败占位文本的半成品标记为成功交付。
 
 协议约束：
 
