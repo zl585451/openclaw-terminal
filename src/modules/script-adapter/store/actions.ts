@@ -181,24 +181,46 @@ export const scriptAdapterActions = {
     });
   },
 
-  rejectArtifact(artifactId: string, reason: string) {
-    console.log('[ScriptAdapter] TODO: reject artifact', artifactId, 'reason:', reason);
+  rejectArtifact(projectId: string, artifactId: string, reason: string) {
+    useScriptAdapterStore.getState()._set((state) => {
+      const sheet = state.executionSheets[projectId];
+      if (!sheet) return {};
+      const relatedGate = sheet.gates.find(
+        (gate) => gate.relatedArtifactId === artifactId && gate.status === 'pending',
+      );
+      if (!relatedGate) return {};
+      return {
+        executionSheets: {
+          ...state.executionSheets,
+          [projectId]: {
+            ...sheet,
+            gates: sheet.gates.map((gate) =>
+              gate.gateId === relatedGate.gateId
+                ? { ...gate, status: 'rejected' as const }
+                : gate,
+            ),
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    });
+    console.info('[ScriptAdapter] gate rejected for artifact', artifactId, '—', reason);
   },
 
   openArtifact(artifactId: string) {
-    console.log('[ScriptAdapter] TODO: open artifact', artifactId);
+    console.info('[ScriptAdapter] openArtifact — Phase 2 实现', artifactId);
   },
 
   viewArtifactHistory(artifactId: string) {
-    console.log('[ScriptAdapter] TODO: view artifact history', artifactId);
+    console.info('[ScriptAdapter] viewArtifactHistory — Phase 2 实现', artifactId);
   },
 
   rerunScene(projectId: string, sceneId: string) {
-    console.log('[ScriptAdapter] TODO: rerun scene', projectId, sceneId);
+    console.info('[ScriptAdapter] rerunScene — Phase 2 实现', projectId, sceneId);
   },
 
   pauseStage(projectId: string, stageIdx: number) {
-    console.log('[ScriptAdapter] TODO: pause stage', projectId, stageIdx);
+    console.info('[ScriptAdapter] pauseStage — Phase 2 实现', projectId, stageIdx);
   },
 };
 

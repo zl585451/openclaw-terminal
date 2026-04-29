@@ -277,6 +277,7 @@ export function StageDetail() {
                       className={styles.ghostButton}
                       onClick={() =>
                         scriptAdapterActions.rejectArtifact(
+                          currentProjectId,
                           artifact.id,
                           `stage-${stage.idx}-${artifact.scopeId}`,
                         )
