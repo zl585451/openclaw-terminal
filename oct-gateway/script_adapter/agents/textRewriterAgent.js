@@ -1,8 +1,8 @@
 'use strict';
 
 const { chatCompletion, resolveProviderFor } = require('../../services/llmClient');
-const { chunkByChars } = require('../../services/chunker');
 const config = require('../../config');
+const { createAdaptiveSlices, mergeSlicePayloads } = require('../adaptiveSlicer');
 const { parseLineProtocol } = require('../lineProtocolParser');
 
 const SYSTEM_PROMPT = `重要：你只能输出行协议。不要输出 JSON、Markdown、标题、解释、代码块或任何前言后语。第一行必须直接是 旁白|、角色名| 或 内心:角色名|。
@@ -112,10 +112,7 @@ const SYSTEM_PROMPT = `重要：你只能输出行协议。不要输出 JSON、M
 
 只输出行协议。从第一行开始就是行协议内容，不要有任何前言后语。再次确认：禁止 JSON，禁止 Markdown，禁止解释文字，禁止标题行。输出要比原文短一点，但不能摘要化，目标字数比 82%-92%。`;
 
-const SOFT_LIMIT = 4000;
 const HARD_LIMIT = 12000;
-const CHUNK_TARGET = 3500;
-const CHUNK_MAX = 4000;
 const ANCHOR_SIZE = 200;
 const TEXT_REWRITER_TIMEOUT_MS = readPositiveInt(
   config.scriptAdapter?.textRewriterTimeoutMs || config.getEnvOrConfig?.('SCRIPT_ADAPTER_TEXT_REWRITER_TIMEOUT_MS'),
@@ -137,11 +134,12 @@ async function runTextRewriterAgent(ctx, _options = {}) {
     throw new Error(`TEXT_REWRITER_TOO_LONG: ${sourceText.length} > ${HARD_LIMIT}`);
   }
 
-  if (sourceText.length <= SOFT_LIMIT) {
+  const slices = createAdaptiveSlices(sourceText, { anchorSize: ANCHOR_SIZE });
+  if (slices.length <= 1) {
     return runSinglePass(sourceText);
   }
 
-  return runChunkedPass(sourceText);
+  return runSlicedPass(sourceText, slices);
 }
 
 async function runSinglePass(sourceText) {
@@ -165,99 +163,122 @@ async function runSinglePass(sourceText) {
   };
 }
 
-async function runChunkedPass(sourceText) {
+async function runSlicedPass(sourceText, slices = createAdaptiveSlices(sourceText, { anchorSize: ANCHOR_SIZE })) {
   const startedAt = Date.now();
   const provider = resolveProviderFor('script_adapter');
-  const chunks = chunkByChars(sourceText, {
-    targetSize: CHUNK_TARGET,
-    maxSize: CHUNK_MAX,
-    overlap: 0,
-  });
-
-  const mergedSegments = [];
-  let succeededChunks = 0;
-  let chapterTitle = '';
-  let lastAnchor = '';
   let model = provider.model;
+  const results = [];
+  let succeededSlices = 0;
 
-  for (let index = 0; index < chunks.length; index += 1) {
-    const chunk = chunks[index];
-    const result = await rewriteChunk({
+  for (const slice of slices) {
+    const result = await rewriteSliceWithRetries({
       provider,
-      chunkText: chunk.content,
-      chunkIndex: index,
-      totalChunks: chunks.length,
-      previousAnchor: lastAnchor,
+      slice,
     });
 
     if (result.ok) {
-      succeededChunks += 1;
-      const payload = normalizePayload(result.payload);
-      if (!chapterTitle && payload.chapterTitle) chapterTitle = payload.chapterTitle;
+      succeededSlices += 1;
       model = result.model || model;
-      for (const segment of payload.segments) {
-        mergedSegments.push({
-          ...segment,
-          segmentId: formatSegmentId(mergedSegments.length + 1),
-        });
-      }
-    } else {
-      mergedSegments.push({
-        segmentId: formatSegmentId(mergedSegments.length + 1),
-        type: 'narration',
-        text: `[第 ${index + 1} 段改编失败：${String(result.error || '未知错误').slice(0, 80)}]`,
-        rewriteNote: 'chunked fallback',
-      });
     }
-
-    lastAnchor = chunk.content.slice(-ANCHOR_SIZE);
+    results.push(result);
   }
 
-  if (succeededChunks === 0) {
-    throw new Error(`TEXT_REWRITER_CHUNK_FAILED: ${succeededChunks}/${chunks.length} chunks succeeded`);
+  if (succeededSlices === 0) {
+    throw new Error(`TEXT_REWRITER_SLICE_FAILED: ${succeededSlices}/${slices.length} slices succeeded`);
   }
 
   return {
-    payload: {
-      chapterTitle: chapterTitle || '未命名片段',
-      totalCharCount: mergedSegments.reduce((sum, item) => sum + String(item.text || '').length, 0),
-      segments: mergedSegments,
-    },
+    payload: mergeSlicePayloads(results, { formatSegmentId }),
     latencyMs: Date.now() - startedAt,
-    model: `${model} (chunked × ${chunks.length})`,
+    model: `${model} (sliced × ${slices.length})`,
   };
 }
 
-async function rewriteChunk({ provider, chunkText, chunkIndex, totalChunks, previousAnchor }) {
-  const anchorText = previousAnchor ? `上一段末尾参考（仅用于保持语气与衔接，不要重复改写）：\n${previousAnchor}\n\n` : '';
-  const stageText = chunkIndex === 0
-    ? `请把下列原文改编成多人演播台本。全文会分 ${totalChunks} 段处理，这是第 1 段。`
-    : `请继续改编同一章小说，保持人物语气、信息顺序和悬疑节奏一致。这是第 ${chunkIndex + 1}/${totalChunks} 段。`;
-
-  try {
-    const result = await chatCompletion({
-      provider,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `${stageText}\n\n${anchorText}原文：\n\n${chunkText}` },
-      ],
-      maxTokens: 2000,
-      temperature: 0.6,
-      responseJson: false,
-      timeoutMs: TEXT_REWRITER_TIMEOUT_MS,
-    });
-
-    return {
-      ok: true,
-      payload: parseTextRewriterOutput(result.content),
-      model: result.model,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+async function rewriteSliceWithRetries({ provider, slice }) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await rewriteSlice({ provider, slice, retryLabel: attempt === 0 ? 'primary' : 'same-input-retry' });
+    } catch (error) {
+      lastError = error;
+    }
   }
+
+  const bisected = createAdaptiveSlices(slice.coreText, {
+    anchorSize: ANCHOR_SIZE,
+    sliceCount: 2,
+  });
+  if (bisected.length > 1) {
+    const childResults = [];
+    for (const child of bisected) {
+      try {
+        childResults.push(await rewriteSlice({
+          provider,
+          slice: {
+            ...child,
+            index: child.index,
+            total: bisected.length,
+            previousAnchor: child.previousAnchor || slice.previousAnchor,
+            nextAnchor: child.nextAnchor || slice.nextAnchor,
+          },
+          retryLabel: 'bisected-retry',
+        }));
+      } catch (error) {
+        childResults.push({
+          ok: false,
+          sliceIndex: child.index + 1,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    const succeeded = childResults.some((result) => result.ok);
+    if (succeeded) {
+      return {
+        ok: true,
+        payload: mergeSlicePayloads(childResults, { formatSegmentId }),
+        model: childResults.find((result) => result.model)?.model || provider.model,
+        retryLevel: 'bisected',
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    sliceIndex: slice.index + 1,
+    error: lastError instanceof Error ? lastError.message : String(lastError || '未知错误'),
+    degraded: true,
+  };
+}
+
+async function rewriteSlice({ provider, slice, retryLabel }) {
+  const previousAnchorText = slice.previousAnchor
+    ? `上文锚点（只供理解和衔接，禁止改写输出）：\n${slice.previousAnchor}\n\n`
+    : '';
+  const nextAnchorText = slice.nextAnchor
+    ? `下文锚点（只供理解和衔接，禁止改写输出）：\n${slice.nextAnchor}\n\n`
+    : '';
+  const stageText = slice.total === 1
+    ? '请把下列原文改编成多人演播台本。'
+    : `请继续改编同一章小说，保持人物语气、信息顺序和悬疑节奏一致。这是第 ${slice.index + 1}/${slice.total} 片。`;
+
+  const result = await chatCompletion({
+    provider,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: `${stageText}\n\n${previousAnchorText}${nextAnchorText}待改写正文（只输出这部分的行协议）：\n\n${slice.coreText}` },
+    ],
+    maxTokens: 2000,
+    temperature: 0.6,
+    responseJson: false,
+    timeoutMs: TEXT_REWRITER_TIMEOUT_MS,
+  });
+
+  return {
+    ok: true,
+    payload: parseTextRewriterOutput(result.content),
+    model: result.model,
+    retryLevel: retryLabel,
+  };
 }
 
 function normalizePayload(payload) {
