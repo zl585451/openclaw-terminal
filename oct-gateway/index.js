@@ -105,10 +105,10 @@ const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
 const { handleImageGenerate } = require('./image_gen');
 const {
-  startMockScriptAdapterRun,
-  cancelMockScriptAdapterRun,
-  listMockScriptAdapterRuns,
-} = require('./script_adapter/mock_execution');
+  startChapterPipelineRun,
+  cancelChapterPipelineRun,
+  listChapterPipelineRuns,
+} = require('./script_adapter/chapterPipeline');
 const persistence = require('./script_adapter/persistence');
 const connectionRegistry = require('./script_adapter/connectionRegistry');
 const {
@@ -472,7 +472,7 @@ async function handleChatRequest(request, connection) {
 
 async function handleTransportMessage(msg, connection) {
   if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.start') {
-    const run = startMockScriptAdapterRun(msg.params || {}, connection, log);
+    const run = startChapterPipelineRun(msg.params || {}, connection, log);
     connection.send({
       type: 'res',
       id: msg.id,
@@ -487,7 +487,7 @@ async function handleTransportMessage(msg, connection) {
   }
 
   if (msg?.type === 'req' && msg?.method === 'scriptAdapter.run.cancel') {
-    const result = cancelMockScriptAdapterRun(msg.params?.taskId, msg.params?.reason);
+    const result = cancelChapterPipelineRun(msg.params?.taskId, msg.params?.reason);
     connection.send({
       type: 'res',
       id: msg.id,
@@ -510,7 +510,7 @@ async function handleTransportMessage(msg, connection) {
       method: msg.method,
       payload: {
         type: 'script-adapter-run-list',
-        runs: listMockScriptAdapterRuns(),
+        runs: listChapterPipelineRuns(),
       },
     });
     return true;

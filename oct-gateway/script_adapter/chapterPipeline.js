@@ -1,4 +1,4 @@
-const { runMockAgentPipeline } = require('./agentRunner');
+const { runChapterAgentPipeline } = require('./agentRunner');
 const { createScriptAdapterEmitter } = require('./eventEmitter');
 const runRegistry = require('./runRegistry');
 
@@ -111,7 +111,7 @@ async function runSingleScriptAdapterChapter({
   ctx = {},
   onProgress,
 }) {
-  return runMockAgentPipeline({
+  return runChapterAgentPipeline({
     sheet,
     signal,
     emit: (event, payload) => {
@@ -132,7 +132,7 @@ async function runSingleScriptAdapterChapter({
   });
 }
 
-function startMockScriptAdapterRun(params, connection, logger) {
+function startChapterPipelineRun(params, connection, logger) {
   const taskId = String(params?.taskId || `script-adapter-${Date.now()}`);
   const taskTitle = String(params?.taskTitle || '多人演播有声书样章');
   const sourceText = String(params?.sourceText || '');
@@ -155,7 +155,7 @@ function startMockScriptAdapterRun(params, connection, logger) {
   });
 
   setTimeout(() => {
-    runMockAgentPipeline({
+    runChapterAgentPipeline({
       sheet,
       emit,
       signal: abortController.signal,
@@ -208,11 +208,11 @@ function startMockScriptAdapterRun(params, connection, logger) {
   };
 }
 
-function cancelMockScriptAdapterRun(taskId, reason = 'cancelled_by_user') {
+function cancelChapterPipelineRun(taskId, reason = 'cancelled_by_user') {
   return runRegistry.cancelRun(taskId, reason);
 }
 
-function listMockScriptAdapterRuns() {
+function listChapterPipelineRuns() {
   return runRegistry.listRuns();
 }
 
@@ -233,9 +233,9 @@ function markRunningRunsFailed(sheet, error) {
 }
 
 module.exports = {
-  startMockScriptAdapterRun,
-  cancelMockScriptAdapterRun,
-  listMockScriptAdapterRuns,
+  startChapterPipelineRun,
+  cancelChapterPipelineRun,
+  listChapterPipelineRuns,
   createExecutionPlan,
   runSingleScriptAdapterChapter,
 };

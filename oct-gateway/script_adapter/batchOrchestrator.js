@@ -4,7 +4,7 @@ const config = require('../config');
 const persistence = require('./persistence');
 const connectionRegistry = require('./connectionRegistry');
 const { createBatchScriptAdapterEmitter } = require('./eventEmitter');
-const { createExecutionPlan, runSingleScriptAdapterChapter } = require('./mock_execution');
+const { createExecutionPlan, runSingleScriptAdapterChapter } = require('./chapterPipeline');
 
 const activeBatches = new Map();
 

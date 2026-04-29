@@ -1,7 +1,7 @@
 const { createArtifactForAgent } = require('./mockArtifactFactory');
 const runRegistry = require('./runRegistry');
 
-async function runMockAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx = {} }) {
+async function runChapterAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx = {} }) {
   let currentSheet = { ...sheet, overallStatus: 'running', updatedAt: new Date().toISOString() };
   onSheetUpdate?.(currentSheet);
   emit('sheet_created', { sheet: currentSheet });
@@ -141,5 +141,5 @@ function createAbortError(reason) {
 }
 
 module.exports = {
-  runMockAgentPipeline,
+  runChapterAgentPipeline,
 };
