@@ -29,16 +29,19 @@ export type CotExtractResult = {
   mainContent: string;
 };
 
-type TagSpec = {
+export type AssistantCotTagSpec = {
   open: string;
   close: string;
 };
 
-const TAG_SPECS: TagSpec[] = [
+const TAG_SPECS: AssistantCotTagSpec[] = [
   { open: BRACKET_OPEN, close: BRACKET_CLOSE },
   { open: THINK_OPEN, close: THINK_CLOSE },
   { open: REDACTED_THINK_OPEN, close: REDACTED_THINK_CLOSE },
 ];
+
+/** 与 extractAssistantCotAndMain / findNextTag 相同顺序；供 useActivityTimeline 对齐首段 CoT */
+export const ASSISTANT_COT_MARKER_SPECS: readonly AssistantCotTagSpec[] = TAG_SPECS;
 
 /**
  * 剥离文本中的工具调用注释，例如：
@@ -157,8 +160,8 @@ export function stripTextToolAnnotations(input: string): string {
   return out.replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function findNextTag(full: string, fromIndex: number): { spec: TagSpec; index: number } | null {
-  let best: { spec: TagSpec; index: number } | null = null;
+function findNextTag(full: string, fromIndex: number): { spec: AssistantCotTagSpec; index: number } | null {
+  let best: { spec: AssistantCotTagSpec; index: number } | null = null;
   for (const spec of TAG_SPECS) {
     const idx = full.indexOf(spec.open, fromIndex);
     if (idx === -1) continue;

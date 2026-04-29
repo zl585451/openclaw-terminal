@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ASSISTANT_COT_MARKER_SPECS } from '../utils/cotExtract';
 import type { GatewayKeepalivePayload, GatewayToolPayload } from '../types/gateway';
 
 export type ActivityEntryType =
@@ -92,31 +93,22 @@ export function useActivityTimeline(_messages: unknown[]) {
       cotSyncTimerRef.current = null;
       const currentFull = latestFullTextRef.current;
 
-      const cotOpen = currentFull.indexOf('[cot]');
-      if (cotOpen !== -1) {
-        const afterOpen = currentFull.slice(cotOpen + 5);
-        const cotClose = afterOpen.indexOf('[/cot]');
-        const cotText = cotClose !== -1 ? afterOpen.slice(0, cotClose) : afterOpen;
-        upsertCotEntry(cotText);
-        return;
+      /** 与 cotExtract.ts findNextTag 一致：取全文中最靠前的一组开标签 */
+      let chosen: { spec: (typeof ASSISTANT_COT_MARKER_SPECS)[number]; index: number } | null = null;
+      for (const spec of ASSISTANT_COT_MARKER_SPECS) {
+        const idx = currentFull.indexOf(spec.open);
+        if (idx === -1) continue;
+        if (!chosen || idx < chosen.index) {
+          chosen = { spec, index: idx };
+        }
       }
+      if (!chosen) return;
 
-      const thinkOpen = currentFull.indexOf('<think>');
-      if (thinkOpen !== -1) {
-        const afterThink = currentFull.slice(thinkOpen + 7);
-        const thinkClose = afterThink.indexOf('</think>');
-        const thinkText = thinkClose !== -1 ? afterThink.slice(0, thinkClose) : afterThink;
-        upsertCotEntry(thinkText);
-        return;
-      }
+      const innerStart = chosen.index + chosen.spec.open.length;
+      const closeIdx = currentFull.indexOf(chosen.spec.close, innerStart);
+      const rawInner = closeIdx === -1 ? currentFull.slice(innerStart) : currentFull.slice(innerStart, closeIdx);
 
-      const redactedThinkOpen = currentFull.indexOf('<redacted_thinking>');
-      if (redactedThinkOpen !== -1) {
-        const afterThink = currentFull.slice(redactedThinkOpen + '<redacted_thinking>'.length);
-        const thinkClose = afterThink.indexOf('</redacted_thinking>');
-        const thinkText = thinkClose !== -1 ? afterThink.slice(0, thinkClose) : afterThink;
-        upsertCotEntry(thinkText);
-      }
+      upsertCotEntry(rawInner);
     }, 300);
   }, [upsertCotEntry]);
 
@@ -201,4 +193,3 @@ export function useActivityTimeline(_messages: unknown[]) {
     scheduleCotSyncFromFullText,
   };
 }
-
