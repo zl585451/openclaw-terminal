@@ -27,6 +27,8 @@ describe('inferProviderFromBaseUrl', () => {
     expect(inferProviderFromBaseUrl('https://api.minimaxi.com')).toBe('minimax');
     expect(inferProviderFromBaseUrl('https://api.siliconflow.cn')).toBe('siliconflow');
     expect(inferProviderFromBaseUrl('https://api.moonshot.cn')).toBe('moonshot');
+    expect(inferProviderFromBaseUrl('http://127.0.0.1:3000/v1')).toBe('newapi');
+    expect(inferProviderFromBaseUrl('https://newapi.example.com/v1')).toBe('newapi');
     expect(inferProviderFromBaseUrl('https://api.groq.com')).toBe('groq');
     expect(inferProviderFromBaseUrl('http://localhost:11434')).toBe('ollama');
   });

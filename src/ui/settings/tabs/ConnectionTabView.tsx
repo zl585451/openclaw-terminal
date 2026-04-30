@@ -376,10 +376,11 @@ export function ConnectionTabView({
                     ...k,
                     OCT_PROVIDER: id,
                     OCT_MODEL: p?.defaultModel || k.OCT_MODEL,
-                    DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' || id === 'google' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
+                    DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' || id === 'google' || id === 'newapi' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
                     DEEPSEEK_BASE_URL: id === 'deepseek' ? (p?.baseUrl || '') : k.DEEPSEEK_BASE_URL,
                     MINIMAX_BASE_URL: id === 'minimax' ? (p?.baseUrl || '') : k.MINIMAX_BASE_URL,
                     MOONSHOT_BASE_URL: id === 'moonshot' ? (p?.baseUrl || '') : k.MOONSHOT_BASE_URL,
+                    NEWAPI_BASE_URL: id === 'newapi' ? (p?.baseUrl || '') : k.NEWAPI_BASE_URL,
                     CUSTOM_BASE_URL: id === 'custom' ? (p?.baseUrl || '') : k.CUSTOM_BASE_URL,
                     GOOGLE_AI_BASE_URL: id === 'google' ? (p?.baseUrl || '') : k.GOOGLE_AI_BASE_URL,
                   }));
@@ -432,6 +433,12 @@ export function ConnectionTabView({
                   默认走 Google 官方 <strong>@google/genai / Vertex AI 原生 SDK</strong>。建议把 Base URL 填成
                   <code>https://aiplatform.googleapis.com/v1beta1/projects/你的PROJECT_ID/locations/us-central1/endpoints/openapi</code>，
                   这样网关能自动识别项目与区域；计费直接落到你的 GCP 项目，工具调用与多轮兼容性也会比 OpenAI 兼容层更稳。
+                </p>
+              )}
+              {currentProviderId === 'newapi' && (
+                <p className="settings-desc settings-desc-spaced">
+                  New API 建议作为外部分发网关单独部署；这里填写 New API 里创建的令牌，Base URL 通常是
+                  <code>http://127.0.0.1:3000/v1</code> 或你的公网网关地址。
                 </p>
               )}
             </div>
@@ -807,6 +814,7 @@ export function ConnectionTabView({
                       currentProviderId === 'moonshot' ? apiKeys.MOONSHOT_BASE_URL :
                       currentProviderId === 'custom' ? apiKeys.CUSTOM_BASE_URL :
                       currentProviderId === 'google' ? apiKeys.GOOGLE_AI_BASE_URL :
+                      currentProviderId === 'newapi' ? apiKeys.NEWAPI_BASE_URL :
                       apiKeys.DASHSCOPE_BASE_URL
                     }
                     onChange={(e) => {
@@ -814,6 +822,7 @@ export function ConnectionTabView({
                       if (currentProviderId === 'deepseek') key = 'DEEPSEEK_BASE_URL';
                       else if (currentProviderId === 'minimax') key = 'MINIMAX_BASE_URL';
                       else if (currentProviderId === 'moonshot') key = 'MOONSHOT_BASE_URL';
+                      else if (currentProviderId === 'newapi') key = 'NEWAPI_BASE_URL';
                       else if (currentProviderId === 'custom') key = 'CUSTOM_BASE_URL';
                       else if (currentProviderId === 'google') key = 'GOOGLE_AI_BASE_URL';
                       else key = 'DASHSCOPE_BASE_URL';
@@ -847,6 +856,9 @@ export function ConnectionTabView({
                   if (providerId === 'custom' && apiKeys.CUSTOM_MODEL) {
                     testModel = apiKeys.CUSTOM_MODEL;
                   }
+                  if (providerId === 'newapi' && testModel === '__custom__' && apiKeys.CUSTOM_MODEL) {
+                    testModel = apiKeys.CUSTOM_MODEL;
+                  }
                   if (providerId === 'google' && testModel === '__custom__' && apiKeys.CUSTOM_MODEL) {
                     testModel = apiKeys.CUSTOM_MODEL;
                   }
@@ -858,11 +870,13 @@ export function ConnectionTabView({
                       MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
                       MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY,
                       CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
+                      NEWAPI_API_KEY: apiKeys.NEWAPI_API_KEY,
                       GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY,
-                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' || providerId === 'google' || providerId === 'moonshot' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
+                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' || providerId === 'google' || providerId === 'moonshot' || providerId === 'newapi' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
                       DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
                       MINIMAX_BASE_URL: providerId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || p?.baseUrl || '') : '',
                       MOONSHOT_BASE_URL: providerId === 'moonshot' ? (apiKeys.MOONSHOT_BASE_URL || p?.baseUrl || '') : '',
+                      NEWAPI_BASE_URL: providerId === 'newapi' ? (apiKeys.NEWAPI_BASE_URL || p?.baseUrl || '') : '',
                       CUSTOM_BASE_URL: providerId === 'custom' ? (apiKeys.CUSTOM_BASE_URL || p?.baseUrl || '') : '',
                       GOOGLE_AI_BASE_URL: providerId === 'google' ? (apiKeys.GOOGLE_AI_BASE_URL || p?.baseUrl || '') : '',
                     });

@@ -118,6 +118,7 @@ const electronAPI = {
         DEEPSEEK_API_KEY?: string;
         MINIMAX_API_KEY?: string;
         MOONSHOT_API_KEY?: string;
+        NEWAPI_API_KEY?: string;
         IMAGE_PROVIDER?: string;
         IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY?: boolean | string;
         IMAGE_API_KEY?: string;
@@ -145,6 +146,7 @@ const electronAPI = {
         DEEPSEEK_BASE_URL?: string;
         MINIMAX_BASE_URL?: string;
         MOONSHOT_BASE_URL?: string;
+        NEWAPI_BASE_URL?: string;
         CUSTOM_BASE_URL?: string;
         GOOGLE_AI_API_KEY?: string;
         GOOGLE_AI_BASE_URL?: string;

@@ -1,5 +1,7 @@
 {
   "OCT_MODEL": "MiniMax-M2.7",
+  "NEWAPI_API_KEY": "",
+  "NEWAPI_BASE_URL": "http://127.0.0.1:3000/v1",
   "MINIMAX_TEMPERATURE": 0.7,
   "memory": {
     "auto_save_history": true,

@@ -12,6 +12,7 @@ const TOOL_RELIABILITY_BY_PROVIDER = {
   minimax: 'strict',
   siliconflow: 'loose',
   groq: 'loose',
+  newapi: 'loose',
   custom: 'loose',
   ollama: 'none',
 };
@@ -163,6 +164,26 @@ const PROVIDERS = {
     ],
     supportsStreamOptions: true,
     supportsToolChoiceFunction: true,
+  },
+
+  newapi: {
+    id: 'newapi',
+    name: 'New API 外部分发网关',
+    baseUrl: 'http://127.0.0.1:3000/v1',
+    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+    keyLink: 'https://docs.newapi.ai/',
+    keyEnvVars: ['NEWAPI_API_KEY'],
+    defaultModel: '__custom__',
+    models: [
+      { id: '__custom__', label: '✏️ New API 模型 ID（后台渠道模型名）', tools: true, thinking: false, custom: true },
+      { id: 'gpt-4o-mini', label: 'gpt-4o-mini（示例）', tools: true, thinking: false },
+      { id: 'gpt-4o', label: 'gpt-4o（示例）', tools: true, thinking: false },
+      { id: 'claude-3-5-sonnet', label: 'claude-3-5-sonnet（示例）', tools: true, thinking: false },
+      { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash（示例）', tools: true, thinking: true },
+      { id: 'qwen-plus', label: 'qwen-plus（示例）', tools: true, thinking: false },
+    ],
+    supportsStreamOptions: true,
+    allowCustomModel: true,
   },
 
   ollama: {

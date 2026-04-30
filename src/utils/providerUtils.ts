@@ -6,6 +6,7 @@ export function inferProviderFromBaseUrl(baseUrl: string): string {
   if (u.includes('minimaxi')) return 'minimax';
   if (u.includes('siliconflow')) return 'siliconflow';
   if (u.includes('moonshot')) return 'moonshot';
+  if (u.includes('newapi') || u.includes('localhost:3000') || u.includes('127.0.0.1:3000')) return 'newapi';
   if (u.includes('groq')) return 'groq';
   if (u.includes('api.openai.com')) return 'openai';
   if (u.includes('localhost:11434')) return 'ollama';

@@ -794,6 +794,7 @@ function getProviderConfig() {
   const isMoonshot = preset.id === 'moonshot';
   const isGoogle = preset.id === 'google';
   const isCustom = preset.id === 'custom';
+  const isNewApi = preset.id === 'newapi';
 
   let apiKey = '';
   if (preset.fixedApiKey) {
@@ -861,6 +862,8 @@ function getProviderConfig() {
     baseUrl = getEnvOrConfig('MOONSHOT_BASE_URL') || preset.baseUrl;
   } else if (isGoogle) {
     baseUrl = sanitizeGoogleOpenAiBaseUrl(getEnvOrConfig('GOOGLE_AI_BASE_URL') || preset.baseUrl);
+  } else if (isNewApi) {
+    baseUrl = getEnvOrConfig('NEWAPI_BASE_URL') || preset.baseUrl;
   } else if (isCustom) {
     // 自定义服务：从配置中读取 Base URL 和 API Key
     baseUrl = _fileConfig.CUSTOM_BASE_URL || process.env.CUSTOM_BASE_URL || '';
@@ -875,10 +878,13 @@ function getProviderConfig() {
   if (isGoogle && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
     effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
   }
+  if (isNewApi && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
+    effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
+  }
   const customModelSupportsTools = readOptionalBoolConfig('CUSTOM_MODEL_SUPPORTS_TOOLS');
 
   let models = preset.models || [];
-  if (isCustom && effectiveModel && effectiveModel !== '__custom__') {
+  if ((isCustom || isNewApi) && effectiveModel && effectiveModel !== '__custom__') {
     const customModelToolMode = customModelSupportsTools === true
       ? 'enabled'
       : customModelSupportsTools === false
@@ -937,8 +943,8 @@ function getProviderConfig() {
     apiKey,
     baseUrl,
     models,
-    customModel: isCustom ? effectiveModel : undefined,
-    customModelSupportsTools: isCustom ? customModelSupportsTools : undefined,
+    customModel: (isCustom || isNewApi) ? effectiveModel : undefined,
+    customModelSupportsTools: (isCustom || isNewApi) ? customModelSupportsTools : undefined,
   };
 }
 
@@ -1104,6 +1110,8 @@ const config = {
   DASHSCOPE_BASE_URL: process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1',
   DEEPSEEK_API_KEY: pickKey(process.env.DEEPSEEK_API_KEY, _fileConfig.DEEPSEEK_API_KEY, legacyConfig.DEEPSEEK_API_KEY),
   DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL || legacyConfig.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
+  NEWAPI_API_KEY: pickKey(process.env.NEWAPI_API_KEY, _fileConfig.NEWAPI_API_KEY),
+  NEWAPI_BASE_URL: process.env.NEWAPI_BASE_URL || _fileConfig.NEWAPI_BASE_URL || 'http://127.0.0.1:3000/v1',
 
   // 搜索引擎 API Key（优先从 config.json 读取，与主进程保存一致）
   BRAVE_SEARCH_API_KEY: _fileConfig.BRAVE_SEARCH_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '',

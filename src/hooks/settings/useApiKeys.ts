@@ -9,6 +9,7 @@ export interface ApiKeysState {
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
   MOONSHOT_API_KEY: string;
+  NEWAPI_API_KEY: string;
   IMAGE_PROVIDER: string;
   IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: boolean;
   IMAGE_API_KEY: string;
@@ -37,6 +38,7 @@ export interface ApiKeysState {
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
   MOONSHOT_BASE_URL: string;
+  NEWAPI_BASE_URL: string;
   CUSTOM_BASE_URL: string;
   GOOGLE_AI_API_KEY: string;
   GOOGLE_AI_BASE_URL: string;
@@ -119,6 +121,20 @@ const FALLBACK_PROVIDERS: ProvidersState = {
       { id: 'moonshot-v1-128k', label: 'Moonshot V1 128K（兼容）', tools: true, thinking: false },
     ],
   },
+  newapi: {
+    id: 'newapi',
+    name: 'New API 外部分发网关',
+    baseUrl: 'http://127.0.0.1:3000/v1',
+    keyLink: 'https://docs.newapi.ai/',
+    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+    defaultModel: '__custom__',
+    models: [
+      { id: '__custom__', label: '✏️ New API 模型 ID（后台渠道模型名）', tools: true, thinking: false, custom: true },
+      { id: 'gpt-4o-mini', label: 'gpt-4o-mini（示例）', tools: true, thinking: false },
+      { id: 'qwen-plus', label: 'qwen-plus（示例）', tools: true, thinking: false },
+    ],
+    allowCustomModel: true,
+  },
   google: {
     id: 'google',
     name: 'Google Gemini（Vertex AI 原生）',
@@ -156,6 +172,7 @@ type GatewayConfigPayload = {
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
   MOONSHOT_API_KEY: string;
+  NEWAPI_API_KEY: string;
   IMAGE_PROVIDER: string;
   IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: boolean;
   IMAGE_API_KEY: string;
@@ -181,6 +198,7 @@ type GatewayConfigPayload = {
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
   MOONSHOT_BASE_URL: string;
+  NEWAPI_BASE_URL: string;
   CUSTOM_BASE_URL: string;
   GOOGLE_AI_API_KEY: string;
   GOOGLE_AI_BASE_URL: string;
@@ -207,8 +225,16 @@ function resolveProviderId(data: Partial<ApiKeysState>): string {
 
   if (hasCustomRoute) return 'custom';
 
+  if (
+    !!String((data as Record<string, string>).NEWAPI_BASE_URL || '').trim()
+    || !!String((data as Record<string, string>).NEWAPI_API_KEY || '').trim()
+  ) {
+    return 'newapi';
+  }
+
   return inferProviderFromBaseUrl(
     data.GOOGLE_AI_BASE_URL
+    || (data as Record<string, string>).NEWAPI_BASE_URL
     || data.MINIMAX_BASE_URL
     || data.DASHSCOPE_BASE_URL
     || data.DEEPSEEK_BASE_URL
@@ -220,6 +246,7 @@ function hasConfiguredKey(data: Partial<ApiKeysState>, providerId: string): bool
   if (providerId === 'deepseek') return !!String(data.DEEPSEEK_API_KEY || '').trim();
   if (providerId === 'minimax') return !!String(data.MINIMAX_API_KEY || '').trim();
   if (providerId === 'moonshot') return !!String((data as Record<string, string>).MOONSHOT_API_KEY || '').trim();
+  if (providerId === 'newapi') return !!String((data as Record<string, string>).NEWAPI_API_KEY || '').trim();
   if (providerId === 'custom') return !!String(data.CUSTOM_API_KEY || '').trim();
   if (providerId === 'google') return !!String(data.GOOGLE_AI_API_KEY || '').trim();
   if (providerId === 'openai') return !!String((data as Record<string, string>).OPENAI_API_KEY || '').trim()
@@ -251,6 +278,8 @@ function buildGatewayPayload(
     baseUrl = apiKeys.MINIMAX_BASE_URL;
   } else if (currentProviderId === 'moonshot') {
     baseUrl = apiKeys.MOONSHOT_BASE_URL;
+  } else if (currentProviderId === 'newapi') {
+    baseUrl = apiKeys.NEWAPI_BASE_URL;
   } else if (currentProviderId === 'custom') {
     baseUrl = apiKeys.CUSTOM_BASE_URL;
   } else if (currentProviderId === 'google') {
@@ -268,6 +297,9 @@ function buildGatewayPayload(
   if (currentProviderId === 'custom' && apiKeys.CUSTOM_MODEL) {
     effectiveModel = apiKeys.CUSTOM_MODEL;
   }
+  if (currentProviderId === 'newapi' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
+    effectiveModel = apiKeys.CUSTOM_MODEL;
+  }
   if (currentProviderId === 'google' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
     effectiveModel = apiKeys.CUSTOM_MODEL;
   }
@@ -280,6 +312,7 @@ function buildGatewayPayload(
     DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
     MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY || '',
     MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY || '',
+    NEWAPI_API_KEY: apiKeys.NEWAPI_API_KEY || '',
     IMAGE_PROVIDER: apiKeys.IMAGE_PROVIDER || 'minimax',
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: !!apiKeys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY,
     IMAGE_API_KEY: apiKeys.IMAGE_API_KEY || '',
@@ -303,12 +336,13 @@ function buildGatewayPayload(
     CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
     DASHSCOPE_BASE_URL:
       currentProviderId === 'deepseek' || currentProviderId === 'custom' || currentProviderId === 'minimax'
-      || currentProviderId === 'google' || currentProviderId === 'moonshot'
+      || currentProviderId === 'google' || currentProviderId === 'moonshot' || currentProviderId === 'newapi'
         ? ''
         : (baseUrl || currentProvider?.baseUrl || ''),
     DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     MINIMAX_BASE_URL: currentProviderId === 'minimax' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     MOONSHOT_BASE_URL: currentProviderId === 'moonshot' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+    NEWAPI_BASE_URL: currentProviderId === 'newapi' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     CUSTOM_BASE_URL: currentProviderId === 'custom' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     GOOGLE_AI_BASE_URL: currentProviderId === 'google' ? (baseUrl || currentProvider?.baseUrl || '') : '',
     GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY || '',
@@ -330,6 +364,7 @@ export function useApiKeys() {
     DEEPSEEK_API_KEY: '',
     MINIMAX_API_KEY: '',
     MOONSHOT_API_KEY: '',
+    NEWAPI_API_KEY: '',
     IMAGE_PROVIDER: 'minimax',
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: false,
     IMAGE_API_KEY: '',
@@ -358,6 +393,7 @@ export function useApiKeys() {
     DEEPSEEK_BASE_URL: '',
     MINIMAX_BASE_URL: '',
     MOONSHOT_BASE_URL: '',
+    NEWAPI_BASE_URL: '',
     CUSTOM_BASE_URL: '',
     GOOGLE_AI_API_KEY: '',
     GOOGLE_AI_BASE_URL: '',
@@ -472,8 +508,10 @@ export function useApiKeys() {
       apiKeys.CUSTOM_BASE_URL,
       apiKeys.CUSTOM_API_KEY,
       apiKeys.CUSTOM_MODEL,
+      apiKeys.NEWAPI_API_KEY,
       apiKeys.MINIMAX_BASE_URL,
       apiKeys.MOONSHOT_BASE_URL,
+      apiKeys.NEWAPI_BASE_URL,
       apiKeys.DASHSCOPE_BASE_URL,
       apiKeys.DEEPSEEK_BASE_URL,
       apiKeys.GOOGLE_AI_BASE_URL,

@@ -13,6 +13,7 @@ export const RECOMMENDED_MODELS: Record<string, string[]> = {
   ],
   openai: ['gpt-4o-mini', 'gpt-4o'],
   moonshot: ['kimi-k2.6', 'kimi-k2.5', 'kimi-k2-turbo-preview'],
+  newapi: ['__custom__', 'gpt-4o-mini', 'qwen-plus'],
   groq: ['llama-3.3-70b-versatile', 'gemma2-9b-it'],
   ollama: ['qwen2.5:7b'],
   custom: [],

@@ -667,6 +667,20 @@ function getFallbackProviders() {
         { id: 'moonshot-v1-128k', label: 'Moonshot V1 128K（兼容）', tools: true, thinking: false },
       ],
     },
+    newapi: {
+      id: 'newapi',
+      name: 'New API 外部分发网关',
+      baseUrl: 'http://127.0.0.1:3000/v1',
+      keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+      keyLink: 'https://docs.newapi.ai/',
+      defaultModel: '__custom__',
+      models: [
+        { id: '__custom__', label: '✏️ New API 模型 ID（后台渠道模型名）', tools: true, thinking: false, custom: true },
+        { id: 'gpt-4o-mini', label: 'gpt-4o-mini（示例）', tools: true, thinking: false },
+        { id: 'qwen-plus', label: 'qwen-plus（示例）', tools: true, thinking: false },
+      ],
+      allowCustomModel: true,
+    },
     google: {
       id: 'google',
       name: 'Google Gemini（Vertex AI 原生）',
@@ -4125,6 +4139,7 @@ ipcMain.handle('get-api-keys', async () => {
     keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
     keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
     keys.MOONSHOT_API_KEY = pick('MOONSHOT_API_KEY', cfg.MOONSHOT_API_KEY);
+    keys.NEWAPI_API_KEY = pick('NEWAPI_API_KEY', cfg.NEWAPI_API_KEY);
     keys.IMAGE_PROVIDER = pick('IMAGE_PROVIDER', cfg.IMAGE_PROVIDER, 'minimax');
     keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY = pick('IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY', cfg.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY, 'false');
     keys.IMAGE_MINIMAX_API_KEY = pick('IMAGE_MINIMAX_API_KEY', cfg.IMAGE_MINIMAX_API_KEY);
@@ -4157,6 +4172,7 @@ ipcMain.handle('get-api-keys', async () => {
     keys.DEEPSEEK_BASE_URL = pick('DEEPSEEK_BASE_URL', cfg.DEEPSEEK_BASE_URL);
     keys.MINIMAX_BASE_URL = pick('MINIMAX_BASE_URL', cfg.MINIMAX_BASE_URL);
     keys.MOONSHOT_BASE_URL = pick('MOONSHOT_BASE_URL', cfg.MOONSHOT_BASE_URL);
+    keys.NEWAPI_BASE_URL = pick('NEWAPI_BASE_URL', cfg.NEWAPI_BASE_URL);
     keys.CUSTOM_BASE_URL = pick('CUSTOM_BASE_URL', cfg.CUSTOM_BASE_URL);
     keys.GOOGLE_AI_API_KEY = pick('GOOGLE_AI_API_KEY', cfg.GOOGLE_AI_API_KEY);
     keys.GOOGLE_AI_BASE_URL = pick('GOOGLE_AI_BASE_URL', cfg.GOOGLE_AI_BASE_URL);
@@ -4175,6 +4191,7 @@ ipcMain.handle('get-api-keys', async () => {
         DEEPSEEK_API_KEY: keys.DEEPSEEK_API_KEY || '',
         MINIMAX_API_KEY: keys.MINIMAX_API_KEY || '',
         MOONSHOT_API_KEY: keys.MOONSHOT_API_KEY || '',
+        NEWAPI_API_KEY: keys.NEWAPI_API_KEY || '',
         IMAGE_PROVIDER: keys.IMAGE_PROVIDER || 'minimax',
         IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: (keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY || 'false').toLowerCase() === 'true',
         IMAGE_API_KEY: keys.IMAGE_API_KEY || '',
@@ -4202,6 +4219,7 @@ ipcMain.handle('get-api-keys', async () => {
         DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
         MINIMAX_BASE_URL: keys.MINIMAX_BASE_URL || '',
         MOONSHOT_BASE_URL: keys.MOONSHOT_BASE_URL || '',
+        NEWAPI_BASE_URL: keys.NEWAPI_BASE_URL || '',
         CUSTOM_BASE_URL: keys.CUSTOM_BASE_URL || '',
         GOOGLE_AI_API_KEY: keys.GOOGLE_AI_API_KEY || '',
         GOOGLE_AI_BASE_URL: keys.GOOGLE_AI_BASE_URL || '',
@@ -4226,6 +4244,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     DEEPSEEK_API_KEY?: string;
     MINIMAX_API_KEY?: string;
     MOONSHOT_API_KEY?: string;
+    NEWAPI_API_KEY?: string;
     IMAGE_PROVIDER?: string;
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY?: boolean | string;
     IMAGE_API_KEY?: string;
@@ -4254,6 +4273,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     DEEPSEEK_BASE_URL?: string;
     MINIMAX_BASE_URL?: string;
     MOONSHOT_BASE_URL?: string;
+    NEWAPI_BASE_URL?: string;
     VISION_API_KEY?: string;
     VISION_BASE_URL?: string;
     VISION_MODEL?: string;
@@ -4282,6 +4302,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
     if (keys.MINIMAX_API_KEY !== undefined) cfg.MINIMAX_API_KEY = keys.MINIMAX_API_KEY || '';
     if (keys.MOONSHOT_API_KEY !== undefined) cfg.MOONSHOT_API_KEY = keys.MOONSHOT_API_KEY || '';
+    if (keys.NEWAPI_API_KEY !== undefined) cfg.NEWAPI_API_KEY = keys.NEWAPI_API_KEY || '';
     if (keys.IMAGE_PROVIDER !== undefined) cfg.IMAGE_PROVIDER = keys.IMAGE_PROVIDER || 'minimax';
     if (keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY !== undefined) {
       cfg.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY =
@@ -4310,6 +4331,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.DEEPSEEK_BASE_URL !== undefined) cfg.DEEPSEEK_BASE_URL = keys.DEEPSEEK_BASE_URL || '';
     if (keys.MINIMAX_BASE_URL !== undefined) cfg.MINIMAX_BASE_URL = keys.MINIMAX_BASE_URL || '';
     if (keys.MOONSHOT_BASE_URL !== undefined) cfg.MOONSHOT_BASE_URL = keys.MOONSHOT_BASE_URL || '';
+    if (keys.NEWAPI_BASE_URL !== undefined) cfg.NEWAPI_BASE_URL = keys.NEWAPI_BASE_URL || '';
     if (keys.CUSTOM_BASE_URL !== undefined) cfg.CUSTOM_BASE_URL = keys.CUSTOM_BASE_URL || '';
     if (keys.GOOGLE_AI_API_KEY !== undefined) cfg.GOOGLE_AI_API_KEY = keys.GOOGLE_AI_API_KEY || '';
     if (keys.GOOGLE_AI_BASE_URL !== undefined) cfg.GOOGLE_AI_BASE_URL = keys.GOOGLE_AI_BASE_URL || '';
@@ -4366,6 +4388,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       || keys.CUSTOM_BASE_URL !== undefined
       || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
       || keys.MINIMAX_API_KEY !== undefined
+      || keys.NEWAPI_API_KEY !== undefined || keys.NEWAPI_BASE_URL !== undefined
       || keys.CUSTOM_API_KEY !== undefined
       || keys.GOOGLE_AI_API_KEY !== undefined || keys.GOOGLE_AI_BASE_URL !== undefined
       || keys.HTTPS_PROXY !== undefined || keys.HTTP_PROXY !== undefined
@@ -4508,6 +4531,7 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
       providerId === 'deepseek' ? (cfg.DEEPSEEK_BASE_URL || provider?.baseUrl || '')
       : providerId === 'minimax' ? (cfg.MINIMAX_BASE_URL || provider?.baseUrl || '')
       : providerId === 'moonshot' ? (cfg.MOONSHOT_BASE_URL || provider?.baseUrl || '')
+      : providerId === 'newapi' ? (cfg.NEWAPI_BASE_URL || provider?.baseUrl || '')
       : providerId === 'custom' ? (cfg.CUSTOM_BASE_URL || provider?.baseUrl || '')
       : providerId === 'google' ? (cfg.GOOGLE_AI_BASE_URL || provider?.baseUrl || '')
       : (cfg.DASHSCOPE_BASE_URL || provider?.baseUrl || '');
@@ -4515,10 +4539,13 @@ ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, strin
       providerId === 'deepseek' ? (cfg.DEEPSEEK_API_KEY || '')
       : providerId === 'minimax' ? (cfg.MINIMAX_API_KEY || '')
       : providerId === 'moonshot' ? (cfg.MOONSHOT_API_KEY || '')
+      : providerId === 'newapi' ? (cfg.NEWAPI_API_KEY || '')
       : providerId === 'custom' ? (cfg.CUSTOM_API_KEY || '')
       : providerId === 'google' ? (cfg.GOOGLE_AI_API_KEY || '')
       : (cfg.DASHSCOPE_API_KEY || '');
-    const model = cfg.OCT_MODEL || provider?.defaultModel || 'qwen3.5-plus';
+    const model = providerId === 'newapi' && cfg.OCT_MODEL === '__custom__' && cfg.CUSTOM_MODEL
+      ? cfg.CUSTOM_MODEL
+      : (cfg.OCT_MODEL || provider?.defaultModel || 'qwen3.5-plus');
     if (!baseUrl || !apiKey) {
       return { success: false, error: '请先填写 API Key 并选择服务商' };
     }
