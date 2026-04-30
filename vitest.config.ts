@@ -10,6 +10,8 @@ export default defineConfig({
       'src/**/*.test.ts',
       'oct-gateway/test/basicQCChecker.test.js',
       'oct-gateway/test/lineProtocolParser.test.js',
+      'oct-gateway/test/classificationParser.test.js',
+      'oct-gateway/test/classifiedMerger.test.js',
       'oct-gateway/test/textRewriterE2E.test.js',
     ],
   },

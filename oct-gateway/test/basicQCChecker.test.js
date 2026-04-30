@@ -77,31 +77,52 @@ describe('checkBasicQC', () => {
     expect(categories(report)).toContain('parse_warning_high');
   });
 
-  it('detects more than five consecutive narration segments', () => {
-    const report = checkBasicQC({
-      adaptedScript: payload([
-        { segmentId: 'seg-001', type: 'narration', text: '一' },
-        { segmentId: 'seg-002', type: 'narration', text: '二' },
-        { segmentId: 'seg-003', type: 'narration', text: '三' },
-        { segmentId: 'seg-004', type: 'narration', text: '四' },
-        { segmentId: 'seg-005', type: 'narration', text: '五' },
-        { segmentId: 'seg-006', type: 'narration', text: '六' },
-        { segmentId: 'seg-007', type: 'dialogue', speaker: '甲', text: '停。' },
-      ]),
-    });
-    expect(report.conclusion).toBe('pass_with_changes');
-    expect(categories(report)).toContain('consecutive_narration');
-  });
-
   it('passes clean scripts', () => {
     const report = checkBasicQC({
       adaptedScript: payload([
         { segmentId: 'seg-001', type: 'narration', text: '风吹进屋里。' },
         { segmentId: 'seg-002', type: 'dialogue', speaker: '甲', text: '你来了。' },
-        { segmentId: 'seg-003', type: 'inner_monologue', speaker: '甲', text: '他心里松了一口气。' },
+        { segmentId: 'seg-003', type: 'inner_monologue', speaker: '甲', text: '不对，屋里有人来过。' },
       ]),
-      sourceText: '风吹进屋里。“你来了。”他心里松了一口气。',
+      sourceText: '风吹进屋里。”你来了。”不对，屋里有人来过。',
     });
     expect(report).toEqual({ conclusion: 'pass', issues: [] });
+  });
+
+  it('detects dialogue_action_misclassified', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'dialogue', speaker: '周佳宁', text: '她伸手拿起对讲机。' },
+      ]),
+    });
+    expect(categories(report)).toContain('dialogue_action_misclassified');
+  });
+
+  it('detects inner_monologue_third_person', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'inner_monologue', speaker: '周佳宁', text: '她心里忽然有点发紧。' },
+      ]),
+    });
+    expect(categories(report)).toContain('inner_monologue_third_person');
+  });
+
+  it('detects speaker_contamination', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'dialogue', speaker: '检查字数比例', text: '对白文本。' },
+      ]),
+    });
+    expect(categories(report)).toContain('speaker_contamination');
+    expect(report.conclusion).toBe('reject');
+  });
+
+  it('detects voice_registry_pollution_risk', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'dialogue', speaker: '这是一个非常异常的长speaker名', text: '对白文本。' },
+      ]),
+    });
+    expect(categories(report)).toContain('voice_registry_pollution_risk');
   });
 });

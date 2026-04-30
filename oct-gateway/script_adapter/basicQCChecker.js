@@ -10,6 +10,17 @@ const AI_CONTAMINATION_KEYWORDS = [
   '作为人工智能',
 ];
 
+const SPEAKER_POLLUTION_KEYWORDS = [
+  '检查字数比例',
+  '输出最终版本',
+  '格式采用',
+  '原文约',
+  '符合',
+  '作为AI',
+  '语言模型',
+  '根据您的要求',
+];
+
 const VALID_SCRIPT_TYPES = new Set(['dialogue', 'inner_monologue']);
 
 /**
@@ -39,7 +50,10 @@ function checkBasicQC(params = {}) {
   checkNarrationOnly(segments, issues);
   checkCharRatio(payload, sourceText, issues);
   checkParseWarningHigh(parseWarnings, totalLineCount, issues);
-  checkConsecutiveNarration(segments, issues);
+  checkDialogueActionMisclassified(segments, issues);
+  checkInnerMonologueThirdPerson(segments, issues);
+  checkSpeakerContamination(segments, issues);
+  checkVoiceRegistryPollution(segments, issues);
 
   return buildReport(issues);
 }
@@ -73,8 +87,25 @@ function checkAiContamination(segments, issues) {
       'P0',
       'ai_contamination',
       segment.segmentId || '全局',
-      `台本文本包含 AI 污染关键词“${keyword}”。`,
+      `台本文本包含 AI 污染关键词"${keyword}"。`,
       '删除 AI 套话并重新检查该段上下文。',
+    ));
+  }
+}
+
+function checkSpeakerContamination(segments, issues) {
+  for (const segment of segments) {
+    if (!VALID_SCRIPT_TYPES.has(segment?.type)) continue;
+    const speaker = String(segment.speaker || '').trim();
+    if (!speaker) continue;
+    const polluted = SPEAKER_POLLUTION_KEYWORDS.find((kw) => speaker.includes(kw));
+    if (!polluted) continue;
+    issues.push(issue(
+      'P0',
+      'speaker_contamination',
+      segment.segmentId || '全局',
+      `speaker含污染词"${polluted}"：${speaker}。`,
+      'speaker不能包含自检、元话语、AI套话。请重新执行分类。',
     ));
   }
 }
@@ -120,26 +151,66 @@ function checkParseWarningHigh(parseWarnings, totalLineCount, issues) {
   ));
 }
 
-function checkConsecutiveNarration(segments, issues) {
-  let streak = 0;
-  let startSegmentId = '';
+function checkDialogueActionMisclassified(segments, issues) {
+  const actionPatterns = [
+    /^[她他周佳宁母亲老人小孩孩子男人女人小姐][一-龥]{0,6}(站|走|推|拉|抬|转|伸|拿|放|捡|握|攥|打开|关|拧|插|按|摸|擦)/,
+  ];
+
   for (const segment of segments) {
-    if (segment?.type === 'narration') {
-      streak += 1;
-      if (streak === 1) startSegmentId = segment.segmentId || '全局';
-      if (streak === 6) {
-        issues.push(issue(
-          'P1',
-          'consecutive_narration',
-          startSegmentId,
-          '连续旁白 segment 超过 5 个。',
-          '复核是否需要拆出对白、内心独白，或压缩连续叙述。',
-        ));
-      }
-      continue;
+    if (segment?.type !== 'dialogue') continue;
+    const text = String(segment?.text || '');
+    const matched = actionPatterns.some((p) => p.test(text));
+    if (!matched) continue;
+    issues.push(issue(
+      'P1',
+      'dialogue_action_misclassified',
+      segment.segmentId || '全局',
+      `dialogue segment 文本疑似动作/第三人称叙述：${text.slice(0, 30)}。`,
+      '角色动作和身体感受应归旁白。检查该 segment 是否被误标为对白。',
+    ));
+  }
+}
+
+function checkInnerMonologueThirdPerson(segments, issues) {
+  const thirdPersonPatterns = [
+    /^她(心里|觉得|感觉|似乎|仿佛|想起|记得|意识|明白|懂得|以为|脑子里|隐约觉得)/,
+    /^他(心里|觉得|感觉|似乎|仿佛|想起|记得|意识|明白|懂得|以为|脑子里|隐约觉得)/,
+    /^周佳宁(心里|觉得|感觉|似乎|仿佛|想起|意识到|明白)/,
+    /^母亲(心里|觉得|感觉|似乎|仿佛|想起|意识到|明白)/,
+    /^老人(心里|觉得|感觉|似乎|仿佛|想起|意识到|明白)/,
+  ];
+
+  for (const segment of segments) {
+    if (segment?.type !== 'inner_monologue') continue;
+    const text = String(segment?.text || '');
+    const matched = thirdPersonPatterns.some((p) => p.test(text));
+    if (!matched) continue;
+    issues.push(issue(
+      'P1',
+      'inner_monologue_third_person',
+      segment.segmentId || '全局',
+      `inner_monologue 文本疑似第三人称心理描写：${text.slice(0, 30)}。`,
+      '第三人称心理描写应归旁白。只有直接念头才可标为内心独白。',
+    ));
+  }
+}
+
+function checkVoiceRegistryPollution(segments, issues) {
+  const KNOWN_SPECIAL_VOICES = new Set(['旁白', '旁白女', '旁白男']);
+
+  for (const segment of segments) {
+    if (!VALID_SCRIPT_TYPES.has(segment?.type)) continue;
+    const speaker = String(segment?.speaker || '').trim();
+    if (!speaker) continue;
+    if (speaker.length > 12 && !KNOWN_SPECIAL_VOICES.has(speaker)) {
+      issues.push(issue(
+        'P1',
+        'voice_registry_pollution_risk',
+        segment.segmentId || '全局',
+        `speaker名疑似异常长：${speaker}（${speaker.length}字符）。`,
+        '检查该 speaker 是否为污染词或分类错误。',
+      ));
     }
-    streak = 0;
-    startSegmentId = '';
   }
 }
 
@@ -162,5 +233,6 @@ function issue(severity, category, location, description, suggestion) {
 
 module.exports = {
   AI_CONTAMINATION_KEYWORDS,
+  SPEAKER_POLLUTION_KEYWORDS,
   checkBasicQC,
 };
