@@ -280,16 +280,17 @@ export function ConnectionTabView({
   return (
     <div className="settings-tab-content">
       <div className="settings-guide-card">
-        <h4>配置步骤</h4>
+        <h4>推荐配置</h4>
         <ol>
-          <li>若曾安装 Nocturne，先点击「修复配置」</li>
-          <li>在右侧面板点击「▶ 启动」启动 Gateway</li>
-          <li>填写下方 API Key，点击「保存并重新连接」</li>
+          <li>主对话 AI：负责聊天、写作、Canvas 和工具调用，建议直连百炼等官方接口</li>
+          <li>工具 AI：图片、向量、后台分析、生图等专项能力，建议后续统一走 New API 网关</li>
+          <li>不确定的配置先保持默认，需要时再展开高级配置</li>
         </ol>
       </div>
 
-      <section className="settings-section">
-        <h3>1. Gateway 连接</h3>
+      <details className="settings-details settings-details-tight">
+        <summary>高级：Gateway 连接</summary>
+        <div className="settings-details-content">
         {!apiKeysLoaded ? (
           <p className="settings-loading">加载中...</p>
         ) : (
@@ -349,11 +350,12 @@ export function ConnectionTabView({
             </button>
           </>
         )}
-      </section>
+        </div>
+      </details>
 
       <section className="settings-section">
-        <h3>2. AI 服务商与模型</h3>
-        <p className="settings-desc">选择服务商、填入 API Key、选择模型，即可开始对话</p>
+        <h3>1. 主对话 AI</h3>
+        <p className="settings-desc">用于实时对话、写作、Canvas 和工具调用。这里优先选择直连官方接口，体验会比多走一层网关更稳。</p>
         {!apiKeysLoaded ? null : (
           <>
             <div className="settings-field">
@@ -561,20 +563,6 @@ export function ConnectionTabView({
                 )}
               </div>
             )}
-            <div className="settings-field">
-              <label>内容创作 Agent 真实化开关</label>
-              <input
-                type="text"
-                value={apiKeys.SCRIPT_ADAPTER_REAL_AGENTS || ''}
-                onChange={(e) => setApiKeys((k) => ({ ...k, SCRIPT_ADAPTER_REAL_AGENTS: e.target.value }))}
-                placeholder="all"
-                className="settings-input settings-input-focusable"
-                autoComplete="off"
-              />
-              <p className="settings-desc settings-desc-compact">
-                复制粘贴 <code>all</code> 后保存并重新连接，即启用内容创作工作台 5 个 Agent 的真实产物链路。留空或填 <code>off</code> 则回到 mock。
-              </p>
-            </div>
             {currentProviderId === 'custom' && (
               <>
                 <div className="settings-field">
@@ -630,172 +618,6 @@ export function ConnectionTabView({
                 </div>
               </>
             )}
-            <section className="settings-section settings-section-nested">
-              <h3>3. 生图配置</h3>
-              <p className="settings-desc">
-                独立于聊天模型的生图 API 配置。默认不会复用聊天 Key，避免跨服务商串 key。
-                只有打开下方“允许回退”开关时，才会在生图 Key 为空时尝试聊天 Key。
-              </p>
-
-              <div className="settings-field">
-                <label>生图服务商</label>
-                <select
-                  value={apiKeys.IMAGE_PROVIDER || 'minimax'}
-                  onChange={(e) => {
-                    const provider = normalizeImageProvider(e.target.value);
-                    setApiKeys((k) => {
-                      const scoped = readScopedImageValues(k, provider);
-                      return {
-                        ...k,
-                        IMAGE_PROVIDER: provider,
-                        IMAGE_API_KEY: scoped.apiKey,
-                        IMAGE_BASE_URL: scoped.baseUrl,
-                        IMAGE_MODEL: scoped.model,
-                      };
-                    });
-                  }}
-                  className="settings-input settings-input-focusable"
-                >
-                  <option value="minimax">MiniMax image-01（推荐）</option>
-                  <option value="openai">OpenAI / 其他 OpenAI 兼容（含手动填硅基 URL）</option>
-                  <option value="siliconflow">硅基流动 SiliconFlow（推荐硅基生图）</option>
-                </select>
-              </div>
-
-              <div className="settings-field">
-                <label>生图 API Key</label>
-                <div className="settings-input-row">
-                  <input
-                    type={showApiKey.IMAGE_API_KEY ? 'text' : 'password'}
-                    value={apiKeys.IMAGE_API_KEY || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setApiKeys((k) => {
-                        const provider = normalizeImageProvider(k.IMAGE_PROVIDER);
-                        return {
-                          ...k,
-                          IMAGE_API_KEY: value,
-                          IMAGE_MINIMAX_API_KEY: provider === 'minimax' ? value : k.IMAGE_MINIMAX_API_KEY,
-                          IMAGE_SILICONFLOW_API_KEY: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_API_KEY,
-                          IMAGE_OPENAI_API_KEY: provider === 'openai' ? value : k.IMAGE_OPENAI_API_KEY,
-                        };
-                      });
-                    }}
-                    placeholder="建议单独填写生图服务商对应的 Key"
-                    className="settings-input settings-input-focusable"
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    className="settings-eye-btn"
-                    onClick={() => setShowApiKey((s) => ({ ...s, IMAGE_API_KEY: !s.IMAGE_API_KEY }))}
-                  >
-                    {showApiKey.IMAGE_API_KEY ? '🙈' : '👁'}
-                  </button>
-                </div>
-                <p className="settings-desc settings-desc-compact">
-                  当前值会保存到所选生图服务商的独立配置中，不会覆盖其他生图服务商。
-                </p>
-              </div>
-
-              <div className="settings-field">
-                <label>生图 Base URL</label>
-                <input
-                  type="text"
-                  value={apiKeys.IMAGE_BASE_URL || ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setApiKeys((k) => {
-                      const provider = normalizeImageProvider(k.IMAGE_PROVIDER);
-                      return {
-                        ...k,
-                        IMAGE_BASE_URL: value,
-                        IMAGE_MINIMAX_BASE_URL: provider === 'minimax' ? value : k.IMAGE_MINIMAX_BASE_URL,
-                        IMAGE_SILICONFLOW_BASE_URL: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_BASE_URL,
-                        IMAGE_OPENAI_BASE_URL: provider === 'openai' ? value : k.IMAGE_OPENAI_BASE_URL,
-                      };
-                    });
-                  }}
-                  placeholder={
-                    apiKeys.IMAGE_PROVIDER === 'openai'
-                      ? 'https://api.openai.com'
-                      : apiKeys.IMAGE_PROVIDER === 'siliconflow'
-                        ? 'https://api.siliconflow.cn/v1'
-                        : 'https://api.minimax.chat'
-                  }
-                  className="settings-input settings-input-focusable"
-                  autoComplete="off"
-                />
-              </div>
-
-              <div className="settings-field">
-                <label>生图模型</label>
-                <input
-                  type="text"
-                  value={apiKeys.IMAGE_MODEL || ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setApiKeys((k) => {
-                      const provider = normalizeImageProvider(k.IMAGE_PROVIDER);
-                      return {
-                        ...k,
-                        IMAGE_MODEL: value,
-                        IMAGE_MINIMAX_MODEL: provider === 'minimax' ? value : k.IMAGE_MINIMAX_MODEL,
-                        IMAGE_SILICONFLOW_MODEL: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_MODEL,
-                        IMAGE_OPENAI_MODEL: provider === 'openai' ? value : k.IMAGE_OPENAI_MODEL,
-                      };
-                    });
-                  }}
-                  placeholder={
-                    apiKeys.IMAGE_PROVIDER === 'openai'
-                      ? 'dall-e-3'
-                      : apiKeys.IMAGE_PROVIDER === 'siliconflow'
-                        ? 'Kwai-Kolors/Kolors'
-                        : 'image-01'
-                  }
-                  className="settings-input settings-input-focusable"
-                  autoComplete="off"
-                />
-              </div>
-
-              <div className="settings-field">
-                <label>生图 Key 回退策略</label>
-                <div className="settings-inline-row-between">
-                  <p className="settings-desc settings-desc-inline">
-                    允许回退到聊天 Key（默认关闭，建议保持关闭）
-                  </p>
-                  <label className="toggle-wrap">
-                    <input
-                      type="checkbox"
-                      checked={!!apiKeys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY}
-                      onChange={(e) => setApiKeys((k) => ({
-                        ...k,
-                        IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: e.target.checked,
-                      }))}
-                    />
-                    <span className="toggle-slider" />
-                  </label>
-                </div>
-                <p className="settings-desc settings-desc-compact settings-desc-warning">
-                  开启后可能把聊天服务商的 Key 误用于生图服务商，只有临时兼容旧配置时再启用。
-                </p>
-              </div>
-
-              <div className="settings-field">
-                <label>图片尺寸</label>
-                <select
-                  value={apiKeys.IMAGE_SIZE || '1024x1024'}
-                  onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_SIZE: e.target.value }))}
-                  className="settings-input settings-input-focusable"
-                >
-                  <option value="1024x1024">1024×1024（方形 1:1）</option>
-                  <option value="1280x720">1280×720（横向 16:9）</option>
-                  <option value="720x1280">720×1280（竖向 9:16）</option>
-                  <option value="1024x768">1024×768（横向 4:3）</option>
-                  <option value="768x1024">768×1024（竖向 3:4）</option>
-                </select>
-              </div>
-            </section>
             <details className="settings-details settings-details-tight">
               <summary>高级：Base URL</summary>
               <div className="settings-details-content">
@@ -893,6 +715,43 @@ export function ConnectionTabView({
               )}
             </div>
 
+          </>
+        )}
+      </section>
+
+      <section className="settings-section">
+        <h3>2. 工具 AI 网关</h3>
+        <p className="settings-desc">
+          工具 AI 用于图片、向量、后台分析、生图和批量任务。当前这些能力仍在高级配置中分别设置；后续会收敛到一个 New API 令牌。
+        </p>
+        <div className="settings-note-card">
+          推荐过渡方案：主对话直连百炼，工具能力逐步统一到 New API。这样能保留聊天速度，又方便以后做额度和收费。
+        </div>
+      </section>
+
+      <details className="settings-details">
+        <summary>高级：专项能力配置</summary>
+        <div className="settings-details-content">
+          <section className="settings-section settings-section-nested">
+            <h3>内容创作 Agent</h3>
+            <div className="settings-field">
+              <label>真实化开关</label>
+              <input
+                type="text"
+                value={apiKeys.SCRIPT_ADAPTER_REAL_AGENTS || ''}
+                onChange={(e) => setApiKeys((k) => ({ ...k, SCRIPT_ADAPTER_REAL_AGENTS: e.target.value }))}
+                placeholder="all"
+                className="settings-input settings-input-focusable"
+                autoComplete="off"
+              />
+              <p className="settings-desc settings-desc-compact">
+                复制粘贴 <code>all</code> 后保存并重新连接，即启用内容创作工作台 5 个 Agent 的真实产物链路。留空或填 <code>off</code> 则回到 mock。
+              </p>
+            </div>
+          </section>
+
+          <section className="settings-section settings-section-nested">
+            <h3>网络代理</h3>
             <div className="settings-field settings-field-offset">
               <label>HTTPS 代理（可选，仅 oct-gateway 出站）</label>
               <input
@@ -907,15 +766,180 @@ export function ConnectionTabView({
                 访问 Gemini / Google 等境外接口时使用。填 V2rayN「本地 HTTP 代理」地址（常见 10809，以你本机为准）。留空则不走代理。保存后会写入配置并重启网关。
               </p>
             </div>
+          </section>
 
-            <VisionApiSection apiKeys={apiKeys} setApiKeys={setApiKeys} showApiKey={showApiKey} setShowApiKey={setShowApiKey} />
-          </>
-        )}
-      </section>
+          <section className="settings-section settings-section-nested">
+            <h3>生图配置</h3>
+            <p className="settings-desc">
+              独立于聊天模型的生图 API 配置。默认不会复用聊天 Key，避免跨服务商串 key。
+              只有打开下方“允许回退”开关时，才会在生图 Key 为空时尝试聊天 Key。
+            </p>
 
-      <section className="settings-section">
+            <div className="settings-field">
+              <label>生图服务商</label>
+              <select
+                value={apiKeys.IMAGE_PROVIDER || 'minimax'}
+                onChange={(e) => {
+                  const provider = normalizeImageProvider(e.target.value);
+                  setApiKeys((k) => {
+                    const scoped = readScopedImageValues(k, provider);
+                    return {
+                      ...k,
+                      IMAGE_PROVIDER: provider,
+                      IMAGE_API_KEY: scoped.apiKey,
+                      IMAGE_BASE_URL: scoped.baseUrl,
+                      IMAGE_MODEL: scoped.model,
+                    };
+                  });
+                }}
+                className="settings-input settings-input-focusable"
+              >
+                <option value="minimax">MiniMax image-01（推荐）</option>
+                <option value="openai">OpenAI / 其他 OpenAI 兼容（含手动填硅基 URL）</option>
+                <option value="siliconflow">硅基流动 SiliconFlow（推荐硅基生图）</option>
+              </select>
+            </div>
+
+            <div className="settings-field">
+              <label>生图 API Key</label>
+              <div className="settings-input-row">
+                <input
+                  type={showApiKey.IMAGE_API_KEY ? 'text' : 'password'}
+                  value={apiKeys.IMAGE_API_KEY || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setApiKeys((k) => {
+                      const provider = normalizeImageProvider(k.IMAGE_PROVIDER);
+                      return {
+                        ...k,
+                        IMAGE_API_KEY: value,
+                        IMAGE_MINIMAX_API_KEY: provider === 'minimax' ? value : k.IMAGE_MINIMAX_API_KEY,
+                        IMAGE_SILICONFLOW_API_KEY: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_API_KEY,
+                        IMAGE_OPENAI_API_KEY: provider === 'openai' ? value : k.IMAGE_OPENAI_API_KEY,
+                      };
+                    });
+                  }}
+                  placeholder="建议单独填写生图服务商对应的 Key"
+                  className="settings-input settings-input-focusable"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  className="settings-eye-btn"
+                  onClick={() => setShowApiKey((s) => ({ ...s, IMAGE_API_KEY: !s.IMAGE_API_KEY }))}
+                >
+                  {showApiKey.IMAGE_API_KEY ? '🙈' : '👁'}
+                </button>
+              </div>
+              <p className="settings-desc settings-desc-compact">
+                当前值会保存到所选生图服务商的独立配置中，不会覆盖其他生图服务商。
+              </p>
+            </div>
+
+            <div className="settings-field">
+              <label>生图 Base URL</label>
+              <input
+                type="text"
+                value={apiKeys.IMAGE_BASE_URL || ''}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setApiKeys((k) => {
+                    const provider = normalizeImageProvider(k.IMAGE_PROVIDER);
+                    return {
+                      ...k,
+                      IMAGE_BASE_URL: value,
+                      IMAGE_MINIMAX_BASE_URL: provider === 'minimax' ? value : k.IMAGE_MINIMAX_BASE_URL,
+                      IMAGE_SILICONFLOW_BASE_URL: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_BASE_URL,
+                      IMAGE_OPENAI_BASE_URL: provider === 'openai' ? value : k.IMAGE_OPENAI_BASE_URL,
+                    };
+                  });
+                }}
+                placeholder={
+                  apiKeys.IMAGE_PROVIDER === 'openai'
+                    ? 'https://api.openai.com'
+                    : apiKeys.IMAGE_PROVIDER === 'siliconflow'
+                      ? 'https://api.siliconflow.cn/v1'
+                      : 'https://api.minimax.chat'
+                }
+                className="settings-input settings-input-focusable"
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="settings-field">
+              <label>生图模型</label>
+              <input
+                type="text"
+                value={apiKeys.IMAGE_MODEL || ''}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setApiKeys((k) => {
+                    const provider = normalizeImageProvider(k.IMAGE_PROVIDER);
+                    return {
+                      ...k,
+                      IMAGE_MODEL: value,
+                      IMAGE_MINIMAX_MODEL: provider === 'minimax' ? value : k.IMAGE_MINIMAX_MODEL,
+                      IMAGE_SILICONFLOW_MODEL: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_MODEL,
+                      IMAGE_OPENAI_MODEL: provider === 'openai' ? value : k.IMAGE_OPENAI_MODEL,
+                    };
+                  });
+                }}
+                placeholder={
+                  apiKeys.IMAGE_PROVIDER === 'openai'
+                    ? 'dall-e-3'
+                    : apiKeys.IMAGE_PROVIDER === 'siliconflow'
+                      ? 'Kwai-Kolors/Kolors'
+                      : 'image-01'
+                }
+                className="settings-input settings-input-focusable"
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="settings-field">
+              <label>生图 Key 回退策略</label>
+              <div className="settings-inline-row-between">
+                <p className="settings-desc settings-desc-inline">
+                  允许回退到聊天 Key（默认关闭，建议保持关闭）
+                </p>
+                <label className="toggle-wrap">
+                  <input
+                    type="checkbox"
+                    checked={!!apiKeys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY}
+                    onChange={(e) => setApiKeys((k) => ({
+                      ...k,
+                      IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: e.target.checked,
+                    }))}
+                  />
+                  <span className="toggle-slider" />
+                </label>
+              </div>
+              <p className="settings-desc settings-desc-compact settings-desc-warning">
+                开启后可能把聊天服务商的 Key 误用于生图服务商，只有临时兼容旧配置时再启用。
+              </p>
+            </div>
+
+            <div className="settings-field">
+              <label>图片尺寸</label>
+              <select
+                value={apiKeys.IMAGE_SIZE || '1024x1024'}
+                onChange={(e) => setApiKeys((k) => ({ ...k, IMAGE_SIZE: e.target.value }))}
+                className="settings-input settings-input-focusable"
+              >
+                <option value="1024x1024">1024×1024（方形 1:1）</option>
+                <option value="1280x720">1280×720（横向 16:9）</option>
+                <option value="720x1280">720×1280（竖向 9:16）</option>
+                <option value="1024x768">1024×768（横向 4:3）</option>
+                <option value="768x1024">768×1024（竖向 3:4）</option>
+              </select>
+            </div>
+          </section>
+
+          <VisionApiSection apiKeys={apiKeys} setApiKeys={setApiKeys} showApiKey={showApiKey} setShowApiKey={setShowApiKey} />
+
+      <section className="settings-section settings-section-nested">
         <div className="settings-inline-row">
-          <h3 className="settings-heading-inline">3. 搜索引擎 API</h3>
+          <h3 className="settings-heading-inline">搜索引擎 API</h3>
           <button
             type="button"
             className="settings-link-btn"
@@ -985,6 +1009,8 @@ export function ConnectionTabView({
           </>
         )}
       </section>
+        </div>
+      </details>
     </div>
   );
 }
