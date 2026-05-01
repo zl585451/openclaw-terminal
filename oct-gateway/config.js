@@ -803,8 +803,8 @@ function getProviderConfig() {
     // 硅基与百炼共用 DASHSCOPE_API_KEY 字段时，易把 sk-sp-（Coding Plan）误带到硅基导致 401。
     // 优先 SILICONFLOW_API_KEY；否则仅当 DASHSCOPE 不像百炼 Coding 前缀时才采用。
     const sfKey = pickKey(
-      process.env.SILICONFLOW_API_KEY,
       _fileConfig.SILICONFLOW_API_KEY,
+      process.env.SILICONFLOW_API_KEY,
     );
     const dashKey = pickKey(
       _fileConfig.DASHSCOPE_API_KEY,
@@ -831,8 +831,8 @@ function getProviderConfig() {
     }
   } else if (preset.keyEnvVars && preset.keyEnvVars.length > 0) {
     const sources = preset.keyEnvVars.flatMap(k => [
-      process.env[k],
       _fileConfig[k],
+      process.env[k],
       isBailian ? legacyConfig.DASHSCOPE_API_KEY : null,
       isDeepseek ? legacyConfig.DEEPSEEK_API_KEY : null,
       isMinimax ? legacyConfig.MINIMAX_API_KEY : null,
@@ -1106,12 +1106,12 @@ const config = {
     tools: String(getEnvOrConfig('TOOL_RESULT_SUMMARIZER_TOOLS') || '').trim(),
   },
 
-  DASHSCOPE_API_KEY: pickKey(process.env.DASHSCOPE_API_KEY, _fileConfig.DASHSCOPE_API_KEY, legacyConfig.DASHSCOPE_API_KEY),
-  DASHSCOPE_BASE_URL: process.env.DASHSCOPE_BASE_URL || legacyConfig.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1',
-  DEEPSEEK_API_KEY: pickKey(process.env.DEEPSEEK_API_KEY, _fileConfig.DEEPSEEK_API_KEY, legacyConfig.DEEPSEEK_API_KEY),
-  DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL || legacyConfig.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
-  NEWAPI_API_KEY: pickKey(process.env.NEWAPI_API_KEY, _fileConfig.NEWAPI_API_KEY),
-  NEWAPI_BASE_URL: process.env.NEWAPI_BASE_URL || _fileConfig.NEWAPI_BASE_URL || 'http://127.0.0.1:3000/v1',
+  DASHSCOPE_API_KEY: pickKey(_fileConfig.DASHSCOPE_API_KEY, process.env.DASHSCOPE_API_KEY, legacyConfig.DASHSCOPE_API_KEY),
+  DASHSCOPE_BASE_URL: getEnvOrConfig('DASHSCOPE_BASE_URL') || legacyConfig.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1',
+  DEEPSEEK_API_KEY: pickKey(_fileConfig.DEEPSEEK_API_KEY, process.env.DEEPSEEK_API_KEY, legacyConfig.DEEPSEEK_API_KEY),
+  DEEPSEEK_BASE_URL: getEnvOrConfig('DEEPSEEK_BASE_URL') || legacyConfig.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
+  NEWAPI_API_KEY: pickKey(_fileConfig.NEWAPI_API_KEY, process.env.NEWAPI_API_KEY),
+  NEWAPI_BASE_URL: getEnvOrConfig('NEWAPI_BASE_URL') || 'http://127.0.0.1:3000/v1',
 
   // 搜索引擎 API Key（优先从 config.json 读取，与主进程保存一致）
   BRAVE_SEARCH_API_KEY: _fileConfig.BRAVE_SEARCH_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '',
