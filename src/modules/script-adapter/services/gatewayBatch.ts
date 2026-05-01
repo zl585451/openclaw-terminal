@@ -3,9 +3,13 @@ import type { BatchEstimate, BatchJob, ChapterRunRecord, DeliveryOptions, TrialE
 export type ScriptAdapterBatchEvent =
   | { event: 'batch_created'; batchId: string; batch: BatchJob; chapterRuns: ChapterRunRecord[] }
   | { event: 'chapter_started'; batchId: string; chapterIndex: number; runId: string; chapterTitle?: string }
-  | { event: 'chapter_progress'; batchId: string; chapterIndex: number; runId: string; agentId: string; progressSummary: string; progressPercent: number }
+  | { event: 'agent_started'; batchId: string; chapterIndex: number; runId: string; agentId: string; run?: unknown }
+  | { event: 'chapter_progress'; batchId: string; chapterIndex: number; runId: string; agentId: string; progressSummary: string; progressPercent: number; phase?: string; detail?: string; model?: string }
+  | { event: 'agent_failed'; batchId: string; chapterIndex: number; runId: string; agentId: string; error: string }
+  | { event: 'artifact_created'; batchId: string; chapterIndex: number; runId: string; agentId: string; artifact?: unknown }
   | { event: 'chapter_completed'; batchId: string; chapterIndex: number; runId: string; sheet: unknown }
   | { event: 'gate_reached'; batchId: string; chapterIndex: number; runId: string; gate: unknown }
+  | { event: 'gate_updated'; batchId: string; chapterIndex: number; runId: string; gate: unknown }
   | { event: 'chapter_failed'; batchId: string; chapterIndex: number; runId: string; error: string }
   | { event: 'batch_completed'; batchId: string; batch?: BatchJob }
   | { event: 'batch_cancelled'; batchId: string; batch?: BatchJob }

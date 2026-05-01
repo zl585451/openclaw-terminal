@@ -1,4 +1,4 @@
-import type { BatchJob, ChapterRunRecord } from '../../types/batch';
+import type { BatchActivityEntry, BatchJob, ChapterRunRecord } from '../../types/batch';
 import { BatchProgressView } from './BatchProgressView';
 import { exportBatchDeliveryAsDocx, exportBatchDeliveryAsMarkdown } from '../../services/exportClient';
 import { deleteGatewayBatch, rerunGatewayBatchChapter, cancelGatewayBatch } from '../../services/gatewayBatch';
@@ -38,6 +38,8 @@ interface BatchExecutionPanelProps {
   chapterRuns: ChapterRunRecord[];
   batchHistory: BatchJob[];
   currentBatchId: string | null;
+  activity: BatchActivityEntry[];
+  lastEventAt: string | null;
   onBatchSelect: (id: string) => void;
   onRefresh: () => void;
   onBatchRefreshHistory: () => void;
@@ -48,6 +50,8 @@ export function BatchExecutionPanel({
   chapterRuns,
   batchHistory,
   currentBatchId,
+  activity,
+  lastEventAt,
   onBatchSelect,
   onRefresh,
   onBatchRefreshHistory,
@@ -86,6 +90,8 @@ export function BatchExecutionPanel({
       <BatchProgressView
         batch={batch}
         chapterRuns={chapterRuns}
+        activity={activity}
+        lastEventAt={lastEventAt}
         onRefresh={onRefresh}
         onRerun={(chapterIndex) => {
           void rerunGatewayBatchChapter(batch.id, chapterIndex).then(onRefresh);

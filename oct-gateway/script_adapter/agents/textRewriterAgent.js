@@ -31,21 +31,34 @@ async function runTextRewriterAgent(ctx, _options = {}) {
   if (sourceText.length > HARD_LIMIT) {
     throw new Error(`TEXT_REWRITER_TOO_LONG: ${sourceText.length} > ${HARD_LIMIT}`);
   }
+  const report = createProgressReporter(ctx);
 
   const slices = createAdaptiveSlices(sourceText, { anchorSize: ANCHOR_SIZE });
   if (slices.length <= 1) {
-    return runClassifyFirstPass(sourceText);
+    return runClassifyFirstPass(sourceText, report);
   }
 
-  return runSlicedClassifyFirstPass(sourceText, slices);
+  return runSlicedClassifyFirstPass(sourceText, slices, report);
 }
 
-async function runClassifyFirstPass(sourceText) {
+async function runClassifyFirstPass(sourceText, report = noop) {
   const startedAt = Date.now();
 
+  report({ phase: 'classify', progressSummary: '正在分类切分章节', progressPercent: 18 });
   const splitResult = await runClassificationSplitterAgent({ sourceText });
+  report({
+    phase: 'classify_done',
+    progressSummary: `分类切分完成，得到 ${splitResult.classifications.length} 条候选片段`,
+    progressPercent: 42,
+    model: splitResult.model,
+  });
 
   const { validated, warnings } = validateClassifications(splitResult.classifications);
+  report({
+    phase: 'validate',
+    progressSummary: `正在校验分类结果，保留 ${validated.length} 条有效片段`,
+    progressPercent: 52,
+  });
 
   if (validated.length === 0) {
     throw new Error('CLASSIFICATION_NO_VALID_RESULT: 分类有效结果为空，拒绝错误交付');
@@ -57,7 +70,17 @@ async function runClassifyFirstPass(sourceText) {
     .filter((item) => item.type === 'narration')
     .map((item) => ({ paraId: item.rewriteId, text: item.text }));
 
+  report({
+    phase: 'light_rewrite',
+    progressSummary: `正在轻改写旁白，${narrationItems.length} 段会进入模型`,
+    progressPercent: 68,
+  });
   const rewriteResult = await runLightNarrationRewriterAgent({ narrationItems });
+  report({
+    phase: 'merge',
+    progressSummary: '正在合并分类与旁白改写结果',
+    progressPercent: 86,
+  });
 
   const allWarnings = [
     ...(splitResult.warnings || []),
@@ -79,13 +102,19 @@ async function runClassifyFirstPass(sourceText) {
   };
 }
 
-async function runSlicedClassifyFirstPass(sourceText, slices) {
+async function runSlicedClassifyFirstPass(sourceText, slices, report = noop) {
   const startedAt = Date.now();
   const results = [];
   let succeededSlices = 0;
 
   for (const slice of slices) {
-    const sliceResult = await rewriteSliceClassifyFirst({ slice });
+    report({
+      phase: 'slice_start',
+      progressSummary: `正在处理文本片 ${slice.index + 1}/${slices.length}`,
+      progressPercent: Math.min(82, 12 + Math.round((slice.index / slices.length) * 70)),
+      detail: `${slice.coreText.length} 字`,
+    });
+    const sliceResult = await rewriteSliceClassifyFirst({ slice, report });
     if (sliceResult.ok) {
       succeededSlices += 1;
     }
@@ -103,8 +132,13 @@ async function runSlicedClassifyFirstPass(sourceText, slices) {
   };
 }
 
-async function rewriteSliceClassifyFirst({ slice }) {
+async function rewriteSliceClassifyFirst({ slice, report = noop }) {
   try {
+    report({
+      phase: 'slice_classify',
+      progressSummary: `文本片 ${slice.index + 1}/${slice.total}：分类切分中`,
+      progressPercent: Math.min(86, 16 + Math.round((slice.index / slice.total) * 70)),
+    });
     const splitResult = await runClassificationSplitterAgent({ sourceText: slice.coreText });
     const { validated, warnings } = validateClassifications(splitResult.classifications);
 
@@ -118,6 +152,12 @@ async function rewriteSliceClassifyFirst({ slice }) {
       .filter((item) => item.type === 'narration')
       .map((item) => ({ paraId: item.rewriteId, text: item.text }));
 
+    report({
+      phase: 'slice_rewrite',
+      progressSummary: `文本片 ${slice.index + 1}/${slice.total}：旁白轻改写中（${narrationItems.length} 段）`,
+      progressPercent: Math.min(92, 28 + Math.round(((slice.index + 0.5) / slice.total) * 58)),
+      model: splitResult.model,
+    });
     const rewriteResult = await runLightNarrationRewriterAgent({ narrationItems });
 
     const mergeResult = mergeClassifiedSegments({
@@ -151,6 +191,18 @@ function attachRewriteIds(classifications, prefix = 'seg') {
     };
   });
 }
+
+function createProgressReporter(ctx) {
+  const handler = typeof ctx?.onProgress === 'function' ? ctx.onProgress : null;
+  if (!handler) return noop;
+  return (payload) => {
+    try {
+      handler(payload);
+    } catch {}
+  };
+}
+
+function noop() {}
 
 function mergeSlicePayloadsClassifyFirst(results) {
   const fmt = (index) => `seg-${String(index).padStart(3, '0')}`;

@@ -194,10 +194,14 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
         sharedVoiceRegistry: batch.config?.sharedContext?.voiceRegistry || [],
       },
       onProgress: (payload) => {
-        emit('chapter_progress', {
+        const eventName = payload?.event === 'agent_progress'
+          ? 'chapter_progress'
+          : String(payload?.event || 'chapter_progress');
+        const { event, ...rest } = payload || {};
+        emit(eventName, {
           chapterIndex,
           runId: chapterRun.id,
-          ...payload,
+          ...rest,
         });
       },
     });

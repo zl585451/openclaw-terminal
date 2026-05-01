@@ -25,6 +25,28 @@ async function runChapterAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx
     onSheetUpdate?.(currentSheet);
     emit('agent_started', { agentId: agent.agentId, run });
 
+    const reportAgentProgress = (progress = {}) => {
+      const summary = String(progress.progressSummary || progress.summary || run.progressSummary || '执行中');
+      const percent = Number.isFinite(Number(progress.progressPercent))
+        ? Number(progress.progressPercent)
+        : run.progressPercent;
+      run = {
+        ...run,
+        progressSummary: summary,
+        progressPercent: Math.max(run.progressPercent || 0, Math.min(99, percent || 0)),
+      };
+      currentSheet = updateAgentRun(currentSheet, runIndex, run);
+      onSheetUpdate?.(currentSheet);
+      emit('agent_progress', {
+        agentId: agent.agentId,
+        progressSummary: run.progressSummary,
+        progressPercent: run.progressPercent,
+        phase: progress.phase,
+        detail: progress.detail,
+        model: progress.model,
+      });
+    };
+
     for (const step of [
       ['开始读取上游产物', 8],
       ['正在生成结构化产物', 48],
@@ -53,6 +75,7 @@ async function runChapterAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx
         sourceText: ctx.sourceText,
         agent,
         artifacts: currentSheet.artifacts || {},
+        onProgress: reportAgentProgress,
       });
     } catch (error) {
       const reason = error?.message || String(error);

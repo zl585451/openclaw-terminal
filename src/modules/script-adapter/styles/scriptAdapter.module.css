@@ -6129,6 +6129,185 @@
   flex-wrap: wrap;
 }
 
+.batchLiveStatus {
+  min-width: 180px;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(27, 44, 51, 0.1);
+  background: rgba(248, 250, 248, 0.92);
+}
+
+.batchLiveStatus strong {
+  color: #101718;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.batchLiveStatus small {
+  grid-column: 2;
+  color: #5b6468;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.livePulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #8d989b;
+}
+
+.livePulse--good {
+  color: #17845f;
+  background: #17845f;
+  box-shadow: 0 0 0 0 rgba(23, 132, 95, 0.36);
+  animation: livePulse 1.4s ease-out infinite;
+}
+
+.livePulse--warn {
+  color: #c9861a;
+  background: #c9861a;
+  box-shadow: 0 0 0 0 rgba(201, 134, 26, 0.26);
+  animation: livePulse 1.8s ease-out infinite;
+}
+
+.livePulse--danger {
+  background: #c64035;
+}
+
+.livePulse--idle {
+  background: #8d989b;
+}
+
+@keyframes livePulse {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+}
+
+.batchCurrentWork {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.batchCurrentWork > div {
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(27, 44, 51, 0.08);
+  background: rgba(246, 250, 248, 0.96);
+}
+
+.batchCurrentWork span {
+  display: block;
+  color: #637073;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.batchCurrentWork strong {
+  display: block;
+  margin-top: 4px;
+  color: #101718;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batchActivityPanel {
+  border-radius: 12px;
+  border: 1px solid rgba(27, 44, 51, 0.08);
+  background: rgba(252, 253, 252, 0.98);
+  overflow: hidden;
+}
+
+.batchActivityHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(27, 44, 51, 0.07);
+}
+
+.batchActivityHeader strong {
+  color: #101718;
+  font-size: 13px;
+}
+
+.batchActivityHeader span {
+  color: #657174;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.batchActivityList {
+  display: grid;
+  gap: 0;
+}
+
+.batchActivityItem {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 42px;
+  gap: 10px;
+  align-items: start;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(27, 44, 51, 0.06);
+}
+
+.batchActivityItem:last-child {
+  border-bottom: 0;
+}
+
+.batchActivityItem time {
+  color: #6c777a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.batchActivityItem strong {
+  display: block;
+  color: #172123;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.batchActivityItem span {
+  display: block;
+  margin-top: 2px;
+  color: #5d686b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.batchActivityItem em {
+  justify-self: end;
+  color: #176149;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.batchActivityEmpty {
+  padding: 14px 12px;
+  color: #687477;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .batchSelectorControls {
   display: flex;
   gap: 12px;

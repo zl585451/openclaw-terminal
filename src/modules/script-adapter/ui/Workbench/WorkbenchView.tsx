@@ -55,6 +55,8 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
     currentBatchIdRef,
     refreshBatchHistory,
     loadBatchStatus,
+    batchActivity,
+    lastBatchEventAt,
   } = useWorkbenchBatchState({ autoResumeActiveBatch: shouldAutoResumeExistingBatch });
 
   const currentChapter = chapters.find((chapter) => chapter.id === project?.meta.currentChapterId) ?? chapters[0];
@@ -207,6 +209,8 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
             chapterRuns={currentBatchRuns}
             batchHistory={batchHistory}
             currentBatchId={currentBatchId}
+            activity={batchActivity}
+            lastEventAt={lastBatchEventAt}
             onBatchSelect={setCurrentBatchId}
             onRefresh={() => void loadBatchStatus(currentBatch.id)}
             onBatchRefreshHistory={() => void refreshBatchHistory(currentBatchIdRef.current)}

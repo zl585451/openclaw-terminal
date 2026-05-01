@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import type { BatchJob, ChapterRunRecord } from '../../types/batch';
+import { useEffect, useMemo, useState } from 'react';
+import type { BatchActivityEntry, BatchJob, ChapterRunRecord } from '../../types/batch';
 import { ReviewGatePreview } from './ReviewGatePreview';
 import { DeliveryPreview } from './DeliveryPreview';
 import styles from '../../styles/scriptAdapter.module.css';
@@ -7,6 +7,8 @@ import styles from '../../styles/scriptAdapter.module.css';
 interface BatchProgressViewProps {
   batch: BatchJob;
   chapterRuns: ChapterRunRecord[];
+  activity: BatchActivityEntry[];
+  lastEventAt: string | null;
   onRefresh: () => void;
   onRerun: (chapterIndex: number) => void;
   onExport: () => void;
@@ -28,6 +30,8 @@ const VIEWPORT_HEIGHT = 280;
 export function BatchProgressView({
   batch,
   chapterRuns,
+  activity,
+  lastEventAt,
   onRefresh,
   onRerun,
   onExport,
@@ -35,6 +39,7 @@ export function BatchProgressView({
   onCancel,
 }: BatchProgressViewProps) {
   const [scrollTop, setScrollTop] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   const [expandedChapterIndex, setExpandedChapterIndex] = useState<number | null>(null);
   const sortedRuns = useMemo(
     () => [...chapterRuns].sort((a, b) => a.chapterIndex - b.chapterIndex),
@@ -49,6 +54,17 @@ export function BatchProgressView({
   const progressPercent = batch.totalChapters > 0
     ? Math.round(((batch.completedChapters + batch.failedChapters) / batch.totalChapters) * 100)
     : 0;
+  const runningRun = sortedRuns.find((run) => run.status === 'running');
+  const runningSheetRun = runningRun?.sheet?.runs?.find((run) => run.status === 'running');
+  const elapsedMs = runningRun?.startedAt ? Math.max(0, now - new Date(runningRun.startedAt).getTime()) : 0;
+  const lastEventMs = lastEventAt ? Math.max(0, now - new Date(lastEventAt).getTime()) : null;
+  const heartbeat = getHeartbeat(batch.status, lastEventMs);
+
+  useEffect(() => {
+    if (batch.status !== 'running') return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [batch.status]);
 
   return (
     <section className={`${styles.card} ${styles.batchProgressCard}`}>
@@ -92,11 +108,36 @@ export function BatchProgressView({
           <h2>{completed ? '已完成' : failedBatch ? '执行失败' : batch.status === 'running' ? '正在制作' : '批次状态'}</h2>
           <p>{batch.bookTitle}</p>
         </div>
+        <div className={styles.batchLiveStatus}>
+          <span className={`${styles.livePulse} ${styles[`livePulse--${heartbeat.tone}`]}`} />
+          <strong>{heartbeat.label}</strong>
+          <small>
+            {batch.status === 'running' ? `已运行 ${formatDuration(elapsedMs)}` : `状态 ${batch.status}`}
+            {lastEventMs != null ? ` · 最近更新 ${formatDuration(lastEventMs)}前` : ''}
+          </small>
+        </div>
         <div className={styles.batchProgressActions}>
           <button type="button" className={styles.ghostButton} onClick={onRefresh}>刷新状态</button>
           <button type="button" className={styles.ghostButton} onClick={onCancel} disabled={batch.status !== 'running'}>取消批次</button>
         </div>
       </div>
+
+      {runningRun ? (
+        <div className={styles.batchCurrentWork}>
+          <div>
+            <span>当前章节</span>
+            <strong>{runningRun.chapterTitle || `第 ${runningRun.chapterIndex + 1} 章`}</strong>
+          </div>
+          <div>
+            <span>当前角色</span>
+            <strong>{labelAgent(runningSheetRun?.agentId) || '等待后台事件'}</strong>
+          </div>
+          <div>
+            <span>当前阶段</span>
+            <strong>{runningSheetRun?.progressSummary || activity[0]?.title || '正在连接后台状态'}</strong>
+          </div>
+        </div>
+      ) : null}
 
       <div className={styles.batchProgressMeter}>
         <div className={styles.batchProgressStats}>
@@ -107,6 +148,29 @@ export function BatchProgressView({
         </div>
         <div className={styles.batchProgressTrack}>
           <span style={{ width: `${Math.min(100, progressPercent)}%` }} />
+        </div>
+      </div>
+
+      <div className={styles.batchActivityPanel}>
+        <div className={styles.batchActivityHeader}>
+          <strong>后台活动</strong>
+          <span>{activity.length > 0 ? `${activity.length} 条最近事件` : '等待事件'}</span>
+        </div>
+        <div className={styles.batchActivityList}>
+          {activity.length === 0 ? (
+            <div className={styles.batchActivityEmpty}>
+              后台事件会在这里出现。真实 Agent 请求模型时，如果长时间没有返回，会显示最近更新时间。
+            </div>
+          ) : activity.slice(0, 8).map((item) => (
+            <div key={item.id} className={styles.batchActivityItem}>
+              <time>{new Date(item.createdAt).toLocaleTimeString('zh-CN', { hour12: false })}</time>
+              <div>
+                <strong>{item.title}</strong>
+                {item.detail ? <span>{item.detail}</span> : null}
+              </div>
+              {typeof item.progressPercent === 'number' ? <em>{Math.round(item.progressPercent)}%</em> : null}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -191,4 +255,30 @@ export function BatchProgressView({
       ) : null}
     </section>
   );
+}
+
+function getHeartbeat(status: BatchJob['status'], lastEventMs: number | null) {
+  if (status !== 'running') return { tone: 'idle', label: '后台未运行' };
+  if (lastEventMs == null) return { tone: 'warn', label: '等待后台事件' };
+  if (lastEventMs <= 10000) return { tone: 'good', label: '后台活跃' };
+  if (lastEventMs <= 45000) return { tone: 'warn', label: '模型处理中' };
+  return { tone: 'danger', label: '长时间无更新' };
+}
+
+function formatDuration(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  if (minutes <= 0) return `${seconds}秒`;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function labelAgent(agentId?: string) {
+  if (!agentId) return '';
+  if (agentId.includes('text_rewriter')) return '文本改编师';
+  if (agentId.includes('voice_role_marker')) return '角色音统筹';
+  if (agentId.includes('performance_audio')) return '演播设计师';
+  if (agentId.includes('production_quality')) return '质检审校';
+  if (agentId.includes('content_delivery')) return '交付打包员';
+  return agentId;
 }

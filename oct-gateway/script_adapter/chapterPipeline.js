@@ -116,11 +116,18 @@ async function runSingleScriptAdapterChapter({
     signal,
     emit: (event, payload) => {
       if (!onProgress) return;
-      if (event === 'agent_progress') {
+      if (
+        event === 'agent_started'
+        || event === 'agent_progress'
+        || event === 'agent_failed'
+        || event === 'artifact_created'
+        || event === 'gate_reached'
+        || event === 'gate_updated'
+        || event === 'all_completed'
+      ) {
         onProgress({
-          agentId: payload.agentId,
-          progressSummary: payload.progressSummary,
-          progressPercent: payload.progressPercent,
+          event,
+          ...payload,
         });
       }
     },

@@ -67,6 +67,19 @@ export interface BatchJob {
   config?: BatchConfig;
 }
 
+export interface BatchActivityEntry {
+  id: string;
+  batchId: string;
+  event: string;
+  chapterIndex?: number;
+  runId?: string;
+  agentId?: string;
+  title: string;
+  detail?: string;
+  progressPercent?: number;
+  createdAt: string;
+}
+
 export interface ChapterRunRecord {
   id: string;
   batchId: string;

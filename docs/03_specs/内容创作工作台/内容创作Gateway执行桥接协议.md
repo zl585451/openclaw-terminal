@@ -254,14 +254,22 @@ window.electronAPI.onScriptAdapterEvent((payload) => {})
 
 1. `batch_created`
 2. `chapter_started`
-3. `chapter_progress`
-4. `gate_reached`
+3. `agent_started`
+   某章内的制作 Agent 启动，携带 `chapterIndex`、`runId`、`agentId` 和当前 `AgentRun`。
+4. `chapter_progress`
+   某章内的制作 Agent 更新进度。除 `progressSummary` / `progressPercent` 外，可携带 `phase`、`detail`、`model`，用于前端展示真实后台阶段和最近活动。
+5. `artifact_created`
+   某章内的 Agent 生成产物，携带 `ArtifactEnvelope`。
+6. `agent_failed`
+   某章内的 Agent 失败，携带 `error`。
+7. `gate_reached`
    批次章运行在 `quality_review` 后暂停，前端应展示 `awaiting_review` 和人工操作按钮。
-5. `chapter_completed`
-6. `chapter_failed`
-7. `batch_completed`
-8. `batch_cancelled`
-9. `batch_failed`
+8. `gate_updated`
+9. `chapter_completed`
+10. `chapter_failed`
+11. `batch_completed`
+12. `batch_cancelled`
+13. `batch_failed`
 
 补充约束：
 
@@ -273,6 +281,7 @@ window.electronAPI.onScriptAdapterEvent((payload) => {})
 6. 真实批次失败时应保留当前 `TaskExecutionSheet` 到 `chapter_runs.sheet`，让前端可以展开查看失败 Agent、错误摘要和已生成上游产物。
 7. `executionMode = real` 或 `realAgents = all` 的批次不得写入带 `mock` 标记的交付产物；如果真实 Agent 不可用，应以失败状态显式暴露，而不是静默降级成模拟交付。
 8. Gateway 启动恢复时，应把历史 `status = completed` 且 `failed_chapters > 0` 的批次修正为 `failed`。
+9. 批次工作台应以 Gateway 事件作为真实状态源：用最近事件时间展示心跳，用 `chapter_progress.phase` 展示当前阶段，不使用脱离后台事件的假进度。
 
 ---
 
