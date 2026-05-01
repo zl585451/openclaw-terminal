@@ -51,6 +51,7 @@ function checkBasicQC(params = {}) {
   checkCharRatio(payload, sourceText, issues);
   checkParseWarningHigh(parseWarnings, totalLineCount, issues);
   checkDialogueActionMisclassified(segments, issues);
+  checkInnerMonologueActionMisclassified(segments, issues);
   checkInnerMonologueThirdPerson(segments, issues);
   checkSpeakerContamination(segments, issues);
   checkSpeakerProtocolResidue(segments, issues);
@@ -58,6 +59,26 @@ function checkBasicQC(params = {}) {
   checkVoiceRegistryPollution(segments, issues);
 
   return buildReport(issues);
+}
+
+function checkInnerMonologueActionMisclassified(segments, issues) {
+  const actionPatterns = [
+    /^(他|她|宁默|王大山|狱卒|男人|女人|老人|老犯人)(撑开|睁开|闭上|皱|抬|低|走|站|坐|蹲|放|端|看|盯|伸|拿|摆|退|推|打开|弯腰|咳)/,
+  ];
+
+  for (const segment of segments) {
+    if (segment?.type !== 'inner_monologue') continue;
+    const text = String(segment?.text || '');
+    const matched = actionPatterns.some((p) => p.test(text));
+    if (!matched) continue;
+    issues.push(issue(
+      'P1',
+      'inner_monologue_action_misclassified',
+      segment.segmentId || '全局',
+      `inner_monologue 文本疑似第三人称动作：${text.slice(0, 30)}。`,
+      '角色动作应归旁白；OS 只保留直接念头、即时反应和自我判断。',
+    ));
+  }
 }
 
 function checkSpeakerProtocolResidue(segments, issues) {

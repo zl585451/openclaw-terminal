@@ -5,6 +5,24 @@
 - 前置基线：`script-adapter-quote-span-mvp-enabled`
 - 目标：在 Quote Span Attribution 链路稳定对白归因后，进一步从 narration gap 中抽取“无引号但应由角色演播的内心声 / OS”。
 
+## 0. 当前实现状态
+
+- 实现日期：2026-05-01
+- 当前状态：规则型 OS MVP 已接入 `span_attribution` 链路。
+- 已实现模块：
+  - `innerVoiceSpanExtractor`
+  - `spanScriptComposer` 支持在 narration gap 内插入 `inner_monologue`
+  - `textRewriterAgent` 新增 `inner_voice_extract` 进度阶段
+  - `basicQCChecker` 新增 `inner_monologue_action_misclassified`
+- 当前策略：
+  - 先用规则识别强 OS candidate，不额外增加模型调用。
+  - speaker 默认使用当前视角角色，第一轮以《夫人请卸甲》第 1 章的 `宁默` 为基准。
+  - 保持内部 payload 兼容：OS 输出为 `type = inner_monologue`，展示层后续可渲染为 `[宁默][OS]`。
+- 待后续观察：
+  - 是否需要补 `innerVoiceAttributionAgent`。
+  - 是否需要更强的跨书视角角色推断。
+  - 是否需要把短 OS 在 DOCX 中明确显示为 `[角色][OS]`。
+
 ## 1. 为什么做
 
 `span_attribution` 已经解决第一层结构问题：
@@ -84,6 +102,8 @@ sourceText
 
 - `oct-gateway/test/fixtures/script_adapter/inner_voice/furenqingxiejia_ch1.json`
 
+> 当前进度：暂未新增完整 fixture 文件；已用单元测试覆盖开头 OS、断头饭 OS、第三人称动作排除。
+
 ## 5. Phase B：innerVoiceSpanExtractor
 
 ### 任务
@@ -111,6 +131,8 @@ sourceText
 
 - `oct-gateway/script_adapter/innerVoiceSpanExtractor.js`
 - `oct-gateway/test/innerVoiceSpanExtractor.test.js`
+
+> 当前进度：已实现。MVP 规则覆盖短促反应、第一人称疑问、自我纠偏、即时判断，并排除第三人称动作和世界观长段。
 
 ## 6. Phase C：innerVoiceAttributionAgent
 
@@ -149,6 +171,8 @@ os002|narration|旁白|high|第三人称动作描写
 - `narration` 判断不会进入 inner_monologue。
 - 无有效 OS 时不影响 quote pipeline。
 
+> 当前进度：暂缓新增模型 Agent。当前由规则型 extractor 直接给出 `speaker/confidence/evidence`，以减少一次模型调用并先验证结构收益。
+
 ## 7. Phase D：composer 合并策略
 
 ### 任务
@@ -163,6 +187,8 @@ os002|narration|旁白|high|第三人称动作描写
 4. 输出顺序必须严格对应原文位置。
 5. quote span 与 OS span 不得重叠。
 
+> 当前进度：已实现。composer 会把同一个 narration gap 拆成 `narration / inner_monologue / narration`，避免 OS 与旁白重复。
+
 ## 8. Phase E：Hard QC 扩展
 
 新增检查：
@@ -171,6 +197,8 @@ os002|narration|旁白|high|第三人称动作描写
 2. `inner_monologue` speaker 污染，失败。
 3. 明显第三人称动作误入 OS，降级或失败。
 4. OS 与 narration 重复，失败。
+
+> 当前进度：已新增第三人称动作误入 OS 检查；缺 speaker、speaker 污染和重复检查沿用现有 Basic QC 规则。
 
 ## 9. 第一轮验收方式
 

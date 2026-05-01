@@ -35,4 +35,41 @@ describe('spanScriptComposer', () => {
     expect(result.payload.segments[1].speaker).toBe('系统音');
     expect(result.payload.segments[1].text).toBe('叮，系统已激活');
   });
+
+  it('inserts inner voice spans inside narration gaps without duplication', () => {
+    const spanDoc = extractQuoteSpans({
+      sourceText: [
+        '第1章 借种',
+        '“宁解元——”',
+        '宁默隐约听到有人说话。',
+        '嘶~',
+        '疼！',
+        '他撑开眼皮。',
+      ].join('\n'),
+    });
+    const result = composeScriptFromSpans({
+      spanDoc,
+      attributions: [
+        { quoteId: 'q001', voiceType: 'dialogue', speaker: '未定男声A', confidence: 'low', evidence: '开场无明确身份' },
+      ],
+      innerVoiceSpans: [
+        {
+          osId: 'os001',
+          gapId: 'n002',
+          start: spanDoc.sourceText.indexOf('嘶~'),
+          end: spanDoc.sourceText.indexOf('他撑开眼皮。') - 1,
+          speaker: '宁默',
+          text: '嘶~ 疼！',
+          confidence: 'high',
+          evidence: 'short_reaction',
+        },
+      ],
+    });
+
+    expect(result.payload.segments.map((segment) => segment.type)).toEqual(['dialogue', 'narration', 'inner_monologue', 'narration']);
+    expect(result.payload.segments[2].speaker).toBe('宁默');
+    expect(result.payload.segments[2].text).toBe('嘶~ 疼！');
+    expect(result.payload.segments[1].text.includes('嘶')).toBe(false);
+    expect(result.payload.segments[3].text.includes('疼')).toBe(false);
+  });
 });

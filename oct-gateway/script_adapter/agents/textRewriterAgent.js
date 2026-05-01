@@ -12,6 +12,7 @@ const { extractQuoteSpans } = require('../quoteSpanExtractor');
 const { extractSpeakerCandidates } = require('../speakerCandidateExtractor');
 const { runQuoteAttributionAgent } = require('./quoteAttributionAgent');
 const { composeScriptFromSpans } = require('../spanScriptComposer');
+const { extractInnerVoiceSpans } = require('../innerVoiceSpanExtractor');
 
 const HARD_LIMIT = 12000;
 const ANCHOR_SIZE = 200;
@@ -77,6 +78,14 @@ async function runSpanAttributionPass(sourceText, report = noop) {
   });
 
   report({
+    phase: 'inner_voice_extract',
+    progressSummary: '正在识别无引号内心声 OS',
+    progressPercent: 74,
+    model: attributionResult.model,
+  });
+  const innerVoiceResult = extractInnerVoiceSpans({ spanDoc });
+
+  report({
     phase: 'span_compose',
     progressSummary: '正在按 span 和归因结果合成台本',
     progressPercent: 84,
@@ -85,6 +94,7 @@ async function runSpanAttributionPass(sourceText, report = noop) {
   const composeResult = composeScriptFromSpans({
     spanDoc,
     attributions: attributionResult.attributions,
+    innerVoiceSpans: innerVoiceResult.spans,
   });
 
   const allWarnings = [
@@ -95,7 +105,7 @@ async function runSpanAttributionPass(sourceText, report = noop) {
   return {
     payload: normalizePayload({ ...composeResult.payload, _warnings: allWarnings }),
     latencyMs: Date.now() - startedAt,
-    model: `${attributionResult.model} + span attribution composer`,
+    model: `${attributionResult.model} + span attribution composer + inner voice rules`,
   };
 }
 

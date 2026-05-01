@@ -107,6 +107,15 @@ describe('checkBasicQC', () => {
     expect(categories(report)).toContain('inner_monologue_third_person');
   });
 
+  it('detects inner_monologue_action_misclassified', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'inner_monologue', speaker: '宁默', text: '他撑开眼皮。' },
+      ]),
+    });
+    expect(categories(report)).toContain('inner_monologue_action_misclassified');
+  });
+
   it('detects speaker_contamination', () => {
     const report = checkBasicQC({
       adaptedScript: payload([

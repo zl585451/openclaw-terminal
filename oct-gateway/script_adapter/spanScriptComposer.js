@@ -5,6 +5,7 @@ const { formatSegmentId } = require('./lineProtocolParser');
 function composeScriptFromSpans(params = {}) {
   const spanDoc = params.spanDoc || {};
   const attributionMap = normalizeAttributionMap(params.attributions);
+  const innerVoiceByGap = groupInnerVoiceSpans(params.innerVoiceSpans);
   const sourceText = String(spanDoc.sourceText || '');
   const events = [
     ...(Array.isArray(spanDoc.narrationGaps) ? spanDoc.narrationGaps.map((gap) => ({ kind: 'gap', ...gap })) : []),
@@ -16,15 +17,7 @@ function composeScriptFromSpans(params = {}) {
 
   for (const event of events) {
     if (event.kind === 'gap') {
-      const text = stripChapterTitleFromFirstGap(String(event.text || ''), segments.length);
-      const normalizedText = normalizeNarrationGap(text);
-      if (normalizedText) {
-        segments.push({
-          segmentId: formatSegmentId(segments.length + 1),
-          type: 'narration',
-          text: normalizedText,
-        });
-      }
+      appendGapSegments({ event, sourceText, innerVoices: innerVoiceByGap.get(event.gapId) || [], segments });
       continue;
     }
 
@@ -60,12 +53,57 @@ function composeScriptFromSpans(params = {}) {
       segments,
       _spanAttribution: {
         quoteCount: Array.isArray(spanDoc.quotes) ? spanDoc.quotes.length : 0,
+        innerVoiceCount: Array.isArray(params.innerVoiceSpans) ? params.innerVoiceSpans.length : 0,
         warningCount: warnings.length,
       },
     },
     warnings,
     reconstructedSource: sourceText,
   };
+}
+
+function appendGapSegments({ event, sourceText, innerVoices, segments }) {
+  const sorted = innerVoices
+    .filter((item) => Number(item.start) >= Number(event.start) && Number(item.end) <= Number(event.end))
+    .sort((a, b) => Number(a.start) - Number(b.start));
+  let cursor = Number(event.start);
+
+  for (const os of sorted) {
+    if (Number(os.start) > cursor) {
+      appendNarrationSegment(sourceText.slice(cursor, Number(os.start)), segments);
+    }
+    appendInnerVoiceSegment(os, segments);
+    cursor = Number(os.end);
+  }
+
+  if (cursor < Number(event.end)) {
+    appendNarrationSegment(sourceText.slice(cursor, Number(event.end)), segments);
+  }
+}
+
+function appendNarrationSegment(text, segments) {
+  const stripped = stripChapterTitleFromFirstGap(String(text || ''), segments.length);
+  const normalizedText = normalizeNarrationGap(stripped);
+  if (!normalizedText) return;
+  segments.push({
+    segmentId: formatSegmentId(segments.length + 1),
+    type: 'narration',
+    text: normalizedText,
+  });
+}
+
+function appendInnerVoiceSegment(os, segments) {
+  const text = normalizeInnerVoiceText(os.text);
+  if (!text) return;
+  segments.push({
+    segmentId: formatSegmentId(segments.length + 1),
+    type: 'inner_monologue',
+    speaker: String(os.speaker || '').trim() || '宁默',
+    text,
+    osId: os.osId,
+    confidence: os.confidence || 'high',
+    evidence: os.evidence || 'inner_voice_rule',
+  });
 }
 
 function normalizeAttributionMap(attributions) {
@@ -94,6 +132,21 @@ function normalizeNarrationGap(text) {
     .replace(/[“”"【】]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeInnerVoiceText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function groupInnerVoiceSpans(spans) {
+  const map = new Map();
+  for (const span of Array.isArray(spans) ? spans : []) {
+    if (!span?.gapId) continue;
+    const list = map.get(span.gapId) || [];
+    list.push(span);
+    map.set(span.gapId, list);
+  }
+  return map;
 }
 
 function mapVoiceTypeToSegmentType(voiceType) {

@@ -16,6 +16,7 @@ export default defineConfig({
       'oct-gateway/test/speakerCandidateExtractor.test.js',
       'oct-gateway/test/quoteAttributionParser.test.js',
       'oct-gateway/test/spanScriptComposer.test.js',
+      'oct-gateway/test/innerVoiceSpanExtractor.test.js',
       'oct-gateway/test/textRewriterE2E.test.js',
     ],
   },

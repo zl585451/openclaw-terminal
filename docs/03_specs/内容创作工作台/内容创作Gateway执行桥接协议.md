@@ -109,9 +109,10 @@ Gateway 返回并推送 `analysisRun`：
 5. 切片改编中只要存在失败切片，当前章节应显式失败，不得把包含失败占位文本的半成品标记为成功交付。
 6. 文本改编可通过 `SCRIPT_ADAPTER_TEXT_PIPELINE=span_attribution` 或 `scriptAdapter.textPipeline = "span_attribution"` 启用 Quote Span Attribution MVP。
 7. `span_attribution` 链路把模型职责收窄为 quote 归因：程序先抽取 quote span 与 narration gap，再由 `quoteAttributionAgent` 输出 `quoteId|voiceType|speaker|confidence|evidence`，最后由 `spanScriptComposer` 生成 `AdaptedScriptPayload`。
-8. `span_attribution` 链路必须推送可见进度阶段：`span_extract`、`candidate_extract`、`quote_attribution`、`span_compose`。
+8. `span_attribution` 链路必须推送可见进度阶段：`span_extract`、`candidate_extract`、`quote_attribution`、`inner_voice_extract`、`span_compose`。
 9. `system_voice` 在当前 payload schema 中映射为 `dialogue + speaker = 系统音`，避免破坏下游 Voice / QC / Packager 兼容性。
 10. 新链路默认不替换生产 `classify-first`，需要显式开关启用，便于真实样书产物对照。
+11. `inner_voice_extract` 当前为规则型 MVP，从 narration gaps 中抽取高置信度 OS，输出为 `inner_monologue` segment；展示层可渲染为 `[角色][OS]`。
 
 协议约束：
 
