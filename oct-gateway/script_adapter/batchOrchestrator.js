@@ -10,6 +10,12 @@ const activeBatches = new Map();
 
 persistence.ensureSchema();
 persistence.recoverInterruptedRuns();
+const recoveredChapterRuns = persistence.recoverInterruptedChapterRuns();
+if (recoveredChapterRuns.recovered > 0) {
+  // Startup recovery: no active AbortController survives a Gateway restart.
+  // Mark stale running chapters as failed so the UI can offer rerun instead of spinning forever.
+  console.warn('[script_adapter] recovered interrupted chapter runs', recoveredChapterRuns);
+}
 recoverInterruptedBatches();
 recoverLegacyAwaitingReviewBatches();
 recoverCompletedBatchesWithFailures();

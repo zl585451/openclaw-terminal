@@ -360,6 +360,53 @@ function listCompletedBatchesWithFailures() {
   return rows.map(normalizeBatchRow);
 }
 
+function recoverInterruptedChapterRuns(reason = 'INTERRUPTED_BY_GATEWAY_RESTART') {
+  const database = getDb();
+  const now = new Date().toISOString();
+  const rows = database.prepare(`
+    SELECT id, batch_id, started_at
+    FROM chapter_runs
+    WHERE status = 'running'
+  `).all();
+  if (rows.length === 0) return { recovered: 0, batchIds: [] };
+
+  const batchIds = [...new Set(rows.map((row) => row.batch_id).filter(Boolean))];
+  const update = database.prepare(`
+    UPDATE chapter_runs
+    SET status = 'failed',
+        error_message = @reason,
+        completed_at = @now,
+        duration_ms = @durationMs
+    WHERE id = @id
+  `);
+  const tx = database.transaction((items) => {
+    for (const row of items) {
+      const started = row.started_at ? Date.parse(row.started_at) : NaN;
+      update.run({
+        id: row.id,
+        reason,
+        now,
+        durationMs: Number.isFinite(started) ? Math.max(0, Date.now() - started) : null,
+      });
+    }
+  });
+  tx(rows);
+
+  for (const batchId of batchIds) {
+    refreshBatchCounters(batchId);
+    const snapshot = getBatch(batchId);
+    if (!snapshot) continue;
+    const failedLeft = snapshot.chapterRuns.some((run) => run.status === 'failed');
+    const pendingLeft = snapshot.chapterRuns.some((run) => run.status === 'pending');
+    updateBatch(batchId, {
+      status: failedLeft ? 'failed' : pendingLeft ? 'paused' : 'completed',
+      completedAt: failedLeft || !pendingLeft ? now : null,
+    });
+  }
+
+  return { recovered: rows.length, batchIds };
+}
+
 function refreshBatchCounters(batchId) {
   const database = getDb();
   const summary = database.prepare(`
@@ -601,6 +648,7 @@ module.exports = {
   findNextPendingChapter,
   listRunningBatches,
   listCompletedBatchesWithFailures,
+  recoverInterruptedChapterRuns,
   refreshBatchCounters,
   createSingleRun,
   updateSingleRun,
