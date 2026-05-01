@@ -42,6 +42,63 @@ describe('innerVoiceSpanExtractor', () => {
     expect(result.spans[0].text).toBe('断头饭？ 我干什么了？ 嘶！');
   });
 
+  it('extracts short viewpoint reaction as current actor OS', () => {
+    const spanDoc = extractQuoteSpans({
+      sourceText: [
+        '第2章 夫人的心病',
+        '来真的？',
+        '宁默内心陷入纠结之中。',
+      ].join('\n'),
+    });
+    const result = extractInnerVoiceSpans({ spanDoc, viewpointHint: '宁默' });
+
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0].speaker).toBe('宁默');
+    expect(result.spans[0].text).toBe('来真的？');
+  });
+
+  it('extracts thought cue content and keeps prefix as narration', () => {
+    const sourceText = '柳儿了然，心头却莫名一凛。她的目光忍不住偷偷飘向画像一角，小脸微微泛红，心中嘀咕：王管事选的这人，真是俊的没边了……';
+    const spanDoc = extractQuoteSpans({ sourceText });
+    const result = extractInnerVoiceSpans({ spanDoc, viewpointHint: '宁默' });
+
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0].speaker).toBe('柳儿');
+    expect(result.spans[0].text).toBe('王管事选的这人，真是俊的没边了……');
+    expect(sourceText.slice(result.spans[0].start, result.spans[0].end)).toBe('王管事选的这人，真是俊的没边了……');
+  });
+
+  it('extracts viewpoint question for the current non-protagonist actor', () => {
+    const spanDoc = extractQuoteSpans({
+      sourceText: [
+        '三夫人独自站了一会儿，走回榻边，伸手从诗集下抽出了那张画像。',
+        '画上的少年郎君，眉目疏朗，眼神清亮。',
+        '王管事说……真人比画像更俊美？',
+      ].join('\n'),
+    });
+    const result = extractInnerVoiceSpans({ spanDoc, viewpointHint: '宁默' });
+
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0].speaker).toBe('三夫人');
+    expect(result.spans[0].text).toBe('王管事说……真人比画像更俊美？');
+  });
+
+  it('does not switch current actor for possessive/object mentions', () => {
+    const spanDoc = extractQuoteSpans({
+      sourceText: [
+        '宁默内心陷入纠结之中。',
+        '但王大山给出的条件，他实在没办法拒绝。',
+        '拒绝就是死！',
+        '接受还有活路。',
+      ].join('\n'),
+    });
+    const result = extractInnerVoiceSpans({ spanDoc, viewpointHint: '宁默' });
+
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0].speaker).toBe('宁默');
+    expect(result.spans[0].text).toBe('拒绝就是死！ 接受还有活路。');
+  });
+
   it('keeps third-person action and descriptions as narration', () => {
     expect(classifyInnerVoiceLine('宁默眉头皱的很深。').isInnerVoice).toBe(false);
     expect(classifyInnerVoiceLine('他撑开眼皮。').isInnerVoice).toBe(false);

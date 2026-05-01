@@ -1,6 +1,7 @@
 'use strict';
 
 const DEFAULT_VIEWPOINT = '宁默';
+const KNOWN_ROLES = ['宁默', '三夫人', '柳儿', '王大山', '狱卒', '下人'];
 
 /**
  * Extract unquoted inner-voice / OS spans from narration gaps.
@@ -13,12 +14,35 @@ function extractInnerVoiceSpans(params = {}) {
   const viewpoint = normalizeSpeaker(params.viewpointHint) || inferViewpoint(spanDoc.sourceText) || DEFAULT_VIEWPOINT;
   const gaps = Array.isArray(spanDoc.narrationGaps) ? spanDoc.narrationGaps : [];
   const spans = [];
+  let currentActor = viewpoint;
 
   for (const gap of gaps) {
     const lines = splitGapLines(gap);
     let group = null;
 
     for (const line of lines) {
+      const namedActor = inferActorFromLine(line.text, currentActor);
+      if (namedActor) currentActor = namedActor;
+
+      const embeddedCue = extractEmbeddedInnerVoiceCue(line, currentActor);
+      if (embeddedCue) {
+        if (group) {
+          spans.push(makeSpan(spans.length + 1, group, group.speaker || currentActor || viewpoint, gap.gapId));
+          group = null;
+        }
+        spans.push({
+          osId: `os${String(spans.length + 1).padStart(3, '0')}`,
+          gapId: gap.gapId,
+          start: embeddedCue.start,
+          end: embeddedCue.end,
+          text: embeddedCue.text,
+          speaker: embeddedCue.speaker || currentActor || viewpoint,
+          confidence: 'high',
+          evidence: embeddedCue.reason,
+        });
+        continue;
+      }
+
       const verdict = classifyInnerVoiceLine(line.text);
       if (verdict.isInnerVoice) {
         if (!group) {
@@ -27,6 +51,7 @@ function extractInnerVoiceSpans(params = {}) {
             end: line.end,
             lines: [line],
             reasons: new Set([verdict.reason]),
+            speaker: currentActor || viewpoint,
           };
         } else {
           group.end = line.end;
@@ -37,12 +62,12 @@ function extractInnerVoiceSpans(params = {}) {
       }
 
       if (group) {
-        spans.push(makeSpan(spans.length + 1, group, viewpoint, gap.gapId));
+        spans.push(makeSpan(spans.length + 1, group, group.speaker || currentActor || viewpoint, gap.gapId));
         group = null;
       }
     }
 
-    if (group) spans.push(makeSpan(spans.length + 1, group, viewpoint, gap.gapId));
+    if (group) spans.push(makeSpan(spans.length + 1, group, group.speaker || currentActor || viewpoint, gap.gapId));
   }
 
   return {
@@ -79,10 +104,10 @@ function classifyInnerVoiceLine(text) {
   if (isNarrativeAction(value)) return no('narrative_action');
   if (isWorldBuilding(value)) return no('world_building');
 
-  if (/^(嘶+~?|疼|痛|等[……….\-—]*下|不对劲|断头饭|我干什么了)[！!。？?~]*$/.test(value)) {
+  if (/^(嘶+~?|疼|痛|等[……….\-—]*下|不对劲|断头饭|我干什么了|来真的)[！!。？?~]*$/.test(value)) {
     return yes('short_reaction');
   }
-  if (/^(真他奈的痛啊|肯定有破局的办法)[！!。？?]*$/.test(value)) {
+  if (/^(真他奈的痛啊|肯定有破局的办法|拒绝就是死|接受还有活路|这简直是奇耻大辱|这真的是天赋异禀了|我宁总实名叹服|怕是送他上路的那种送吧)[！!。？?]*$/.test(value)) {
     return yes('direct_judgement');
   }
   if (/^(不应该|难道|但是).*?[？?]$/.test(value)) {
@@ -97,8 +122,51 @@ function classifyInnerVoiceLine(text) {
   if (/是什么鬼[？?]?$/.test(value)) {
     return yes('self_question');
   }
+  if (/^[^。！？]{2,40}[？?]$/.test(value) && /(真人|画像|什么情况|怎么|为何|难道|岂不是|能成吗)/.test(value)) {
+    return yes('viewpoint_question');
+  }
 
   return no('not_inner_voice');
+}
+
+function extractEmbeddedInnerVoiceCue(line, currentActor) {
+  const text = String(line?.text || '');
+  const cue = text.match(/(?:心中|心里|暗自)?(?:嘀咕|暗道|心想|腹诽)[：:]\s*(.+)$/);
+  if (!cue) return null;
+  const cueStartInLine = cue.index + cue[0].indexOf(cue[1]);
+  const osText = cue[1].trim();
+  if (!osText) return null;
+  return {
+    start: Number(line.start) + cueStartInLine,
+    end: Number(line.start) + text.length,
+    text: osText,
+    speaker: inferActorFromLine(text.slice(0, cue.index), currentActor) || currentActor,
+    reason: 'thought_cue_os',
+  };
+}
+
+function inferActorFromLine(text, fallback = '') {
+  const value = String(text || '');
+  let found = { role: '', index: -1 };
+  for (const role of KNOWN_ROLES) {
+    const idx = value.lastIndexOf(role);
+    if (idx < 0 || idx < value.length - 100) continue;
+    if (!looksLikeSubjectMention(value, idx, role)) continue;
+    if (idx > found.index) found = { role, index: idx };
+  }
+  if (found.role) return found.role;
+  if (/^(她|夫人)/.test(value) && fallback && fallback !== '宁默') return fallback;
+  if (/^(他|自己|我)/.test(value) && fallback) return fallback;
+  return '';
+}
+
+function looksLikeSubjectMention(text, index, role) {
+  const before = text.slice(Math.max(0, index - 1), index);
+  const after = text.slice(index + role.length, index + role.length + 1);
+  if (['的', '给', '与', '和', '、'].includes(after)) return false;
+  if (index === 0) return true;
+  if (/[。！？；，,\s　]/.test(before)) return true;
+  return false;
 }
 
 function makeSpan(index, group, speaker, gapId) {
