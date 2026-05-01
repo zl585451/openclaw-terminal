@@ -5,6 +5,29 @@
 - 前置依据：`样书结构分析报告.md`
 - 目标：用“程序抽 span + Agent 判归属 + 程序合成台本”替代当前“Agent 直接生成分类台本”的不稳定链路。
 
+## 0. 当前实现状态
+
+- 实现日期：2026-05-01
+- 当前状态：MVP 已接入开发开关，默认仍保留旧 `classify-first` 链路。
+- 启用方式：设置 `SCRIPT_ADAPTER_TEXT_PIPELINE=span_attribution` 或 `scriptAdapter.textPipeline = "span_attribution"`。
+- 已实现模块：
+  - `quoteSpanExtractor`
+  - `speakerCandidateExtractor`
+  - `quoteAttributionAgent`
+  - `quoteAttributionParser`
+  - `spanScriptComposer`
+  - `basicQCChecker` 硬拦截 speaker 协议残留和对白/旁白重复
+- 已覆盖测试：
+  - `quoteSpanExtractor.test.js`
+  - `speakerCandidateExtractor.test.js`
+  - `quoteAttributionParser.test.js`
+  - `spanScriptComposer.test.js`
+  - `basicQCChecker.test.js`
+- 未完成项：
+  - 5 本样书的完整 fixture/golden 标注尚未固化。
+  - 新链路尚未设为默认生产链路。
+  - 旁白口语化暂未接回新链路，当前优先保证结构正确性。
+
 ## 1. 为什么做
 
 当前真实产物在《夫人请卸甲》第 1 章暴露了三类根问题：
@@ -31,7 +54,7 @@
 ```text
 sourceText
   -> importNormalizer
-      编码/章节标题/换行标准化
+      编码/章节标题/换行标准化（当前沿用既有摄入结果，未新增独立模块）
   -> quoteSpanExtractor
       quote spans + narration gaps + cue windows
   -> speakerCandidateExtractor
@@ -39,8 +62,8 @@ sourceText
   -> quoteAttributionAgent
       只判断 quoteId -> speaker/confidence/evidence/voiceType
   -> attributionValidator
-      拦截污染 speaker，降级不确定项
-  -> deterministicComposer
+      当前由 quoteAttributionParser + hardQC 承担污染拦截
+  -> deterministicComposer / spanScriptComposer
       用 span 合成 AdaptedScriptPayload
   -> hardQC
       检查重复对白、协议残留、占位污染
@@ -82,6 +105,8 @@ sourceText
 
 - 至少 5 个 fixture。
 - 覆盖：未知开场、群体对白、系统音、后置说话人、旁白夹对白、非标准章节标题。
+
+> 当前进度：未固化完整样书 fixture；已用最小单测覆盖上述结构类型。下一轮真实跑产物后再回填 golden case。
 
 ## 5. Phase B：quoteSpanExtractor
 
@@ -132,6 +157,8 @@ sourceText
 - 不丢 quote，不重复 quote。
 - 《夫人请卸甲》第 1 章 33 个引号对白可全部抽出。
 
+> 当前进度：核心抽取器已实现并测试 `“...”`、`"..."`、`【...】`、上下文窗口、narration gaps 原文重组。
+
 ## 6. Phase C：speakerCandidateExtractor
 
 ### 任务
@@ -166,6 +193,8 @@ sourceText
 - 不把 quote 文本里被称呼的人名直接当 speaker。
 - 能从后置 cue 提取 speaker。
 - 能为群体对白生成 `外门弟子群` 一类候选。
+
+> 当前进度：已支持前置 cue、后置 cue、场景声音 cue、系统 cue、群体 cue、连续对白弱继承。
 
 ## 7. Phase D：quoteAttributionAgent
 
@@ -213,6 +242,8 @@ q008|system_voice|系统音|high|方括号系统提示
 - 无有效 attribution 时抛错，不静默生成错误台本。
 - speaker 污染词被拦截。
 
+> 当前进度：已实现严格行协议 Agent、输入构造和 parser；无有效归因时抛错，不静默生成台本。
+
 ## 8. Phase E：deterministicComposer
 
 ### 任务
@@ -237,7 +268,9 @@ q008|system_voice|系统音|high|方括号系统提示
 
 - 同一 quote 不会在旁白和对白中重复。
 - 输出文本按原文顺序排列。
-- 下游 Voice / QC / Packager 可继续消费。
+- 下游 Voice / QC / Packager 可继续消费。`system_voice` 在 MVP 中映射为 `dialogue + speaker=系统音`，保持现有 `AdaptedScriptPayload` 兼容。
+
+> 当前进度：已实现 `spanScriptComposer`。quote 文本原样进入对白，narration gap 不包含 quote 原文。
 
 ## 9. Phase F：Hard QC
 
@@ -258,6 +291,8 @@ q008|system_voice|系统音|high|方括号系统提示
 
 - 扩展 `oct-gateway/script_adapter/basicQCChecker.js`
 - 新增 `oct-gateway/test/spanHardQC.test.js` 或扩展现有 QC 测试。
+
+> 当前进度：已扩展 `basicQCChecker.js` 和 `basicQCChecker.test.js`，覆盖 `speaker_protocol_residue` 与 `dialogue_duplicated_in_narration`。
 
 ## 10. Phase G：接入 textRewriterAgent
 
@@ -288,6 +323,8 @@ else:
 - 旧测试不破。
 - 新样书 fixture 测试通过。
 - 《夫人请卸甲》第1章不再出现 `角色名` speaker、`宁默|“...”` 残留和对白重复。
+
+> 当前进度：已在 `textRewriterAgent` 中接入 `SCRIPT_ADAPTER_TEXT_PIPELINE=span_attribution` 开关。下一步需要用软件真实跑一次《夫人请卸甲》第 1 章产物验证。
 
 ## 11. Phase H：样书回归矩阵
 

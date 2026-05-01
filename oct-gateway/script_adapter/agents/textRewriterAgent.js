@@ -8,6 +8,10 @@ const { runClassificationSplitterAgent } = require('./classificationSplitterAgen
 const { validateClassifications } = require('../classificationParser');
 const { runLightNarrationRewriterAgent } = require('./lightNarrationRewriterAgent');
 const { mergeClassifiedSegments } = require('../classifiedMerger');
+const { extractQuoteSpans } = require('../quoteSpanExtractor');
+const { extractSpeakerCandidates } = require('../speakerCandidateExtractor');
+const { runQuoteAttributionAgent } = require('./quoteAttributionAgent');
+const { composeScriptFromSpans } = require('../spanScriptComposer');
 
 const HARD_LIMIT = 12000;
 const ANCHOR_SIZE = 200;
@@ -33,12 +37,66 @@ async function runTextRewriterAgent(ctx, _options = {}) {
   }
   const report = createProgressReporter(ctx);
 
+  if (shouldUseSpanAttributionPipeline()) {
+    return runSpanAttributionPass(sourceText, report);
+  }
+
   const slices = createAdaptiveSlices(sourceText, { anchorSize: ANCHOR_SIZE });
   if (slices.length <= 1) {
     return runClassifyFirstPass(sourceText, report);
   }
 
   return runSlicedClassifyFirstPass(sourceText, slices, report);
+}
+
+async function runSpanAttributionPass(sourceText, report = noop) {
+  const startedAt = Date.now();
+
+  report({ phase: 'span_extract', progressSummary: '正在抽取原文引号 span', progressPercent: 15 });
+  const spanDoc = extractQuoteSpans({ sourceText });
+  if (spanDoc.quotes.length === 0) {
+    throw new Error('SPAN_ATTRIBUTION_NO_QUOTES: 未抽取到可归因对白');
+  }
+
+  report({
+    phase: 'candidate_extract',
+    progressSummary: `正在分析说话人候选，发现 ${spanDoc.quotes.length} 条 quote`,
+    progressPercent: 32,
+  });
+  const candidateSets = extractSpeakerCandidates(spanDoc);
+
+  report({
+    phase: 'quote_attribution',
+    progressSummary: `正在归因台词说话人，${spanDoc.quotes.length} 条 quote 进入模型`,
+    progressPercent: 58,
+  });
+  const attributionResult = await runQuoteAttributionAgent({
+    chapterTitle: spanDoc.chapterTitle,
+    quotes: spanDoc.quotes,
+    candidateSets,
+  });
+
+  report({
+    phase: 'span_compose',
+    progressSummary: '正在按 span 和归因结果合成台本',
+    progressPercent: 84,
+    model: attributionResult.model,
+  });
+  const composeResult = composeScriptFromSpans({
+    spanDoc,
+    attributions: attributionResult.attributions,
+  });
+
+  const allWarnings = [
+    ...(attributionResult.warnings || []),
+    ...(composeResult.warnings || []),
+  ];
+
+  return {
+    payload: normalizePayload({ ...composeResult.payload, _warnings: allWarnings }),
+    latencyMs: Date.now() - startedAt,
+    model: `${attributionResult.model} + span attribution composer`,
+  };
 }
 
 async function runClassifyFirstPass(sourceText, report = noop) {
@@ -204,6 +262,13 @@ function createProgressReporter(ctx) {
 
 function noop() {}
 
+function shouldUseSpanAttributionPipeline() {
+  const value = config.scriptAdapter?.textPipeline
+    || config.getEnvOrConfig?.('SCRIPT_ADAPTER_TEXT_PIPELINE')
+    || process.env.SCRIPT_ADAPTER_TEXT_PIPELINE;
+  return String(value || '').trim().toLowerCase() === 'span_attribution';
+}
+
 function mergeSlicePayloadsClassifyFirst(results) {
   const fmt = (index) => `seg-${String(index).padStart(3, '0')}`;
   const segments = [];
@@ -284,6 +349,7 @@ function extractJsonObject(text) {
 
 module.exports = {
   runTextRewriterAgent,
+  runSpanAttributionPass,
   parseTextRewriterOutput,
   extractJsonObject,
 };

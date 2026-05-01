@@ -117,6 +117,27 @@ describe('checkBasicQC', () => {
     expect(report.conclusion).toBe('reject');
   });
 
+  it('detects speaker_protocol_residue', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'dialogue', speaker: '宁默|“醒了？”', text: '醒了？' },
+      ]),
+    });
+    expect(categories(report)).toContain('speaker_protocol_residue');
+    expect(report.conclusion).toBe('reject');
+  });
+
+  it('detects dialogue_duplicated_in_narration', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'narration', text: '狱卒喊道：“宁默，有人来看你！”' },
+        { segmentId: 'seg-002', type: 'dialogue', speaker: '狱卒', text: '宁默，有人来看你！' },
+      ]),
+    });
+    expect(categories(report)).toContain('dialogue_duplicated_in_narration');
+    expect(report.conclusion).toBe('reject');
+  });
+
   it('detects voice_registry_pollution_risk', () => {
     const report = checkBasicQC({
       adaptedScript: payload([

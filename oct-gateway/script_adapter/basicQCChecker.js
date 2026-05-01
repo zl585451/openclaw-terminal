@@ -53,9 +53,58 @@ function checkBasicQC(params = {}) {
   checkDialogueActionMisclassified(segments, issues);
   checkInnerMonologueThirdPerson(segments, issues);
   checkSpeakerContamination(segments, issues);
+  checkSpeakerProtocolResidue(segments, issues);
+  checkDialogueDuplicatedInNarration(segments, issues);
   checkVoiceRegistryPollution(segments, issues);
 
   return buildReport(issues);
+}
+
+function checkSpeakerProtocolResidue(segments, issues) {
+  const residuePattern = /[|"'“”‘’【】]/;
+  for (const segment of segments) {
+    if (!VALID_SCRIPT_TYPES.has(segment?.type)) continue;
+    const speaker = String(segment.speaker || '').trim();
+    if (!speaker) continue;
+    if (!residuePattern.test(speaker) && speaker !== '角色名' && speaker !== '未知角色') continue;
+    issues.push(issue(
+      'P0',
+      'speaker_protocol_residue',
+      segment.segmentId || '全局',
+      `speaker含协议残留或占位名：${speaker}。`,
+      'speaker必须是干净角色名；请重新执行台词归因或过滤污染行。',
+    ));
+  }
+}
+
+function checkDialogueDuplicatedInNarration(segments, issues) {
+  const narrations = segments
+    .filter((segment) => segment?.type === 'narration')
+    .map((segment) => ({ id: segment.segmentId || '旁白', text: normalizeForDupCheck(segment.text) }))
+    .filter((segment) => segment.text);
+
+  if (narrations.length === 0) return;
+
+  for (const segment of segments) {
+    if (!VALID_SCRIPT_TYPES.has(segment?.type)) continue;
+    const dialogue = normalizeForDupCheck(segment.text);
+    if (dialogue.length < 4) continue;
+    const duplicatedIn = narrations.find((item) => item.text.includes(dialogue));
+    if (!duplicatedIn) continue;
+    issues.push(issue(
+      'P0',
+      'dialogue_duplicated_in_narration',
+      segment.segmentId || '全局',
+      `对白文本同时出现在旁白 ${duplicatedIn.id} 中：${String(segment.text || '').slice(0, 30)}。`,
+      '同一 quote span 只能生成 dialogue/inner_monologue，不应保留在 narration 中。',
+    ));
+  }
+}
+
+function normalizeForDupCheck(value) {
+  return String(value || '')
+    .replace(/[“”"‘’【】\s]/g, '')
+    .trim();
 }
 
 function normalizeAdaptedPayload(adaptedScript) {

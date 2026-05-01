@@ -107,6 +107,11 @@ Gateway 返回并推送 `analysisRun`：
 3. 文本改编默认输出预算为 `6000` tokens，可通过 `SCRIPT_ADAPTER_TEXT_REWRITER_MAX_TOKENS` 或 `scriptAdapter.textRewriterMaxTokens` 调整，允许范围为 `2000` 到 `16000`。
 4. 文本改编 JSON 解析应容忍模型在 JSON 前后追加解释或 markdown 围栏；若首次输出为空或 JSON 不完整，应使用更低温度和更紧凑提示重试一次。
 5. 切片改编中只要存在失败切片，当前章节应显式失败，不得把包含失败占位文本的半成品标记为成功交付。
+6. 文本改编可通过 `SCRIPT_ADAPTER_TEXT_PIPELINE=span_attribution` 或 `scriptAdapter.textPipeline = "span_attribution"` 启用 Quote Span Attribution MVP。
+7. `span_attribution` 链路把模型职责收窄为 quote 归因：程序先抽取 quote span 与 narration gap，再由 `quoteAttributionAgent` 输出 `quoteId|voiceType|speaker|confidence|evidence`，最后由 `spanScriptComposer` 生成 `AdaptedScriptPayload`。
+8. `span_attribution` 链路必须推送可见进度阶段：`span_extract`、`candidate_extract`、`quote_attribution`、`span_compose`。
+9. `system_voice` 在当前 payload schema 中映射为 `dialogue + speaker = 系统音`，避免破坏下游 Voice / QC / Packager 兼容性。
+10. 新链路默认不替换生产 `classify-first`，需要显式开关启用，便于真实样书产物对照。
 
 协议约束：
 
