@@ -201,6 +201,8 @@ function looksLikeSubjectMention(text, index, role) {
 function pushSpanIfSpeaker(spans, group, speaker, gapId) {
   const normalizedSpeaker = normalizeSpeaker(speaker);
   if (!normalizedSpeaker) return;
+  const text = group.lines.map((line) => line.text).join(' ');
+  if (!isValidInnerVoiceSpanText(text)) return;
   spans.push(makeSpan(spans.length + 1, group, normalizedSpeaker, gapId));
 }
 
@@ -225,7 +227,18 @@ function normalizeLine(text) {
 function normalizeSpeaker(value) {
   const speaker = String(value || '').trim();
   if (!speaker || speaker.length > 12 || /[|"'“”‘’【】]/.test(speaker)) return '';
+  if (!normalizeRole(speaker)) return '';
   return speaker;
+}
+
+function isValidInnerVoiceSpanText(text) {
+  const normalized = String(text || '')
+    .replace(/[“”"‘’【】\s　，,、。！？!?~….\-—]/g, '')
+    .trim();
+  if (normalized.length < 2) return false;
+  if (/^(?:幻听|故障|串频|欠|声音|声|开头|后面|一下|嗡|咚|咔)$/.test(normalized)) return false;
+  if (/^\d+$/.test(normalized)) return false;
+  return true;
 }
 
 function inferViewpoint(sourceText) {
@@ -259,5 +272,6 @@ function no(reason) {
 module.exports = {
   extractInnerVoiceSpans,
   classifyInnerVoiceLine,
+  isValidInnerVoiceSpanText,
   inferViewpoint,
 };

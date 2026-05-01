@@ -17,6 +17,8 @@
 - 当前策略：
   - 先用规则识别强 OS candidate，不额外增加模型调用。
   - speaker 默认使用当前视角角色；遇到明确主语角色时更新当前 actor，支持同章内的多角色 OS。
+  - OS speaker 先经过角色名清洗；动作词、状态词、上下文短语不得作为 OS speaker。
+  - OS 文本设置最小语义门槛；单字、数字、孤立解释词或概念列表不得独立生成 `inner_monologue`。
   - 保持内部 payload 兼容：OS 输出为 `type = inner_monologue`，交付层渲染为 `[角色][OS]`。
 - 待后续观察：
   - 是否需要补 `innerVoiceAttributionAgent`。
@@ -62,6 +64,7 @@
 4. OS speaker 必须来自当前视角角色或明确上下文，不得输出 `角色名`、`未知角色`。
 5. Quote span 原有 33 条对白不受影响。
 6. 输出继续保持 `AdaptedScriptPayload` 兼容：`type = inner_monologue`，`speaker = 具体角色名`。
+7. `嗫嚅`、`没听过他`、`欠`、`幻听`、`故障`、`串频` 等动作词、上下文短语或孤立概念不得进入 OS speaker / OS 文本。
 
 ## 3. 总体架构
 
@@ -138,6 +141,7 @@ sourceText
 - `oct-gateway/test/innerVoiceSpanExtractor.test.js`
 
 > 当前进度：已实现。MVP 规则覆盖短促反应、第一人称疑问、自我纠偏、即时判断、显式心理 cue、当前 actor 短视角疑问，并排除第三人称动作和世界观长段。actor 推断会忽略 `王大山给出的条件` 这类宾语 / 所属关系，避免把宁默 OS 错归给被提及角色。
+> 2026-05-02 补充：新增 OS Span Guard，拒绝污染 speaker 与过短概念残片，避免 `[嗫嚅][OS] 来真的？`、`[没听过他][OS] ...`、`[周佳宁][OS] 欠` 这类产物。
 
 ## 6. Phase C：innerVoiceAttributionAgent
 
@@ -202,8 +206,10 @@ os002|narration|旁白|high|第三人称动作描写
 2. `inner_monologue` speaker 污染，失败。
 3. 明显第三人称动作误入 OS，降级或失败。
 4. OS 与 narration 重复，失败。
+5. OS speaker 不像有效角色名，标记 `inner_monologue_speaker_invalid`。
+6. OS 文本为单字、数字、孤立概念残片，标记 `inner_monologue_fragment`。
 
-> 当前进度：已新增第三人称动作误入 OS 检查；缺 speaker、speaker 污染和重复检查沿用现有 Basic QC 规则。
+> 当前进度：已新增第三人称动作误入 OS、无效 OS speaker、OS 残片检查；缺 speaker、speaker 污染和重复检查沿用现有 Basic QC 规则。
 
 ## 9. 第一轮验收方式
 

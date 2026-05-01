@@ -30,6 +30,7 @@ const {
   isSystemSpeaker,
   isSystemVoiceText,
 } = require('./voiceTypeClassifier');
+const { normalizeRole } = require('./viewpointResolver');
 
 /**
  * 基础规则质检，不调用模型。
@@ -67,9 +68,60 @@ function checkBasicQC(params = {}) {
   checkVoiceRegistryPollution(segments, issues);
   checkNarrationCueResidue(segments, issues);
   checkSfxRoleMisclassified(segments, issues);
+  checkInvalidSfxText(segments, issues);
+  checkSuspiciousInnerVoiceSpeaker(segments, issues);
+  checkInnerMonologueFragment(segments, issues);
   checkForeignInnerVoiceSpeaker(segments, sourceText, issues);
 
   return buildReport(issues);
+}
+
+function checkSuspiciousInnerVoiceSpeaker(segments, issues) {
+  for (const segment of segments) {
+    if (segment?.type !== 'inner_monologue') continue;
+    const speaker = String(segment.speaker || '').trim();
+    if (!speaker || normalizeRole(speaker)) continue;
+    issues.push(issue(
+      'P1',
+      'inner_monologue_speaker_invalid',
+      segment.segmentId || '全局',
+      `OS speaker 不像有效角色名：${speaker}。`,
+      'OS speaker 只能来自明确角色、当前视角角色或高置信候选角色，不能使用动作词、状态词或上下文短语。',
+    ));
+  }
+}
+
+function checkInvalidSfxText(segments, issues) {
+  for (const segment of segments) {
+    if (segment?.type !== 'dialogue') continue;
+    const speaker = String(segment.speaker || '').trim();
+    if (speaker !== 'SFX') continue;
+    const text = String(segment.text || '').trim();
+    if (isSfxText(text)) continue;
+    issues.push(issue(
+      'P1',
+      'sfx_text_invalid',
+      segment.segmentId || '全局',
+      `SFX 文本不像音效：${text.slice(0, 30)}。`,
+      'SFX 仅用于咔、咚、砰、滋啦、嗡等纯拟声词；数字、编号、残片应回到旁白或被过滤。',
+    ));
+  }
+}
+
+function checkInnerMonologueFragment(segments, issues) {
+  for (const segment of segments) {
+    if (segment?.type !== 'inner_monologue') continue;
+    const text = String(segment.text || '').trim();
+    const compact = text.replace(/[“”"‘’【】\s　，,、。！？!?~….\-—]/g, '');
+    if (compact.length >= 2 && !/^(?:幻听|故障|串频|欠|声音|声|开头|后面|一下|\d+)$/.test(compact)) continue;
+    issues.push(issue(
+      'P1',
+      'inner_monologue_fragment',
+      segment.segmentId || '全局',
+      `OS 文本疑似过短或为概念残片：${text.slice(0, 30)}。`,
+      'OS 应保留完整直接念头；单字、孤立名词、解释词列表不应独立成内心独白。',
+    ));
+  }
 }
 
 function checkNarrationCueResidue(segments, issues) {

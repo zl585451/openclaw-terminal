@@ -198,6 +198,21 @@ describe('checkBasicQC', () => {
     expect(categories(report)).not.toContain('sfx_system_label_misclassified');
   });
 
+  it('detects invalid SFX text and OS fragments', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'dialogue', speaker: 'SFX', text: '84' },
+        { segmentId: 'seg-002', type: 'inner_monologue', speaker: '周佳宁', text: '欠' },
+        { segmentId: 'seg-003', type: 'inner_monologue', speaker: '周佳宁', text: '来真的？' },
+        { segmentId: 'seg-004', type: 'inner_monologue', speaker: '嗫嚅', text: '来真的？' },
+      ]),
+    });
+    expect(categories(report)).toContain('sfx_text_invalid');
+    expect(categories(report)).toContain('inner_monologue_fragment');
+    expect(categories(report)).toContain('inner_monologue_speaker_invalid');
+    expect(report.issues.filter((issue) => issue.category === 'inner_monologue_fragment')).toHaveLength(1);
+  });
+
   it('rejects foreign inner voice speaker not present in source text', () => {
     const report = checkBasicQC({
       adaptedScript: payload([

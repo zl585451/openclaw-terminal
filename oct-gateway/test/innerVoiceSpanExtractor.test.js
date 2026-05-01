@@ -2,7 +2,11 @@
 
 const { describe, it, expect } = globalThis;
 const { extractQuoteSpans } = require('../script_adapter/quoteSpanExtractor');
-const { extractInnerVoiceSpans, classifyInnerVoiceLine } = require('../script_adapter/innerVoiceSpanExtractor');
+const {
+  extractInnerVoiceSpans,
+  classifyInnerVoiceLine,
+  isValidInnerVoiceSpanText,
+} = require('../script_adapter/innerVoiceSpanExtractor');
 
 describe('innerVoiceSpanExtractor', () => {
   it('extracts contiguous protagonist OS from narration gaps', () => {
@@ -122,6 +126,35 @@ describe('innerVoiceSpanExtractor', () => {
     expect(result.spans).toHaveLength(1);
     expect(result.spans[0].speaker).toBe('宁默');
     expect(result.spans[0].text).toBe('拒绝就是死！ 接受还有活路。');
+  });
+
+  it('rejects polluted OS speaker candidates and tiny fragments', () => {
+    const spanDoc = extractQuoteSpans({
+      sourceText: [
+        '没听过他活着的样子。',
+        '可是……怎么可能？',
+        '心里那个',
+        '幻听',
+        '、',
+        '故障',
+        '、',
+        '串频',
+        '的解释开始崩塌。',
+      ].join('\n'),
+    });
+    const result = extractInnerVoiceSpans({
+      spanDoc,
+      viewpointResult: {
+        viewpoint: '周佳宁',
+        candidates: ['周佳宁', '没听过他', '嗫嚅'],
+      },
+    });
+
+    expect(result.spans.map((span) => span.speaker)).not.toContain('没听过他');
+    expect(result.spans.map((span) => span.text)).not.toContain('幻听');
+    expect(isValidInnerVoiceSpanText('欠')).toBe(false);
+    expect(isValidInnerVoiceSpanText('幻听')).toBe(false);
+    expect(isValidInnerVoiceSpanText('来真的？')).toBe(true);
   });
 
   it('keeps third-person action and descriptions as narration', () => {

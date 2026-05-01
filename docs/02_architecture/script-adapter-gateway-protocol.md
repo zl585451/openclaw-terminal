@@ -27,9 +27,12 @@
   - 文本改编师真实调用（JSON 台本结构）。默认切片约 2200 字，输出预算 6000 tokens；若模型返回带前后缀、围栏或不完整 JSON，会先提取 JSON 对象，解析失败时用紧凑提示自动重试一次。
 - `oct-gateway/script_adapter/viewpointResolver.js`
   - 规则层章节视角推断。输入原文、quote span、候选说话人和归因结果，输出 `viewpoint/candidates/confidence/evidence`。不得使用跨书默认主角；推不出视角时返回空，OS 抽取应保守跳过。
+  - 角色名清洗会剔除动作词、状态词、上下文短语，避免 `嗫嚅`、`没听过他`、`欠` 等污染 OS speaker。
 - `oct-gateway/script_adapter/voiceTypeClassifier.js`
   - 规则层声音类型分类。统一识别 `narrator`、`character`、`inner_monologue`、`unresolved_voice`、`system_voice`、`device_voice`、`sfx`、`group_voice`、`cue`，供 composer、角色音降级和 QC 复用。
   - `system_voice` 只保留系统/面板/任务/奖励等语义提示；`device_voice` 保留对讲机、广播、电话等介质传声；`sfx` 保留咔、咚、滋啦等纯拟声词。
+- `oct-gateway/script_adapter/innerVoiceSpanExtractor.js`
+  - 规则层 OS 抽取。除原有强 OS 规则外，新增 OS Span Guard：单字、数字、孤立解释词或概念列表不独立生成 `inner_monologue`。
 - `oct-gateway/script_adapter/agents/voiceClassifierAgent.js`
   - 角色音统筹真实调用：本地聚合出场统计 + 每个角色少量代表片段 + LLM 输出类别与声线建议。
   - 输入不得重复整章正文；代表片段上限为每个角色 2 条、总计 16 条。默认真实调用超时为 `35000ms`，超时后由 Gateway 生成降级角色音表。

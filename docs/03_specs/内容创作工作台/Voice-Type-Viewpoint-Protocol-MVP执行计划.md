@@ -41,6 +41,8 @@
    - P0：跨书 OS speaker。
    - P1：拟声词人物化。
    - P1：纯 cue 旁白残留。
+   - P1：`SFX` 文本不是拟声词，例如数字、编号、残片。
+   - P1：OS speaker / OS 文本残片污染。
 
 ## 3. 验收样例
 
@@ -53,6 +55,9 @@
 | `系统音` + `叮，系统已激活` | `[系统音] 叮，系统已激活`，角色音类别为 `sfx` |
 | `对讲机` + `滋啦……` | `[对讲机] 滋啦……`，角色音类别为 `sfx` |
 | `系统音` + `咚` | 自动纠偏为 `[SFX] 咚`，并由 QC 拦截旧产物 |
+| `SFX` + `84` | QC 标记 `sfx_text_invalid` |
+| `[嗫嚅][OS] 来真的？` | QC 标记 `inner_monologue_speaker_invalid`，新抽取链路不得生成 |
+| `[周佳宁][OS] 欠` | 新抽取链路丢弃，旧产物由 QC 标记 `inner_monologue_fragment` |
 
 ## 4. 当前实现状态
 
@@ -65,6 +70,7 @@
   - `voiceClassifierAgent` 的真实解析和降级表强制尊重 `unresolved_voice` / `system_voice` / `device_voice` / `sfx`。
   - `basicQCChecker` 增加跨书 OS、cue 残留、拟声词人物化检查。
   - `system_voice` / `device_voice` / `sfx` 在角色音表中仍统一归入 `category = sfx`，但保留 roleName 区分系统提示、设备传声和纯音效。
+  - `basicQCChecker` 增加 SFX 非拟声词、OS speaker 污染、OS 残片检查。
 - 已测试：
   - `innerVoiceSpanExtractor.test.js`
   - `spanScriptComposer.test.js`

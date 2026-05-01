@@ -12,6 +12,20 @@ const COMMON_NON_ROLES = new Set([
   '外门弟子群',
 ]);
 
+const BAD_ROLE_TOKENS = new Set([
+  '嗫嚅',
+  '没听过他',
+  '欠',
+  '幻听',
+  '故障',
+  '串频',
+  '声音',
+  '声',
+  '一下',
+  '开头',
+  '后面',
+]);
+
 function resolveViewpoint(params = {}) {
   const sourceText = String(params.sourceText || params.spanDoc?.sourceText || '');
   const explicit = normalizeRole(params.viewpointHint);
@@ -99,6 +113,9 @@ function normalizeRole(value) {
   if (/[|"'“”‘’【】\s]/.test(role)) return '';
   if (/^[他她]的/.test(role)) return '';
   if (/^(他|她|我|自己|众人|几人|大家|有人|男人|女人|青年|少年|声音)$/.test(role)) return '';
+  if (BAD_ROLE_TOKENS.has(role)) return '';
+  if (/^(?:没|不|未|已|还|又|才|刚|正在|忽然|突然|似乎|仿佛)/.test(role)) return '';
+  if (/(?:过|着|了|听|看|想|说|问|欠|嚅|声音)$/.test(role) && !/(?:夫人|管事|弟子群|外门弟子群)$/.test(role)) return '';
   return role;
 }
 
