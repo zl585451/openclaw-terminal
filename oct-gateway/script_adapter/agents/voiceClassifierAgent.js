@@ -2,7 +2,14 @@
 
 const { chatCompletion, resolveProviderFor } = require('../../services/llmClient');
 const config = require('../../config');
-const { classifyVoiceType, isSfxSpeaker, isUnresolvedSpeaker } = require('../voiceTypeClassifier');
+const {
+  classifyVoiceType,
+  isDeviceSpeaker,
+  isSfxSpeaker,
+  isSystemSpeaker,
+  isUnresolvedSpeaker,
+  normalizeFunctionalSpeaker,
+} = require('../voiceTypeClassifier');
 
 const VOICE_CLASSIFIER_MODEL = 'qwen3.5-flash';
 const DASHSCOPE_COMPATIBLE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -16,8 +23,8 @@ const SYSTEM_PROMPT = `你是有声书角色音统筹师。你会收到由 Text 
 - narrator: 旁白,通常出场次数最多,无对白以叙述为主
 - main: 主要角色,有完整对白,出场频繁
 - support: 配角,对白少或仅出场 1-2 次
-- unresolved: 文件、广播、回忆、电话等未确认来源的声音
-- sfx: 功能性音效或非人声(如系统提示、警报、机械声)
+- unresolved: 文件、回忆、未确认女声/男声等来源不明的人声
+- sfx: 功能性声音或非人声,包含系统提示、设备传声、环境/动作拟声
 
 声线建议(voiceHint)写法:性别 + 年龄段 + 情绪基调 + 语速,一句话内,例如"年轻女性,压抑、少话,反应慢半拍"。
 
@@ -112,9 +119,10 @@ function isStandardDashScopeKey(apiKey) {
 function aggregateSpeakers(segments) {
   const map = new Map();
   for (const seg of segments) {
-    const speaker = (seg.type === 'narration' || !seg.speaker)
+    const rawSpeaker = (seg.type === 'narration' || !seg.speaker)
       ? '旁白'
       : String(seg.speaker).trim();
+    const speaker = rawSpeaker === '旁白' ? rawSpeaker : normalizeFunctionalSpeaker({ type: seg.type, speaker: rawSpeaker, text: seg.text });
     if (!speaker) continue;
     const current = map.get(speaker) || { roleName: speaker, appearanceCount: 0, voiceTypeCounts: {} };
     current.appearanceCount += 1;
@@ -242,14 +250,14 @@ function forcedCategoryForRole(roleName, statMap) {
   const stat = statMap instanceof Map ? statMap.get(roleName) : null;
   const voiceType = stat && typeof stat === 'object' ? stat.voiceType : '';
   if (roleName === '旁白') return 'narrator';
-  if (voiceType === 'sfx' || isSfxSpeaker(roleName)) return 'sfx';
+  if (FUNCTIONAL_VOICE_TYPES.has(voiceType) || isSfxSpeaker(roleName) || isSystemSpeaker(roleName) || isDeviceSpeaker(roleName)) return 'sfx';
   if (voiceType === 'unresolved_voice' || isUnresolvedSpeaker(roleName)) return 'unresolved';
   return '';
 }
 
 function fallbackCategory(roleName, appearanceCount, voiceType = '') {
   if (roleName === '旁白') return 'narrator';
-  if (voiceType === 'sfx') return 'sfx';
+  if (FUNCTIONAL_VOICE_TYPES.has(voiceType)) return 'sfx';
   if (voiceType === 'unresolved_voice') return 'unresolved';
   if (/系统|提示|警报|机械|音效/.test(roleName)) return 'sfx';
   if (/广播|电话|录音|文件|声音|神秘/.test(roleName)) return 'unresolved';
@@ -258,12 +266,16 @@ function fallbackCategory(roleName, appearanceCount, voiceType = '') {
 
 function fallbackVoiceHint(roleName, category) {
   if (category === 'narrator') return '旁白声线，清晰稳定，按场景情绪调整节奏';
-  if (category === 'sfx') return '功能性声音或系统提示，独立于普通角色音处理';
+  if (category === 'sfx' && isSystemSpeaker(roleName)) return '系统提示音，清晰短促，独立于普通角色音处理';
+  if (category === 'sfx' && isDeviceSpeaker(roleName)) return '设备传声或电流杂音，带介质感，独立于普通角色音处理';
+  if (category === 'sfx') return '环境或动作音效，短促清楚，独立于普通角色音处理';
   if (category === 'unresolved') return '未确认来源声音，先独立占位，后续人工回绑';
   if (/夫人|柳儿|小姐|丫鬟|母|女/.test(roleName)) return '女性角色声线，先按身份与情绪粗分，后续复核';
   if (/王|宁|狱卒|管事|老|男|父/.test(roleName)) return '男性角色声线，先按年龄与权力关系粗分，后续复核';
   return '角色声线占位，依据对白密度和情绪强度后续细分';
 }
+
+const FUNCTIONAL_VOICE_TYPES = new Set(['sfx', 'system_voice', 'device_voice']);
 
 module.exports = {
   runVoiceClassifierAgent,

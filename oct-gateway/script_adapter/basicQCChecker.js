@@ -22,7 +22,14 @@ const SPEAKER_POLLUTION_KEYWORDS = [
 ];
 
 const VALID_SCRIPT_TYPES = new Set(['dialogue', 'inner_monologue']);
-const { isCueOnlyText, isSfxSpeaker, isSfxText } = require('./voiceTypeClassifier');
+const {
+  isCueOnlyText,
+  isDeviceSpeaker,
+  isSfxSpeaker,
+  isSfxText,
+  isSystemSpeaker,
+  isSystemVoiceText,
+} = require('./voiceTypeClassifier');
 
 /**
  * 基础规则质检，不调用模型。
@@ -86,7 +93,17 @@ function checkSfxRoleMisclassified(segments, issues) {
     const text = String(segment.text || '').trim();
     const speaker = String(segment.speaker || '').trim();
     if (!isSfxText(text)) continue;
-    if (speaker === 'SFX' || isSfxSpeaker(speaker)) continue;
+    if (isSystemSpeaker(speaker) && !isSystemVoiceText(text)) {
+      issues.push(issue(
+        'P1',
+        'sfx_system_label_misclassified',
+        segment.segmentId || '全局',
+        `纯拟声词不应标为系统音：${speaker} -> ${text}。`,
+        '系统提示只用于叮咚提示、任务/面板/奖励等系统语义；咔、咚、滋啦等应标为 SFX 或设备音。',
+      ));
+      continue;
+    }
+    if (speaker === 'SFX' || isSfxSpeaker(speaker) || isDeviceSpeaker(speaker)) continue;
     issues.push(issue(
       'P1',
       'sfx_role_misclassified',

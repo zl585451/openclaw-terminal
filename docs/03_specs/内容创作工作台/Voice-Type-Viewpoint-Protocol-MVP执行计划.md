@@ -26,7 +26,10 @@
    - 约束：不得默认 `宁默`；推不出视角时返回空 viewpoint。
 2. `voiceTypeClassifier`
    - 输入：segment-like item：`type`、`speaker`、`text`。
-   - 输出：`narrator` / `character` / `inner_monologue` / `unresolved_voice` / `sfx` / `group_voice` / `cue`。
+   - 输出：`narrator` / `character` / `inner_monologue` / `unresolved_voice` / `system_voice` / `device_voice` / `sfx` / `group_voice` / `cue`。
+   - `system_voice` 只用于有系统语义的提示，如系统、宿主、面板、任务、奖励、检测、激活等。
+   - `device_voice` 用于对讲机、广播、电话、录音、无线电等设备传声。
+   - `sfx` 用于咔、咚、砰、滋啦、吱呀等纯动作/环境拟声，不得显示为系统音。
 3. `spanScriptComposer`
    - 删除纯 cue 旁白。
    - 将独立拟声词行转为 `speaker = SFX`。
@@ -47,7 +50,9 @@
 | 原文独立行 `咔` / `咚` | `[SFX] 咔` / `[SFX] 咚` |
 | `她忽然开口问道：` | 不作为独立旁白段输出 |
 | `未定女声A` 出场 6 次 | 角色音类别仍为 `unresolved` |
-| `对讲机` / `系统音` | 角色音类别为 `sfx` |
+| `系统音` + `叮，系统已激活` | `[系统音] 叮，系统已激活`，角色音类别为 `sfx` |
+| `对讲机` + `滋啦……` | `[对讲机] 滋啦……`，角色音类别为 `sfx` |
+| `系统音` + `咚` | 自动纠偏为 `[SFX] 咚`，并由 QC 拦截旧产物 |
 
 ## 4. 当前实现状态
 
@@ -57,8 +62,9 @@
 - 已接入：
   - `innerVoiceSpanExtractor` 使用 `viewpointResolver`，去除默认 `宁默` 回退。
   - `spanScriptComposer` 清理纯 cue，并拆出独立 SFX 行。
-  - `voiceClassifierAgent` 的真实解析和降级表强制尊重 `unresolved_voice` / `sfx`。
+  - `voiceClassifierAgent` 的真实解析和降级表强制尊重 `unresolved_voice` / `system_voice` / `device_voice` / `sfx`。
   - `basicQCChecker` 增加跨书 OS、cue 残留、拟声词人物化检查。
+  - `system_voice` / `device_voice` / `sfx` 在角色音表中仍统一归入 `category = sfx`，但保留 roleName 区分系统提示、设备传声和纯音效。
 - 已测试：
   - `innerVoiceSpanExtractor.test.js`
   - `spanScriptComposer.test.js`

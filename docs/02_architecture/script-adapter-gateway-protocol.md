@@ -1,6 +1,6 @@
 # Script Adapter Gateway Protocol
 
-更新时间：2026-05-02（补充 voice-type / viewpoint 规则协议）
+更新时间：2026-05-02（补充 voice-type / viewpoint 规则协议、系统音与 SFX 分流）
 
 本文记录内容制作工作台 Week 2 Track C 起的 Gateway 状态机骨架。当前为「前两步可选真实 LLM + 后三步 mock」的混合 pipeline；transport、registry、cancel/list 入口已按后续真实 agent runner 的形状拆开。
 
@@ -28,11 +28,12 @@
 - `oct-gateway/script_adapter/viewpointResolver.js`
   - 规则层章节视角推断。输入原文、quote span、候选说话人和归因结果，输出 `viewpoint/candidates/confidence/evidence`。不得使用跨书默认主角；推不出视角时返回空，OS 抽取应保守跳过。
 - `oct-gateway/script_adapter/voiceTypeClassifier.js`
-  - 规则层声音类型分类。统一识别 `narrator`、`character`、`inner_monologue`、`unresolved_voice`、`sfx`、`group_voice`、`cue`，供 composer、角色音降级和 QC 复用。
+  - 规则层声音类型分类。统一识别 `narrator`、`character`、`inner_monologue`、`unresolved_voice`、`system_voice`、`device_voice`、`sfx`、`group_voice`、`cue`，供 composer、角色音降级和 QC 复用。
+  - `system_voice` 只保留系统/面板/任务/奖励等语义提示；`device_voice` 保留对讲机、广播、电话等介质传声；`sfx` 保留咔、咚、滋啦等纯拟声词。
 - `oct-gateway/script_adapter/agents/voiceClassifierAgent.js`
   - 角色音统筹真实调用：本地聚合出场统计 + 每个角色少量代表片段 + LLM 输出类别与声线建议。
   - 输入不得重复整章正文；代表片段上限为每个角色 2 条、总计 16 条。默认真实调用超时为 `35000ms`，超时后由 Gateway 生成降级角色音表。
-  - 角色音表后处理必须先尊重 voice type：`unresolved_voice` 不能因出场次数升级为 main，`sfx` 不能进入普通角色音池。
+  - 角色音表后处理必须先尊重 voice type：`unresolved_voice` 不能因出场次数升级为 main，`system_voice` / `device_voice` / `sfx` 不能进入普通角色音池，统一归入功能声音类别但保留 roleName。
 - `oct-gateway/services/llmClient.js`
   - 与 `summarizer` 共用的非流式 chat completion 客户端；`resolveProviderFor('script_adapter')` 在 `SCRIPT_ADAPTER` 三元组上优先读 `config.scriptAdapter.baseUrl|apiKey|model`，再回退 `SCRIPT_ADAPTER_*`，其次 `SUMMARIZER_*`（含 memory），再降级当前 Gateway provider。
 

@@ -13,7 +13,9 @@ quoteId|voiceType|speaker|confidence|evidence
 voiceType 只能是：
 - dialogue：说出口的对白
 - inner_monologue：直接心理原声
-- system_voice：系统提示、功能音、非人物提示音
+- system_voice：系统提示/面板/任务/奖励等有系统语义的提示音，speaker 固定为 系统音
+- device_voice：对讲机、广播、电话、录音、无线电等设备传声，speaker 写设备名
+- sfx：咔、咚、砰、滋啦等纯动作/环境拟声，speaker 固定为 SFX
 
 confidence 只能是 high / medium / low。
 
@@ -21,10 +23,11 @@ confidence 只能是 high / medium / low。
 1. speaker 必须是说话者，不是台词里被称呼的人。
 2. 如果左侧或右侧上下文明确“某某说道/问道/喊道/某某的声音”，优先相信上下文。
 3. 后置说话人同样有效，例如：“……”王大山说道。
-4. 【系统提示】、【叮】这类方括号提示归 system_voice|系统音。
-5. 不确定时可以给临时名，如 未定女声A、未定男声A、路人甲、外门弟子群，但 evidence 必须说明为什么不确定。
-6. 禁止 speaker 为：角色名、未知角色、speaker、旁白、对白。
-7. 不要复制 candidates 里明显错误的候选；candidates 只是参考。`;
+4. 【系统提示】、【叮，系统已激活】这类方括号提示归 system_voice|系统音。
+5. 只有“咔/咚/砰/滋啦/吱呀”等没有语义的拟声词归 sfx|SFX，不要标为系统音。
+6. 不确定时可以给临时名，如 未定女声A、未定男声A、路人甲、外门弟子群，但 evidence 必须说明为什么不确定。
+7. 禁止 speaker 为：角色名、未知角色、speaker、旁白、对白。
+8. 不要复制 candidates 里明显错误的候选；candidates 只是参考。`;
 
 const ATTRIBUTION_TIMEOUT_MS = 90000;
 

@@ -36,6 +36,19 @@ describe('spanScriptComposer', () => {
     expect(result.payload.segments[1].text).toBe('叮，系统已激活');
   });
 
+  it('normalizes pure sfx away from system speaker', () => {
+    const spanDoc = extractQuoteSpans({ sourceText: '门内传来【咚】的一声。' });
+    const result = composeScriptFromSpans({
+      spanDoc,
+      attributions: [
+        { quoteId: 'q001', voiceType: 'system_voice', speaker: '系统音', confidence: 'medium', evidence: '方括号拟声' },
+      ],
+    });
+    expect(result.payload.segments[1].type).toBe('dialogue');
+    expect(result.payload.segments[1].speaker).toBe('SFX');
+    expect(result.payload.segments[1].text).toBe('咚');
+  });
+
   it('inserts inner voice spans inside narration gaps without duplication', () => {
     const spanDoc = extractQuoteSpans({
       sourceText: [

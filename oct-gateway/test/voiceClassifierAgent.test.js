@@ -114,20 +114,35 @@ async function main() {
     const stats = [
       { roleName: '旁白', appearanceCount: 3, voiceType: 'narrator' },
       { roleName: '未定女声A', appearanceCount: 6, voiceType: 'unresolved_voice' },
-      { roleName: '对讲机', appearanceCount: 2, voiceType: 'sfx' },
+      { roleName: '对讲机', appearanceCount: 2, voiceType: 'device_voice' },
+      { roleName: '系统音', appearanceCount: 1, voiceType: 'system_voice' },
     ];
     const raw = JSON.stringify({
       registry: [
         { roleName: '旁白', category: 'narrator', voiceHint: '稳', appearanceCount: 3 },
         { roleName: '未定女声A', category: 'main', voiceHint: '女声', appearanceCount: 6 },
         { roleName: '对讲机', category: 'support', voiceHint: '设备', appearanceCount: 2 },
+        { roleName: '系统音', category: 'support', voiceHint: '系统', appearanceCount: 1 },
       ],
       unresolved: [],
     });
     const out = parseVoiceClassifierOutput(raw, stats);
     assert.equal(out.registry.find((r) => r.roleName === '未定女声A').category, 'unresolved');
     assert.equal(out.registry.find((r) => r.roleName === '对讲机').category, 'sfx');
+    assert.equal(out.registry.find((r) => r.roleName === '系统音').category, 'sfx');
     assert.deepEqual(out.unresolved, ['未定女声A']);
+  });
+
+  await test('aggregateSpeakers separates system voice device voice and pure sfx', () => {
+    const stats = aggregateSpeakers([
+      { type: 'dialogue', speaker: '系统音', text: '叮，系统已激活' },
+      { type: 'dialogue', speaker: '系统音', text: '咚' },
+      { type: 'dialogue', speaker: '对讲机', text: '滋啦……' },
+    ]);
+    const byName = Object.fromEntries(stats.map((s) => [s.roleName, s]));
+    assert.equal(byName['系统音'].voiceType, 'system_voice');
+    assert.equal(byName.SFX.voiceType, 'sfx');
+    assert.equal(byName['对讲机'].voiceType, 'device_voice');
   });
 
   await test('buildFallbackVoiceRegistryPayload creates degraded deterministic registry', () => {

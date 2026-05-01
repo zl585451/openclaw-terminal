@@ -254,13 +254,25 @@ function escapeTable(value: unknown): string {
   return String(value || '').replace(/\|/g, '\\|');
 }
 
-export function formatScriptSpeaker(segment: { type?: string; speaker?: string }): string {
+export function formatScriptSpeaker(segment: { type?: string; speaker?: string; text?: string }): string {
   if (segment?.type === 'narration') return '旁白';
   if (segment?.type === 'inner_monologue') {
     const speaker = String(segment.speaker || '').trim() || '内心';
     return `${speaker}][OS`;
   }
-  return String(segment?.speaker || '').trim() || '未标注';
+  return normalizeFunctionalSpeakerLabel(segment) || '未标注';
+}
+
+function normalizeFunctionalSpeakerLabel(segment: { speaker?: string; text?: string }): string {
+  const speaker = String(segment?.speaker || '').trim();
+  const text = String(segment?.text || '').trim();
+  if (/^(?:系统音|系统|提示音|电子提示音)$/.test(speaker) && isPlainSfxText(text)) return 'SFX';
+  if (/^(?:音效|拟声)$/i.test(speaker)) return 'SFX';
+  return speaker;
+}
+
+function isPlainSfxText(text: string): boolean {
+  return /^(?:(?:咔|咚|砰|啪|哗啦|滋啦|吱呀|滴|嗡|轰|咔嚓|咳|嘶)(?:[~…。.！!？?\-—，,、]*)\s*)+$/.test(text);
 }
 
 function buildSingleDocxPayload(

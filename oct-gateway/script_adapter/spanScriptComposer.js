@@ -1,7 +1,12 @@
 'use strict';
 
 const { formatSegmentId } = require('./lineProtocolParser');
-const { classifyVoiceType, isCueOnlyText, isSfxText } = require('./voiceTypeClassifier');
+const {
+  classifyVoiceType,
+  isCueOnlyText,
+  isSfxText,
+  normalizeFunctionalSpeaker,
+} = require('./voiceTypeClassifier');
 
 function composeScriptFromSpans(params = {}) {
   const spanDoc = params.spanDoc || {};
@@ -34,7 +39,11 @@ function composeScriptFromSpans(params = {}) {
     const segment = {
       segmentId: formatSegmentId(segments.length + 1),
       type: mapVoiceTypeToSegmentType(attribution.voiceType),
-      speaker: attribution.speaker,
+      speaker: normalizeFunctionalSpeaker({
+        type: mapVoiceTypeToSegmentType(attribution.voiceType),
+        speaker: attribution.speaker,
+        text,
+      }),
       text,
       quoteId: event.quoteId,
       confidence: attribution.confidence,

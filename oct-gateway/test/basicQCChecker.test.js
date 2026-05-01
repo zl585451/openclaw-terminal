@@ -175,6 +175,29 @@ describe('checkBasicQC', () => {
     expect(categories(report)).toContain('sfx_role_misclassified');
   });
 
+  it('detects pure sfx mislabeled as system voice but allows real system cue', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'dialogue', speaker: '系统音', text: '咚' },
+        { segmentId: 'seg-002', type: 'dialogue', speaker: '系统音', text: '叮，系统已激活' },
+      ]),
+    });
+    expect(categories(report)).toContain('sfx_system_label_misclassified');
+    expect(report.issues.filter((issue) => issue.category === 'sfx_system_label_misclassified')).toHaveLength(1);
+  });
+
+  it('allows pure sfx assigned to SFX or device speakers', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'dialogue', speaker: 'SFX', text: '咚' },
+        { segmentId: 'seg-002', type: 'dialogue', speaker: '对讲机', text: '滋啦……' },
+        { segmentId: 'seg-003', type: 'dialogue', speaker: 'SFX', text: '滋啦……滋啦……' },
+      ]),
+    });
+    expect(categories(report)).not.toContain('sfx_role_misclassified');
+    expect(categories(report)).not.toContain('sfx_system_label_misclassified');
+  });
+
   it('rejects foreign inner voice speaker not present in source text', () => {
     const report = checkBasicQC({
       adaptedScript: payload([
