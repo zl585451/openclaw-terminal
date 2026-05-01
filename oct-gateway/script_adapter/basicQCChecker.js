@@ -22,6 +22,7 @@ const SPEAKER_POLLUTION_KEYWORDS = [
 ];
 
 const VALID_SCRIPT_TYPES = new Set(['dialogue', 'inner_monologue']);
+const { isCueOnlyText, isSfxSpeaker, isSfxText } = require('./voiceTypeClassifier');
 
 /**
  * 基础规则质检，不调用模型。
@@ -57,8 +58,60 @@ function checkBasicQC(params = {}) {
   checkSpeakerProtocolResidue(segments, issues);
   checkDialogueDuplicatedInNarration(segments, issues);
   checkVoiceRegistryPollution(segments, issues);
+  checkNarrationCueResidue(segments, issues);
+  checkSfxRoleMisclassified(segments, issues);
+  checkForeignInnerVoiceSpeaker(segments, sourceText, issues);
 
   return buildReport(issues);
+}
+
+function checkNarrationCueResidue(segments, issues) {
+  for (const segment of segments) {
+    if (segment?.type !== 'narration') continue;
+    const text = String(segment.text || '').trim();
+    if (!isCueOnlyText(text)) continue;
+    issues.push(issue(
+      'P1',
+      'narration_cue_residue',
+      segment.segmentId || '全局',
+      `旁白段疑似只剩说话 cue：${text.slice(0, 30)}。`,
+      '纯 cue 不应进入台本正文，应在 composer 阶段删除或并入归因证据。',
+    ));
+  }
+}
+
+function checkSfxRoleMisclassified(segments, issues) {
+  for (const segment of segments) {
+    if (segment?.type !== 'dialogue') continue;
+    const text = String(segment.text || '').trim();
+    const speaker = String(segment.speaker || '').trim();
+    if (!isSfxText(text)) continue;
+    if (speaker === 'SFX' || isSfxSpeaker(speaker)) continue;
+    issues.push(issue(
+      'P1',
+      'sfx_role_misclassified',
+      segment.segmentId || '全局',
+      `拟声词疑似被当成角色对白：${speaker} -> ${text}。`,
+      '拟声词、设备杂音应标为 SFX / 设备音，不应归到人物角色。',
+    ));
+  }
+}
+
+function checkForeignInnerVoiceSpeaker(segments, sourceText, issues) {
+  const source = String(sourceText || '');
+  if (!source.trim()) return;
+  for (const segment of segments) {
+    if (segment?.type !== 'inner_monologue') continue;
+    const speaker = String(segment.speaker || '').trim();
+    if (!speaker || source.includes(speaker)) continue;
+    issues.push(issue(
+      'P0',
+      'foreign_inner_voice_speaker',
+      segment.segmentId || '全局',
+      `OS speaker "${speaker}" 未出现在本章原文，疑似跨书默认角色污染。`,
+      '禁止使用测试期默认视角角色；应重新执行 viewpoint resolver 或降级为旁白。',
+    ));
+  }
 }
 
 function checkInnerMonologueActionMisclassified(segments, issues) {

@@ -1,7 +1,6 @@
 'use strict';
 
-const DEFAULT_VIEWPOINT = '宁默';
-const KNOWN_ROLES = ['宁默', '三夫人', '柳儿', '王大山', '狱卒', '下人'];
+const { resolveViewpoint, normalizeRole } = require('./viewpointResolver');
 
 /**
  * Extract unquoted inner-voice / OS spans from narration gaps.
@@ -11,23 +10,31 @@ const KNOWN_ROLES = ['宁默', '三夫人', '柳儿', '王大山', '狱卒', '�
  */
 function extractInnerVoiceSpans(params = {}) {
   const spanDoc = params.spanDoc || {};
-  const viewpoint = normalizeSpeaker(params.viewpointHint) || inferViewpoint(spanDoc.sourceText) || DEFAULT_VIEWPOINT;
+  const viewpointResult = params.viewpointResult || resolveViewpoint({
+    spanDoc,
+    sourceText: spanDoc.sourceText,
+    viewpointHint: params.viewpointHint,
+    candidateSets: params.candidateSets,
+    attributions: params.attributions,
+  });
+  const viewpoint = normalizeSpeaker(params.viewpointHint) || normalizeSpeaker(viewpointResult.viewpoint);
+  const knownRoles = buildKnownRoles(viewpointResult, params);
   const gaps = Array.isArray(spanDoc.narrationGaps) ? spanDoc.narrationGaps : [];
   const spans = [];
-  let currentActor = viewpoint;
+  let currentActor = viewpoint || '';
 
   for (const gap of gaps) {
     const lines = splitGapLines(gap);
     let group = null;
 
     for (const line of lines) {
-      const namedActor = inferActorFromLine(line.text, currentActor);
+      const namedActor = inferActorFromLine(line.text, currentActor, knownRoles);
       if (namedActor) currentActor = namedActor;
 
-      const embeddedCue = extractEmbeddedInnerVoiceCue(line, currentActor);
+      const embeddedCue = extractEmbeddedInnerVoiceCue(line, currentActor, knownRoles);
       if (embeddedCue) {
         if (group) {
-          spans.push(makeSpan(spans.length + 1, group, group.speaker || currentActor || viewpoint, gap.gapId));
+          pushSpanIfSpeaker(spans, group, group.speaker || currentActor || viewpoint, gap.gapId);
           group = null;
         }
         spans.push({
@@ -36,7 +43,7 @@ function extractInnerVoiceSpans(params = {}) {
           start: embeddedCue.start,
           end: embeddedCue.end,
           text: embeddedCue.text,
-          speaker: embeddedCue.speaker || currentActor || viewpoint,
+          speaker: embeddedCue.speaker,
           confidence: 'high',
           evidence: embeddedCue.reason,
         });
@@ -45,13 +52,15 @@ function extractInnerVoiceSpans(params = {}) {
 
       const verdict = classifyInnerVoiceLine(line.text);
       if (verdict.isInnerVoice) {
+        const speaker = currentActor || viewpoint;
+        if (!speaker) continue;
         if (!group) {
           group = {
             start: line.start,
             end: line.end,
             lines: [line],
             reasons: new Set([verdict.reason]),
-            speaker: currentActor || viewpoint,
+            speaker,
           };
         } else {
           group.end = line.end;
@@ -62,18 +71,34 @@ function extractInnerVoiceSpans(params = {}) {
       }
 
       if (group) {
-        spans.push(makeSpan(spans.length + 1, group, group.speaker || currentActor || viewpoint, gap.gapId));
+        pushSpanIfSpeaker(spans, group, group.speaker || currentActor || viewpoint, gap.gapId);
         group = null;
       }
     }
 
-    if (group) spans.push(makeSpan(spans.length + 1, group, group.speaker || currentActor || viewpoint, gap.gapId));
+    if (group) pushSpanIfSpeaker(spans, group, group.speaker || currentActor || viewpoint, gap.gapId);
   }
 
   return {
     viewpoint,
+    viewpointResult,
     spans,
   };
+}
+
+function buildKnownRoles(viewpointResult, params = {}) {
+  const roles = new Set();
+  const add = (value) => {
+    const role = normalizeRole(value);
+    if (role) roles.add(role);
+  };
+  add(viewpointResult?.viewpoint);
+  for (const role of viewpointResult?.candidates || []) add(role);
+  for (const item of params.attributions || []) add(item.speaker);
+  for (const item of params.candidateSets || []) {
+    for (const c of item.candidates || []) add(c.name || c.roleName || c);
+  }
+  return [...roles];
 }
 
 function splitGapLines(gap) {
@@ -129,26 +154,28 @@ function classifyInnerVoiceLine(text) {
   return no('not_inner_voice');
 }
 
-function extractEmbeddedInnerVoiceCue(line, currentActor) {
+function extractEmbeddedInnerVoiceCue(line, currentActor, knownRoles) {
   const text = String(line?.text || '');
   const cue = text.match(/(?:心中|心里|暗自)?(?:嘀咕|暗道|心想|腹诽)[：:]\s*(.+)$/);
   if (!cue) return null;
   const cueStartInLine = cue.index + cue[0].indexOf(cue[1]);
   const osText = cue[1].trim();
   if (!osText) return null;
+  const speaker = inferActorFromLine(text.slice(0, cue.index), currentActor, knownRoles) || currentActor;
+  if (!speaker) return null;
   return {
     start: Number(line.start) + cueStartInLine,
     end: Number(line.start) + text.length,
     text: osText,
-    speaker: inferActorFromLine(text.slice(0, cue.index), currentActor) || currentActor,
+    speaker,
     reason: 'thought_cue_os',
   };
 }
 
-function inferActorFromLine(text, fallback = '') {
+function inferActorFromLine(text, fallback = '', knownRoles = []) {
   const value = String(text || '');
   let found = { role: '', index: -1 };
-  for (const role of KNOWN_ROLES) {
+  for (const role of knownRoles) {
     const idx = value.lastIndexOf(role);
     if (idx < 0 || idx < value.length - 100) continue;
     if (!looksLikeSubjectMention(value, idx, role)) continue;
@@ -163,10 +190,18 @@ function inferActorFromLine(text, fallback = '') {
 function looksLikeSubjectMention(text, index, role) {
   const before = text.slice(Math.max(0, index - 1), index);
   const after = text.slice(index + role.length, index + role.length + 1);
+  const afterText = text.slice(index + role.length, index + role.length + 8);
   if (['的', '给', '与', '和', '、'].includes(after)) return false;
+  if (/^说[…….…]/.test(afterText)) return false;
   if (index === 0) return true;
   if (/[。！？；，,\s　]/.test(before)) return true;
   return false;
+}
+
+function pushSpanIfSpeaker(spans, group, speaker, gapId) {
+  const normalizedSpeaker = normalizeSpeaker(speaker);
+  if (!normalizedSpeaker) return;
+  spans.push(makeSpan(spans.length + 1, group, normalizedSpeaker, gapId));
 }
 
 function makeSpan(index, group, speaker, gapId) {
@@ -194,9 +229,7 @@ function normalizeSpeaker(value) {
 }
 
 function inferViewpoint(sourceText) {
-  const text = String(sourceText || '');
-  const known = ['宁默', '苏尘', '伊莱', '白清'];
-  return known.find((name) => text.includes(name)) || '';
+  return resolveViewpoint({ sourceText }).viewpoint || '';
 }
 
 function isChapterTitle(value) {
@@ -226,4 +259,5 @@ function no(reason) {
 module.exports = {
   extractInnerVoiceSpans,
   classifyInnerVoiceLine,
+  inferViewpoint,
 };

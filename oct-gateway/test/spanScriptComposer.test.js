@@ -72,4 +72,30 @@ describe('spanScriptComposer', () => {
     expect(result.payload.segments[1].text.includes('嘶')).toBe(false);
     expect(result.payload.segments[3].text.includes('疼')).toBe(false);
   });
+
+  it('drops standalone cue narration and extracts standalone sfx lines', () => {
+    const spanDoc = extractQuoteSpans({
+      sourceText: [
+        '第4章 你是谁',
+        '周振山揉了揉后颈。',
+        '咔',
+        '声。',
+        '她忽然开口问道：',
+        '“你是谁？”',
+      ].join('\n'),
+    });
+    const result = composeScriptFromSpans({
+      spanDoc,
+      attributions: [
+        { quoteId: 'q001', voiceType: 'dialogue', speaker: '周振山', confidence: 'high', evidence: 'question' },
+      ],
+    });
+
+    expect(result.payload.segments.map((segment) => `${segment.type}:${segment.speaker || '旁白'}:${segment.text}`)).toEqual([
+      'narration:旁白:周振山揉了揉后颈。',
+      'dialogue:SFX:咔',
+      'narration:旁白:声。',
+      'dialogue:周振山:你是谁？',
+    ]);
+  });
 });

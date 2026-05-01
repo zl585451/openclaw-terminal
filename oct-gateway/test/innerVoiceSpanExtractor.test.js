@@ -83,6 +83,31 @@ describe('innerVoiceSpanExtractor', () => {
     expect(result.spans[0].text).toBe('王管事说……真人比画像更俊美？');
   });
 
+  it('infers chapter viewpoint without leaking Ningmo into unrelated books', () => {
+    const sourceText = [
+      '第4章 你是谁',
+      '周振山刚回来。他坐在床边，闭上了眼睛。',
+      '脑子里还在过白天的细节。',
+      '左臂怎么了？',
+      '他左臂前不久被划了一刀。',
+    ].join('\n');
+    const spanDoc = extractQuoteSpans({ sourceText });
+    const result = extractInnerVoiceSpans({ spanDoc });
+
+    expect(result.viewpoint).toBe('周振山');
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0].speaker).toBe('周振山');
+    expect(result.spans[0].text).toBe('左臂怎么了？');
+  });
+
+  it('does not emit OS when no viewpoint can be resolved', () => {
+    const spanDoc = extractQuoteSpans({ sourceText: '第1章\n来真的？\n风吹过空屋。' });
+    const result = extractInnerVoiceSpans({ spanDoc });
+
+    expect(result.viewpoint).toBe('');
+    expect(result.spans).toHaveLength(0);
+  });
+
   it('does not switch current actor for possessive/object mentions', () => {
     const spanDoc = extractQuoteSpans({
       sourceText: [

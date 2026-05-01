@@ -115,6 +115,10 @@ Gateway 返回并推送 `analysisRun`：
 11. `inner_voice_extract` 当前为规则型 MVP，从 narration gaps 中抽取高置信度 OS，输出为 `inner_monologue` segment；展示层可渲染为 `[角色][OS]`。
 12. 角色音统筹是可降级分析步骤：真实 `classifier.voice_role_marker@1.0` 超时、网络失败或只识别到旁白时，Gateway 不得让整章失败；应基于 `adapted_script.segments` 聚合出场统计，生成 `voice_registry.payload.degraded = true` 的规则角色音表，并在 summary / metrics 暴露降级原因。
 13. 角色音统筹真实调用不得重复输入整章正文，只能输入角色出场统计和少量代表片段。当前上限为每个角色 2 条、总计 16 条，默认超时 `35000ms`。
+14. `viewpoint_resolve` 为规则层，不调用 LLM。OS 抽取不得使用跨书默认主角；推不出视角角色时，不生成无 speaker 的 OS。
+15. `voice_type_classify` 为规则层，先于角色音 main/support 判断。基础类型包括 `narrator`、`character`、`inner_monologue`、`unresolved_voice`、`sfx`、`group_voice`、`cue`。`未定女声A`、`神秘声音` 等必须保持 unresolved；`对讲机`、`系统音`、独立拟声词必须归 sfx。
+16. `spanScriptComposer` 必须清理纯 cue 旁白，例如 `苏尘：`、`她忽然开口问道：`；独立拟声词行必须输出为 `speaker = SFX`，不得归给人物。
+17. `basicQCChecker` 必须拦截跨书 OS speaker、拟声词人物化、纯 cue 旁白残留。
 
 协议约束：
 

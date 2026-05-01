@@ -2,6 +2,7 @@
 
 const { chatCompletion, resolveProviderFor } = require('../../services/llmClient');
 const config = require('../../config');
+const { classifyVoiceType, isSfxSpeaker, isUnresolvedSpeaker } = require('../voiceTypeClassifier');
 
 const VOICE_CLASSIFIER_MODEL = 'qwen3.5-flash';
 const DASHSCOPE_COMPATIBLE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -115,11 +116,19 @@ function aggregateSpeakers(segments) {
       ? '旁白'
       : String(seg.speaker).trim();
     if (!speaker) continue;
-    map.set(speaker, (map.get(speaker) || 0) + 1);
+    const current = map.get(speaker) || { roleName: speaker, appearanceCount: 0, voiceTypeCounts: {} };
+    current.appearanceCount += 1;
+    const voiceType = classifyVoiceType({ type: seg.type, speaker, text: seg.text });
+    current.voiceTypeCounts[voiceType] = (current.voiceTypeCounts[voiceType] || 0) + 1;
+    map.set(speaker, current);
   }
-  return Array.from(map.entries())
-    .map(([roleName, appearanceCount]) => ({ roleName, appearanceCount }))
+  return Array.from(map.values())
+    .map((item) => ({ ...item, voiceType: dominantVoiceType(item.voiceTypeCounts) }))
     .sort((a, b) => b.appearanceCount - a.appearanceCount);
+}
+
+function dominantVoiceType(counts = {}) {
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'character';
 }
 
 function buildVoiceClassifierMessages({ chapterTitle, stats, segments }) {
@@ -164,7 +173,7 @@ function parseVoiceClassifierOutput(raw, stats) {
     throw new Error('VOICE_CLASSIFIER_NO_REGISTRY');
   }
 
-  const statMap = new Map(stats.map((s) => [s.roleName, s.appearanceCount]));
+  const statMap = new Map(stats.map((s) => [s.roleName, s]));
 
   const registry = [];
   const seen = new Set();
@@ -172,14 +181,13 @@ function parseVoiceClassifierOutput(raw, stats) {
     const roleName = String(r.roleName || '').trim();
     if (!roleName || !statMap.has(roleName) || seen.has(roleName)) continue;
     const cat = String(r.category || '').trim();
-    const category = roleName === '旁白'
-      ? 'narrator'
-      : (VALID_CATEGORIES.has(cat) ? cat : 'support');
+    const forcedCategory = forcedCategoryForRole(roleName, statMap);
+    const category = forcedCategory || (VALID_CATEGORIES.has(cat) ? cat : 'support');
     registry.push({
       roleName,
       category,
       voiceHint: String(r.voiceHint || '（未给出声线建议）').trim() || '（未给出声线建议）',
-      appearanceCount: Number(statMap.get(roleName) ?? r.appearanceCount ?? 0),
+      appearanceCount: Number(statMap.get(roleName)?.appearanceCount ?? r.appearanceCount ?? 0),
     });
     seen.add(roleName);
   }
@@ -188,7 +196,7 @@ function parseVoiceClassifierOutput(raw, stats) {
     if (seen.has(s.roleName)) continue;
     registry.push({
       roleName: s.roleName,
-      category: s.roleName === '旁白' ? 'narrator' : 'support',
+      category: fallbackCategory(s.roleName, s.appearanceCount, s.voiceType),
       voiceHint: '（模型未返回该项，已按出场统计占位）',
       appearanceCount: s.appearanceCount,
     });
@@ -198,7 +206,7 @@ function parseVoiceClassifierOutput(raw, stats) {
   registry.sort((a, b) => b.appearanceCount - a.appearanceCount);
 
   for (const r of registry) {
-    r.appearanceCount = Number(statMap.get(r.roleName) ?? r.appearanceCount ?? 0);
+    r.appearanceCount = Number(statMap.get(r.roleName)?.appearanceCount ?? r.appearanceCount ?? 0);
   }
 
   const unresolved = registry.filter((r) => r.category === 'unresolved').map((r) => r.roleName);
@@ -212,7 +220,7 @@ function buildFallbackVoiceRegistryPayload(stats, options = {}) {
     const roleName = String(s.roleName || '').trim();
     if (!roleName) continue;
     const appearanceCount = Number(s.appearanceCount || 0);
-    const category = fallbackCategory(roleName, appearanceCount);
+    const category = fallbackCategory(roleName, appearanceCount, s.voiceType);
     registry.push({
       roleName,
       category,
@@ -230,8 +238,19 @@ function buildFallbackVoiceRegistryPayload(stats, options = {}) {
   };
 }
 
-function fallbackCategory(roleName, appearanceCount) {
+function forcedCategoryForRole(roleName, statMap) {
+  const stat = statMap instanceof Map ? statMap.get(roleName) : null;
+  const voiceType = stat && typeof stat === 'object' ? stat.voiceType : '';
   if (roleName === '旁白') return 'narrator';
+  if (voiceType === 'sfx' || isSfxSpeaker(roleName)) return 'sfx';
+  if (voiceType === 'unresolved_voice' || isUnresolvedSpeaker(roleName)) return 'unresolved';
+  return '';
+}
+
+function fallbackCategory(roleName, appearanceCount, voiceType = '') {
+  if (roleName === '旁白') return 'narrator';
+  if (voiceType === 'sfx') return 'sfx';
+  if (voiceType === 'unresolved_voice') return 'unresolved';
   if (/系统|提示|警报|机械|音效/.test(roleName)) return 'sfx';
   if (/广播|电话|录音|文件|声音|神秘/.test(roleName)) return 'unresolved';
   return appearanceCount >= 3 ? 'main' : 'support';

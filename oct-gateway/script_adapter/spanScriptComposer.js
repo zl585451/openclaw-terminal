@@ -1,6 +1,7 @@
 'use strict';
 
 const { formatSegmentId } = require('./lineProtocolParser');
+const { classifyVoiceType, isCueOnlyText, isSfxText } = require('./voiceTypeClassifier');
 
 function composeScriptFromSpans(params = {}) {
   const spanDoc = params.spanDoc || {};
@@ -63,17 +64,21 @@ function composeScriptFromSpans(params = {}) {
 }
 
 function appendGapSegments({ event, sourceText, innerVoices, segments }) {
+  const sfxSpans = extractSfxSpansFromGap(event);
   const sorted = innerVoices
     .filter((item) => Number(item.start) >= Number(event.start) && Number(item.end) <= Number(event.end))
-    .sort((a, b) => Number(a.start) - Number(b.start));
+    .map((item) => ({ kind: 'inner_voice', ...item }));
+  const allEvents = [...sorted, ...sfxSpans].sort((a, b) => Number(a.start) - Number(b.start));
   let cursor = Number(event.start);
 
-  for (const os of sorted) {
-    if (Number(os.start) > cursor) {
-      appendNarrationSegment(sourceText.slice(cursor, Number(os.start)), segments);
+  for (const item of allEvents) {
+    if (Number(item.start) < cursor) continue;
+    if (Number(item.start) > cursor) {
+      appendNarrationSegment(sourceText.slice(cursor, Number(item.start)), segments);
     }
-    appendInnerVoiceSegment(os, segments);
-    cursor = Number(os.end);
+    if (item.kind === 'sfx') appendSfxSegment(item, segments);
+    else appendInnerVoiceSegment(item, segments);
+    cursor = Number(item.end);
   }
 
   if (cursor < Number(event.end)) {
@@ -85,6 +90,7 @@ function appendNarrationSegment(text, segments) {
   const stripped = stripChapterTitleFromFirstGap(String(text || ''), segments.length);
   const normalizedText = normalizeNarrationGap(stripped);
   if (!normalizedText) return;
+  if (isCueOnlyText(normalizedText)) return;
   segments.push({
     segmentId: formatSegmentId(segments.length + 1),
     type: 'narration',
@@ -95,14 +101,29 @@ function appendNarrationSegment(text, segments) {
 function appendInnerVoiceSegment(os, segments) {
   const text = normalizeInnerVoiceText(os.text);
   if (!text) return;
+  const speaker = String(os.speaker || '').trim();
+  if (!speaker) return;
   segments.push({
     segmentId: formatSegmentId(segments.length + 1),
     type: 'inner_monologue',
-    speaker: String(os.speaker || '').trim() || '宁默',
+    speaker,
     text,
     osId: os.osId,
     confidence: os.confidence || 'high',
     evidence: os.evidence || 'inner_voice_rule',
+  });
+}
+
+function appendSfxSegment(sfx, segments) {
+  const text = normalizeInnerVoiceText(sfx.text);
+  if (!text) return;
+  segments.push({
+    segmentId: formatSegmentId(segments.length + 1),
+    type: 'dialogue',
+    speaker: 'SFX',
+    text,
+    confidence: 'high',
+    evidence: 'sfx_line_rule',
   });
 }
 
@@ -129,9 +150,35 @@ function stripChapterTitleFromFirstGap(text, segmentCount) {
 
 function normalizeNarrationGap(text) {
   return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !isCueOnlyText(line.replace(/[“”"【】]/g, '').trim()))
+    .join('\n')
     .replace(/[“”"【】]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function extractSfxSpansFromGap(gap) {
+  const text = String(gap?.text || '');
+  const base = Number(gap?.start || 0);
+  const spans = [];
+  const re = /[^\r\n]+/g;
+  let match;
+  while ((match = re.exec(text))) {
+    const raw = match[0];
+    const leading = raw.match(/^\s*/)?.[0].length || 0;
+    const trailing = raw.match(/\s*$/)?.[0].length || 0;
+    const trimmed = raw.trim();
+    if (!trimmed || !isSfxText(trimmed)) continue;
+    spans.push({
+      kind: 'sfx',
+      start: base + match.index + leading,
+      end: base + match.index + raw.length - trailing,
+      text: trimmed,
+    });
+  }
+  return spans;
 }
 
 function normalizeInnerVoiceText(text) {
@@ -154,6 +201,14 @@ function mapVoiceTypeToSegmentType(voiceType) {
   return 'dialogue';
 }
 
+function attachVoiceTypes(segments) {
+  return segments.map((segment) => ({
+    ...segment,
+    voiceType: classifyVoiceType(segment),
+  }));
+}
+
 module.exports = {
   composeScriptFromSpans,
+  attachVoiceTypes,
 };

@@ -84,7 +84,7 @@ describe('checkBasicQC', () => {
         { segmentId: 'seg-002', type: 'dialogue', speaker: '甲', text: '你来了。' },
         { segmentId: 'seg-003', type: 'inner_monologue', speaker: '甲', text: '不对，屋里有人来过。' },
       ]),
-      sourceText: '风吹进屋里。”你来了。”不对，屋里有人来过。',
+      sourceText: '甲站在门口。风吹进屋里。”你来了。”不对，屋里有人来过。',
     });
     expect(report).toEqual({ conclusion: 'pass', issues: [] });
   });
@@ -154,5 +154,35 @@ describe('checkBasicQC', () => {
       ]),
     });
     expect(categories(report)).toContain('voice_registry_pollution_risk');
+  });
+
+  it('detects narration cue residue', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'narration', text: '苏尘：' },
+        { segmentId: 'seg-002', type: 'dialogue', speaker: '苏尘', text: '……' },
+      ]),
+    });
+    expect(categories(report)).toContain('narration_cue_residue');
+  });
+
+  it('detects sfx assigned to character speaker', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'dialogue', speaker: '周振山', text: '咚' },
+      ]),
+    });
+    expect(categories(report)).toContain('sfx_role_misclassified');
+  });
+
+  it('rejects foreign inner voice speaker not present in source text', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'inner_monologue', speaker: '宁默', text: '左臂怎么了？' },
+      ]),
+      sourceText: '周振山躺在床上，想起那个女声说起他的左臂。',
+    });
+    expect(report.conclusion).toBe('reject');
+    expect(categories(report)).toContain('foreign_inner_voice_speaker');
   });
 });

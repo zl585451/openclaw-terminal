@@ -110,13 +110,34 @@ async function main() {
     assert.deepEqual(out.unresolved, ['神秘声']);
   });
 
+  await test('parseVoiceClassifierOutput forces unresolved and sfx categories from voice type', () => {
+    const stats = [
+      { roleName: '旁白', appearanceCount: 3, voiceType: 'narrator' },
+      { roleName: '未定女声A', appearanceCount: 6, voiceType: 'unresolved_voice' },
+      { roleName: '对讲机', appearanceCount: 2, voiceType: 'sfx' },
+    ];
+    const raw = JSON.stringify({
+      registry: [
+        { roleName: '旁白', category: 'narrator', voiceHint: '稳', appearanceCount: 3 },
+        { roleName: '未定女声A', category: 'main', voiceHint: '女声', appearanceCount: 6 },
+        { roleName: '对讲机', category: 'support', voiceHint: '设备', appearanceCount: 2 },
+      ],
+      unresolved: [],
+    });
+    const out = parseVoiceClassifierOutput(raw, stats);
+    assert.equal(out.registry.find((r) => r.roleName === '未定女声A').category, 'unresolved');
+    assert.equal(out.registry.find((r) => r.roleName === '对讲机').category, 'sfx');
+    assert.deepEqual(out.unresolved, ['未定女声A']);
+  });
+
   await test('buildFallbackVoiceRegistryPayload creates degraded deterministic registry', () => {
     const payload = buildFallbackVoiceRegistryPayload([
       { roleName: '旁白', appearanceCount: 10 },
       { roleName: '宁默', appearanceCount: 5 },
       { roleName: '柳儿', appearanceCount: 1 },
       { roleName: '系统音', appearanceCount: 1 },
-      { roleName: '神秘声音', appearanceCount: 1 },
+      { roleName: '神秘声音', appearanceCount: 1, voiceType: 'unresolved_voice' },
+      { roleName: '未定女声A', appearanceCount: 6, voiceType: 'unresolved_voice' },
     ], { reason: 'timeout' });
 
     assert.equal(payload.degraded, true);
@@ -126,7 +147,8 @@ async function main() {
     assert.equal(payload.registry.find((r) => r.roleName === '柳儿').category, 'support');
     assert.equal(payload.registry.find((r) => r.roleName === '系统音').category, 'sfx');
     assert.equal(payload.registry.find((r) => r.roleName === '神秘声音').category, 'unresolved');
-    assert.deepEqual(payload.unresolved, ['神秘声音']);
+    assert.equal(payload.registry.find((r) => r.roleName === '未定女声A').category, 'unresolved');
+    assert.deepEqual(payload.unresolved, ['未定女声A', '神秘声音']);
   });
 
   await test('buildVoiceClassifierMessages keeps examples compact per speaker', () => {

@@ -13,6 +13,7 @@ const { extractSpeakerCandidates } = require('../speakerCandidateExtractor');
 const { runQuoteAttributionAgent } = require('./quoteAttributionAgent');
 const { composeScriptFromSpans } = require('../spanScriptComposer');
 const { extractInnerVoiceSpans } = require('../innerVoiceSpanExtractor');
+const { resolveViewpoint } = require('../viewpointResolver');
 
 const HARD_LIMIT = 12000;
 const ANCHOR_SIZE = 200;
@@ -77,13 +78,25 @@ async function runSpanAttributionPass(sourceText, report = noop) {
     candidateSets,
   });
 
+  const viewpointResult = resolveViewpoint({
+    spanDoc,
+    sourceText,
+    candidateSets,
+    attributions: attributionResult.attributions,
+  });
+
   report({
     phase: 'inner_voice_extract',
     progressSummary: '正在识别无引号内心声 OS',
     progressPercent: 74,
     model: attributionResult.model,
   });
-  const innerVoiceResult = extractInnerVoiceSpans({ spanDoc });
+  const innerVoiceResult = extractInnerVoiceSpans({
+    spanDoc,
+    candidateSets,
+    attributions: attributionResult.attributions,
+    viewpointResult,
+  });
 
   report({
     phase: 'span_compose',
