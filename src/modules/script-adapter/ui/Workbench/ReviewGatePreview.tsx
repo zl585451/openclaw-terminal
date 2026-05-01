@@ -18,7 +18,7 @@ const CONCLUSION_META: Record<string, { label: string; color: string }> = {
 const SEG_TYPE_LABEL: Record<string, string> = {
   narration: '旁白',
   dialogue: '对话',
-  inner_monologue: '内心',
+  inner_monologue: 'OS',
 };
 
 interface ReviewGatePreviewProps {

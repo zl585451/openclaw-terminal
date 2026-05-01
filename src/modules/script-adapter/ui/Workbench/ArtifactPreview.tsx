@@ -107,7 +107,7 @@ function AdaptedScriptView({ payload }: { payload: AdaptedScriptPayload }) {
 }
 
 function ScriptSegmentBubble({ segment }: { segment: AdaptedSegment }) {
-  const speaker = segment.speaker ?? (segment.type === 'narration' ? '旁白' : '内心');
+  const speaker = formatSegmentSpeaker(segment);
   return (
     <div className={`${styles.scriptSegmentBubble} ${styles[`scriptLine--${segment.type}`] || ''}`}>
       <span>{speaker} · {segment.segmentId}</span>
@@ -115,6 +115,14 @@ function ScriptSegmentBubble({ segment }: { segment: AdaptedSegment }) {
       {segment.rewriteNote ? <small>{segment.rewriteNote}</small> : null}
     </div>
   );
+}
+
+function formatSegmentSpeaker(segment: AdaptedSegment): string {
+  if (segment.type === 'narration') return '旁白';
+  if (segment.type === 'inner_monologue') {
+    return `${segment.speaker || '内心'} · OS`;
+  }
+  return segment.speaker || '未标注';
 }
 
 function VoiceRegistryView({ payload }: { payload: VoiceRoleMarkersPayload }) {

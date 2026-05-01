@@ -66,10 +66,7 @@ export function renderDeliveryMarkdown(sheet: TaskExecutionSheet): string {
       lines.push('');
     }
     for (const segment of payload.segments || []) {
-      const speaker =
-        segment.type === 'narration'
-          ? '旁白'
-          : segment.speaker || (segment.type === 'inner_monologue' ? '内心' : '未标注');
+      const speaker = formatScriptSpeaker(segment);
       const text = String(segment.text || '');
       const body = segment.type === 'inner_monologue' ? `_${text}_` : text;
       lines.push(`**[${speaker}]** ${body}`);
@@ -257,6 +254,15 @@ function escapeTable(value: unknown): string {
   return String(value || '').replace(/\|/g, '\\|');
 }
 
+export function formatScriptSpeaker(segment: { type?: string; speaker?: string }): string {
+  if (segment?.type === 'narration') return '旁白';
+  if (segment?.type === 'inner_monologue') {
+    const speaker = String(segment.speaker || '').trim() || '内心';
+    return `${speaker}][OS`;
+  }
+  return String(segment?.speaker || '').trim() || '未标注';
+}
+
 function buildSingleDocxPayload(
   sheet: TaskExecutionSheet,
   options: {
@@ -320,7 +326,7 @@ function buildSingleDocxPayload(
       level: 1,
       blocks: adapted.payload.segments.map((segment: any) => ({
         type: 'scriptLine',
-        speaker: segment.type === 'narration' ? '旁白' : segment.speaker || (segment.type === 'inner_monologue' ? '内心' : '未标注'),
+        speaker: formatScriptSpeaker(segment),
         text: String(segment.text || ''),
         note: segment.rewriteNote ? String(segment.rewriteNote) : undefined,
       })),
@@ -437,7 +443,7 @@ function buildBatchDocxPayload(batch: BatchJob, chapterRuns: ChapterRunRecord[])
       level: 1,
       blocks: (adapted?.payload?.segments || []).map((segment: any) => ({
         type: 'scriptLine',
-        speaker: segment.type === 'narration' ? '旁白' : segment.speaker || (segment.type === 'inner_monologue' ? '内心' : '未标注'),
+        speaker: formatScriptSpeaker(segment),
         text: String(segment.text || ''),
       })),
     });
