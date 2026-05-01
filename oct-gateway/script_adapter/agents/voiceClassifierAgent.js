@@ -5,6 +5,9 @@ const config = require('../../config');
 
 const VOICE_CLASSIFIER_MODEL = 'qwen3.5-flash';
 const DASHSCOPE_COMPATIBLE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const VOICE_CLASSIFIER_TIMEOUT_MS = 35000;
+const MAX_EXAMPLE_LINES = 16;
+const MAX_EXAMPLE_CHARS = 120;
 
 const SYSTEM_PROMPT = `你是有声书角色音统筹师。你会收到由 Text Rewriter 行协议解析后生成的 segments 统计结果。请只根据这些已经解析好的 speaker 统计，为每个 speaker 判断角色音类别，并写一句声线建议。
 
@@ -58,15 +61,7 @@ async function runVoiceClassifierAgent(ctx) {
 
   const provider = resolveVoiceClassifierProvider();
   const chapterTitle = adaptedScript.payload?.chapterTitle || '未命名';
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: `章节标题:${chapterTitle}\n\n`
-        + `角色出场统计(JSON):\n${JSON.stringify(stats, null, 2)}\n\n`
-        + `示例片段(供你判断声线情绪):\n${exampleSegments(segments).slice(0, 1500)}`,
-    },
-  ];
+  const messages = buildVoiceClassifierMessages({ chapterTitle, stats, segments });
 
   const result = await chatCompletion({
     provider,
@@ -74,7 +69,7 @@ async function runVoiceClassifierAgent(ctx) {
     maxTokens: 1500,
     temperature: 0.4,
     responseJson: true,
-    timeoutMs: 60000,
+    timeoutMs: VOICE_CLASSIFIER_TIMEOUT_MS,
   });
 
   const payload = parseVoiceClassifierOutput(result.content, stats);
@@ -127,11 +122,33 @@ function aggregateSpeakers(segments) {
     .sort((a, b) => b.appearanceCount - a.appearanceCount);
 }
 
+function buildVoiceClassifierMessages({ chapterTitle, stats, segments }) {
+  return [
+    { role: 'system', content: SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: `章节标题:${chapterTitle || '未命名'}\n\n`
+        + `角色出场统计(JSON):\n${JSON.stringify(stats, null, 2)}\n\n`
+        + `代表片段(每个角色最多2条,只用于声线判断):\n${exampleSegments(segments)}`,
+    },
+  ];
+}
+
 function exampleSegments(segments) {
-  return segments
-    .slice(0, 6)
-    .map((s) => `[${s.speaker || '旁白'}/${s.type}] ${String(s.text || '').slice(0, 80)}`)
-    .join('\n');
+  const counts = new Map();
+  const examples = [];
+  for (const s of segments || []) {
+    const roleName = s.type === 'narration' || !s.speaker ? '旁白' : String(s.speaker).trim();
+    if (!roleName) continue;
+    const used = counts.get(roleName) || 0;
+    if (used >= 2) continue;
+    const text = String(s.text || '').replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    counts.set(roleName, used + 1);
+    examples.push(`[${roleName}/${s.type || 'unknown'}] ${text.slice(0, MAX_EXAMPLE_CHARS)}`);
+    if (examples.length >= MAX_EXAMPLE_LINES) break;
+  }
+  return examples.join('\n');
 }
 
 function parseVoiceClassifierOutput(raw, stats) {
@@ -189,9 +206,52 @@ function parseVoiceClassifierOutput(raw, stats) {
   return { registry, unresolved };
 }
 
+function buildFallbackVoiceRegistryPayload(stats, options = {}) {
+  const registry = [];
+  for (const s of stats || []) {
+    const roleName = String(s.roleName || '').trim();
+    if (!roleName) continue;
+    const appearanceCount = Number(s.appearanceCount || 0);
+    const category = fallbackCategory(roleName, appearanceCount);
+    registry.push({
+      roleName,
+      category,
+      voiceHint: fallbackVoiceHint(roleName, category),
+      appearanceCount,
+    });
+  }
+  registry.sort((a, b) => b.appearanceCount - a.appearanceCount);
+  const unresolved = registry.filter((r) => r.category === 'unresolved').map((r) => r.roleName);
+  return {
+    registry,
+    unresolved,
+    degraded: true,
+    degradeReason: String(options.reason || 'voice_classifier_fallback'),
+  };
+}
+
+function fallbackCategory(roleName, appearanceCount) {
+  if (roleName === '旁白') return 'narrator';
+  if (/系统|提示|警报|机械|音效/.test(roleName)) return 'sfx';
+  if (/广播|电话|录音|文件|声音|神秘/.test(roleName)) return 'unresolved';
+  return appearanceCount >= 3 ? 'main' : 'support';
+}
+
+function fallbackVoiceHint(roleName, category) {
+  if (category === 'narrator') return '旁白声线，清晰稳定，按场景情绪调整节奏';
+  if (category === 'sfx') return '功能性声音或系统提示，独立于普通角色音处理';
+  if (category === 'unresolved') return '未确认来源声音，先独立占位，后续人工回绑';
+  if (/夫人|柳儿|小姐|丫鬟|母|女/.test(roleName)) return '女性角色声线，先按身份与情绪粗分，后续复核';
+  if (/王|宁|狱卒|管事|老|男|父/.test(roleName)) return '男性角色声线，先按年龄与权力关系粗分，后续复核';
+  return '角色声线占位，依据对白密度和情绪强度后续细分';
+}
+
 module.exports = {
   runVoiceClassifierAgent,
   aggregateSpeakers,
+  buildFallbackVoiceRegistryPayload,
+  buildVoiceClassifierMessages,
+  exampleSegments,
   parseVoiceClassifierOutput,
   pickAdaptedScript,
   resolveVoiceClassifierProvider,

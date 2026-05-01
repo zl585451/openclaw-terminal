@@ -2,7 +2,11 @@
 
 const config = require('../config');
 const { runTextRewriterAgent } = require('./agents/textRewriterAgent');
-const { runVoiceClassifierAgent } = require('./agents/voiceClassifierAgent');
+const {
+  aggregateSpeakers,
+  buildFallbackVoiceRegistryPayload,
+  runVoiceClassifierAgent,
+} = require('./agents/voiceClassifierAgent');
 const { runPerformanceDesignerAgent } = require('./agents/performanceDesignerAgent');
 const { runDeliveryPackagerAgent } = require('./agents/deliveryPackagerAgent');
 const { checkBasicQC } = require('./basicQCChecker');
@@ -64,6 +68,10 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
       const hasNonNarrator = Array.isArray(payload.registry)
         && payload.registry.some((role) => role.roleName !== '旁白' && role.category !== 'narrator');
       if (!hasNonNarrator) {
+        const adapted = findAdaptedScriptPayload(ctx.artifacts);
+        if (adapted) {
+          return buildDegradedVoiceRegistryArtifact(adapted, agentId, displayName, 'VOICE_CLASSIFIER_ONLY_NARRATOR');
+        }
         throw new Error('VOICE_CLASSIFIER_ONLY_NARRATOR: 真实角色音阶段只识别到旁白,疑似上游台本没有拆出对白');
       }
       return envelope(
@@ -80,6 +88,15 @@ async function createArtifactForAgent(agentId, displayName, ctx = {}) {
         },
       );
     } catch (error) {
+      const adapted = findAdaptedScriptPayload(ctx.artifacts);
+      if (adapted) {
+        return buildDegradedVoiceRegistryArtifact(
+          adapted,
+          agentId,
+          displayName,
+          `VOICE_CLASSIFIER_REAL_FAILED: ${String(error?.message || error)}`,
+        );
+      }
       throw new Error(`VOICE_CLASSIFIER_REAL_FAILED: ${String(error?.message || error)}`);
     }
   }
@@ -240,6 +257,24 @@ function buildReviewFromAdapted(adapted, agentId, displayName) {
     `已按规则质检 ${adapted.segments.length} 段台本，结论:${payload.conclusion}。`,
     payload,
     { issues: payload.issues.length, p0: payload.issues.filter((item) => item.severity === 'P0').length },
+  );
+}
+
+function buildDegradedVoiceRegistryArtifact(adapted, agentId, displayName, reason) {
+  const stats = aggregateSpeakers(adapted.segments || []);
+  const payload = buildFallbackVoiceRegistryPayload(stats, { reason });
+  return envelope(
+    'voice_registry',
+    agentId,
+    displayName,
+    '角色音标注表（降级）',
+    `真实角色音统筹未完成，已按上游台本出场统计生成降级角色音表；原因：${reason}`,
+    payload,
+    {
+      roles: payload.registry.length,
+      unresolved: (payload.unresolved || []).length,
+      degraded: true,
+    },
   );
 }
 

@@ -1,6 +1,6 @@
 # Script Adapter Gateway Protocol
 
-更新时间：2026-04-29（补充文本改编 JSON 截断重试与真实模式失败约束）
+更新时间：2026-05-01（补充角色音统筹降级与真实模式失败约束）
 
 本文记录内容制作工作台 Week 2 Track C 起的 Gateway 状态机骨架。当前为「前两步可选真实 LLM + 后三步 mock」的混合 pipeline；transport、registry、cancel/list 入口已按后续真实 agent runner 的形状拆开。
 
@@ -19,13 +19,15 @@
 - `oct-gateway/script_adapter/eventEmitter.js`
   - 将 runner 事件包装为 Gateway transport event：`{ type: 'event', event: 'script-adapter', payload }`。
 - `oct-gateway/script_adapter/mockArtifactFactory.js`
-  - 默认生成 mock artifact；在 `SCRIPT_ADAPTER_REAL_AGENTS`（见 `isRealAgentEnabled`）启用时：`adapter.audiobook_text_rewriter@1.0` 在开工传入非空 `sourceText` 时走 `agents/textRewriterAgent.js` 真实 LLM；`classifier.voice_role_marker@1.0` 走 `agents/voiceClassifierAgent.js` 消费上游 `adapted_script.segments`。真实模式下任一真实 Agent 失败都应显式抛错，不再静默回退 mock/占位产物。
+  - 默认生成 mock artifact；在 `SCRIPT_ADAPTER_REAL_AGENTS`（见 `isRealAgentEnabled`）启用时：`adapter.audiobook_text_rewriter@1.0` 在开工传入非空 `sourceText` 时走 `agents/textRewriterAgent.js` 真实 LLM；`classifier.voice_role_marker@1.0` 走 `agents/voiceClassifierAgent.js` 消费上游 `adapted_script.segments`。
+  - 真实模式下文本改编、演播设计、质检、打包失败仍显式抛错，不静默回退 mock/占位产物。角色音统筹是可降级分析步骤：真实 LLM 超时、网络失败或只返回旁白时，Gateway 必须基于上游 `adapted_script.segments` 生成 `degraded: true` 的规则角色音表，让章节继续交付，并在 artifact summary / metrics 中暴露降级原因。
   - 若 `artifacts` 内已有 `adapted_script`，后续三个 Agent 的 mock 产物从该 payload 推导 speaker、`segmentId`、段数与 manifest 命名，避免与真实头部穿帮。
   - 真实 Agent 开关读取顺序：`config.scriptAdapter.realAgents`（`config.json` 嵌套 `scriptAdapter` 与 env 已在 `config.js` 合并）→ 顶层 `SCRIPT_ADAPTER_REAL_AGENTS` env/配置键。
 - `oct-gateway/script_adapter/agents/textRewriterAgent.js`
   - 文本改编师真实调用（JSON 台本结构）。默认切片约 2200 字，输出预算 6000 tokens；若模型返回带前后缀、围栏或不完整 JSON，会先提取 JSON 对象，解析失败时用紧凑提示自动重试一次。
 - `oct-gateway/script_adapter/agents/voiceClassifierAgent.js`
-  - 角色音统筹真实调用：本地聚合出场统计 + LLM 输出类别与声线建议。
+  - 角色音统筹真实调用：本地聚合出场统计 + 每个角色少量代表片段 + LLM 输出类别与声线建议。
+  - 输入不得重复整章正文；代表片段上限为每个角色 2 条、总计 16 条。默认真实调用超时为 `35000ms`，超时后由 Gateway 生成降级角色音表。
 - `oct-gateway/services/llmClient.js`
   - 与 `summarizer` 共用的非流式 chat completion 客户端；`resolveProviderFor('script_adapter')` 在 `SCRIPT_ADAPTER` 三元组上优先读 `config.scriptAdapter.baseUrl|apiKey|model`，再回退 `SCRIPT_ADAPTER_*`，其次 `SUMMARIZER_*`（含 memory），再降级当前 Gateway provider。
 

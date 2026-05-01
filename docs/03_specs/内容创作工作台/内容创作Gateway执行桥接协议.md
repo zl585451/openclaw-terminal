@@ -113,6 +113,8 @@ Gateway 返回并推送 `analysisRun`：
 9. `system_voice` 在当前 payload schema 中映射为 `dialogue + speaker = 系统音`，避免破坏下游 Voice / QC / Packager 兼容性。
 10. 新链路默认不替换生产 `classify-first`，需要显式开关启用，便于真实样书产物对照。
 11. `inner_voice_extract` 当前为规则型 MVP，从 narration gaps 中抽取高置信度 OS，输出为 `inner_monologue` segment；展示层可渲染为 `[角色][OS]`。
+12. 角色音统筹是可降级分析步骤：真实 `classifier.voice_role_marker@1.0` 超时、网络失败或只识别到旁白时，Gateway 不得让整章失败；应基于 `adapted_script.segments` 聚合出场统计，生成 `voice_registry.payload.degraded = true` 的规则角色音表，并在 summary / metrics 暴露降级原因。
+13. 角色音统筹真实调用不得重复输入整章正文，只能输入角色出场统计和少量代表片段。当前上限为每个角色 2 条、总计 16 条，默认超时 `35000ms`。
 
 协议约束：
 

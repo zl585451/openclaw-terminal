@@ -49,7 +49,7 @@ async function main() {
   });
 
   await test('voice_registry uses speakers from segments', async () => {
-    const art = await createArtifactForAgent('classifier.voice_role_marker@1.0', '角色音统筹', { artifacts });
+    const art = await createArtifactForAgent('classifier.voice_role_marker@1.0', '角色音统筹', { artifacts, realAgentsOverride: 'off' });
     const names = art.payload.registry.map((r) => r.roleName);
     assert.ok(names.includes('旁白'));
     assert.ok(names.includes('角色甲'));
@@ -57,20 +57,20 @@ async function main() {
   });
 
   await test('performance_design uses real segmentId', async () => {
-    const art = await createArtifactForAgent('designer.performance_audio@1.0', '演播设计师', { artifacts });
+    const art = await createArtifactForAgent('designer.performance_audio@1.0', '演播设计师', { artifacts, realAgentsOverride: 'off' });
     const ids = art.payload.sfxList.map((x) => x.atSegmentId);
     assert.ok(ids.includes('custom-n-1'));
     assert.ok(art.payload.cvDirections.every((d) => String(d.atSegmentId).startsWith('custom-')));
   });
 
   await test('review_report references segment stats', async () => {
-    const art = await createArtifactForAgent('reviewer.production_quality@1.0', '质检', { artifacts });
+    const art = await createArtifactForAgent('reviewer.production_quality@1.0', '质检', { artifacts, realAgentsOverride: 'off' });
     assert.equal(art.payload.conclusion, 'pass');
     assert.equal(art.payload.issues.length, 0);
   });
 
   await test('final_package manifest uses chapterTitle slug', async () => {
-    const art = await createArtifactForAgent('packager.content_delivery@1.0', '打包', { artifacts });
+    const art = await createArtifactForAgent('packager.content_delivery@1.0', '打包', { artifacts, realAgentsOverride: 'off' });
     assert.ok(art.payload.manifest[0].name.includes('测试章'));
     assert.ok(art.payload.versionTag.includes('segments-3'));
     assert.equal(art.payload.adapted_script.segments.length, 3);

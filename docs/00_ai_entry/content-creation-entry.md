@@ -43,7 +43,8 @@
    - Week 5 起，`adapter.audiobook_text_rewriter@1.0`、`classifier.voice_role_marker@1.0`、`designer.performance_audio@1.0`、`reviewer.production_quality@1.0` 可按 `SCRIPT_ADAPTER_REAL_AGENTS` 走真实 LLM；`packager.content_delivery@1.0` 固定为纯 JS 收口，不调 LLM。
    - 文本改编真实 Agent 默认使用更大的 JSON 输出预算；遇到模型输出围栏、前后缀或截断导致的坏 JSON，会以紧凑提示自动重试一次。
    - 文本改编真实 Agent 不再要求模型逐段生成 `rewriteNote` / 改写说明；工作台预览可显示本地固定说明，评审确认与交付导出只使用台本文字、片段类型和说话人。
-   - 任一真实 Agent 失败时不得静默回退成 mock 产物；真实模式下失败必须暴露为失败状态，避免用户误判交付可信度。
+   - 文本改编、演播设计、质检、打包等真实关键产物失败时不得静默回退成 mock 产物；真实模式下失败必须暴露为失败状态，避免用户误判交付可信度。
+   - 角色音统筹属于可降级分析步骤：真实 LLM 超时或失败时，Gateway 可用上游台本的出场统计生成 `degraded: true` 角色音表，让章节继续交付，并在产物摘要中显示降级原因。
    - Week 4 Track 1：可从 AI.library 书库选章经 **Electron `window.electronAPI.library.*`** 填入 `sourceText`（不经 Gateway）。详见 `docs/02_architecture/script-adapter-gateway-protocol.md` 与 `docs/05_changelog/` 下相关 changelog。
    - P0 起，批次执行通过 Gateway 维护运行中订阅表；主进程 WebSocket 重连后会自动补订阅正在执行的批次，避免进度事件在断线后静默丢失。
    - `quality_review` 改为非阻塞预览卡，不再要求“批准继续制作”才能完成当前章。

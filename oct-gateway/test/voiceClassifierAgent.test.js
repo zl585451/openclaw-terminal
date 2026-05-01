@@ -9,6 +9,9 @@ const assert = require('node:assert');
 const {
   runVoiceClassifierAgent,
   aggregateSpeakers,
+  buildFallbackVoiceRegistryPayload,
+  buildVoiceClassifierMessages,
+  exampleSegments,
   parseVoiceClassifierOutput,
   pickAdaptedScript,
 } = require('../script_adapter/agents/voiceClassifierAgent');
@@ -105,6 +108,51 @@ async function main() {
     });
     const out = parseVoiceClassifierOutput(raw, stats);
     assert.deepEqual(out.unresolved, ['神秘声']);
+  });
+
+  await test('buildFallbackVoiceRegistryPayload creates degraded deterministic registry', () => {
+    const payload = buildFallbackVoiceRegistryPayload([
+      { roleName: '旁白', appearanceCount: 10 },
+      { roleName: '宁默', appearanceCount: 5 },
+      { roleName: '柳儿', appearanceCount: 1 },
+      { roleName: '系统音', appearanceCount: 1 },
+      { roleName: '神秘声音', appearanceCount: 1 },
+    ], { reason: 'timeout' });
+
+    assert.equal(payload.degraded, true);
+    assert.equal(payload.degradeReason, 'timeout');
+    assert.equal(payload.registry.find((r) => r.roleName === '旁白').category, 'narrator');
+    assert.equal(payload.registry.find((r) => r.roleName === '宁默').category, 'main');
+    assert.equal(payload.registry.find((r) => r.roleName === '柳儿').category, 'support');
+    assert.equal(payload.registry.find((r) => r.roleName === '系统音').category, 'sfx');
+    assert.equal(payload.registry.find((r) => r.roleName === '神秘声音').category, 'unresolved');
+    assert.deepEqual(payload.unresolved, ['神秘声音']);
+  });
+
+  await test('buildVoiceClassifierMessages keeps examples compact per speaker', () => {
+    const segments = [
+      { type: 'narration', text: '旁白'.repeat(80) },
+      { type: 'narration', text: '旁白第二条' },
+      { type: 'narration', text: '旁白第三条不应进入' },
+      { type: 'dialogue', speaker: '宁默', text: '宁默对白一' },
+      { type: 'dialogue', speaker: '宁默', text: '宁默对白二' },
+      { type: 'dialogue', speaker: '宁默', text: '宁默对白三不应进入' },
+      { type: 'inner_monologue', speaker: '柳儿', text: '柳儿心声' },
+    ];
+    const examples = exampleSegments(segments);
+    assert.ok(examples.includes('[旁白/narration]'));
+    assert.ok(examples.includes('宁默对白二'));
+    assert.ok(!examples.includes('宁默对白三不应进入'));
+    assert.ok(!examples.includes('旁白第三条不应进入'));
+    assert.ok(examples.split('\n')[0].length < 160);
+
+    const messages = buildVoiceClassifierMessages({
+      chapterTitle: '测试章',
+      stats: aggregateSpeakers(segments),
+      segments,
+    });
+    assert.equal(messages.length, 2);
+    assert.ok(messages[1].content.includes('每个角色最多2条'));
   });
 
   await test('pickAdaptedScript finds adapted_script artifact', () => {
