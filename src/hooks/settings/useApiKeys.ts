@@ -268,6 +268,36 @@ function hasConfiguredKey(data: Partial<ApiKeysState>, providerId: string): bool
   return !!String(data.DASHSCOPE_API_KEY || '').trim();
 }
 
+function normalizeLoadedApiKeys(
+  data: Partial<ApiKeysState>,
+  providerId: string,
+  providers: ProvidersState,
+  fallbackApiKeys: ApiKeysState,
+): ApiKeysState {
+  const nextApiKeys = { ...fallbackApiKeys, ...data };
+  const provider = providerSnapshotForBaseline(providerId, providers);
+  const configuredModel = String(nextApiKeys.OCT_MODEL || '').trim();
+  const customModel = String(nextApiKeys.CUSTOM_MODEL || '').trim();
+  const knownModels = new Set((provider?.models || []).map((model) => model.id));
+
+  if ((providerId === 'newapi' || providerId === 'google') && configuredModel) {
+    const shouldUseCustomMode =
+      configuredModel !== '__custom__'
+      && !knownModels.has(configuredModel)
+      && (!customModel || customModel === configuredModel);
+    if (shouldUseCustomMode) {
+      nextApiKeys.OCT_MODEL = '__custom__';
+      nextApiKeys.CUSTOM_MODEL = configuredModel;
+    }
+  }
+
+  if (providerId === 'custom' && configuredModel && !customModel) {
+    nextApiKeys.CUSTOM_MODEL = configuredModel;
+  }
+
+  return nextApiKeys;
+}
+
 /** 与 useMemo(currentGatewayConfig) 一致：用于 savedGatewayConfig，避免 undefined provider 导致 JSON 对比失真、Apply 跳过保存 */
 function providerSnapshotForBaseline(
   providerId: string,
@@ -442,12 +472,12 @@ export function useApiKeys() {
               TAVILY_API_KEY: data.TAVILY_API_KEY ?? '',
             };
             searchKeysRef.current = nextSearchKeys;
-            const nextApiKeys = { ...apiKeys, ...data };
-            setApiKeys((prev) => ({ ...prev, ...data }));
             const persistedMode = data.OCT_SETTINGS_MODE === 'advanced' || data.OCT_SETTINGS_MODE === 'beginner'
               ? data.OCT_SETTINGS_MODE
               : '';
             const providerId = resolveProviderId(data);
+            const nextApiKeys = normalizeLoadedApiKeys(data, providerId, {}, apiKeys);
+            setApiKeys(nextApiKeys);
             const inferredMode: SettingsMode = persistedMode
               || (providerId && hasConfiguredKey(data, providerId) ? 'advanced' : 'beginner');
             setSettingsMode(inferredMode);
@@ -496,12 +526,12 @@ export function useApiKeys() {
             TAVILY_API_KEY: data.TAVILY_API_KEY ?? '',
           };
           searchKeysRef.current = nextSearchKeys;
-          const nextApiKeys = { ...apiKeys, ...data };
-          setApiKeys((prev) => ({ ...prev, ...data }));
           const persistedMode = data.OCT_SETTINGS_MODE === 'advanced' || data.OCT_SETTINGS_MODE === 'beginner'
             ? data.OCT_SETTINGS_MODE
             : '';
           const providerId = resolveProviderId(data);
+          const nextApiKeys = normalizeLoadedApiKeys(data, providerId, providers, apiKeys);
+          setApiKeys(nextApiKeys);
           const inferredMode: SettingsMode = persistedMode
             || (providerId && hasConfiguredKey(data, providerId) ? 'advanced' : 'beginner');
           setSettingsMode(inferredMode);

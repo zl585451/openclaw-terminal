@@ -730,6 +730,20 @@ function normalizeHttpBaseUrl(raw) {
   return s.replace(/\s+/g, '');
 }
 
+function normalizeProviderBaseUrl(baseUrl, providerId) {
+  const normalized = normalizeHttpBaseUrl(baseUrl);
+  if (!normalized) return '';
+  if (providerId !== 'newapi') return normalized;
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.pathname === '/' || parsed.pathname === '') {
+      parsed.pathname = '/v1';
+      return parsed.toString().replace(/\/$/, '');
+    }
+  } catch {}
+  return normalized;
+}
+
 // 从 baseUrl 推断 provider id
 function inferProviderFromBaseUrl(baseUrl) {
   if (!baseUrl || typeof baseUrl !== 'string') return 'bailian-coding';
@@ -936,7 +950,7 @@ function getProviderConfig() {
     });
   }
 
-  baseUrl = normalizeHttpBaseUrl(baseUrl);
+  baseUrl = normalizeProviderBaseUrl(baseUrl, preset.id);
 
   return {
     ...preset,

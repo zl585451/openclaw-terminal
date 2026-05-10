@@ -528,8 +528,6 @@ export function ConnectionTabView({
                   onChange={(e) => setApiKeys((k) => ({ 
                     ...k, 
                     CUSTOM_MODEL: e.target.value,
-                    // 如果当前是自定义模式，同步更新 OCT_MODEL
-                    OCT_MODEL: k.OCT_MODEL === '__custom__' ? e.target.value : k.OCT_MODEL
                   }))}
                   placeholder="例如：gpt-4o-mini, claude-3-5-sonnet, gemini-pro..."
                   className="settings-input settings-input-focusable"
@@ -549,7 +547,6 @@ export function ConnectionTabView({
                           onClick={() => setApiKeys((k) => ({
                             ...k,
                             CUSTOM_MODEL: model,
-                            OCT_MODEL: k.OCT_MODEL === '__custom__' ? model : k.OCT_MODEL,
                           }))}
                         >
                           {model}
