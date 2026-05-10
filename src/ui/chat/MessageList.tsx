@@ -17,6 +17,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown, normalizeCustomEchartBlocks } from '../../utils/markdownPreprocess';
 import type { ChatMessage } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
+import StreamingMarkdownContent from './StreamingMarkdownContent';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
 
@@ -312,6 +313,8 @@ export interface ChatMessageItemProps {
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   /** 流式阶段跳过 markdown/block 解析，直接渲染纯文本，降低重排抖动 */
   usePlainStreamingText?: boolean;
+  /** 流式阶段提前创建 Markdown 结构容器，让内容在代码框/表格内增量生长 */
+  useStructuredStreamingMarkdown?: boolean;
   /** Markdown 组件配置 */
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
   /** 从 [cot]…[/cot] 提取的思维链；null/undefined 表示本条无 CoT */
@@ -439,6 +442,7 @@ type AssistantMessageBodyProps = Pick<
 > & {
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   usePlainStreamingText?: boolean;
+  useStructuredStreamingMarkdown?: boolean;
 };
 
 const AssistantMessageBody = memo(function AssistantMessageBody({
@@ -460,6 +464,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   isLastAssistant,
   streamingDomRef,
   usePlainStreamingText = false,
+  useStructuredStreamingMarkdown = false,
   markdownComponents,
 }: AssistantMessageBodyProps & { markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] }) {
   // Layout Lock：流式开始时记录高度并锁定 minHeight，防止结束时收缩跳动
@@ -502,6 +507,19 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
           ref={streamingDomRef as React.LegacyRef<HTMLPreElement> | undefined}
           className="msg-content msg-content-streaming msg-content-streaming-root"
         />
+        <TypewriterCursor show />
+      </div>
+    );
+  }
+
+  if (isStreamingMsg && useStructuredStreamingMarkdown) {
+    return (
+      <div
+        ref={bubbleRef}
+        className="msg-assistant-body"
+        style={{ display: 'flex', flexDirection: 'column' }}
+      >
+        <StreamingMarkdownContent content={textToShow || raw || ''} />
         <TypewriterCursor show />
       </div>
     );
@@ -756,6 +774,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     getToolDisplayName = (tool) => tool,
     streamingDomRef,
     usePlainStreamingText = false,
+    useStructuredStreamingMarkdown = false,
     markdownComponents,
     cotContent,
     cotStarted = false,
@@ -820,6 +839,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             isLastAssistant={isLastAssistant}
             streamingDomRef={streamingDomRef}
             usePlainStreamingText={usePlainStreamingText}
+            useStructuredStreamingMarkdown={useStructuredStreamingMarkdown}
             markdownComponents={markdownComponents}
           />
         ) : (
@@ -873,6 +893,7 @@ export interface ChatMessageListProps {
   getToolDisplayName?: (tool: string) => string;
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   usePlainStreamingText?: boolean;
+  useStructuredStreamingMarkdown?: boolean;
   markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
   allowCotDisplay?: boolean;
   /** 空会话时替换默认「输入消息开始对..」占位（由 ChatTab 注入 Welcome等） */
@@ -902,6 +923,7 @@ export const ChatMessageList = function ChatMessageList({
   getToolDisplayName = (t) => t,
   streamingDomRef,
   usePlainStreamingText = false,
+  useStructuredStreamingMarkdown = false,
   markdownComponents,
   allowCotDisplay = true,
   emptyConversationPlaceholder,
@@ -1120,8 +1142,9 @@ export const ChatMessageList = function ChatMessageList({
               onContextMenu={onMessageContextMenu}
               onQuoteQuestion={onQuoteQuestion}
             isLastAssistant={msg.role === 'assistant' && msg.id === lastAssistantId}
-            streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
-            usePlainStreamingText={usePlainStreamingText}
+              streamingDomRef={msg.isStreaming ? streamingDomRef : undefined}
+              usePlainStreamingText={usePlainStreamingText}
+              useStructuredStreamingMarkdown={useStructuredStreamingMarkdown}
               markdownComponents={markdownComponents}
               cotContent={msg.role === 'assistant' && streamingCotContent != null ? streamingCotContent : undefined}
               cotStarted={msg.role === 'assistant' && streamingCotStarted}

@@ -14,6 +14,7 @@ type StreamPaintingContext = {
   typingSoundVolume: number;
   fullTextRef: React.MutableRefObject<string>;
   streamingDomRef: React.MutableRefObject<HTMLPreElement | null>;
+  onVisibleText?: (text: string) => void;
   finalizeStreamingAssistantMessage: (rawText?: string) => void;
   pendingStreamFinalizeRef: React.MutableRefObject<boolean>;
   lastStreamReconcileMsRef: React.MutableRefObject<number>;
@@ -35,6 +36,7 @@ export function useStreamPainting(
     typingSoundVolume,
     fullTextRef,
     streamingDomRef,
+    onVisibleText,
     finalizeStreamingAssistantMessage,
     pendingStreamFinalizeRef,
     lastStreamReconcileMsRef,
@@ -44,8 +46,15 @@ export function useStreamPainting(
   const streamPaintShownLenRef = useRef(0);
   const streamPaintBudgetRef = useRef(0);
   const streamPaintLastTsRef = useRef(0);
+  const lastVisibleTextRef = useRef('');
   const runStreamPaintTickRef = useRef<() => void>(() => {});
   const stopAfterFinalizeRef = useRef(false);
+
+  const publishVisibleText = useCallback((text: string) => {
+    if (lastVisibleTextRef.current === text) return;
+    lastVisibleTextRef.current = text;
+    onVisibleText?.(text);
+  }, [onVisibleText]);
 
   runStreamPaintTickRef.current = () => {
     streamPaintRafRef.current = null;
@@ -70,7 +79,27 @@ export function useStreamPainting(
 
     if (!el) {
       if (behind > 0) {
+        let effectiveMs = Math.max(6, streamSpeedMsRef.current);
+        if (!pendingStreamFinalizeRef.current && behind > 80) effectiveMs *= 0.85;
+        if (pendingStreamFinalizeRef.current) effectiveMs = Math.max(6, effectiveMs * 0.75);
+        streamPaintBudgetRef.current += dt / effectiveMs;
+        let step = Math.floor(streamPaintBudgetRef.current);
+        if (step <= 0 && streamPaintBudgetRef.current >= 0.82) step = 1;
+        step = Math.min(behind, Math.max(0, Math.min(step, 4)));
+        if (step > 0) {
+          streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
+          shown = Math.min(targetLen, shown + step);
+          streamPaintShownLenRef.current = shown;
+          publishVisibleText(main.slice(0, shown));
+        }
         streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
+        return;
+      }
+      if (targetLen > 0) {
+        publishVisibleText(main);
+      }
+      if (pendingStreamFinalizeRef.current) {
+        finalizeStreamingAssistantMessage(raw);
       }
       return;
     }
@@ -97,7 +126,9 @@ export function useStreamPainting(
         streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
         shown = Math.min(targetLen, shown + step);
         streamPaintShownLenRef.current = shown;
-        el.textContent = main.slice(0, shown);
+        const visibleText = main.slice(0, shown);
+        el.textContent = visibleText;
+        publishVisibleText(visibleText);
         if (typingSound !== 'off') {
           for (let i = 0; i < step; i++) {
             playClickSound(typingSound, typingSoundVolume);
@@ -106,6 +137,7 @@ export function useStreamPainting(
       }
     } else if (targetLen > 0) {
       el.textContent = main;
+      publishVisibleText(main);
     }
 
     try {
@@ -160,7 +192,9 @@ export function useStreamPainting(
     streamPaintBudgetRef.current = 0;
     streamPaintLastTsRef.current = 0;
     streamPaintShownLenRef.current = 0;
-  }, [pendingStreamFinalizeRef, startPainting]);
+    lastVisibleTextRef.current = '';
+    onVisibleText?.('');
+  }, [onVisibleText, pendingStreamFinalizeRef, startPainting]);
 
   useEffect(() => {
     return () => stopPainting();

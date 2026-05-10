@@ -119,6 +119,7 @@ export interface UseMessagesReturn {
   pendingPills: string[] | null;
   streak: number;
   fullTextRef: MutableRefObject<string>;
+  streamingRenderText: string;
   streamingDomRef: MutableRefObject<HTMLPreElement | null>;
   sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[], workbenchContext?: WorkbenchRoundtripContext) => Promise<void>;
   quickSend: (content: string) => void;
@@ -158,6 +159,7 @@ export function useMessages({
   const [modelName, setModelName] = useState('--');
   const [pendingPills, setPendingPills] = useState<string[] | null>(null);
   const [fsmPhase, setFsmPhase] = useState(() => oct.fsm.getPhase());
+  const [streamingRenderText, setStreamingRenderText] = useState('');
   /** 流式阶段 reconcile 每帧调用会引发大量 layout；限制频率 */
   const lastStreamReconcileMsRef = useRef(0);
   const {
@@ -281,6 +283,7 @@ export function useMessages({
         typingSoundVolume,
         fullTextRef,
         streamingDomRef,
+        onVisibleText: setStreamingRenderText,
         finalizeStreamingAssistantMessage,
         pendingStreamFinalizeRef,
         lastStreamReconcileMsRef,
@@ -734,6 +737,7 @@ export function useMessages({
     resetTimeline();
     streamingMessageRef.current = '';
     fullTextRef.current = '';
+    setStreamingRenderText('');
     stopPainting();
     pendingStreamFinalizeRef.current = false;
     if (finalizeFallbackTimerRef.current != null) {
@@ -919,6 +923,7 @@ export function useMessages({
     pendingPills,
     streak: 0,
     fullTextRef,
+    streamingRenderText,
     streamingDomRef,
     sendMessage,
     quickSend,
