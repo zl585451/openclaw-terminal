@@ -65,6 +65,23 @@ export const scriptAdapterActions = {
     });
   },
 
+  setActiveBatch(projectId: string, batchId: string | null) {
+    useScriptAdapterStore.getState()._set((state) => ({
+      activeBatchIds: {
+        ...state.activeBatchIds,
+        [projectId]: batchId,
+      },
+    }));
+  },
+
+  clearActiveBatch(projectId: string) {
+    useScriptAdapterStore.getState()._set((state) => {
+      const nextBatchIds = { ...state.activeBatchIds };
+      delete nextBatchIds[projectId];
+      return { activeBatchIds: nextBatchIds };
+    });
+  },
+
   updateExecutionRun(projectId: string, nextRun: AgentRun) {
     useScriptAdapterStore.getState()._set((state) => {
       const sheet = state.executionSheets[projectId];

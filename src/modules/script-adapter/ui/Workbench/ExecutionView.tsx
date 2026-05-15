@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
 import type { TaskExecutionSheet } from '../../types/execution';
-import { abortPipeline } from '../../services/mockAgentExecution';
 import { AgentRunCard } from './AgentRunCard';
 import { ArtifactPreview } from './ArtifactPreview';
 import { DeliveryPreview } from './DeliveryPreview';
@@ -16,9 +15,10 @@ interface ExecutionViewProps {
   sheet: TaskExecutionSheet;
   onBackToContract: () => void;
   onRetry?: () => void;
+  onCancel?: () => void;
 }
 
-export function ExecutionView({ sheet, onBackToContract, onRetry }: ExecutionViewProps) {
+export function ExecutionView({ sheet, onBackToContract, onRetry, onCancel }: ExecutionViewProps) {
   const [now, setNow] = useState(() => Date.now());
   const artifacts = Object.values(sheet.artifacts);
   const completedCount = sheet.runs.filter((run) => run.status === 'completed').length;
@@ -65,7 +65,7 @@ export function ExecutionView({ sheet, onBackToContract, onRetry }: ExecutionVie
             返回开工确认书
           </button>
           {sheet.overallStatus === 'running' ? (
-            <button type="button" className={styles.ghostButton} onClick={abortPipeline}>
+            <button type="button" className={styles.ghostButton} onClick={onCancel}>
               取消执行
             </button>
           ) : sheet.overallStatus === 'failed' ? (

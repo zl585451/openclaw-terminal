@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useScriptAdapterStore } from '../../store/scriptAdapterStore';
 import { scriptAdapterActions } from '../../store/actions';
 import {
@@ -7,6 +7,7 @@ import {
   runFullPipeline,
 } from '../../services/mockAgentExecution';
 import {
+  cancelGatewayExecution,
   startGatewayExecution,
   subscribeGatewayExecutionEvents,
 } from '../../services/gatewayExecution';
@@ -42,10 +43,18 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
   const executionSheet = useScriptAdapterStore((state) =>
     currentProjectId ? state.executionSheets[currentProjectId] ?? null : null,
   );
+  const persistedBatchId = useScriptAdapterStore((state) =>
+    currentProjectId ? state.activeBatchIds[currentProjectId] ?? null : null,
+  );
 
   const executionSheetRef = useRef(executionSheet);
   executionSheetRef.current = executionSheet;
-  const shouldAutoResumeExistingBatch = !taskContract;
+  const shouldAutoResumeExistingBatch = !taskContract || Boolean(persistedBatchId);
+  const handleCurrentBatchIdChange = useCallback((batchId: string | null) => {
+    if (currentProjectId) {
+      scriptAdapterActions.setActiveBatch(currentProjectId, batchId);
+    }
+  }, [currentProjectId]);
   const {
     batchHistory,
     currentBatchId,
@@ -57,7 +66,11 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
     loadBatchStatus,
     batchActivity,
     lastBatchEventAt,
-  } = useWorkbenchBatchState({ autoResumeActiveBatch: shouldAutoResumeExistingBatch });
+  } = useWorkbenchBatchState({
+    autoResumeActiveBatch: shouldAutoResumeExistingBatch,
+    preferredBatchId: persistedBatchId,
+    onCurrentBatchIdChange: handleCurrentBatchIdChange,
+  });
 
   const currentChapter = chapters.find((chapter) => chapter.id === project?.meta.currentChapterId) ?? chapters[0];
   const retryDeliveryOptions = taskContract?.deliveryOptions ?? DEFAULT_DELIVERY_OPTIONS;
@@ -149,16 +162,27 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
       }
 
       if (event.event === 'run_failed') {
+        if (event.sheet) {
+          scriptAdapterActions.setExecutionSheet(event.taskId, event.sheet);
+          return;
+        }
         const firstRunning = executionSheetRef.current?.runs.find((run) => run.status === 'running');
         if (firstRunning) {
           scriptAdapterActions.failExecutionRun(event.taskId, firstRunning.agentId, event.error);
         }
+        return;
+      }
+
+      if (event.event === 'run_cancelled') {
+        if (event.sheet) {
+          scriptAdapterActions.setExecutionSheet(event.taskId, event.sheet);
+        }
+        return;
       }
     });
 
     return () => {
       unsubscribe();
-      abortPipeline();
     };
   }, [currentProjectId]);
 
@@ -169,6 +193,12 @@ export function WorkbenchView({ taskContract }: WorkbenchViewProps) {
         chapterLabel={currentChapter ? `第${currentChapter.index}章：${currentChapter.title}` : '未选择章节'}
         sheet={executionSheet}
         currentProjectId={currentProjectId}
+        onCancel={() => {
+          const taskId = project?.id ?? 'demo-content-task';
+          void cancelGatewayExecution(taskId).then((result) => {
+            if (!result?.success) abortPipeline();
+          });
+        }}
         onRetry={() => {
           if (currentProjectId) {
             scriptAdapterActions.clearExecutionSheet(currentProjectId);

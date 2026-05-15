@@ -123,19 +123,24 @@ async function runBatchLoop(batchId, connection, logger) {
       const failedLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'failed');
       const nextStatus = controller.signal.aborted
         ? 'cancelled'
-        : failedLeft
-          ? 'failed'
-          : pendingLeft
-            ? 'paused'
-            : 'completed';
+        : failedLeft || pendingLeft
+          ? 'paused'
+          : 'completed';
       persistence.updateBatch(batchId, {
         status: nextStatus,
         completedAt: controller.signal.aborted || failedLeft || !pendingLeft ? new Date().toISOString() : null,
       });
-      emit(nextStatus === 'cancelled' ? 'batch_cancelled' : nextStatus === 'failed' ? 'batch_failed' : 'batch_completed', {
-        batch: persistence.getBatch(batchId)?.batch,
-        error: failedLeft ? 'one_or_more_chapters_failed' : undefined,
-      });
+      emit(
+        nextStatus === 'cancelled'
+          ? 'batch_cancelled'
+          : nextStatus === 'paused'
+            ? 'batch_paused'
+            : 'batch_completed',
+        {
+          batch: persistence.getBatch(batchId)?.batch,
+          error: failedLeft ? 'one_or_more_chapters_failed' : undefined,
+        },
+      );
     }
   } catch (error) {
     logger?.error?.('script adapter batch failed', {

@@ -50,7 +50,8 @@ export function BatchProgressView({
   const currentRun = sortedRuns.find((run) => run.chapterIndex === expandedChapterIndex && run.sheet);
   const batchVoiceRegistry = batch.config?.sharedContext?.voiceRegistry || [];
   const completed = batch.status === 'completed' && batch.failedChapters === 0;
-  const failedBatch = batch.status === 'failed' || batch.failedChapters > 0;
+  const pausedForRetry = batch.status === 'paused' && batch.failedChapters > 0;
+  const failedBatch = batch.status === 'failed' || pausedForRetry || batch.failedChapters > 0;
   const progressPercent = batch.totalChapters > 0
     ? Math.round(((batch.completedChapters + batch.failedChapters) / batch.totalChapters) * 100)
     : 0;
@@ -92,11 +93,11 @@ export function BatchProgressView({
       {failedBatch ? (
         <div className={styles.deliveryFailedCard}>
           <div>
-            <div className={styles.workOrderKicker}>执行失败</div>
-            <h2>本批次有章节失败，暂不能导出交付物。</h2>
+            <div className={styles.workOrderKicker}>{pausedForRetry ? '等待重跑' : '执行失败'}</div>
+            <h2>{pausedForRetry ? '有章节未通过质检，批次已暂停。' : '本批次有章节失败，暂不能导出交付物。'}</h2>
             <p>
               已完成 {batch.completedChapters}/{batch.totalChapters} 章，失败 {batch.failedChapters} 章。
-              请查看失败章节错误，修复后重跑。
+              {pausedForRetry ? '请修复失败章节后重跑，该批次会从失败章继续推进。' : '请查看失败章节错误，修复后重跑。'}
             </p>
           </div>
         </div>
@@ -105,14 +106,14 @@ export function BatchProgressView({
       <div className={styles.batchProgressHeader}>
         <div>
           <div className={styles.workOrderKicker}>批次进度</div>
-          <h2>{completed ? '已完成' : failedBatch ? '执行失败' : batch.status === 'running' ? '正在制作' : '批次状态'}</h2>
+          <h2>{completed ? '已完成' : pausedForRetry ? '等待重跑' : failedBatch ? '执行失败' : batch.status === 'running' ? '正在制作' : '批次状态'}</h2>
           <p>{batch.bookTitle}</p>
         </div>
         <div className={styles.batchLiveStatus}>
           <span className={`${styles.livePulse} ${styles[`livePulse--${heartbeat.tone}`]}`} />
           <strong>{heartbeat.label}</strong>
           <small>
-            {batch.status === 'running' ? `已运行 ${formatDuration(elapsedMs)}` : `状态 ${batch.status}`}
+            {batch.status === 'running' ? `已运行 ${formatDuration(elapsedMs)}` : `状态 ${labelBatchStatus(batch.status)}`}
             {lastEventMs != null ? ` · 最近更新 ${formatDuration(lastEventMs)}前` : ''}
           </small>
         </div>
@@ -198,6 +199,7 @@ export function BatchProgressView({
                   >
                     <span>{symbol}</span>
                     <strong>{run.chapterTitle || `第 ${run.chapterIndex + 1} 章`}</strong>
+                    {(run.attempt || 1) > 1 ? <span>重跑 {run.attempt}</span> : null}
                     <em>{run.status}</em>
                     <small>{run.cost ? `¥${Number(run.cost).toFixed(2)}` : ''}</small>
                   </button>
@@ -263,6 +265,11 @@ function getHeartbeat(status: BatchJob['status'], lastEventMs: number | null) {
   if (lastEventMs <= 10000) return { tone: 'good', label: '后台活跃' };
   if (lastEventMs <= 45000) return { tone: 'warn', label: '模型处理中' };
   return { tone: 'danger', label: '长时间无更新' };
+}
+
+function labelBatchStatus(status: BatchJob['status']) {
+  if (status === 'paused') return 'paused / 待重跑';
+  return status;
 }
 
 function formatDuration(ms: number) {

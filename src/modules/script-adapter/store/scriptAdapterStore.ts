@@ -17,6 +17,7 @@ interface ScriptAdapterState {
   agents: AgentDef[];
   templates: Record<string, TeamTemplate>;
   executionSheets: Record<string, TaskExecutionSheet>;
+  activeBatchIds: Record<string, string | null>;
 
   viewMode: ViewMode;
   selectedStageIdx: number;
@@ -33,6 +34,7 @@ export const useScriptAdapterStore = create<ScriptAdapterState>((set) => ({
   agents: [],
   templates: {},
   executionSheets: {},
+  activeBatchIds: {},
 
   viewMode: 'workbench',
   selectedStageIdx: 0,

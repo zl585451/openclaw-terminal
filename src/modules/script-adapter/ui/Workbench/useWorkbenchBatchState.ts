@@ -10,12 +10,18 @@ import type { BatchActivityEntry, BatchJob, ChapterRunRecord } from '../../types
 
 interface UseWorkbenchBatchStateOptions {
   autoResumeActiveBatch?: boolean;
+  preferredBatchId?: string | null;
+  onCurrentBatchIdChange?: (batchId: string | null) => void;
 }
 
 export function useWorkbenchBatchState(options: UseWorkbenchBatchStateOptions = {}) {
-  const { autoResumeActiveBatch = true } = options;
+  const {
+    autoResumeActiveBatch = true,
+    preferredBatchId = null,
+    onCurrentBatchIdChange,
+  } = options;
   const [batchHistory, setBatchHistory] = useState<BatchJob[]>([]);
-  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(() => preferredBatchId);
   const [currentBatch, setCurrentBatch] = useState<BatchJob | null>(null);
   const [currentBatchRuns, setCurrentBatchRuns] = useState<ChapterRunRecord[]>([]);
   const [batchActivity, setBatchActivity] = useState<BatchActivityEntry[]>([]);
@@ -31,7 +37,11 @@ export function useWorkbenchBatchState(options: UseWorkbenchBatchStateOptions = 
     const runningBatch = autoResumeActiveBatch
       ? nextBatches.find((item) => item.status === 'running' || item.status === 'paused') ?? null
       : null;
-    setCurrentBatchId(preferBatchId || currentBatchIdRef.current || runningBatch?.id || null);
+    const rememberedBatchId = preferBatchId || currentBatchIdRef.current || preferredBatchId || null;
+    const rememberedExists = rememberedBatchId
+      ? nextBatches.some((item) => item.id === rememberedBatchId)
+      : false;
+    setCurrentBatchId(rememberedExists ? rememberedBatchId : runningBatch?.id || null);
   };
 
   const loadBatchStatus = async (batchId: string) => {
@@ -43,7 +53,16 @@ export function useWorkbenchBatchState(options: UseWorkbenchBatchStateOptions = 
 
   useEffect(() => {
     void refreshBatchHistory();
-  }, [autoResumeActiveBatch]);
+  }, [autoResumeActiveBatch, preferredBatchId]);
+
+  useEffect(() => {
+    if (!preferredBatchId || currentBatchIdRef.current) return;
+    setCurrentBatchId(preferredBatchId);
+  }, [preferredBatchId]);
+
+  useEffect(() => {
+    onCurrentBatchIdChange?.(currentBatchId);
+  }, [currentBatchId, onCurrentBatchIdChange]);
 
   useEffect(() => {
     if (!currentBatchId) {
@@ -66,7 +85,7 @@ export function useWorkbenchBatchState(options: UseWorkbenchBatchStateOptions = 
       if (currentBatchIdRef.current === event.batchId) {
         void loadBatchStatus(event.batchId);
       }
-      if (event.event === 'batch_completed' || event.event === 'batch_cancelled' || event.event === 'batch_failed') {
+      if (event.event === 'batch_completed' || event.event === 'batch_cancelled' || event.event === 'batch_failed' || event.event === 'batch_paused') {
         void refreshBatchHistory(event.batchId);
       }
     });
@@ -132,6 +151,7 @@ function toActivityEntry(event: ScriptAdapterBatchEvent): BatchActivityEntry | n
   if (event.event === 'gate_updated') return { ...base, title: `${chapter} 确认点已通过` };
   if (event.event === 'chapter_completed') return { ...base, title: `${chapter} 制作完成` };
   if (event.event === 'chapter_failed') return { ...base, title: `${chapter} 制作失败`, detail: event.error };
+  if (event.event === 'batch_paused') return { ...base, title: '批次已暂停', detail: event.error === 'one_or_more_chapters_failed' ? '有章节失败，等待修复后重跑' : event.error };
   if (event.event === 'agent_failed') return { ...base, title: `${chapter} Agent 失败`, detail: event.error };
   if (event.event === 'batch_completed') return { ...base, title: '批次完成' };
   if (event.event === 'batch_cancelled') return { ...base, title: '批次已取消' };

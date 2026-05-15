@@ -172,10 +172,19 @@ function listBatches(limit = 20, offset = 0) {
 function listChapterRuns(batchId) {
   const database = getDb();
   const rows = database.prepare(`
-    SELECT * FROM chapter_runs
-    WHERE batch_id = ?
-    ORDER BY chapter_index ASC, attempt ASC
-  `).all(String(batchId || ''));
+    SELECT cr.*
+    FROM chapter_runs cr
+    INNER JOIN (
+      SELECT chapter_index, MAX(attempt) AS max_attempt
+      FROM chapter_runs
+      WHERE batch_id = ?
+      GROUP BY chapter_index
+    ) latest
+      ON latest.chapter_index = cr.chapter_index
+     AND latest.max_attempt = cr.attempt
+    WHERE cr.batch_id = ?
+    ORDER BY cr.chapter_index ASC
+  `).all(String(batchId || ''), String(batchId || ''));
   return rows.map(normalizeChapterRunRow);
 }
 
@@ -411,17 +420,20 @@ function refreshBatchCounters(batchId) {
   const database = getDb();
   const summary = database.prepare(`
     SELECT
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
-      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
-      SUM(CASE WHEN status = 'completed' THEN cost ELSE 0 END) AS actual_cost
-    FROM (
-      SELECT chapter_index, status, cost
+      SUM(CASE WHEN cr.status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+      SUM(CASE WHEN cr.status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+      SUM(CASE WHEN cr.status = 'completed' THEN cr.cost ELSE 0 END) AS actual_cost
+    FROM chapter_runs cr
+    INNER JOIN (
+      SELECT chapter_index, MAX(attempt) AS max_attempt
       FROM chapter_runs
       WHERE batch_id = ?
       GROUP BY chapter_index
-      HAVING MAX(attempt)
-    )
-  `).get(String(batchId || ''));
+    ) latest
+      ON latest.chapter_index = cr.chapter_index
+     AND latest.max_attempt = cr.attempt
+    WHERE cr.batch_id = ?
+  `).get(String(batchId || ''), String(batchId || ''));
   const batch = getBatch(batchId);
   if (!batch) return null;
   return updateBatch(batchId, {

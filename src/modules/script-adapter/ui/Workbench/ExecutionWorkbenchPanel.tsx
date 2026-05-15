@@ -10,6 +10,7 @@ interface ExecutionWorkbenchPanelProps {
   sheet: TaskExecutionSheet;
   currentProjectId: string | null;
   onRetry: () => void;
+  onCancel?: () => void;
 }
 
 export function ExecutionWorkbenchPanel({
@@ -18,6 +19,7 @@ export function ExecutionWorkbenchPanel({
   sheet,
   currentProjectId,
   onRetry,
+  onCancel,
 }: ExecutionWorkbenchPanelProps) {
   return (
     <div className={styles.taskWorkbench}>
@@ -35,6 +37,7 @@ export function ExecutionWorkbenchPanel({
           if (currentProjectId) scriptAdapterActions.clearExecutionSheet(currentProjectId);
         }}
         onRetry={onRetry}
+        onCancel={onCancel}
       />
     </div>
   );

@@ -11,6 +11,7 @@ export type ScriptAdapterBatchEvent =
   | { event: 'gate_reached'; batchId: string; chapterIndex: number; runId: string; gate: unknown }
   | { event: 'gate_updated'; batchId: string; chapterIndex: number; runId: string; gate: unknown }
   | { event: 'chapter_failed'; batchId: string; chapterIndex: number; runId: string; error: string }
+  | { event: 'batch_paused'; batchId: string; batch?: BatchJob; error?: string }
   | { event: 'batch_completed'; batchId: string; batch?: BatchJob }
   | { event: 'batch_cancelled'; batchId: string; batch?: BatchJob }
   | { event: 'batch_failed'; batchId: string; error: string };
