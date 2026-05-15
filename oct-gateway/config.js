@@ -1201,6 +1201,7 @@ const config = {
       baseUrl: String(getEnvOrConfig('SCRIPT_ADAPTER_BASE_URL') || '').trim(),
       apiKey: String(getEnvOrConfig('SCRIPT_ADAPTER_API_KEY') || '').trim(),
       model: String(getEnvOrConfig('SCRIPT_ADAPTER_MODEL') || '').trim(),
+      textPipeline: String(getEnvOrConfig('SCRIPT_ADAPTER_TEXT_PIPELINE') || '').trim(),
     };
     const fromFile = _fileConfig.scriptAdapter && typeof _fileConfig.scriptAdapter === 'object' ? _fileConfig.scriptAdapter : {};
     return { ...def, ...fromFile };

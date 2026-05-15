@@ -289,7 +289,9 @@ function shouldUseSpanAttributionPipeline() {
   const value = config.scriptAdapter?.textPipeline
     || config.getEnvOrConfig?.('SCRIPT_ADAPTER_TEXT_PIPELINE')
     || process.env.SCRIPT_ADAPTER_TEXT_PIPELINE;
-  return String(value || '').trim().toLowerCase() === 'span_attribution';
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized || normalized === 'default' || normalized === 'auto') return true;
+  return normalized === 'span_attribution';
 }
 
 function mergeSlicePayloadsClassifyFirst(results) {

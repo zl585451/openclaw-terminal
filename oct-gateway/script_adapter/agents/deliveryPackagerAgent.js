@@ -17,6 +17,11 @@ async function runDeliveryPackagerAgent(ctx) {
   const adaptedPayload = adaptedScript?.payload || {};
   const voicePayload = voiceRegistry?.payload || { registry: [], unresolved: [] };
   const reviewPayload = review?.payload || { conclusion: 'pass', issues: [] };
+  if (String(reviewPayload?.conclusion || '').trim().toLowerCase() === 'reject') {
+    const p0Count = (Array.isArray(reviewPayload?.issues) ? reviewPayload.issues : [])
+      .filter((issue) => issue?.severity === 'P0').length;
+    throw new Error(`PACKAGER_REJECTED_BY_QC: 质检结论为 reject，P0=${p0Count}，拒绝生成交付包。`);
+  }
   const chapterTitle = String(adaptedPayload?.chapterTitle || '未命名章节');
   const segmentCount = (adaptedPayload?.segments || []).length;
   const totalChars = Number(adaptedPayload?.totalCharCount || 0);

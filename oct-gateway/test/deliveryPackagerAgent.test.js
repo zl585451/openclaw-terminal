@@ -64,7 +64,7 @@ async function main() {
     assert.ok(payload.manifest[2].size !== '0 B');
   });
 
-  await test('packager uses review conclusion in notes', async () => {
+  await test('packager rejects failed quality reports before delivery', async () => {
     const artifacts = {
       a1: artifact('adapted_script', {
         chapterTitle: '第1章',
@@ -78,12 +78,10 @@ async function main() {
         issues: [{ severity: 'P0', category: '忠实度', description: '改剧情', suggestion: '回改' }],
       }),
     };
-    const { payload } = await runDeliveryPackagerAgent({ artifacts });
-    assert.ok(payload.notes.includes('需返工'));
-    assert.ok(payload.notes.includes('1 条问题记录'));
-    assert.equal(payload.basic_qc_report.conclusion, 'reject');
-    assert.equal(payload.review_report.conclusion, 'reject');
-    assert.equal(payload.voice_registry.registry.length, 0);
+    await assert.rejects(
+      () => runDeliveryPackagerAgent({ artifacts }),
+      /PACKAGER_REJECTED_BY_QC/,
+    );
   });
 
   const failed = results.filter((item) => !item.ok);

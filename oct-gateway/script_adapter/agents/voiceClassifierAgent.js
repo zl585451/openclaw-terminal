@@ -26,7 +26,8 @@ const SYSTEM_PROMPT = `你是有声书角色音统筹师。你会收到由 Text 
 - unresolved: 文件、回忆、未确认女声/男声等来源不明的人声
 - sfx: 功能性声音或非人声,包含系统提示、设备传声、环境/动作拟声
 
-声线建议(voiceHint)写法:性别 + 年龄段 + 情绪基调 + 语速,一句话内,例如"年轻女性,压抑、少话,反应慢半拍"。
+声线建议(voiceHint)写法:只写证据能支持的声线信息,一句话内,例如"年轻女性,压抑、少话,反应慢半拍"。
+如果代表片段不能明确支持性别、年龄或身份,不要根据姓名猜测,写"性别未定/年龄未定,待人工复核"。
 
 输出严格 JSON,不要任何额外解释。结构:
 {
@@ -270,9 +271,7 @@ function fallbackVoiceHint(roleName, category) {
   if (category === 'sfx' && isDeviceSpeaker(roleName)) return '设备传声或电流杂音，带介质感，独立于普通角色音处理';
   if (category === 'sfx') return '环境或动作音效，短促清楚，独立于普通角色音处理';
   if (category === 'unresolved') return '未确认来源声音，先独立占位，后续人工回绑';
-  if (/夫人|柳儿|小姐|丫鬟|母|女/.test(roleName)) return '女性角色声线，先按身份与情绪粗分，后续复核';
-  if (/王|宁|狱卒|管事|老|男|父/.test(roleName)) return '男性角色声线，先按年龄与权力关系粗分，后续复核';
-  return '角色声线占位，依据对白密度和情绪强度后续细分';
+  return '性别未定、年龄未定，先按对白密度和情绪强度占位，后续人工复核';
 }
 
 const FUNCTIONAL_VOICE_TYPES = new Set(['sfx', 'system_voice', 'device_voice']);

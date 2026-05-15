@@ -107,11 +107,11 @@ Gateway 返回并推送 `analysisRun`：
 3. 文本改编默认输出预算为 `6000` tokens，可通过 `SCRIPT_ADAPTER_TEXT_REWRITER_MAX_TOKENS` 或 `scriptAdapter.textRewriterMaxTokens` 调整，允许范围为 `2000` 到 `16000`。
 4. 文本改编 JSON 解析应容忍模型在 JSON 前后追加解释或 markdown 围栏；若首次输出为空或 JSON 不完整，应使用更低温度和更紧凑提示重试一次。
 5. 切片改编中只要存在失败切片，当前章节应显式失败，不得把包含失败占位文本的半成品标记为成功交付。
-6. 文本改编可通过 `SCRIPT_ADAPTER_TEXT_PIPELINE=span_attribution` 或 `scriptAdapter.textPipeline = "span_attribution"` 启用 Quote Span Attribution MVP。
+6. 文本改编默认启用 Quote Span Attribution MVP；可通过 `SCRIPT_ADAPTER_TEXT_PIPELINE=classify_first` 或 `scriptAdapter.textPipeline = "classify_first"` 显式回退旧链路。
 7. `span_attribution` 链路把模型职责收窄为 quote 归因：程序先抽取 quote span 与 narration gap，再由 `quoteAttributionAgent` 输出 `quoteId|voiceType|speaker|confidence|evidence`，最后由 `spanScriptComposer` 生成 `AdaptedScriptPayload`。
 8. `span_attribution` 链路必须推送可见进度阶段：`span_extract`、`candidate_extract`、`quote_attribution`、`inner_voice_extract`、`span_compose`。
 9. `system_voice` 在当前 payload schema 中映射为 `dialogue + speaker = 系统音`，仅用于有系统语义的提示音，避免破坏下游 Voice / QC / Packager 兼容性。
-10. 新链路默认不替换生产 `classify-first`，需要显式开关启用，便于真实样书产物对照。
+10. 新链路替换生产默认 `classify-first`；旧链路仅保留为显式回退和对照。
 11. `inner_voice_extract` 当前为规则型 MVP，从 narration gaps 中抽取高置信度 OS，输出为 `inner_monologue` segment；展示层可渲染为 `[角色][OS]`。
 12. 角色音统筹是可降级分析步骤：真实 `classifier.voice_role_marker@1.0` 超时、网络失败或只识别到旁白时，Gateway 不得让整章失败；应基于 `adapted_script.segments` 聚合出场统计，生成 `voice_registry.payload.degraded = true` 的规则角色音表，并在 summary / metrics 暴露降级原因。
 13. 角色音统筹真实调用不得重复输入整章正文，只能输入角色出场统计和少量代表片段。当前上限为每个角色 2 条、总计 16 条，默认超时 `35000ms`。
@@ -119,6 +119,7 @@ Gateway 返回并推送 `analysisRun`：
 15. `voice_type_classify` 为规则层，先于角色音 main/support 判断。基础类型包括 `narrator`、`character`、`inner_monologue`、`unresolved_voice`、`system_voice`、`device_voice`、`sfx`、`group_voice`、`cue`。`未定女声A`、`神秘声音` 等必须保持 unresolved；系统提示、设备传声、纯拟声词在角色音表中统一进入 `category = sfx`，但 roleName 必须区分 `系统音`、`对讲机`、`SFX`。
 16. `spanScriptComposer` 必须清理纯 cue 旁白，例如 `苏尘：`、`她忽然开口问道：`；独立拟声词行必须输出为 `speaker = SFX`，不得归给人物；若上游把 `咔`、`咚`、`滋啦` 等纯拟声词标为 `系统音`，composer/export 应纠偏为 `SFX`。
 17. `basicQCChecker` 必须拦截跨书 OS speaker、拟声词人物化、纯 cue 旁白残留，以及 `[系统音] 咔/咚/滋啦` 这类系统音与纯音效混淆。
+18. `quality_review` 的 `conclusion = reject` 是硬失败：章节不得继续进入 `packager.content_delivery@1.0`，批次应把该章标为 failed，并保留质检报告供用户重跑或返修。
 
 协议约束：
 

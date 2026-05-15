@@ -8,8 +8,8 @@
 ## 0. 当前实现状态
 
 - 实现日期：2026-05-01
-- 当前状态：MVP 已接入开发开关，默认仍保留旧 `classify-first` 链路。
-- 启用方式：设置 `SCRIPT_ADAPTER_TEXT_PIPELINE=span_attribution` 或 `scriptAdapter.textPipeline = "span_attribution"`。
+- 当前状态：MVP 已接入生产默认链路；旧 `classify-first` 链路仅作为显式回退配置保留。
+- 启用方式：默认启用 `span_attribution`；如需回退旧链路，设置 `SCRIPT_ADAPTER_TEXT_PIPELINE=classify_first` 或 `scriptAdapter.textPipeline = "classify_first"`。
 - 已实现模块：
   - `quoteSpanExtractor`
   - `speakerCandidateExtractor`
@@ -324,7 +324,7 @@ else:
 - 新样书 fixture 测试通过。
 - 《夫人请卸甲》第1章不再出现 `角色名` speaker、`宁默|“...”` 残留和对白重复。
 
-> 当前进度：已在 `textRewriterAgent` 中接入 `SCRIPT_ADAPTER_TEXT_PIPELINE=span_attribution` 开关。下一步需要用软件真实跑一次《夫人请卸甲》第 1 章产物验证。
+> 当前进度：`textRewriterAgent` 默认走 `span_attribution`；`classify_first` 仅保留为显式回退和对照链路。下一步需要继续用真实样章固化 fixture/golden 回归。
 
 ## 11. Phase H：样书回归矩阵
 

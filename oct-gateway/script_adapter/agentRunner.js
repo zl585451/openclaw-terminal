@@ -127,6 +127,25 @@ async function runChapterAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx
     const gate = currentSheet.gates.find((item) => item.afterAgentId === agent.agentId && item.status === 'pending');
     if (gate) {
       emit('gate_reached', { gate });
+      if (gate.gateType === 'quality_review' && isRejectReviewArtifact(artifact)) {
+        const rejectedGate = {
+          ...gate,
+          status: 'rejected',
+          relatedArtifactId: artifact.artifactId,
+          reviewerNote: 'auto_rejected_by_quality_report',
+        };
+        currentSheet = {
+          ...currentSheet,
+          gates: currentSheet.gates.map((item) => (item.gateId === gate.gateId ? rejectedGate : item)),
+          overallStatus: 'failed',
+          updatedAt: new Date().toISOString(),
+        };
+        onSheetUpdate?.(currentSheet);
+        emit('gate_updated', { gate: rejectedGate });
+        const error = new Error('QUALITY_REVIEW_REJECTED: 质检结论为 reject，已阻止进入交付打包。');
+        error.sheet = currentSheet;
+        throw error;
+      }
       await wait(500, signal);
       const approvedGate = { ...gate, status: 'approved', relatedArtifactId: artifact.artifactId };
       currentSheet = {
@@ -144,6 +163,12 @@ async function runChapterAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx
   onSheetUpdate?.(currentSheet);
   emit('all_completed', { sheet: currentSheet });
   return currentSheet;
+}
+
+function isRejectReviewArtifact(artifact) {
+  const type = artifact?.artifactType;
+  if (type !== 'review_report' && type !== 'basic_qc_report') return false;
+  return String(artifact?.payload?.conclusion || '').trim().toLowerCase() === 'reject';
 }
 
 function updateAgentRun(sheet, runIndex, run) {
@@ -180,4 +205,5 @@ function createAbortError(reason) {
 
 module.exports = {
   runChapterAgentPipeline,
+  isRejectReviewArtifact,
 };
