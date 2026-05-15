@@ -52,6 +52,15 @@ function recoverOctStreamFromEndFailure(oct: { stream: StreamRouter; fsm: TurnFS
   }
 }
 
+export function preferDoneTextWhenMoreComplete(currentRaw: string, doneText: string): string {
+  const current = currentRaw || '';
+  const done = doneText || '';
+  if (!done.trim()) return current;
+  if (!current.trim()) return done;
+  if (done.length > current.length) return done;
+  return current;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface ActiveTool {
   callId: string;
@@ -428,17 +437,18 @@ export function useMessages({
         const fallbackText = stripTextToolAnnotations(
           stripLeakedToolCallSections(stripThinkModeMarker(String(content || '').trim())),
         );
-        if (fallbackText && !fullTextRef.current.trim()) {
-          streamingMessageRef.current = fallbackText;
-          fullTextRef.current = fallbackText;
+        const finalText = preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
+        if (finalText !== fullTextRef.current) {
+          streamingMessageRef.current = finalText;
+          fullTextRef.current = finalText;
           ensureStreamingAssistantMessage();
         }
         try {
           oct.stream.end();
-          scheduleFinalizeFallback(fallbackText);
+          scheduleFinalizeFallback(finalText);
         } catch {
           recoverOctStreamFromEndFailure(oct);
-          const fb = fallbackText;
+          const fb = finalText;
           if (fb) {
             streamingMessageRef.current = fb;
             fullTextRef.current = fb;
