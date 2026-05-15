@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OCT — OpenClaw Terminal</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <style>
+    /* ===== Reset & Base ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+      background: #f8f9fb;
+      color: #1a1a2e;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    /* ===== Header ===== */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      backdrop-filter: blur(12px);
+      background: rgba(248, 249, 251, 0.85);
+      border-bottom: 1px solid #eaeef2;
+      padding: 16px 0;
+    }
+    .header-inner {
+      max-width: 1100px; margin: 0 auto; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      font-size: 20px; font-weight: 700; letter-spacing: -0.3px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .logo span { color: #6c5ce7; }
+    .logo small { font-weight: 400; font-size: 13px; color: #7f8c9b; margin-left: 4px; }
+    nav { display: flex; gap: 28px; font-size: 14px; color: #4a5568; }
+    nav a { transition: color 0.2s; }
+    nav a:hover { color: #6c5ce7; }
+
+    /* ===== Hero ===== */
+    .hero {
+      max-width: 1100px; margin: 0 auto; padding: 80px 24px 60px;
+      display: flex; flex-direction: column; align-items: center; text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #edf2ff; color: #5a4bd1;
+      font-size: 12px; font-weight: 600; padding: 4px 14px; border-radius: 100px;
+      margin-bottom: 24px; letter-spacing: 0.3px;
+    }
+    .hero h1 {
+      font-size: 48px; font-weight: 800; letter-spacing: -1px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #6c5ce7 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.2; margin-bottom: 16px;
+    }
+    .hero p {
+      font-size: 18px; color: #5a6577; max-width: 640px;
+      margin-bottom: 36px;
+    }
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 15px; font-weight: 600; padding: 12px 28px; border-radius: 8px;
+      transition: all 0.2s; cursor: default;
+    }
+    .btn-primary {
+      background: #1a1a2e; color: #fff;
+    }
+    .btn-primary:hover { background: #2d2d4a; }
+    .btn-outline {
+      border: 1.5px solid #d0d7e2; color: #1a1a2e;
+    }
+    .btn-outline:hover { border-color: #6c5ce7; color: #6c5ce7; }
+
+    /* ===== Section ===== */
+    section { max-width: 1100px; margin: 0 auto; padding: 64px 24px; }
+    .section-label {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.5px; color: #6c5ce7; margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 32px; font-weight: 700; letter-spacing: -0.5px;
+      margin-bottom: 16px;
+    }
+    .section-desc {
+      font-size: 16px; color: #5a6577; max-width: 600px; margin-bottom: 40px;
+    }
+
+    /* ===== Features ===== */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: #fff; border-radius: 12px; padding: 28px;
+      border: 1px solid #eaeef2; transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .feature-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.06); transform: translateY(-2px); }
+    .feature-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; margin-bottom: 16px;
+    }
+    .feature-card h3 { font-size: 17px; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: #5a6577; line-height: 1.7; }
+
+    /* ===== Tech Stack ===== */
+    .tech-grid {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px;
+    }
+    .tech-tag {
+      background: #fff; border: 1px solid #eaeef2; border-radius: 6px;
+      padding: 6px 16px; font-size: 13px; font-weight: 500; color: #3d4a5c;
+    }
+
+    /* ===== Footer ===== */
+    footer {
+      border-top: 1px solid #eaeef2; padding: 32px 24px;
+      text-align: center; font-size: 13px; color: #7f8c9b;
+    }
+    footer a { color: #6c5ce7; font-weight: 500; }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 32px; }
+      .hero p { font-size: 16px; }
+      header { padding: 12px 0; }
+      nav { gap: 16px; font-size: 13px; }
+      .section-title { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        ⚡ OCT <small><span>·</span> OpenClaw Terminal</small>
+      </div>
+      <nav>
+        <a href="#features">功能</a>
+        <a href="#tech">技术栈</a>
+        <a href="https://github.com" target="_blank">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===== Hero ===== -->
+  <section class="hero">
+    <div class="hero-badge">🚀 v0.2 · 开发中</div>
+    <h1>AI 协作 · 尽在终端</h1>
+    <p>
+      OCT 是一款桌面 AI 协作助手，融合记忆系统、智能代理与实时交互，
+      让开发、写作、研究都在一个终端里完成。
+    </p>
+    <div class="hero-actions">
+      <span class="btn btn-primary">📖 文档</span>
+      <span class="btn btn-outline">🐙 GitHub</span>
+    </div>
+  </section>
+
+  <!-- ===== Features ===== -->
+  <section id="features">
+    <div class="section-label">核心能力</div>
+    <h2 class="section-title">不止是对话</h2>
+    <p class="section-desc">
+      OCT 把 AI 对话、记忆管理、任务调度、工具调用整合到一个桌面环境中。
+    </p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon" style="background:#edf2ff;">🧠</div>
+        <h3>持久记忆</h3>
+        <p>Nocturne 记忆引擎让 AI 记住你的偏好、项目和上下文，跨会话持续进化。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:#fff3e0;">⚡</div>
+        <h3>智能代理</h3>
+        <p>内置自适应澄清、任务看板、联网搜索、图片生成，一个指令多步执行。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:#e8f8f5;">🔌</div>
+        <h3>工具链集成</h3>
+        <p>无缝对接 Git、API、邮箱、文件系统，打通你的工作流。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:#f3e8ff;">🎨</div>
+        <h3>沉浸界面</h3>
+        <p>基于 Electron + React 构建，暗色主题、Canvas 视图、流畅交互。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:#fce4ec;">🛡️</div>
+        <h3>隐私优先</h3>
+        <p>加密保险箱存储凭证，本地记忆优先，数据由你掌控。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:#e0f7fa;">🌐</div>
+        <h3>多模型支持</h3>
+        <p>兼容主流大语言模型，自由切换底层引擎。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Tech Stack ===== -->
+  <section id="tech">
+    <div class="section-label">技术栈</div>
+    <h2 class="section-title">我们用什么造</h2>
+    <p class="section-desc">
+      现代桌面技术 + 前沿 AI 架构，构建可靠的协作终端。
+    </p>
+    <div class="tech-grid">
+      <span class="tech-tag">Electron</span>
+      <span class="tech-tag">React + Vite</span>
+      <span class="tech-tag">TypeScript</span>
+      <span class="tech-tag">Node.js</span>
+      <span class="tech-tag">Python</span>
+      <span class="tech-tag">Docker</span>
+      <span class="tech-tag">LLM API</span>
+      <span class="tech-tag">WebSocket</span>
+      <span class="tech-tag">Redis</span>
+      <span class="tech-tag">SQLite</span>
+    </div>
+  </section>
+
+  <!-- ===== Footer ===== -->
+  <footer>
+    <p>© 2026 <a href="https://getoct.top" target="_blank">OCT</a> · OpenClaw Terminal · Built with ❤️</p>
+  </footer>
+
+</body>
+</html>
