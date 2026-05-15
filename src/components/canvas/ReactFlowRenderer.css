@@ -110,6 +110,38 @@
   position: relative;
 }
 
+.oct-rf-node--stadium {
+  border-radius: 999px;
+}
+
+.oct-rf-node--diamond {
+  width: 96px;
+  min-width: 96px;
+  height: 96px;
+  min-height: 96px;
+  padding: 0;
+  transform: rotate(45deg);
+}
+
+.oct-rf-node--diamond:hover,
+.oct-rf-node--diamond.oct-rf-node--selected {
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.oct-rf-node--diamond .oct-rf-node-label,
+.oct-rf-node--diamond .oct-rf-node-inspect-hint {
+  transform: rotate(-45deg);
+}
+
+.oct-rf-node--circle {
+  width: 82px;
+  min-width: 82px;
+  height: 82px;
+  min-height: 82px;
+  padding: 0;
+  border-radius: 999px;
+}
+
 .oct-rf-node:hover {
   box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 30%, transparent);
   transform: translateY(-1px);
@@ -123,6 +155,10 @@
     0 0 12px 2px color-mix(in srgb, var(--accent-primary, #5b8af5) 40%, transparent);
   transform: translateY(-1px);
   z-index: 10;
+}
+
+.oct-rf-node--diamond.oct-rf-node--selected {
+  transform: rotate(45deg) translateY(-1px);
 }
 
 /* 💬 badge shown on selected node */

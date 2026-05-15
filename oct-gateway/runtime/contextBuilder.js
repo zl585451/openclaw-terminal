@@ -359,12 +359,14 @@ class ContextBuilder {
     if (artifactType === 'react-flow') {
       const isComplex = msg.length > 40 || /完整|详细|全部|所有|包括/.test(msg);
       const baseRules = '【结构图输出规则】\n'
-        + '① 方向一律用 "TB"（从上到下），禁止用 LR。\n'
-        + '② 每个节点必须有 group 字段，同类节点放同一 group。\n'
-        + '③ 有判断/条件时，节点加 "shape":"diamond"，并为每条出边加 label（如"是"/"否"）。\n'
-        + '④ edges 必须用 "source"/"target"（不是 from/to），ID 与 nodes 里的 id 完全一致。\n'
-        + '⑤ 使用 canvas 工具创建 react-flow 类型成果物，content 填入 JSON 字符串。\n'
-        + 'JSON 格式：{"title":"...","direction":"TB","nodes":[{"id":"a","label":"...","group":"分组","shape":"rect"}],"edges":[{"source":"a","target":"b","label":"可选"}]}';
+        + '① 默认用 "LR"（从左到右）：主链路横向展开，阶段能力用子节点下挂；只有组织树/纯层级图才用 "TB"。\n'
+        + '② 每个节点必须有 group 字段，同类节点放同一 group；group 推荐用「输入层/解析层/AI处理层/人工层/输出层/异常回退」。\n'
+        + '③ 主链路控制在 5-7 个节点，节点标签建议 ≤12 个汉字；细节放到每阶段下挂节点，不要排成一根竖线。\n'
+        + '④ shape 按语义填写：输入/输出用 "stadium"，判断/条件用 "diamond"，普通处理用 "rect"。\n'
+        + '⑤ 有判断/回退时为出边加 label（如"失败"/"不满意"/"通过"），回退边 style 用 "dashed"。\n'
+        + '⑥ edges 必须用 "source"/"target"（不是 from/to），ID 与 nodes 里的 id 完全一致。\n'
+        + '⑦ 使用 canvas 工具创建 react-flow 类型成果物，content 填入 JSON 字符串。\n'
+        + 'JSON 格式：{"title":"...","direction":"LR","nodes":[{"id":"a","label":"...","group":"分组","shape":"rect"}],"edges":[{"source":"a","target":"b","label":"可选","style":"solid"}]}';
       return isComplex
         ? `\n\n[系统] 执行【结构图输出协议】。复杂场景：10-12 节点、3-5 group。同组同类 >3 必须合并。先一句话说明，再输出结构图。\n${baseRules}`
         : `\n\n[系统] 执行【结构图输出协议】。简单场景：6-8 节点、2-3 group。先一句话说明，再输出结构图。\n${baseRules}`;

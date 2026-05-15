@@ -423,10 +423,10 @@ interface OCTNodeData extends Record<string, unknown> {
 }
 
 function OCTNode({ data }: NodeProps<Node<OCTNodeData>>) {
-  const { label, colorScheme, selected, sourcePosition, targetPosition } = data;
+  const { label, colorScheme, selected, shape, sourcePosition, targetPosition } = data;
   return (
     <div
-      className={`oct-rf-node${selected ? ' oct-rf-node--selected' : ''}`}
+      className={`oct-rf-node oct-rf-node--${shape ?? 'rect'}${selected ? ' oct-rf-node--selected' : ''}`}
       style={{
         background: colorScheme.bg,
         borderColor: colorScheme.border,
@@ -557,10 +557,10 @@ function normalizeGraphData(value: unknown): RFGraphData | null {
     })
     .filter((edge): edge is RFEdgeDef => Boolean(edge));
 
-  const directionRaw = String(obj.direction ?? 'TB').toUpperCase();
+  const directionRaw = String(obj.direction ?? 'LR').toUpperCase();
   const direction = directionRaw === 'LR' || directionRaw === 'RL' || directionRaw === 'BT' || directionRaw === 'TB'
     ? directionRaw
-    : 'TB';
+    : 'LR';
   const title = typeof obj.title === 'string' ? obj.title.trim() : undefined;
 
   return {
