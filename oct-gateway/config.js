@@ -963,14 +963,16 @@ function getProviderConfig() {
 }
 
 const defaultMemoryConfig = {
+  backend: process.env.OCT_MEMORY_BACKEND || 'file',
+  root: process.env.OCT_MEMORY_ROOT || path.join(os.homedir(), '.openclaw', 'memory'),
   auto_save_history: true,
-  auto_save_feedback: true,
+  auto_save_feedback: false,
   enable_memory_search: true,
   search_cache_ttl: 300,
   search_default_limit: 10,
   max_history_days: 7,
   max_feedback_days: 7,
-  load_feedback_on_boot: true,
+  load_feedback_on_boot: false,
   compress_length: { user: 100, amy: 200 },
 };
 
@@ -1033,6 +1035,9 @@ const defaultVectorRecallConfig = {
   },
   write: {
     async: true,
+    mode: process.env.VECTOR_RECALL_WRITE_MODE || 'selective',
+    minUserChars: parseInt(process.env.VECTOR_RECALL_WRITE_MIN_USER_CHARS || '12', 10),
+    assistantPreviewChars: parseInt(process.env.VECTOR_RECALL_WRITE_ASSISTANT_PREVIEW_CHARS || '360', 10),
     maxRetries: 3,
     retryBackoffMs: [5000, 30000, 120000],
   },
@@ -1130,9 +1135,6 @@ const config = {
   // 搜索引擎 API Key（优先从 config.json 读取，与主进程保存一致）
   BRAVE_SEARCH_API_KEY: _fileConfig.BRAVE_SEARCH_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '',
   TAVILY_API_KEY: _fileConfig.TAVILY_API_KEY || process.env.TAVILY_API_KEY || '',
-
-  NOCTURNE_BASE_URL: process.env.NOCTURNE_BASE_URL || _fileConfig.NOCTURNE_BASE_URL || 'http://127.0.0.1:8000',
-
   AI_LIBRARY_URL: process.env.AI_LIBRARY_URL || _fileConfig.AI_LIBRARY_URL || 'http://127.0.0.1:8001',
 
   PROMPTS_DIR: process.env.OCT_PROMPTS_DIR || _fileConfig.OCT_PROMPTS_DIR ||
@@ -1146,15 +1148,6 @@ const config = {
   availableModels: loadAvailableModels(),
 
   memory: memoryConfig,
-  nocturne: (() => {
-    const def = {
-      heartbeat_interval_seconds: 300,
-      read_retry: { count: 3, interval_ms: 500 },
-      write_retry: { count: 3, interval_ms: 500 },
-    };
-    const fromFile = _fileConfig.nocturne && typeof _fileConfig.nocturne === 'object' ? _fileConfig.nocturne : {};
-    return { ...def, ...fromFile };
-  })(),
   stream_merge: (() => {
     const def = { min_chars: 1, max_chars: 2, idle_ms: 16 };
     const fromFile = _fileConfig.stream_merge && typeof _fileConfig.stream_merge === 'object' ? _fileConfig.stream_merge : {};

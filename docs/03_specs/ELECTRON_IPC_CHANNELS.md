@@ -81,35 +81,7 @@
 
 ---
 
-## 七、Nocturne 记忆
-
-| IPC 通道 | 用途 | 参数 | 返回值 |
-|----------|------|------|--------|
-| `get-nocturne-status` | Nocturne 状态 | - | `{ backendAlive, frontendAlive, domains, coreMemoryUris, coreMemoryStatus, coreMemoryReadyCount, coreMemoryMissingCount, dbPath, envPath, diagnosticLogPath, stderrLogPath }` |
-| `open-nocturne-management` | 打开管理页 | - | - |
-| `restart-nocturne-backend` | 重启 Nocturne | - | - |
-| `nocturne-read` | 读记忆 | `{ uri }` | 记忆内容 |
-| `nocturne-create` | 创建记忆 | `{ uri, content }` | - |
-| `nocturne-update` | 更新记忆 | `{ uri, content }` | - |
-| `nocturne-delete` | 删除记忆 | `{ uri }` | - |
-| `nocturne-alias` | 别名 | `{ uri, alias }` | - |
-| `nocturne-search` | 搜索记忆 | `{ query, domain? }` | 搜索结果 |
-| `nocturne-health` | 健康检查 | - | - |
-| `nocturne-batch-import` | 批量导入 | `{ items }` | - |
-| `nocturne-get-tasks` | 获取任务 | - | 任务列表 |
-| `nocturne-update-task` | 更新任务 | `{ taskId, done }` | - |
-| `nocturne-add-task` | 添加任务 | `{ content, priority?, source? }` | - |
-| `nocturne-clear-completed-tasks` | 清除已完成 | - | - |
-| `nocturne-set-intention` | 设置意图 | `{ intention }` | - |
-| `seed-nocturne-memories` | 初始化/补齐核心记忆 | - | `{ success, output?, error? }` |
-| `setup-nocturne-memory` | 初始化记忆 | - | - |
-| `start-nocturne-dashboard` | 启动 Nocturne Dashboard | - | - |
-| `stop-nocturne-dashboard` | 停止 Dashboard | - | - |
-| `nocturne-dashboard-status` | Dashboard 状态 | - | - |
-
----
-
-## 八、任务系统（本地 JSON）
+## 七、任务系统（本地 JSON）
 
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
@@ -122,11 +94,9 @@
 | `tasks-set-intention` | 设置意图 | `{ intention }` | - |
 | `tasks-parking-add` | 添加到停车场 | `{ content }` | - |
 | `tasks-parking-remove` | 从停车场移除 | `{ itemId }` | - |
-| `tasks-migrate-from-nocturne` | 从 Nocturne 迁移 | - | - |
-
 ---
 
-## 九、AI.library 项目书库
+## 八、AI.library 项目书库
 
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
@@ -144,7 +114,7 @@ AI.library 当前是 OCT 内置项目书库核心，默认使用 Electron/Node �
 
 ---
 
-## 十、脚本 / Persona / MCP / 音乐
+## 九、脚本 / Persona / MCP / 音乐
 
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
@@ -159,7 +129,7 @@ AI.library 当前是 OCT 内置项目书库核心，默认使用 Electron/Node �
 
 ---
 
-## 十一、本地视觉兼容占位通道
+## 十、本地视觉兼容占位通道
 
 | IPC 通道 | 用途 | 参数 | 返回值 |
 |----------|------|------|--------|
@@ -203,7 +173,6 @@ AI.library 当前是 OCT 内置项目书库核心，默认使用 Electron/Node �
 | `openclaw-message` | Gateway 流式回复、事件 |
 | `image-result` | 独立生图结果回推 |
 | `openclaw-log-lines` | 连接日志 |
-| `nocturne-status` | Nocturne 状态更新 |
 
 ---
 

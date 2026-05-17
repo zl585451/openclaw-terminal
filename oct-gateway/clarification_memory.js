@@ -3,7 +3,7 @@
  *
  * 功能：
  * 1. 检测用户是否在回答追问（通过 pill 选项点击）
- * 2. 提炼偏好并写入 Nocturne
+ * 2. 提炼偏好并写入 Memory v2
  * 3. 启动时加载偏好，注入 system prompt
  *
  * 位置：oct-gateway/clarification_memory.js
@@ -13,7 +13,6 @@
  */
 
 const memory = require('./memory');
-const memoryHistory = require('./memory_history');
 const memoryGovernor = require('./memory_governor');
 const { createLogger } = require('./logger');
 const log = createLogger('clarification');
@@ -141,12 +140,7 @@ function classifyPreference(topic, choice) {
 }
 
 /**
- * 保存追问偏好到 Nocturne
- * 
- * 标准三层 fallback 写入：
- * 1. ensurePathExists + createMemory
- * 2. writeMemory
- * 3. 最外层静默兜底
+ * 保存追问偏好到 Memory v2
  *
  * @param {string} topic - 追问的主题
  * @param {string} choice - 用户的选择
@@ -219,40 +213,19 @@ async function saveClarificationPreference(topic, choice) {
       reason: routed.reason,
     });
 
-    const targetUri = routed.uri;
-    const contentStr = routed.content;
-    const targetDisclosure = routed.disclosure ?? disclosure;
-    const targetPriority = routed.priority ?? 2;
-    const targetParts = targetUri.match(/^([^:]+):\/\/(.+)$/);
-    const targetDomain = targetParts ? targetParts[1] : 'core';
-    const targetPath = targetParts ? targetParts[2] : `my_user/preferences/${pref.path}`;
-
-    // ── 第一层：ensurePathExists + createMemory ──
-    try {
-      await memoryHistory.ensurePathExists(targetDomain, targetPath);
-      const result = await memory.createMemory(targetUri, contentStr, targetPriority, targetDisclosure, { treat422AsDebug: true });
-      if (result.ok) {
-        log.info('saved', { path: pref.path, choice, layer: routed.layer, decision: routed.decision, uri: targetUri });
-        return;
-      }
-      throw new Error(result?.error || 'createMemory failed');
-    } catch (e1) {
-      log.warn('layer1 failed, trying writeMemory', { path: pref.path, error: e1?.message || String(e1) });
+    const result = await memory.writeMemory(
+      routed.uri,
+      routed.content,
+      routed.priority ?? 2,
+      routed.disclosure ?? disclosure
+    );
+    if (result.ok) {
+      log.info('saved', { path: pref.path, choice, layer: routed.layer, decision: routed.decision, uri: routed.uri });
+      return;
     }
-
-    // ── 第二层：fallback 到 writeMemory ──
-    try {
-      const result = await memory.writeMemory(targetUri, contentStr, targetPriority, targetDisclosure);
-      if (result.ok) {
-        log.info('saved', { path: pref.path, choice, layer: routed.layer, decision: routed.decision, uri: targetUri });
-        return;
-      }
-      throw new Error(result?.error || 'writeMemory failed');
-    } catch (e2) {
-      log.warn('layer2 failed', { path: pref.path, error: e2?.message || String(e2) });
-    }
+    log.warn('preference write failed', { path: pref.path, error: result?.error || 'writeMemory failed' });
   } catch (error) {
-    log.warn('all layers failed', { path: pref?.path, error: error?.message || String(error) });
+    log.warn('save clarification preference failed', { path: pref?.path, error: error?.message || String(error) });
   }
 }
 
@@ -268,38 +241,17 @@ async function loadPreferencesForBoot() {
     const alive = await memory.isAlive();
     if (!alive) return '';
 
-    const NOCTURNE_BASE = require('./config').NOCTURNE_BASE_URL || 'http://127.0.0.1:8000';
-
-    // 读取 preferences 目录下所有子节点
-    const r = await fetch(
-      `${NOCTURNE_BASE}/browse/node?path=my_user/preferences&domain=core`,
-      { signal: AbortSignal.timeout(2000) }
-    );
-    if (!r.ok) return '';
-
-    const data = await r.json();
-    const children = data?.node?.children || data?.children || [];
-    if (children.length === 0) return '';
-
     const lines = [];
-    for (const child of children) {
-      const childPath = child.path || '';
-      if (!childPath) continue;
-
+    for (const pattern of PREFERENCE_PATTERNS) {
       try {
-        const cr = await fetch(
-          `${NOCTURNE_BASE}/browse/node?path=${encodeURIComponent(childPath)}&domain=core`,
-          { signal: AbortSignal.timeout(2000) }
-        );
-        if (!cr.ok) continue;
-
-        const cd = await cr.json();
-        const raw = cd?.node?.content || cd?.content || '';
+        const result = await memory.readMemory(`core://my_user/preferences/${pattern.path}`, { treat404AsDebug: true });
+        if (!result.ok || !result.data) continue;
+        const raw = result.data?.node?.content || result.data?.content || '';
         const parsed = JSON.parse(raw);
 
         if (parsed.latest) {
           lines.push(
-            `- ${parsed.label || childPath}：倾向「${parsed.latest.choice}」（共 ${parsed.count || 1} 次选择）`
+            `- ${parsed.label || pattern.label}：倾向「${parsed.latest.choice}」（共 ${parsed.count || 1} 次选择）`
           );
         }
       } catch {}

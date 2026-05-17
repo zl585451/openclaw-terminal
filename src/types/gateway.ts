@@ -92,7 +92,3 @@ export interface GatewaySendResult {
   error?: string;
 }
 
-export interface NocturneHealthResult {
-  ok?: boolean;
-  error?: string;
-}

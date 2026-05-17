@@ -21,7 +21,7 @@ const FEEDBACK_NEGATIVE = 'agent/feedback/negative';
 const CORRECTIONS = 'agent/corrections';
 
 const POSITIVE_TRIGGERS = [
-  '好', '好了', '对的', '就这样', '完美', '牛逼',
+  '好了', '对的', '就这样', '完美', '牛逼',
   '谢谢你', '太棒了', '满意',
 ];
 const NEGATIVE_TRIGGERS = [
@@ -38,10 +38,14 @@ const CORRECTION_PATTERNS = [
 function detectFeedbackType(userMsg) {
   const s = (userMsg || '').trim();
   if (!s) return null;
+  if (/^好[像象]/.test(s)) return null;
   for (const t of POSITIVE_TRIGGERS) {
     if (s === t || s.startsWith(t + ' ') || s.endsWith(' ' + t) || s.includes(t)) {
       return { type: 'positive', reason: t };
     }
+  }
+  if (/^(好|行|可以|ok|OK)[。.!！\s]*$/.test(s)) {
+    return { type: 'positive', reason: 'short_ack' };
   }
   for (const t of NEGATIVE_TRIGGERS) {
     if (s === t || s.startsWith(t + ' ') || s.endsWith(' ' + t) || s.includes(t)) {

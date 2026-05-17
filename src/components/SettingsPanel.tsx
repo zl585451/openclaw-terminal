@@ -13,7 +13,6 @@ import { MemoryTabView } from '../ui/settings/tabs/MemoryTabView';
 import { McpTabView, type McpServerInfo } from '../ui/settings/tabs/McpTabView';
 import { useAiLibrary } from '../hooks/settings/useAiLibrary';
 import { useApiKeys } from '../hooks/settings/useApiKeys';
-import { useNocturneMemory } from '../hooks/settings/useNocturneMemory';
 import { useScreenshotShortcut } from '../hooks/settings/useScreenshotShortcut';
 import { useAdvancedSettings } from '../hooks/settings/useAdvancedSettings';
 import type { ApiResult, IpcRendererLike } from '../types/electronAPI';
@@ -58,29 +57,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     hasGatewayConfigChanges,
     saveGatewayAndReconnect,
   } = useApiKeys();
-
-  const {
-    nocturneStatus,
-    nocturneDetail,
-    setNocturneDetail,
-    nocturneDashboardStatus,
-    setNocturneDashboardStatus,
-    nocturneStarting,
-    setNocturneStarting,
-    nocturneSetupStatus,
-    setNocturneSetupStatus,
-    nocturneSetupError,
-    setNocturneSetupError,
-    restartingBackend,
-    setRestartingBackend,
-    memoryReadContent,
-    setMemoryReadContent,
-    memoryReadLoading,
-    setMemoryReadLoading,
-    amyWorkModeWriting,
-    setAmyWorkModeWriting,
-    refreshNocturneDetail,
-  } = useNocturneMemory();
 
   const {
     aiLibAutoStart,
@@ -154,17 +130,15 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     if (activeTab === 'mcp') loadMcpStatus();
   }, [activeTab]);
 
-  // 记忆系统 Tab：每 5 秒刷新 Nocturne 详情与 AI.library 状态
+  // 记忆系统 Tab：每 5 秒刷新 AI.library 状态
   useEffect(() => {
     if (activeTab !== 'memory') return;
-    refreshNocturneDetail();
     refreshAiLibraryStatus();
     const t = setInterval(() => {
-      refreshNocturneDetail();
       refreshAiLibraryStatus();
     }, 5000);
     return () => clearInterval(t);
-  }, [activeTab, refreshNocturneDetail, refreshAiLibraryStatus]);
+  }, [activeTab, refreshAiLibraryStatus]);
 
   useEffect(() => {
     setLocalPerm(permissions);
@@ -441,25 +415,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           {activeTab === 'memory' && (
             <MemoryTabView
-              nocturneStatus={nocturneStatus}
-              nocturneDetail={nocturneDetail}
-              setNocturneDetail={setNocturneDetail}
-              nocturneDashboardStatus={nocturneDashboardStatus}
-              setNocturneDashboardStatus={setNocturneDashboardStatus}
-              nocturneStarting={nocturneStarting}
-              setNocturneStarting={setNocturneStarting}
-              nocturneSetupStatus={nocturneSetupStatus}
-              setNocturneSetupStatus={setNocturneSetupStatus}
-              nocturneSetupError={nocturneSetupError}
-              setNocturneSetupError={setNocturneSetupError}
-              restartingBackend={restartingBackend}
-              setRestartingBackend={setRestartingBackend}
-              memoryReadContent={memoryReadContent}
-              setMemoryReadContent={setMemoryReadContent}
-              memoryReadLoading={memoryReadLoading}
-              setMemoryReadLoading={setMemoryReadLoading}
-              amyWorkModeWriting={amyWorkModeWriting}
-              setAmyWorkModeWriting={setAmyWorkModeWriting}
               aiLibAutoStart={aiLibAutoStart}
               setAiLibAutoStart={setAiLibAutoStart}
               aiLibPort={aiLibPort}

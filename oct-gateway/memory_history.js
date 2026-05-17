@@ -1,6 +1,6 @@
 /**
- * 对话摘要自动写入 Nocturne：core://my_user/history/YYYY-MM-DD/HH-MM-SS
- * 受 config.memory.auto_save_history 控制，写入失败不阻塞对话。
+ * 历史摘要兼容层。当前产品主链已经改为 raw turn JSONL + 分层摘要；
+ * 本文件仅保留旧函数定义，供历史代码安全调用。
  */
 
 const config = require('./config');
@@ -46,44 +46,10 @@ function nowFragments() {
  * 规则：读成功跳过；404 则写入占位内容；其它错误抛出。
  * 不包含 fullPath 自身，仅其父级。
  * 
- * 注意：使用 writeMemory 而非 createMemory，因为 Nocturne 对空节点返回 404。
+ * 注意：当前默认后端为 Memory v2，本函数大多只在兼容路径下被调用。
  */
 async function ensurePathExists(domain, fullPath) {
-  const parts = fullPath.split('/').filter(Boolean);
-  if (parts.length <= 1) return;
-
-  for (let i = 1; i < parts.length; i++) {
-    const path = parts.slice(0, i).join('/');
-    const uri = `${domain}://${path}`;
-
-    // 先检查是否已存在
-    const rr = await memory.readMemory(uri, { treat404AsDebug: true });
-    if (rr.ok) {
-      log.debug('ensurePathExists: path exists', { uri });
-      continue;
-    }
-
-    const status = extractHttpStatusFromError(rr.error);
-    if (status !== 404) {
-      log.warn('ensurePathExists: read failed (non-404)', { uri, error: rr.error });
-      throw new Error(rr.error || 'read failed');
-    }
-
-    // 404：路径不存在，用 writeMemory 创建并写入占位内容
-    const placeholderContent = JSON.stringify({ type: 'directory', label: parts[i - 1] });
-    const wr = await memory.writeMemory(uri, placeholderContent, 2, '', { ensureParent: true });
-    if (wr.ok) {
-      log.info('ensurePathExists: created', { uri });
-    } else {
-      const wStatus = extractHttpStatusFromError(wr.error);
-      if (wStatus === 422) {
-        log.debug('ensurePathExists: path already exists (422)', { uri });
-      } else {
-        log.error('ensurePathExists: write failed', { uri, error: wr.error });
-        throw new Error(wr.error || 'write failed');
-      }
-    }
-  }
+  return;
 }
 
 /**
@@ -169,35 +135,11 @@ async function saveHistorySummary(userMsg, amyReply, type) {
 }
 
 /**
- * 启动时清理超过 max_history_days 的历史（需 Nocturne 支持按 path 删除或列出子节点）
- * 当前为占位：若后端无 delete 接口则仅打日志。
+ * 启动时清理超过 max_history_days 的历史。
+ * 当前 raw turn 按日期 JSONL 分片存储，这里不再负责清理。
  */
 async function cleanupOldHistory() {
-  if (!config.memory || config.memory.auto_save_history !== true) return;
-  const maxDays = (config.memory.max_history_days || 7) | 0;
-  if (maxDays <= 0) return;
-
-  const alive = await memory.isAlive();
-  if (!alive) return;
-
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - maxDays);
-  const cutoffStr = cutoff.toISOString().slice(0, 10); // YYYY-MM-DD
-
-  try {
-    const r = await memory.readMemory(`core://${HISTORY_BASE}`, { treat404AsDebug: true });
-    if (!r.ok || !r.data) return;
-    const children = r.data?.node?.children || r.data?.children || [];
-    for (const ch of children) {
-      const name = (ch.path || ch.name || '').split('/').pop() || '';
-      if (name < cutoffStr) {
-        // 可选：调用 delete 接口删除 core://my_user/history/YYYY-MM-DD
-        log.debug('history cleanup candidate', { date: name, note: 'needs Nocturne delete api' });
-      }
-    }
-  } catch (e) {
-    // 忽略
-  }
+  return;
 }
 
 module.exports = { saveHistorySummary, cleanupOldHistory, ensurePathExists, inferType, nowFragments };

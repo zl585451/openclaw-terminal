@@ -39,7 +39,7 @@ graph TD
 | blockRouter | `src/core/blockRouter.ts` | 将增量/全文切成 code/text 等块，供 Ingest / 渲染 | |
 | ScrollAnchor | `src/core/viewport/` | 消息列表锚点、用户上滑检测、reconcile | |
 | useMessages | `src/hooks/useMessages.ts` | 回合编排、网关事件分发、消息列表与工具/活动时间线、 sendMessage | ⚠️ |
-| useWebSocket | `src/hooks/useWebSocket.ts` | `openclaw-send` 与事件解析；连接/重试/Nocturne 状态 | |
+| useWebSocket | `src/hooks/useWebSocket.ts` | `openclaw-send` 与事件解析；连接/重试/Memory v2 状态 | |
 | useStreamPainting | `src/hooks/useStreamPainting.ts` | RAF 按预算向 DOM 写字，收尾 finalize 与滚动/音效 | |
 | ChatTab.v2 | `src/ui/chat/ChatTab.v2.tsx` | 主界面组合：输入、列表、侧栏、能力/引导等 | ⚠️ 禁止继续堆功能，宜拆分 |
 | oct-gateway | `oct-gateway/` | Node 网关：路由、会话、调用各 Provider、工具与可选内存服务 | |

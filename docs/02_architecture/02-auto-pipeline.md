@@ -8,13 +8,13 @@
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | 每轮对话压缩后写入 Nocturne |
-| 文件 | `oct-gateway/memory_history.js` → `saveHistorySummary()` |
-| 调用链 | onDone → saveHistorySummary(userMsg, fullReply) → memory.createMemory() |
-| 写到哪 | `core://my_user/history/YYYY-MM-DD/HH-MM-SS` |
-| 前置条件 | `config.memory.auto_save_history === true` + Nocturne 在线 |
-| 验证 | 终端看到 `[Memory] 对话摘要已写入:` |
-| 状态 | ✅ 正常（有日志） |
+| 做什么 | 每轮对话结束后写入本地 raw turn JSONL |
+| 文件 | `oct-gateway/memory_raw_log.js` → `saveRawTurn()` |
+| 调用链 | onDone → `PostProcessor.process()` → `saveRawTurn()` |
+| 写到哪 | `~/.openclaw/memory/turns/YYYY-MM-DD.jsonl` |
+| 前置条件 | `config.memory.auto_save_history === true` |
+| 验证 | 终端看到 `[RawLog] 原始对话已写入` |
+| 状态 | ✅ 正常 |
 
 ---
 
@@ -38,8 +38,8 @@
 |------|------|
 | 做什么 | 每积累约 20 条评估，用 AI 提炼改进规则，写入 SOUL.md |
 | 文件 | `oct-gateway/self_eval.js` → `maybeDistill()` + `distillPatterns()` + `updateLearnedRulesInSoul()` |
-| 调用链 | evaluateReply 完成后 → maybeDistill() 检查计数 → distillPatterns() AI 提炼 → writeMemory() 存 Nocturne + SOUL.md 写入 `## 🤖 自动学习规则` 段落 |
-| 写到哪 | Nocturne `core://agent/learned_patterns/YYYY-MM-DD` + 本地 `SOUL.md` |
+| 调用链 | 该链路已停用；当前不再自动蒸馏长期规则到记忆层 |
+| 写到哪 | 无 |
 | 验证 | 终端看到 `[SelfEval] 触发模式提炼` 和 `[SelfEval] SOUL.md 已更新学习规则` |
 | 状态 | 🔇 已停用（2026-03-20，依赖自评） |
 
@@ -49,12 +49,12 @@
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | 检测「好/不对/应该是/记住」等反馈词，自动记录到 Nocturne |
+| 做什么 | 检测明确反馈或纠正，按规则写入 Memory v2 |
 | 文件 | `oct-gateway/memory_feedback.js` → `detectAndSaveFeedback()` |
 | 调用链 | onDone → detectAndSaveFeedback(userMsg, fullReply) → detectFeedbackType() → memory.createMemory() |
 | 写到哪 | `core://agent/feedback/positive/...`、`core://agent/feedback/negative/...`、`core://agent/corrections/...` |
 | 启动加载 | `loadFeedbackForBoot()` 在 system prompt 生成时注入最近反馈 |
-| 前置条件 | `config.memory.auto_save_feedback === true` + Nocturne 在线 |
+| 前置条件 | `config.memory.auto_save_feedback === true` |
 | 验证 | 发「好的」后终端看到 `[Memory] 反馈已写入:` 或 `[Feedback]` 相关日志 |
 | 状态 | ✅ 正常（2026-03-20 修复：已在 onDone 调用） |
 

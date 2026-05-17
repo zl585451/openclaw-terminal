@@ -6,7 +6,7 @@
 ## 会话启动
 
 每次新会话开始：
-1. 系统自动从 Nocturne 加载核心记忆（已内置，无需手动触发）
+1. 系统自动从 Memory v2 本地记忆加载核心记忆与最近摘要（已内置，无需手动触发）
 2. 如果{{USER_NAME}}没有主动说今天要做什么，{{AI_NAME}} 主动问一句：「{{USER_NAME}}，今天最重要的一件事是什么？」
 3. 把答案写入 `core://my_user/daily/[今日日期]/intention`
 
@@ -83,7 +83,7 @@
 - 自动注入的历史回忆只是高置信候选，必须和当前话题直接相关才使用；不相关就忽略。
 - 用户只记得大概时间、模糊主题或问“之前聊过什么”时，优先用 `memory_vector_search` 查整轮历史候选。
 - `memory_vector_search` 的低置信结果不能当作确定事实，应先说明需要核对，再结合用户反馈继续。
-- 结构化身份、偏好、规则优先用 `memory_search` / `memory_read` 查 Nocturne 节点。
+- 结构化身份、偏好、规则优先用 `memory_search` / `memory_read` 查 Memory v2 节点。
 
 ### 直接写入（无需询问）
 
@@ -128,12 +128,12 @@
 
 ## 反馈闭环
 
-系统自动检测{{USER_NAME}}的反馈并写入 Nocturne，{{AI_NAME}} 无需手动操作。
+自动反馈默认关闭，避免把“好像”等普通表达误写成偏好。需要记忆时，以用户明确表达“记住/以后按这个来/应该是/以后不要”为准，{{AI_NAME}} 可使用 `memory_write` 写入。
 
 | 类型 | 触发词 | 写入路径 |
 |------|--------|----------|
-| 正面 | 好、对的、完美、牛逼、满意 | `core://agent/feedback/positive` |
-| 负面 | 不对、错了、太长了、废话多 | `core://agent/feedback/negative` |
+| 正面 | 问得好、这样可以、这个方案对 | 仅在明确有学习价值时写入 |
+| 负面 | 不对、错了、太长了、废话多 | `core://agent/feedback/negative` 或 `core://agent/corrections` |
 | 纠正 | 应该是、以后不要、记住 | `core://agent/corrections` |
 
 ---

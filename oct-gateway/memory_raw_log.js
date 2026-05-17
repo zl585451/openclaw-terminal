@@ -4,9 +4,9 @@
  * URI 结构：core://logs/raw/YYYY-MM-DD/<timestamp>-<seq>
  */
 const memory = require('./memory');
-const config = require('./config');
 const { createLogger } = require('./logger');
 const crypto = require('crypto');
+const memoryV2 = require('./memory_v2_store');
 
 const logger = createLogger('raw_log');
 
@@ -63,7 +63,7 @@ async function saveRawTurn({
 
   const alive = await memory.isAlive();
   if (!alive) {
-    logger.warn('[RawLog] Nocturne 不在线，跳过原始日志写入');
+    logger.warn('[RawLog] 记忆后端不在线，跳过原始日志写入');
     return;
   }
 
@@ -89,21 +89,14 @@ async function saveRawTurn({
 
   try {
     if (normalizedDedupeKey) {
-      const dedupeUri = `core://logs/raw_dedupe/${normalizedDedupeKey}`;
-      const exists = await memory.readMemory(dedupeUri, { treat404AsDebug: true });
-      if (exists.ok) {
+      if (memoryV2.dedupeExists(normalizedDedupeKey)) {
         savedDedupeKeys.add(normalizedDedupeKey);
-        logger.debug('[RawLog] 跳过重复原始日志写入（持久去重命中）', { dedupeKey: normalizedDedupeKey });
+        logger.debug('[RawLog] 跳过重复原始日志写入（Memory v2 去重命中）', { dedupeKey: normalizedDedupeKey });
         return { skipped: true, reason: 'persistent_dedupe', dedupeKey: normalizedDedupeKey };
       }
     }
 
-    await memory.writeMemory(
-      uri,
-      JSON.stringify(payload),
-      2,
-      '原始对话日志'
-    );
+    memoryV2.appendRawTurn(payload, uri);
     logger.info('[RawLog] 原始对话已写入', {
       uri,
       userLen: payload.meta.userLen,
@@ -112,25 +105,30 @@ async function saveRawTurn({
     if (normalizedDedupeKey) {
       savedDedupeKeys.add(normalizedDedupeKey);
       try {
-        await memory.writeMemory(
-          `core://logs/raw_dedupe/${normalizedDedupeKey}`,
-          JSON.stringify({ uri, ts: payload.ts, session: payload.session }),
-          3,
-          '原始对话去重索引'
-        );
+        memoryV2.markDedupe(normalizedDedupeKey, { uri, ts: payload.ts, session: payload.session });
       } catch (err) {
         logger.debug('[RawLog] 去重索引写入失败（不阻塞）', { error: err?.message || String(err) });
       }
     }
-    if (config.memory.vectorRecall.enabled) {
+    if (require('./config').memory.vectorRecall.enabled) {
       try {
-        const { enqueueForEmbedding } = require('./memory_vector/writer');
+        const { enqueueForEmbedding, shouldIndexTurn } = require('./memory_vector/writer');
+        if (!shouldIndexTurn({
+          userText: userMessage || '',
+          assistantText: assistantReply || '',
+          tools: toolsUsed,
+          attachments,
+        })) {
+          logger.debug('[RawLog] 向量写入跳过（精选模式）', { uri });
+          return { skipped: false, uri, dedupeKey: normalizedDedupeKey, vectorSkipped: true };
+        }
         enqueueForEmbedding({
           uri,
           date: dateStr,
           session: sessionKey || 'default',
           userText: userMessage || '',
           assistantText: assistantReply || '',
+          tools: toolsUsed,
           sourceTs: payload.ts,
         });
       } catch (err) {

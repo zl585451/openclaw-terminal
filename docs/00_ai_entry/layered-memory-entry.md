@@ -1,14 +1,21 @@
 # AI 入口：分层记忆
 
-Gateway 启动时，`ai.js` 会先加载原有核心记忆、反馈和追问偏好，再追加最近日/周/月摘要。
+Gateway 启动时，`ai.js#loadSystemPrompt()` 先通过 `memory.js` 门面加载记忆。当前主链固定指向 Memory v2 本地文件后端。
 
 注入顺序：
 
-1. Nocturne 核心记忆
-2. 反馈记忆
-3. 追问偏好
-4. 三级摘要历史回忆
+1. Memory v2 核心 notes：`core://agent/identity`、`core://my_user/profile` 等。
+2. 追问偏好。
+3. 最近日/周/月摘要。
+4. 每轮运行时的相关记忆候选。
+5. 向量召回命中时的临时 system 注入。
 
-当用户询问摘要未覆盖的历史细节时，AMY 可调用 `memory_recall` 按日期和关键词查询 L3 原始日志。
+每轮对话结束后，`services/postProcessor.js` 会写入 L3 raw turn。默认写入 `~/.openclaw/memory/turns/YYYY-MM-DD.jsonl`，因此本地记忆不依赖额外后端进程。
 
-启用 P3 后，AMY 在用户自然提起相关话题时会收到一段临时的【相关历史回忆】system 注入。该注入只用于当前轮回答，AMY 应只在确实相关时自然提到历史，不应强行联想。
+当用户询问摘要未覆盖的历史细节时，AMY 可调用：
+
+- `memory_search`：查显式 notes 和 raw-turn 文本候选。
+- `memory_vector_search`：查语义向量候选。
+- `memory_recall`：按日期读取 L3 原始对话。
+
+自动注入仍然是临时 system 消息，只用于当前轮回答，不进入 session history。AMY 应只在相关时自然使用，不应因为有候选就强行联想。

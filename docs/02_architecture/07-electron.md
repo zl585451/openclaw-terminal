@@ -2,13 +2,13 @@
 
 ---
 
-## 7.1 Nocturne 后端管理
+## 7.1 Gateway 与本地记忆
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | 启动/监控/重启 Nocturne Python 后端 |
-| 文件 | `electron/main.ts` → `startNocturneBackend()` |
-| 状态 | ⚠️ 修复过一次（2026-03-16），需持续观察 |
+| 做什么 | 启动 Electron 主进程、拉起 Gateway、暴露本地记忆与设置 IPC |
+| 文件 | `electron/main.ts` |
+| 状态 | ✅ 当前主链不再依赖额外记忆进程 |
 
 ---
 
@@ -16,7 +16,7 @@
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | 本地 JSON 文件存储任务和停车场，支持从 Nocturne 迁移 |
+| 做什么 | 本地 JSON 文件存储任务和停车场 |
 | 文件 | `electron/main.ts` → tasks-read/tasks-write IPC |
 | 写到哪 | `userData/tasks.json` |
 | 状态 | ✅ 正常 |

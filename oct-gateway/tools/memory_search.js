@@ -9,7 +9,7 @@ module.exports = {
     type: 'function',
     function: {
       name: 'memory_search',
-      description: '按关键词搜索 Nocturne 记忆（支持模糊匹配，用户提到邮箱/项目/钱包等时可自动调用）',
+      description: '按关键词搜索 Memory v2/legacy 记忆（支持模糊匹配，用户提到邮箱/项目/钱包等时可自动调用）',
       parameters: {
         type: 'object',
         properties: {
@@ -45,7 +45,7 @@ module.exports = {
         success: false,
         data: null,
         error: r.error,
-        hint: '检查 Nocturne 是否在线，或换一个更具体的关键词',
+        hint: '检查记忆后端是否在线，或换一个更具体的关键词',
         query,
         domain,
       };

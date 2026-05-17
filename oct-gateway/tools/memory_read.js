@@ -9,7 +9,7 @@ module.exports = {
     type: 'function',
     function: {
       name: 'memory_read',
-      description: '读取 Nocturne 记忆节点，支持 core://xxx/yyy 或 system://boot',
+      description: '读取 Memory v2/legacy 记忆节点，支持 core://xxx/yyy 或 system://boot',
       parameters: {
         type: 'object',
         properties: {

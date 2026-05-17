@@ -12,6 +12,7 @@ const logger = createLogger('summary_scheduler');
 
 let schedulerTimer = null;
 let pendingRetryTimer = null;
+let catchupTimer = null;
 let lastRun = { daily: '', weekly: '', monthly: '' };
 
 function shouldRunDaily(now) {
@@ -68,6 +69,23 @@ async function tick(now = new Date()) {
   }
 }
 
+async function runStartupCatchup(now = new Date()) {
+  if (!config.memory.summarizer.enabled) return;
+  try {
+    const store = require('../memory_v2_store');
+    const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+    const hasTurns = store.readDayTurns(yesterday).length > 0;
+    const hasSummary = Boolean(store.readSummary('daily', yesterday));
+    if (hasTurns && !hasSummary) {
+      logger.info('[Scheduler] 启动补摘要', { date: yesterday });
+      await generateDailySummary(yesterday);
+    }
+    await retryPendingDailies();
+  } catch (err) {
+    logger.warn('[Scheduler] 启动补摘要失败（不阻塞）', { error: err?.message || String(err) });
+  }
+}
+
 function startScheduler() {
   if (!config.memory.summarizer.enabled) {
     logger.info('[Scheduler] 摘要系统已禁用，不启动调度');
@@ -77,6 +95,7 @@ function startScheduler() {
   logger.info('[Scheduler] 启动摘要调度器');
   schedulerTimer = setInterval(() => tick(), 60000);
   pendingRetryTimer = setTimeout(() => retryPendingDailies().catch(() => {}), 30000);
+  catchupTimer = setTimeout(() => runStartupCatchup().catch(() => {}), 10000);
 }
 
 function stopScheduler() {
@@ -88,6 +107,10 @@ function stopScheduler() {
     clearTimeout(pendingRetryTimer);
     pendingRetryTimer = null;
   }
+  if (catchupTimer) {
+    clearTimeout(catchupTimer);
+    catchupTimer = null;
+  }
 }
 
 module.exports = {
@@ -97,4 +120,5 @@ module.exports = {
   shouldRunDaily,
   shouldRunWeekly,
   shouldRunMonthly,
+  runStartupCatchup,
 };

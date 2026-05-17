@@ -1,21 +1,21 @@
-function scheduleNocturneHeartbeat({ config, memory, nocturneQueue, logger }) {
-  const heartbeatIntervalMs = (config.nocturne?.heartbeat_interval_seconds ?? 300) * 1000;
+function scheduleMemoryHeartbeat({ memoryTaskQueue, logger }) {
+  const heartbeatIntervalMs = Number(process.env.OCT_MEMORY_HEARTBEAT_INTERVAL_MS || 300000);
   setInterval(async () => {
     try {
-      const alive = await memory.isAlive();
+      const alive = await memoryTaskQueue.isMemoryHealthy();
       if (alive) {
-        nocturneQueue.invalidateHealthCache();
-        logger.info('Nocturne 心跳正常');
+        memoryTaskQueue.invalidateHealthCache();
+        logger.info('memory heartbeat ok');
       } else {
-        logger.warn('Nocturne 心跳检查：离线，记忆操作降级');
+        logger.warn('memory heartbeat offline, background writes will be skipped');
       }
     } catch (e) {
-      logger.warn('Nocturne 心跳检查失败', { error: e?.message || String(e) });
+      logger.warn('memory heartbeat failed', { error: e?.message || String(e) });
     }
   }, heartbeatIntervalMs);
 }
 
-function scheduleReviewQueueMaintenance({ nocturneQueue, reviewQueueMaintenance, logger }) {
+function scheduleReviewQueueMaintenance({ memoryTaskQueue, reviewQueueMaintenance, logger }) {
   const enabled = process.env.OCT_REVIEW_QUEUE_MAINTENANCE_ENABLED !== '0';
   const intervalMs = Number(process.env.OCT_REVIEW_QUEUE_MAINTENANCE_INTERVAL_MS || 6 * 60 * 60 * 1000);
   const startupDelayMs = Number(process.env.OCT_REVIEW_QUEUE_MAINTENANCE_STARTUP_DELAY_MS || 10 * 60 * 1000);
@@ -27,10 +27,10 @@ function scheduleReviewQueueMaintenance({ nocturneQueue, reviewQueueMaintenance,
   }
 
   const runMaintenance = () => {
-    nocturneQueue.enqueue(async () => {
-      const healthy = await nocturneQueue.isNocturneHealthy();
+    memoryTaskQueue.enqueue(async () => {
+      const healthy = await memoryTaskQueue.isMemoryHealthy();
       if (!healthy) {
-        logger.debug('Skip review queue maintenance: Nocturne offline');
+        logger.debug('skip review queue maintenance: memory offline');
         return;
       }
 
@@ -55,7 +55,7 @@ function scheduleReviewQueueMaintenance({ nocturneQueue, reviewQueueMaintenance,
   });
 }
 
-function scheduleMemoryGovernanceReport({ nocturneQueue, memoryManagementAgent, logger }) {
+function scheduleMemoryGovernanceReport({ memoryTaskQueue, memoryManagementAgent, logger }) {
   const enabled = process.env.OCT_MEMORY_GOVERNANCE_REPORT_ENABLED !== '0';
   const intervalMs = Number(process.env.OCT_MEMORY_GOVERNANCE_REPORT_INTERVAL_MS || 12 * 60 * 60 * 1000);
   const startupDelayMs = Number(process.env.OCT_MEMORY_GOVERNANCE_REPORT_STARTUP_DELAY_MS || 15 * 60 * 1000);
@@ -66,10 +66,10 @@ function scheduleMemoryGovernanceReport({ nocturneQueue, memoryManagementAgent, 
   }
 
   const runReport = () => {
-    nocturneQueue.enqueue(async () => {
-      const healthy = await nocturneQueue.isNocturneHealthy();
+    memoryTaskQueue.enqueue(async () => {
+      const healthy = await memoryTaskQueue.isMemoryHealthy();
       if (!healthy) {
-        logger.debug('Skip memory governance report: Nocturne offline');
+        logger.debug('skip memory governance report: memory offline');
         return;
       }
       await memoryManagementAgent.runMemoryGovernancePass();
@@ -111,7 +111,7 @@ function startMemoryMonitor({ logger }) {
 }
 
 module.exports = {
-  scheduleNocturneHeartbeat,
+  scheduleMemoryHeartbeat,
   scheduleReviewQueueMaintenance,
   scheduleMemoryGovernanceReport,
   startMemoryMonitor,

@@ -72,7 +72,7 @@ const imageAnalyzer = require('./image_analyzer');
 const ImageService = require('./services/imageService');
 const PostProcessor = require('./services/postProcessor');
 const {
-  scheduleNocturneHeartbeat,
+  scheduleMemoryHeartbeat,
   scheduleReviewQueueMaintenance,
   scheduleMemoryGovernanceReport,
   startMemoryMonitor,
@@ -98,7 +98,7 @@ const toolLoader = require('./tool_loader');
 // const selfEval = require('./self_eval');  // 自评估系统已停用 2026-03-22
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
-const nocturneQueue = require('./nocturne_task_queue');
+const memoryTaskQueue = require('./memory_task_queue');
 const aiLibrary = require('./tools/ai_library');
 const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
@@ -159,7 +159,7 @@ const postProcessor = new PostProcessor({
   memoryFeedback,
   memoryHistory,
   clarificationMemory,
-  nocturneQueue,
+  memoryTaskQueue,
   logger: log,
 });
 const slashHandler = new SlashHandler({
@@ -193,7 +193,6 @@ const contextBuilder = new ContextBuilder({
   session,
   memory,
   memorySearch,
-  nocturneQueue,
   memoryGovernor,
   contextManager,
   aiLibrary,
@@ -257,24 +256,24 @@ scheduleMemoryHealthCheck({
   logger: log,
 });
 
-scheduleNocturneHeartbeat({
-  config,
-  memory,
-  nocturneQueue,
+scheduleMemoryHeartbeat({
+  memoryTaskQueue,
   logger: log,
 });
 
 scheduleReviewQueueMaintenance({
-  nocturneQueue,
+  memoryTaskQueue,
   reviewQueueMaintenance,
   logger: log,
 });
 
 scheduleMemoryGovernanceReport({
-  nocturneQueue,
+  memoryTaskQueue,
   memoryManagementAgent,
   logger: log,
 });
+
+log.info('Memory v2 file backend enabled', { root: config.memory?.root });
 
 const handleTransportHttpRequest = createHttpRequestHandler({
   memory,

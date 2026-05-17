@@ -1,5 +1,5 @@
 /**
- * Backfill vector embeddings from L3 raw logs in Nocturne.
+ * Backfill vector embeddings from L3 raw logs in Memory v2.
  */
 const memory = require('../memory');
 const config = require('../config');

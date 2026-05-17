@@ -91,10 +91,10 @@
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | 启动时从 Nocturne 加载记忆 + 本地 MD 文件拼接成 system prompt |
+| 做什么 | 启动时从 Memory v2 加载记忆 + 本地 MD 文件拼接成 system prompt |
 | 文件 | `oct-gateway/ai.js` → `loadSystemPrompt()` |
-| 调用链 | Gateway 启动 → loadSystemPrompt(PROMPTS_DIR) → 尝试 Nocturne loadBootMemory → 失败则读本地 SOUL.md/AGENTS.md/USER.md/MEMORY.md |
-| 写到哪 | 同步写回 `MEMORY.md`（让文件和 Nocturne 保持一致） |
+| 调用链 | Gateway 启动 → loadSystemPrompt(PROMPTS_DIR) → Memory v2 loadBootMemory → 不足时再读本地 SOUL.md/AGENTS.md/USER.md/MEMORY.md |
+| 写到哪 | 同步写回 `MEMORY.md`（让文件和本地记忆保持一致） |
 | 验证 | 终端看到 `[AI] System prompt 加载完成，长度：XXXX` |
 | 状态 | ✅ 正常 |
 
@@ -125,18 +125,18 @@
 
 ---
 
-# 1.6 Nocturne 记忆后端
+# 1.6 Memory v2 记忆后端
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | Python FastAPI 服务，SQLite 存储，提供记忆的增删改查 |
-| 文件 | `oct-gateway/memory.js`（JS 客户端），`nocturne_memory/`（Python 后端） |
-| 调用链 | memory.js → HTTP 请求 → 127.0.0.1:8000 → SQLite |
-| 启动 | Electron main.ts spawn Python 进程 |
-| 健康检查 | `memory.isAlive()` → GET /health → 200 则在线 |
-| 已知问题 | 曾频繁掉线（2026-03-16 已修复 Electron 启动逻辑） |
-| 验证 | `/memory status` 或 `/status` 看 Nocturne 是否 ✅ |
-| 状态 | ⚠️ 偶尔掉线（是所有记忆功能的基础，掉了全失效） |
+| 做什么 | 本地文件后端，负责 notes / raw turns / summaries 的读写与搜索 |
+| 文件 | `oct-gateway/memory.js`（门面），`oct-gateway/memory_v2_store.js`（本地文件后端） |
+| 调用链 | memory.js → memory_v2_store.js → `~/.openclaw/memory/*` |
+| 启动 | Gateway 启动即就绪，无需额外后端进程 |
+| 健康检查 | `memory.isAlive()` 固定返回可用，异常主要来自本地文件 IO |
+| 已知问题 | 当前无额外服务依赖，重点关注 raw-turn 清理与向量回填质量 |
+| 验证 | `/memory status` 或 `/status` 看 Memory v2 是否 ✅ |
+| 状态 | ✅ 默认主链 |
 
 ---
 

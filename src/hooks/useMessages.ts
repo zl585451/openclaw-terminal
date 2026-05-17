@@ -110,7 +110,7 @@ export interface UseMessagesReturn {
   wsConnected: boolean;
   wsReconnecting: boolean;
   wsError: string | null;
-  nocturneOnline: boolean;
+  memoryOnline: boolean;
   fsmPhase: TurnPhase;
   isStreaming: boolean;
   awaitingResponse: boolean;
@@ -915,7 +915,7 @@ export function useMessages({
     wsConnected: ws.wsConnected,
     wsReconnecting: ws.wsReconnecting,
     wsError: ws.wsError,
-    nocturneOnline: ws.nocturneOnline,
+    memoryOnline: ws.memoryOnline,
     fsmPhase,
     isStreaming,
     awaitingResponse,

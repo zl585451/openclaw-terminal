@@ -47,7 +47,6 @@ class ContextBuilder {
     session,
     memory,
     memorySearch,
-    nocturneQueue,
     memoryGovernor,
     contextManager,
     aiLibrary,
@@ -60,7 +59,6 @@ class ContextBuilder {
     this.session = session;
     this.memory = memory;
     this.memorySearch = memorySearch;
-    this.nocturneQueue = nocturneQueue;
     this.memoryGovernor = memoryGovernor;
     this.contextManager = contextManager;
     this.aiLibrary = aiLibrary;
@@ -233,9 +231,9 @@ class ContextBuilder {
   async _buildContextMemory({ sessionKey, userMessage }) {
     let contextMemory = '';
     try {
-      const nocturneAlive = await this.nocturneQueue.isNocturneHealthy();
+      const memoryBackendAlive = await this.memory.isAlive();
 
-      if (!nocturneAlive) return '';
+      if (!memoryBackendAlive) return '';
       if (userMessage.length <= 1) return '';
 
       const recallIntent = this.helpers.hasRecallIntent(userMessage);
@@ -255,7 +253,7 @@ class ContextBuilder {
       ];
       const searchWords = [...new Set(entityWords)].slice(0, recallIntent ? 5 : 3);
 
-      const nocturneSearchResults = await Promise.all(
+      const memorySearchResults = await Promise.all(
         searchWords.map((word) =>
           this.memorySearch.searchMemory(word, {
             domain: 'core',
@@ -269,8 +267,8 @@ class ContextBuilder {
       const seenTexts = new Set();
       const seenUris = new Set();
 
-      // ── Nocturne 结果（身份 / 偏好等结构化数据）──────────────────────────────
-      for (const result of nocturneSearchResults) {
+      // ── 结构化记忆结果（身份 / 偏好 / 决策等）──────────────────────────────
+      for (const result of memorySearchResults) {
         if (!result.ok || !result.data) continue;
         for (const item of result.data) {
           if (seenUris.has(item.uri) || item.uri.includes('/history/')) continue;
@@ -289,38 +287,24 @@ class ContextBuilder {
         }
       }
 
-      // ── 3. 今日历史对话追加 ─────────────────────────────────────────────────
-      try {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const historyResult = await this.memory.readMemory(
-          `core://my_user/history/${todayStr}`,
-          { treat404AsDebug: true }
-        );
-        if (historyResult.ok && historyResult.data) {
-          const children = historyResult.data?.node?.children || historyResult.data?.children || [];
-          const recent = children.slice(-3);
-          for (const child of recent) {
-            const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
-            if (!childPath) continue;
-            const result = await this.memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
-            if (!result.ok) continue;
-            const content = result.data?.node?.content || result.data?.content || '';
-            if (!content) continue;
-            try {
-              const sanitized = this.helpers.sanitizeMemoryNodeContent(content);
-              const parsed = sanitized.data || JSON.parse(sanitized.content);
-              if (parsed.user && parsed.amy) {
-                memContents.push({
-                  uri: `core://${childPath}`,
-                  content: `[近期对话] 用户说：${parsed.user.slice(0, 50)} → AI：${parsed.amy.slice(0, 80)}`,
-                  priority: 1,
-                  match_score: 0.2,
-                });
-              }
-            } catch {}
+      // ── 近期原始对话追加 ───────────────────────────────────────────────────
+      if (recallIntent || searchWords.length > 0) {
+        try {
+          const memoryStore = require('../memory_v2_store');
+          const recentTurns = memoryStore.listRecentTurns(recallIntent ? 5 : 3);
+          for (const turn of recentTurns) {
+            const raw = `${turn.user || ''}\n${turn.assistant || ''}`;
+            const shouldUse = recallIntent || searchWords.some((word) => raw.toLowerCase().includes(String(word).toLowerCase()));
+            if (!shouldUse) continue;
+            memContents.push({
+              uri: turn.uri || `core://logs/raw/${String(turn.ts || '').slice(0, 10)}/turn-${turn._index || ''}`,
+              content: `[近期对话] 用户说：${String(turn.user || '').slice(0, 70)} -> AI：${String(turn.assistant || '').slice(0, 120)}`,
+              priority: 1,
+              match_score: recallIntent ? 0.35 : 0.2,
+            });
           }
-        }
-      } catch {}
+        } catch {}
+      }
 
       // ── 4. 注入 ─────────────────────────────────────────────────────────────
       if (shouldInjectContextMemory) {

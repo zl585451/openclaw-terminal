@@ -4,29 +4,27 @@
   "NEWAPI_BASE_URL": "http://127.0.0.1:3000/v1",
   "MINIMAX_TEMPERATURE": 0.7,
   "memory": {
+    "backend": "file",
+    "root": null,
     "auto_save_history": true,
-    "auto_save_feedback": true,
+    "auto_save_feedback": false,
     "enable_memory_search": true,
     "search_cache_ttl": 1800,
     "search_default_limit": 10,
     "max_history_days": 7,
     "max_feedback_days": 7,
-    "load_feedback_on_boot": true,
+    "load_feedback_on_boot": false,
+    "vectorRecall": {
+      "enabled": false,
+      "write": {
+        "mode": "selective",
+        "minUserChars": 12,
+        "assistantPreviewChars": 360
+      }
+    },
     "compress_length": {
       "user": 100,
       "amy": 200
-    }
-  },
-  "nocturne": {
-    "heartbeat_interval_seconds": 300,
-    "NOCTURNE_BUSY_TIMEOUT": 10000,
-    "read_retry": {
-      "count": 3,
-      "interval_ms": 500
-    },
-    "write_retry": {
-      "count": 3,
-      "interval_ms": 500
     }
   },
   "stream_merge": {

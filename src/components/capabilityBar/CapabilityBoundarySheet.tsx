@@ -32,7 +32,7 @@ export const CapabilityBoundarySheet: React.FC<Props> = ({ open, onClose }) => {
               <li>生图（需配置对应 Key）</li>
               <li>音乐生成（需配置对应 Key）</li>
               <li>联网搜索 / 读取你让我看的文件</li>
-              <li>记忆你告诉我的事（Nocturne 记忆系统）</li>
+              <li>记忆你告诉我的事（Memory v2 本地记忆）</li>
             </ul>
           </section>
           <section>

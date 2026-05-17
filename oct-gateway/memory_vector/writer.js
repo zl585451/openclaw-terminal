@@ -11,11 +11,38 @@ const logger = createLogger('vector_writer');
 const queue = [];
 let processing = false;
 
-function buildEmbeddingText({ userText, assistantText }) {
+const VECTOR_WRITE_SIGNALS = [
+  '记住', '记下来', '以后', '偏好', '决定', '结论', '方案', '架构', '重构',
+  '项目', 'OCT', 'OpenClaw', 'AMY', 'Hermes', '记忆', '总结',
+  '调研', '对比', '规则', '配置', 'bug', '修复', '实现', '文档',
+];
+
+function shouldIndexTurn({ userText, assistantText, tools = [], attachments = [] }) {
+  const writeConfig = config.memory?.vectorRecall?.write || {};
+  if (writeConfig.mode === 'all') return true;
+  if (writeConfig.mode === 'off') return false;
+
   const user = String(userText || '').trim();
-  const assistant = String(assistantText || '').trim().slice(0, 800);
+  const assistant = String(assistantText || '').trim();
+  const minUserChars = Number(writeConfig.minUserChars || 12);
+  if (user.length < minUserChars && assistant.length < 80) return false;
+  if (Array.isArray(tools) && tools.length > 0) return true;
+  if (Array.isArray(attachments) && attachments.length > 0) return true;
+  if (/[?？]$/.test(user) && user.length < 24 && assistant.length < 160) return false;
+
+  const haystack = `${user}\n${assistant}`.toLowerCase();
+  if (VECTOR_WRITE_SIGNALS.some((term) => haystack.includes(String(term).toLowerCase()))) return true;
+  if (user.length >= 80 || assistant.length >= 500) return true;
+  return false;
+}
+
+function buildEmbeddingText({ userText, assistantText, tools = [] }) {
+  const user = String(userText || '').trim();
+  const assistantLimit = Number(config.memory?.vectorRecall?.write?.assistantPreviewChars || 360);
+  const assistant = String(assistantText || '').trim().slice(0, assistantLimit);
   if (!user && !assistant) return '';
-  return `[用户] ${user}\n[AMY] ${assistant}`;
+  const toolLine = Array.isArray(tools) && tools.length ? `\n[工具] ${tools.join(', ')}` : '';
+  return `[用户] ${user}\n[AMY摘要] ${assistant}${toolLine}`;
 }
 
 function enqueueForEmbedding(rawTurn) {
@@ -27,11 +54,11 @@ function enqueueForEmbedding(rawTurn) {
   }
 }
 
-async function embedAndStore({ uri, date, session, userText, assistantText, sourceTs }) {
+async function embedAndStore({ uri, date, session, userText, assistantText, tools = [], sourceTs }) {
   if (!uri) return;
   if (db.hasVector(uri)) return;
 
-  const text = buildEmbeddingText({ userText, assistantText });
+  const text = buildEmbeddingText({ userText, assistantText, tools });
   if (text.length < 5) return;
 
   const vector = await embedOne(text);
@@ -69,4 +96,5 @@ module.exports = {
   processQueue,
   embedAndStore,
   buildEmbeddingText,
+  shouldIndexTurn,
 };

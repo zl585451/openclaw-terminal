@@ -16,7 +16,7 @@ const ipcRenderer =
 export interface ChatTabRightPanelProps {
   gateway: UseGatewayReturn;
   wsConnected: boolean;
-  nocturneOnline: boolean;
+  memoryOnline: boolean;
   modelName: string;
   tokenIn: number | null;
   ctxUsed: number | null;
@@ -75,7 +75,7 @@ function formatTokenK(value: number | null | undefined): string {
 const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   gateway,
   wsConnected,
-  nocturneOnline,
+  memoryOnline,
   modelName,
   tokenIn,
   ctxUsed,
@@ -161,8 +161,8 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                background: nocturneOnline ? 'var(--status-info)' : 'var(--status-error)',
-                animation: nocturneOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite',
+                background: memoryOnline ? 'var(--status-info)' : 'var(--status-error)',
+                animation: memoryOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite',
               }}
             />
             <span
@@ -366,7 +366,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
             lines={gateway.logLines}
             bodyRef={gateway.logContainerRef}
             emptyText="[LOG] 等待 Gateway 日志..."
-            nocturneOnline={nocturneOnline}
+            memoryOnline={memoryOnline}
             modelName={modelName}
             onExport={gateway.exportLogs}
             onClear={gateway.clearLogs}
@@ -380,7 +380,7 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
 const ChatTabRightPanel = React.memo(ChatTabRightPanelComponent, (prev, next) => {
   return (
     prev.wsConnected === next.wsConnected &&
-    prev.nocturneOnline === next.nocturneOnline &&
+    prev.memoryOnline === next.memoryOnline &&
     prev.modelName === next.modelName &&
     prev.tokenIn === next.tokenIn &&
     prev.ctxUsed === next.ctxUsed &&

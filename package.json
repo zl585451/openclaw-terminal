@@ -26,8 +26,7 @@
     "start": "npm run check:node && npm run build:electron && concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
     "start:fast": "npm run check:node && concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
     "electron:dev": "npm run check:node && npm run build:electron && concurrently \"npm run dev\" \"wait-on http://localhost:5176 && cross-env NODE_ENV=development electron .\"",
-    "build:nocturne": ".\\scripts\\build-nocturne-exe.bat",
-    "electron:build:win": "npm run build:nocturne && npm run rebuild:gateway:native && npm run build && electron-builder --win --x64",
+    "electron:build:win": "npm run rebuild:gateway:native && npm run build && electron-builder --win --x64",
     "electron:build:win:nolocal": "npm run rebuild:gateway:native && npm run build && electron-builder --win --x64",
     "electron:build:mac": "npm run rebuild:gateway:native && npm run build && electron-builder --mac --x64 --arm64",
     "electron:build:linux": "npm run rebuild:gateway:native && npm run build && electron-builder --linux --x64",
@@ -69,34 +68,6 @@
           "!**/$null",
           "!**/tasks_runtime.json",
           "!**/*.log"
-        ]
-      },
-      {
-        "from": "resources/nocturne_memory",
-        "to": "nocturne_memory",
-        "filter": [
-          "**/*",
-          "!**/.git/**",
-          "!**/__pycache__/**",
-          "!**/*.pyc",
-          "!**/demo.db",
-          "!**/.env"
-        ]
-      },
-      {
-        "from": "resources/nocturne_server",
-        "to": "nocturne_server",
-        "filter": [
-          "**/*",
-          "!**/.env",
-          "!**/.env.*",
-          "!**/*.pem",
-          "!**/*.key",
-          "!**/id_rsa*",
-          "!**/*secret*",
-          "!**/*token*",
-          "!**/*credential*",
-          "!**/*password*"
         ]
       },
       {

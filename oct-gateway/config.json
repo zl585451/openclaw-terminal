@@ -1,5 +1,4 @@
 {
-  "OCT_MODEL": "MiniMax-M2.7",
   "GOOGLE_AI_API_KEY": "",
   "GOOGLE_AI_BASE_URL": "https://aiplatform.googleapis.com/v1beta1/projects/gemini-key-493216/locations/us-central1/endpoints/openapi",
   "GOOGLE_HTTPS_PROXY": "http://127.0.0.1:10808",
@@ -18,18 +17,6 @@
     "compress_length": {
       "user": 100,
       "amy": 200
-    }
-  },
-  "nocturne": {
-    "heartbeat_interval_seconds": 300,
-    "NOCTURNE_BUSY_TIMEOUT": 10000,
-    "read_retry": {
-      "count": 3,
-      "interval_ms": 500
-    },
-    "write_retry": {
-      "count": 3,
-      "interval_ms": 500
     }
   },
   "stream_merge": {
@@ -73,5 +60,10 @@
   },
   "minimax": {
     "api_key": ""
-  }
+  },
+  "NEWAPI_API_KEY": "eRbd8PoKBrn90OIfEDwqek9KITgle4S8AJLUqd83sAwulrrY",
+  "OCT_PROVIDER": "newapi",
+  "OCT_MODEL": "gemini-3.1-flash-lite",
+  "NEWAPI_BASE_URL": "http://34.29.227.161:3000/v1",
+  "CUSTOM_MODEL": ""
 }

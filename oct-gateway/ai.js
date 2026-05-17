@@ -393,10 +393,10 @@ function resolveTemperatureForRequest({ provider, model }) {
 }
 
 async function loadSystemPrompt(promptsDir) {
-  const nocturneAlive = await memory.isAlive();
+  const memoryAlive = await memory.isAlive();
 
-  if (nocturneAlive) {
-    let coreUris = [
+  if (memoryAlive) {
+    const coreUris = [
       'core://agent/identity',
       'core://my_user/profile',
       'core://agent/my_user',
@@ -406,12 +406,6 @@ async function loadSystemPrompt(promptsDir) {
       'core://agent/rules/dispatch',
       'core://agent/rules/emotion',
     ];
-    try {
-      const envPath = path.join(__dirname, '..', 'resources', 'nocturne_memory', '.env');
-      const envContent = fs.readFileSync(envPath, 'utf-8');
-      const m = envContent.match(/CORE_MEMORY_URIS=(.+)/);
-      if (m) coreUris = m[1].split(',').map(s => s.trim()).filter(Boolean);
-    } catch {}
 
     let bootMemory = await memory.loadBootMemory(coreUris);
     log.debug('bootMemory loaded', {
@@ -441,53 +435,12 @@ async function loadSystemPrompt(promptsDir) {
     }
 
     if (bootMemory && bootMemory.length > 100) {
-      log.info('System prompt loaded from Nocturne');
+      log.info('System prompt loaded from memory backend', {
+        backend: 'memory_v2',
+      });
 
-      // 加载今天的停车场待办
-      try {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const NOCTURNE_BASE = config.NOCTURNE_BASE_URL || 'http://127.0.0.1:8000';
-        const parkingRoot = await fetch(
-          `${NOCTURNE_BASE}/browse/node?path=my_user/daily/${todayStr}/parking_lot&domain=core`,
-          { signal: AbortSignal.timeout(2000) }
-        );
-        if (parkingRoot.ok) {
-          const parkingData = await parkingRoot.json();
-          const children = parkingData?.node?.children
-            || parkingData?.children || [];
-
-          const undoneItems = [];
-          for (const child of children) {
-            const childPath = child.path || '';
-            if (!childPath) continue;
-            const cr = await fetch(
-              `${NOCTURNE_BASE}/browse/node?path=${encodeURIComponent(childPath)}&domain=core`,
-              { signal: AbortSignal.timeout(2000) }
-            );
-            if (!cr.ok) continue;
-            const cd = await cr.json();
-            const content = cd?.node?.content || cd?.content || '';
-            try {
-              const parsed = JSON.parse(content);
-              if (!parsed.done) undoneItems.push(parsed.item);
-            } catch {}
-          }
-
-          if (undoneItems.length > 0) {
-            // 注入到 bootMemory 开头，让 AI 一启动就知道
-            const parkingNotice = `\n## ⚠️ 停车场提醒（上次会话未完成的事）\n${
-              undoneItems.map((item, i) => `${i + 1}. ${item}`).join('\n')
-            }\n\n请在用户第一条消息后，用一句话提醒他还有这些待处理的事。`;
-
-            bootMemory = parkingNotice + '\n\n---\n\n' + bootMemory;
-            log.info('parking loaded', { count: undoneItems.length });
-          }
-        }
-      } catch {}
-
-      // 同步写回 MEMORY.md（让文件和 Nocturne 保持一致）
       const memoryMdPath = path.join(promptsDir, 'MEMORY.md');
-      const memoryMdContent = `# MEMORY.md - 长期记忆（自动同步自 Nocturne）
+      const memoryMdContent = `# MEMORY.md - 长期记忆（自动同步自 Memory v2）
 
 > 最后同步时间：${new Date().toLocaleString('zh-CN')}
 > 此文件由 OCT Gateway 启动时自动生成，请勿手动编辑核心记忆部分
@@ -511,11 +464,13 @@ ${bootMemory}
           + '\n\n---\n> ⚠️ 记忆内容已截断（超过 ' + MEMORY_INJECT_LIMIT + ' 字符限制）';
       }
 
-      return buildSystemPrompt(bootMemory, 'nocturne', promptsDir);
+      return buildSystemPrompt(bootMemory, 'memory_v2', promptsDir);
     }
   }
 
-  log.warn('Nocturne unavailable, fallback to local prompt files');
+  log.warn('memory backend has no boot memory, fallback to local prompt files', {
+    backend: 'memory_v2',
+  });
   const files = [
     'SOUL.md',
     'AGENTS.md',
@@ -672,10 +627,10 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
     2000
   );
 
-  const nocturneInstructions = `
-## 🧠 记忆系统（Nocturne Memory）
+  const memoryInstructions = `
+## 记忆系统（Memory v2）
 
-记忆已从${source === 'nocturne' ? ' Nocturne 服务器' : '本地文件'}加载。
+记忆已从 Memory v2 本地文件加载。
 
 记忆系统有两条链路：
 - 自动链路：Gateway 只会在高置信时注入少量整轮历史回忆；这些内容只是候选上下文，必须和用户当前话题直接相关才可使用
@@ -829,7 +784,7 @@ AI · Cursor · Claude 三角协作：
     clarification ? clarification + '\n\n---\n\n' : '',
     adaptiveSystem ? adaptiveSystem + '\n\n---\n\n' : '',
     diagramProtocol ? diagramProtocol + '\n\n---\n\n' : '',
-    nocturneInstructions,
+    memoryInstructions,
   ].join('');
 
   // 注入 OpenClaw 兼容技能列表

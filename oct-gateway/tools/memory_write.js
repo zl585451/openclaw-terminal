@@ -9,7 +9,7 @@ module.exports = {
     type: 'function',
     function: {
       name: 'memory_write',
-      description: '写入或更新 Nocturne 记忆节点',
+      description: '写入或更新 Memory v2/legacy 记忆节点',
       parameters: {
         type: 'object',
         properties: {
@@ -46,7 +46,7 @@ module.exports = {
         success: false,
         data: null,
         error: result?.error || 'unknown',
-        hint: '确认 Nocturne 在线、URI 合法，并避免一次写入过多内容',
+        hint: '确认记忆后端在线、URI 合法，并避免一次写入过多内容',
         uri,
       };
     }

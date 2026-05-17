@@ -13,7 +13,7 @@
 | 3 | — | 自评系统 + 模式提炼 | 评分不准确，规则质量不可控 | 🔇 已停用 (2026-03-20，index.js 注释调用，SOUL.md 自动规则已删除) |
 | 4 | — | SOUL.md 自动学习规则 | 由模式提炼写入，质量不可控 | 🔇 已删除 (2026-03-20，不再写入) |
 | 5 | 🟡 中等 | 所有异步调用 `.catch(() => {})` 静默吞错 | 出了问题完全看不到 | 🟢 前端侧已完成，Electron 主进程待评估 |
-| 6 | 🟡 中等 | Nocturne 偶尔掉线 | 所有记忆功能全部静默失效 | 🟡 已优化待运行验证（重试/限流已加） |
+| 6 | ✅ 已关闭 | 旧外部记忆后端掉线风险 | 会导致记忆功能静默失效 | ✅ 已通过 Memory v2 本地化移除 |
 | 7 | 🟡 中等 | `cleanupOldHistory` 只打日志不真删 | 历史数据无限增长 | 🚧 待完善 |
 | 8 | 🔵 低 | `hypothesis.js` 已接入但主链未触发 | 可能误判能力现状，且保留无效 sidecar 成本认知 | ⚠️ 已接入但未真实触发 (2026-04-21，见 `docs/07_research/hypothesis-call-trace-2026-04-21.md`) |
 | 9 | 🔵 低 | 两套提示词目录并存 | 可能写错地方 | 🚧 待统一 |
@@ -116,7 +116,7 @@
 
 完成设置页 inline style 迁移与 CSS class 统一：
 - ✅ src/ui/settings/tabs/ConnectionTabView.tsx：按 provider、API Key/Base URL、搜索 API、连接测试/状态、说明文档区分段迁移
-- ✅ src/ui/settings/tabs/MemoryTabView.tsx：按 Nocturne 状态、安装初始化、核心记忆 URI、说明文案区分段迁移
+- ✅ src/ui/settings/tabs/MemoryTabView.tsx：按 Memory v2 状态、核心记忆 URI、说明文案区分段迁移
 - ✅ src/ui/settings/tabs/McpTabView.tsx：服务器列表、空状态、表单卡、提示信息已对齐统一类
 - ✅ src/styles/SettingsPanel.css：新增统一设置页语义类，状态卡/说明文案/代码块/列表/小按钮等均走主题变量
 
@@ -129,7 +129,7 @@
 - ✅ src/types/gateway.ts：新增 GatewayEvent、usage、tool、状态与发送 payload 类型
 - ✅ src/hooks/useWebSocket.ts：移除 `(window as any).require`，消息处理改用 GatewayEvent 类型
 - ✅ src/components/SettingsPanel.tsx：electronAPI 调用与 catch 回调完成类型收口
-- ✅ src/ui/settings/tabs/MemoryTabView.tsx：Nocturne / AI.library 调用与读取结果完成类型收口
+- ✅ src/ui/settings/tabs/MemoryTabView.tsx：Memory v2 / AI.library 调用与读取结果完成类型收口
 
 主表新增 #16，标记阶段 3C 已完成。
 
@@ -137,10 +137,10 @@
 
 ## 运行验证清单（请按顺序执行）
 
-### A. Nocturne 稳定性（对应 #6）
+### A. Memory v2 稳定性（对应 #6）
 - [ ] 重启 Gateway 与 Electron，连续发送 20~30 条短消息，观察是否出现 memory 相关报错或静默失效
-- [ ] 人为断开 Nocturne（或关闭后端）30 秒后恢复，继续发送消息，确认功能可恢复
-- [ ] 检查日志中是否出现持续重试失败且无恢复的情况（若有，记录时间点与上下文）
+- [ ] 模拟本地目录无写权限或文件锁冲突，确认原始日志写入有可见告警
+- [ ] 检查日志中是否出现持续写入失败且无恢复的情况（若有，记录时间点与上下文）
 
 ### B. tool 调用链完整性（对应 #10）
 - [ ] 连续触发 5~10 次会产生 `tool_calls` 的请求（如执行命令、读文件、搜索）

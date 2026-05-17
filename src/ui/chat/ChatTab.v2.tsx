@@ -550,7 +550,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       <ChatTabRightPanel
         gateway={gateway}
         wsConnected={msgs.wsConnected}
-        nocturneOnline={msgs.nocturneOnline}
+        memoryOnline={msgs.memoryOnline}
         modelName={msgs.modelName}
         tokenIn={msgs.tokenIn}
         ctxUsed={msgs.ctxUsed}

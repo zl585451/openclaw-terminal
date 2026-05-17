@@ -140,11 +140,22 @@ describe('checkBasicQC', () => {
     const report = checkBasicQC({
       adaptedScript: payload([
         { segmentId: 'seg-001', type: 'narration', text: '狱卒喊道：“宁默，有人来看你！”' },
-        { segmentId: 'seg-002', type: 'dialogue', speaker: '狱卒', text: '宁默，有人来看你！' },
+        { segmentId: 'seg-002', type: 'dialogue', speaker: '狱卒', text: '宁默，有人来看你！', quoteId: 'q001' },
       ]),
     });
     expect(categories(report)).toContain('dialogue_duplicated_in_narration');
     expect(report.conclusion).toBe('reject');
+  });
+
+  it('does not reject repeated short status phrases across narration and OS', () => {
+    const report = checkBasicQC({
+      adaptedScript: payload([
+        { segmentId: 'seg-001', type: 'narration', text: '双方各执一词，证据不足。' },
+        { segmentId: 'seg-002', type: 'inner_monologue', speaker: '周佳宁', text: '证据不足' },
+      ]),
+      sourceText: '周佳宁翻到旧案：双方各执一词，证据不足。后面又写着“证据不足”。',
+    });
+    expect(categories(report)).not.toContain('dialogue_duplicated_in_narration');
   });
 
   it('detects voice_registry_pollution_risk', () => {
@@ -192,10 +203,13 @@ describe('checkBasicQC', () => {
         { segmentId: 'seg-001', type: 'dialogue', speaker: 'SFX', text: '咚' },
         { segmentId: 'seg-002', type: 'dialogue', speaker: '对讲机', text: '滋啦……' },
         { segmentId: 'seg-003', type: 'dialogue', speaker: 'SFX', text: '滋啦……滋啦……' },
+        { segmentId: 'seg-004', type: 'dialogue', speaker: 'SFX', text: '沙沙……沙沙……' },
+        { segmentId: 'seg-005', type: 'dialogue', speaker: 'SFX', text: '咯咯' },
       ]),
     });
     expect(categories(report)).not.toContain('sfx_role_misclassified');
     expect(categories(report)).not.toContain('sfx_system_label_misclassified');
+    expect(categories(report)).not.toContain('sfx_text_invalid');
   });
 
   it('detects invalid SFX text and OS fragments', () => {

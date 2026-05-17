@@ -65,58 +65,6 @@ export interface MemoryVectorRecallConfig {
   topK: number;
 }
 
-export interface NocturneStatusResult {
-  available: boolean;
-  path: string;
-  backendAlive?: boolean;
-  frontendAlive?: boolean;
-  domains?: Array<{ domain: string; root_count?: number }>;
-  coreMemoryUris?: string[];
-  coreMemoryStatus?: Array<{
-    uri: string;
-    ok: boolean;
-    hasContent: boolean;
-    contentLength: number;
-    error?: string;
-  }>;
-  coreMemoryReadyCount?: number;
-  coreMemoryMissingCount?: number;
-  dbPath?: string;
-  dbUrl?: string;
-  envPath?: string;
-  diagnosticLogPath?: string;
-  stderrLogPath?: string;
-}
-
-export interface NocturneDashboardStatus {
-  backendRunning: boolean;
-  frontendRunning: boolean;
-}
-
-export interface NocturneNode {
-  content?: string;
-  priority?: number;
-  disclosure?: string;
-}
-
-export interface NocturneMemoryItem {
-  uri?: string;
-  node?: NocturneNode;
-  content?: string;
-}
-
-export interface NocturneReadResult {
-  ok: boolean;
-  data?: NocturneMemoryItem | NocturneMemoryItem[] | string;
-  error?: string;
-}
-
-export interface NocturneWriteResult {
-  ok: boolean;
-  data?: unknown;
-  error?: string;
-}
-
 export interface McpServerConfig {
   command: string;
   args: string[];
@@ -311,22 +259,12 @@ export interface ElectronAPI {
   mcpAddServer?: (name: string, cfg: McpServerConfig) => Promise<ApiResult>;
   mcpRemoveServer?: (name: string) => Promise<ApiResult>;
 
-  getNocturneStatus?: () => Promise<NocturneStatusResult>;
-  setupNocturneMemory?: () => Promise<ApiResult>;
-  seedNocturneMemories?: () => Promise<ApiResult & { output?: string }>;
-  startNocturneDashboard?: () => Promise<ApiResult>;
-  stopNocturneDashboard?: () => Promise<ApiResult>;
-  getNocturneDashboardStatus?: () => Promise<NocturneDashboardStatus>;
-  openNocturneManagement?: () => Promise<ApiResult>;
-  restartNocturneBackend?: () => Promise<ApiResult>;
   getAiLibraryPlugin?: () => Promise<ApiResult<AiLibraryPluginStatus>>;
   saveAiLibraryPlugin?: (payload: AiLibraryPluginSettings) => Promise<ApiResult>;
   getMemorySummarizerConfig?: () => Promise<ApiResult<MemorySummarizerConfig>>;
   saveMemorySummarizerConfig?: (payload: Partial<MemorySummarizerConfig>) => Promise<ApiResult>;
   getMemoryVectorRecallConfig?: () => Promise<ApiResult<MemoryVectorRecallConfig>>;
   saveMemoryVectorRecallConfig?: (payload: Partial<MemoryVectorRecallConfig>) => Promise<ApiResult>;
-  nocturneRead?: (uri: string) => Promise<NocturneReadResult>;
-  nocturneCreate?: (uri: string, content: string, priority?: number, disclosure?: string) => Promise<NocturneWriteResult>;
 
   invokeGatewayTool?: (toolName: string, args: UnknownRecord) => Promise<unknown>;
 }

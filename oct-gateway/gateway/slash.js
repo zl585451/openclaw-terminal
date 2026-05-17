@@ -196,7 +196,7 @@ class SlashHandler {
     if (base === '/status') {
       const sp = await this.systemPromptReady;
       const sessions = this.session.listSessions();
-      const nocturneAlive = await this.memory.isAlive();
+      const memoryAlive = await this.memory.isAlive();
       const aiLibEnabled = (this.config.ai_library || {}).enabled !== false;
       const aiLibraryAlive = aiLibEnabled
         ? await this.aiLibrary.checkHealth().catch(() => false)
@@ -280,7 +280,7 @@ class SlashHandler {
         `📡 Model: \`${this.config.DASHSCOPE_MODEL}\``,
         `🔧 Tool 执行: ${toolSupportLabel}`,
         `🧩 能力来源: \`${effectiveCapabilitySource}\``,
-        `🧠 Nocturne: ${nocturneAlive ? '✅ 在线' : '❌ 离线'}`,
+        `🧠 Memory v2: ${memoryAlive ? '✅ 在线' : '❌ 离线'}`,
         `📚 AI.library：${aiLibraryAlive ? '✅ 在线' : '⚫ 未启动'}`,
         ...vectorStatusLines,
         `💬 当前会话：${currentHistory.length} 条消息`,
@@ -728,7 +728,7 @@ class SlashHandler {
     if (subCmd === 'boot') {
       const alive = await mem.isAlive();
       if (!alive) {
-        this.reply(connection, '❌ Nocturne 后端不可用，请检查是否已启动');
+        this.reply(connection, '❌ 记忆后端不可用，请检查本地 Memory v2 存储');
         return;
       }
       const coreUris = ['core://agent/identity', 'core://my_user/profile', 'core://agent/my_user'];
@@ -787,7 +787,7 @@ class SlashHandler {
 
     if (subCmd === 'status') {
       const alive = await mem.isAlive();
-      this.reply(connection, alive ? '✅ Nocturne Memory 在线' : '❌ Nocturne Memory 离线');
+      this.reply(connection, alive ? '✅ Memory v2 在线' : '❌ Memory v2 离线');
       return;
     }
 
@@ -836,7 +836,7 @@ class SlashHandler {
     if (subCmd === 'stats') {
       const alive = await mem.isAlive();
       if (!alive) {
-        this.reply(connection, '❌ Nocturne 离线');
+        this.reply(connection, '❌ Memory v2 离线');
         return;
       }
       const todayStr = new Date().toISOString().slice(0, 10);
@@ -849,7 +849,7 @@ class SlashHandler {
         '',
         `今日对话：${todayCount} 条`,
         `历史天数：${totalDays} 天`,
-        `Nocturne：✅ 在线`,
+        `Memory v2：✅ 在线`,
         '',
         '口令：/memory boot|read|search|status|today|feedback|stats',
       ].join('\n'));
@@ -889,7 +889,7 @@ class SlashHandler {
 
         this.log.info('export training-data: read history root');
         const testAlive = await this.memory.isAlive();
-        this.log.info('export training-data: nocturne alive', { alive: !!testAlive });
+        this.log.info('export training-data: memory backend alive', { alive: !!testAlive });
 
         const historyRoot = await this.memory.readMemory('core://my_user/daily', { treat404AsDebug: true });
         this.log.debug('export training-data: history root result', { preview: JSON.stringify(historyRoot).slice(0, 300) });
@@ -1200,116 +1200,12 @@ class SlashHandler {
       return;
     }
 
-    if (subCmd === 'migrate') {
-      const alive = await this.memory.isAlive();
-      if (!alive) {
-        this.reply(connection, '❌ Nocturne 离线，无法迁移');
-        return;
-      }
-
-      this.reply(connection, '🔄 正在从 Nocturne 迁移任务数据...');
-
-      const tasksPath = path.join(os.homedir(), '.openclaw', 'tasks.json');
-      let localData = { tasks: [], parking: [], intention: '', updatedAt: '' };
-      try {
-        if (fs.existsSync(tasksPath)) {
-          localData = JSON.parse(fs.readFileSync(tasksPath, 'utf-8'));
-        }
-      } catch {}
-
-      let migratedTasks = 0;
-      let migratedParking = 0;
-
-      try {
-        const tasksResult = await this.memory.readMemory(`core://my_user/daily/${todayStr}/tasks`, { treat404AsDebug: true });
-        if (tasksResult.ok && tasksResult.data) {
-          const children = tasksResult.data?.node?.children || tasksResult.data?.children || [];
-          for (const child of children) {
-            const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
-            if (!childPath) continue;
-            const taskResult = await this.memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
-            if (!taskResult.ok) continue;
-            const content = taskResult.data?.node?.content || taskResult.data?.content || '';
-            try {
-              const parsed = JSON.parse(content);
-              if (parsed.archived) continue;
-              const existingId = childPath.split('/').pop();
-              if (!localData.tasks.find(t => t.id === existingId)) {
-                localData.tasks.push({
-                  id: existingId,
-                  content: parsed.label || parsed.content || '未命名任务',
-                  priority: parsed.priority || 'p2',
-                  done: parsed.done || false,
-                  source: parsed.source || 'amy',
-                  createdAt: parsed.created || parsed.createdAt || '',
-                });
-                migratedTasks++;
-              }
-            } catch {}
-          }
-        }
-
-        const parkingResult = await this.memory.readMemory(`core://my_user/daily/${todayStr}/parking_lot`, { treat404AsDebug: true });
-        if (parkingResult.ok && parkingResult.data) {
-          const children = parkingResult.data?.node?.children || parkingResult.data?.children || [];
-          for (const child of children) {
-            const childPath = child.path || child.uri?.replace(/^[^:]+:\/\//, '') || '';
-            if (!childPath) continue;
-            const itemResult = await this.memory.readMemory(`core://${childPath}`, { treat404AsDebug: true });
-            if (!itemResult.ok) continue;
-            const content = itemResult.data?.node?.content || itemResult.data?.content || '';
-            try {
-              const parsed = JSON.parse(content);
-              const existingId = childPath.split('/').pop();
-              if (!localData.parking.find(p => p.id === existingId)) {
-                localData.parking.push({
-                  id: existingId,
-                  content: parsed.item || content.slice(0, 50),
-                  priority: 'p2',
-                  done: false,
-                  source: 'amy',
-                  createdAt: parsed.time || '',
-                });
-                migratedParking++;
-              }
-            } catch {
-              if (content && content !== '[DELETED]') {
-                const existingId = childPath.split('/').pop();
-                if (!localData.parking.find(p => p.id === existingId)) {
-                  localData.parking.push({
-                    id: existingId,
-                    content: content.slice(0, 50),
-                    priority: 'p2',
-                    done: false,
-                    source: 'amy',
-                    createdAt: '',
-                  });
-                  migratedParking++;
-                }
-              }
-            }
-          }
-        }
-
-        localData.updatedAt = new Date().toISOString();
-        const dir = path.dirname(tasksPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(tasksPath, JSON.stringify(localData, null, 2), 'utf-8');
-
-        this.reply(connection, `✅ 迁移完成\n已从 Nocturne 迁移 ${migratedTasks} 条任务和 ${migratedParking} 条停车场项目\n\n原始数据保留在 Nocturne 中作为备份`);
-      } catch (e) {
-        this.reply(connection, `❌ 迁移失败: ${e.message}`);
-      }
-      return;
-    }
-
     this.reply(connection, [
       '📋 任务管理命令：',
       '/task add <内容> [p0/p1/p2] — 添加任务',
       '/task done <序号> — 标记完成',
       '/task list — 列出今日任务',
       '/task clear — 清空已完成任务',
-      '/task migrate — 从 Nocturne 迁移数据',
     ].join('\n'));
   }
 

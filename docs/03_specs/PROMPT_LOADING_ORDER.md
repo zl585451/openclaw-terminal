@@ -23,8 +23,8 @@
 ```
 loadSystemPrompt(promptsDir)
     │
-    ├─→ 尝试 Nocturne loadBootMemory (core://agent/... 等核心记忆)
-    │       ├─ 成功 → buildSystemPrompt(bootMemory, 'nocturne', promptsDir)
+    ├─→ 尝试 Memory v2 loadBootMemory (core://agent/... 等核心记忆)
+    │       ├─ 成功 → buildSystemPrompt(bootMemory, 'memory_v2', promptsDir)
     │       └─ 失败 → 读本地 MD 文件
     │
     └─→ 本地 MD 回退：
@@ -41,7 +41,7 @@ loadSystemPrompt(promptsDir)
 1. **核心身份与交流契约**（运行时生成，最高优先级）
 2. **SOUL.md 注入块**（先做 `{{AI_NAME}} / {{USER_NAME}}` 模板替换）
 3. **AGENTS.md 注入块**（先做模板替换）
-4. **bootMemory / 本地 MD 主体**（Nocturne 或 本地 4 个文件）
+4. **bootMemory / 本地 MD 主体**（Memory v2 或 本地 4 个文件）
 5. **CLARIFICATION_PROTOCOL.md**（若存在）
 6. **adaptive-questioning-system.md**（若存在）
 7. **DIAGRAM_PROTOCOL.md**（若存在）
@@ -55,9 +55,9 @@ loadSystemPrompt(promptsDir)
 
 ---
 
-## 四、Nocturne 核心记忆 URI
+## 四、核心记忆 URI
 
-启动时加载的 Nocturne 记忆节点（`loadBootMemory`）：
+启动时加载的 Memory v2 核心记忆节点（`loadBootMemory`）：
 
 - `core://agent/identity`
 - `core://agent/principles`
@@ -65,7 +65,7 @@ loadSystemPrompt(promptsDir)
 - `core://my_user/profile`
 - `core://agent/my_user`
 
-（具体列表以 `memory.js` / Nocturne 配置为准）
+（具体列表以 `memory.js` 为准）
 
 ---
 
@@ -76,7 +76,7 @@ loadSystemPrompt(promptsDir)
 | SOUL.md | 核心人格、情绪感知、emoji 规范 |
 | AGENTS.md | 调度规则、任务判断、错误恢复 |
 | USER.md | 用户档案、偏好 |
-| MEMORY.md | 动态记忆（Nocturne 同步写回，与 Nocturne 一致） |
+| MEMORY.md | 动态记忆（随当前记忆主链同步更新） |
 | CLARIFICATION_PROTOCOL.md | 追问协议 |
 | adaptive-questioning-system.md | 自适应提问系统 |
 | DIAGRAM_PROTOCOL.md | 图形输出协议（结构图、聊天区小图、Canvas 路由） |
@@ -98,7 +98,7 @@ loadSystemPrompt(promptsDir)
 - Gateway **启动时**加载一次
 - 修改 MD 文件后需**重启 Gateway** 生效
 - 修改人格设置（AI 名称 / 用户称呼 / 风格）后也需**重启 Gateway**，设置面板已自动处理
-- MEMORY.md 会在 Nocturne 同步时被覆盖
+- MEMORY.md 会在记忆同步时被覆盖
 
 ---
 

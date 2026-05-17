@@ -5,14 +5,14 @@
 ---
 
 ## 做什么
-启动时从 Nocturne 加载记忆，并结合本地提示词模板与用户人格配置拼接成 system prompt
+启动时从 Memory v2 加载记忆，并结合本地提示词模板与用户人格配置拼接成 system prompt
 
 ## 文件
 `oct-gateway/ai.js` → `loadSystemPrompt()`
 
 ## 调用链
 ```
-Gateway 启动 → loadSystemPrompt(PROMPTS_DIR) → 尝试 Nocturne loadBootMemory 
+Gateway 启动 → loadSystemPrompt(PROMPTS_DIR) → Memory v2 loadBootMemory 
 → 失败则读本地 MD 文件 → buildSystemPrompt 注入人格契约 / 模板替换 / skillAdapter.formatSkillsForPrompt()
 ```
 
@@ -35,7 +35,7 @@ Gateway 启动 → loadSystemPrompt(PROMPTS_DIR) → 尝试 Nocturne loadBootMem
 - 用户自己的 AI 名称、称呼、风格由设置面板决定
 
 ## 写到哪
-同步写回 `MEMORY.md`（让文件和 Nocturne 保持一致）
+同步写回 `MEMORY.md`（让文件和本地记忆保持一致）
 
 ## 验证方法
 终端看到 `[AI] System prompt 加载完成，长度：XXXX`

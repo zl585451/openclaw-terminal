@@ -229,7 +229,7 @@ function checkDialogueDuplicatedInNarration(segments, issues) {
   if (narrations.length === 0) return;
 
   for (const segment of segments) {
-    if (!VALID_SCRIPT_TYPES.has(segment?.type)) continue;
+    if (segment?.type !== 'dialogue' || !segment.quoteId) continue;
     const dialogue = normalizeForDupCheck(segment.text);
     if (dialogue.length < 4) continue;
     const duplicatedIn = narrations.find((item) => item.text.includes(dialogue));

@@ -24,10 +24,10 @@ const DISTILL_COUNT_URI = 'core://agent/distill/count';
 // 缓存已确认存在的路径，避免重复检查（进程生命周期内）
 const _confirmedPaths = new Set();
 
-// self_eval 写入限流：串行队列，避免 6 路并发时压垮 Nocturne（参考 Nocturne掉线排查报告-2026-03-20）
+// self_eval 写入限流：串行队列，避免 6 路并发时压垮记忆后端
 const _evalQueue = [];
 const _evalQueueMax = 10;
-const _evalQueueDelayMs = 300;  // 队列项间间隔，分散 Nocturne 负载
+const _evalQueueDelayMs = 300;  // 队列项间间隔，分散后台写入负载
 let _evalProcessing = false;
 
 function extractHttpStatusFromError(errText) {
@@ -136,7 +136,7 @@ function readMemoryWithTimeout(uri, timeoutMs = 3000) {
   ]);
 }
 
-/** 从 Nocturne 读取上次提炼时的评估条数，失败返回 0，不阻塞主流程 */
+/** 读取上次提炼时的评估条数，失败返回 0，不阻塞主流程 */
 async function readDistillCount() {
   try {
     const r = await memory.readMemory(DISTILL_COUNT_URI, { treat404AsDebug: true });
@@ -150,18 +150,18 @@ async function readDistillCount() {
   }
 }
 
-/** 将计数写入 Nocturne，失败不阻塞主流程 */
+/** 将计数写入记忆后端，失败不阻塞主流程 */
 async function writeDistillCount(count) {
   try {
     await memoryHistory.ensurePathExists('core', 'agent/distill/count');
     const cr = await memory.createMemory(DISTILL_COUNT_URI, String(count), 2, '');
     if (cr.ok) {
-      console.log('[SelfEval] 计数已写入 Nocturne:', count);
+      console.log('[SelfEval] 计数已写入记忆后端:', count);
       return;
     }
     if (!cr.error?.includes('already exists')) {
       const wr = await memory.writeMemory(DISTILL_COUNT_URI, String(count), 2, '');
-      if (wr.ok) console.log('[SelfEval] 计数已写入 Nocturne:', count);
+      if (wr.ok) console.log('[SelfEval] 计数已写入记忆后端:', count);
       else console.error('[SelfEval] 写入 distill 计数失败:', wr.error || 'unknown');
     }
   } catch (e) {
@@ -260,7 +260,7 @@ async function evaluateReplyImpl(userMsg, amyReply) {
     const score = typeof parsed?.score === 'number' ? parsed.score : parseInt(parsed?.score, 10);
     if (!parsed || !Number.isFinite(score) || score < 1 || score > 5) return null;
 
-    // 写入 Nocturne（先确保父路径存在，优先 POST 创建）
+    // 写入记忆后端
     const now = new Date();
     const datePath = now.toISOString().slice(0, 10);
     const timePath = now.toTimeString().slice(0, 8).replace(/:/g, '-');
@@ -384,7 +384,7 @@ async function distillPatterns() {
     const result = safeParseAIJson(distilled, 'distillPatterns');
     if (!result || !result.rules) return;
 
-    // 写入 Nocturne（先确保父路径存在，优先 POST 创建）
+    // 写入记忆后端
     const now = new Date().toISOString().slice(0, 10);
     const lpUri = `core://agent/learned_patterns/${now}`;
     const lpContent = JSON.stringify({
@@ -412,7 +412,7 @@ async function distillPatterns() {
     await updateLearnedRulesInSoul(result.rules,
       result.challenge_tendency);
 
-    // 持久化计数到 Nocturne（重置基线，失败不阻塞）
+    // 持久化计数到记忆后端（重置基线，失败不阻塞）
     const total = await getTotalEvalCount();
     writeDistillCount(total).catch(() => {});
 

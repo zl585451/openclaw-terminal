@@ -2,7 +2,7 @@ async function checkMemoryHealth({ memory, logger }) {
   try {
     const alive = await memory.isAlive();
     if (!alive) {
-      logger.warn('Nocturne offline, memory disabled');
+      logger.warn('memory backend unavailable, memory features degraded');
       return;
     }
 

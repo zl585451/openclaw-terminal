@@ -10,7 +10,7 @@ class PostProcessor {
     memoryFeedback,
     memoryHistory,
     clarificationMemory,
-    nocturneQueue,
+    memoryTaskQueue,
     logger,
   }) {
     this.memory = memoryModule;
@@ -20,20 +20,20 @@ class PostProcessor {
     this.memoryFeedback = memoryFeedback;
     this.memoryHistory = memoryHistory;
     this.clarificationMemory = clarificationMemory;
-    this.nocturneQueue = nocturneQueue;
+    this.memoryTaskQueue = memoryTaskQueue;
     this.log = logger;
   }
 
   process({ userMessage, assistantReply, sessionKey, prevAssistantReply, toolsUsed, attachments }) {
-    this.nocturneQueue.enqueue(
+    this.memoryTaskQueue.enqueue(
       () => this.memoryFeedback.detectAndSaveFeedback(userMessage, assistantReply),
       'memoryFeedback'
     );
-    this.nocturneQueue.enqueue(
+    this.memoryTaskQueue.enqueue(
       () => this.detectAndSaveParking(userMessage, sessionKey),
       'detectAndSaveParking'
     );
-    this.nocturneQueue.enqueue(
+    this.memoryTaskQueue.enqueue(
       () => memoryRawLog.saveRawTurn({
         userMessage,
         assistantReply,
@@ -44,7 +44,7 @@ class PostProcessor {
       }),
       'saveRawTurn'
     );
-    this.nocturneQueue.enqueue(
+    this.memoryTaskQueue.enqueue(
       () => this.clarificationMemory.detectAndSaveClarification(
         userMessage,
         assistantReply,
@@ -96,8 +96,8 @@ class PostProcessor {
     return;
 
     try {
-      const nocturneAlive = await this.memory.isAlive();
-      if (!nocturneAlive) return;
+      const memoryAlive = await this.memory.isAlive();
+      if (!memoryAlive) return;
 
       const cleanAssistantReply = sanitizeAssistantReply(assistantReply || '');
       const triggers = [

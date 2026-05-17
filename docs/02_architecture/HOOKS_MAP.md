@@ -61,11 +61,11 @@
 
 ## useWebSocket
 
-**职责**：`openclaw-send` IPC、解析网关推送并回调 chat/工具/usage/workbench 等；维护连接态与 Nocturne 健康。
+**职责**：`openclaw-send` IPC、解析网关推送并回调 chat/工具/usage/workbench 等；维护连接态与 Memory v2 健康。
 
 **输入参数**：`UseWebSocketOptions`（全套 `onXxx` 回调）。
 
-**返回值**：`wsConnected`、`wsReconnecting`、`wsError`、`nocturneOnline`、`send`。
+**返回值**：`wsConnected`、`wsReconnecting`、`wsError`、`memoryOnline`、`send`。
 
 **内部依赖**：无 Hook（纯 Web 下 ipc 为桩）。
 

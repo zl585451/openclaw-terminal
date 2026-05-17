@@ -59,7 +59,7 @@ function categorize(entry: { level: LogLevel; tag: string; raw: string }): LogCa
   if (['gateway', 'system', 'session', 'config', 'ai_library'].includes(tag)) return 'System';
   // 关键词兜底
   if (/tool_call|web_search|exec_command|read_file|write_file/i.test(entry.raw)) return 'Tool';
-  if (/memory|nocturne|history|feedback/i.test(entry.raw)) return 'Memory';
+  if (/memory|history|feedback/i.test(entry.raw)) return 'Memory';
   if (/gateway|connect|heartbeat|心跳/i.test(entry.raw)) return 'System';
   if (/ai\s|model|stream|request|response/i.test(entry.raw)) return 'AI';
   return 'System';
@@ -113,7 +113,7 @@ function humanize(entry: LogEntry): { brief: string; detail: string } {
     if (/TAVILY_API_KEY 未配置/i.test(raw)) return { brief: 'Tavily API Key 未配置', detail: '请在设置面板填入' };
   }
 
-  // Memory 分类 — Nocturne 记忆事件
+  // Memory 分类
   if (entry.category === 'Memory') {
     if (/boot read/i.test(raw)) {
       const uriM = raw.match(/"uri":"([^"]+)"/);
@@ -154,7 +154,7 @@ function humanize(entry: LogEntry): { brief: string; detail: string } {
     if (/WebSocket listening|listening/i.test(raw)) return { brief: 'Gateway 已启动，监听 18789', detail: 'ws://0.0.0.0:18789' };
     if (/client connected/i.test(raw)) return { brief: '客户端已连接', detail: '' };
     if (/client authenticated/i.test(raw)) return { brief: '认证成功', detail: '' };
-    if (/Nocturne 心跳正常|heartbeat/i.test(raw)) return { brief: '系统心跳正常', detail: '' };
+    if (/heartbeat/i.test(raw)) return { brief: '系统心跳正常', detail: '' };
     if (/RSS=/i.test(raw)) {
       const rssM = raw.match(/rssMb":([\d.]+)/);
       return { brief: `内存正常 · RSS ${rssM?.[1] ?? '?'}MB`, detail: '' };
@@ -329,7 +329,7 @@ function LogPanelComponent(props: {
   onClear?: () => void;
   onExport?: () => void;
   emptyText?: string;
-  nocturneOnline?: boolean;
+  memoryOnline?: boolean;
   modelName?: string;
 }) {
   const { settings } = useSettings();
@@ -343,7 +343,7 @@ function LogPanelComponent(props: {
     onClear,
     onExport,
     emptyText = '[LOG] 等待日志...',
-    nocturneOnline,
+    memoryOnline,
     modelName,
   } = props;
   const menuWrapRef = useRef<HTMLDivElement>(null);
@@ -632,9 +632,9 @@ function LogPanelComponent(props: {
 
       <div className="log-panel-overlay-statusbar">
         <span className="log-status-count">{lines.length} 行</span>
-        {nocturneOnline !== undefined && (
-          <span style={{ color: nocturneOnline ? '#86efac' : '#fca5a5' }}>
-            Nocturne: {nocturneOnline ? '✅' : '❌'}
+        {memoryOnline !== undefined && (
+          <span style={{ color: '#86efac' }}>
+            Memory v2: 本地
           </span>
         )}
         {modelName && (
@@ -734,9 +734,9 @@ function LogPanelComponent(props: {
         <div className="log-panel-statusbar">
           <span className="log-status-meta">
             <span className="log-status-count">{lines.length} 行</span>
-            {nocturneOnline !== undefined && (
-              <span className={`log-status-indicator ${nocturneOnline ? 'online' : 'offline'}`}>
-                Nocturne: {nocturneOnline ? '✅' : '❌'}
+            {memoryOnline !== undefined && (
+              <span className="log-status-indicator online">
+                Memory v2: 本地
               </span>
             )}
           </span>

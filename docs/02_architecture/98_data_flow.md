@@ -26,10 +26,10 @@ index.js 接收
     │       │
     │       ▼ (onDone)
     │
-    ├─→ saveHistorySummary()          → Nocturne (core://my_user/history/...)
-    ├─→ detectAndSaveFeedback()       → Nocturne (core://agent/feedback/...)
-    ├─→ detectAndSaveParking()        → Nocturne (core://my_user/daily/.../parking_lot)
-    └─→ extractAndSaveMemory()        → Nocturne (AI 决定 URI)
+    ├─→ saveRawTurn()                 → Memory v2 JSONL (core://logs/raw/...)
+    ├─→ detectAndSaveFeedback()       → Memory v2 notes (core://agent/feedback/...)
+    ├─→ detectAndSaveParking()        → Memory v2 notes (core://my_user/daily/.../parking_lot)
+    └─→ detectAndSaveClarification()  → Memory v2 notes (core://my_user/preferences/...)
 ```
 
 ---
@@ -40,13 +40,13 @@ index.js 接收
 Gateway 启动
     │
     ├─→ loadSystemPrompt()
-    │       ├─→ loadBootMemory()    → Nocturne (核心记忆)
-    │       ├─→ loadFeedbackForBoot() → Nocturne (最近反馈)
+    │       ├─→ loadBootMemory()    → Memory v2 (核心记忆)
+    │       ├─→ loadFeedbackForBoot() → Memory v2 (最近反馈)
     │       └─→ 读取本地 MD 文件     → SOUL.md / AGENTS.md / USER.md
     │
-    ├─→ warmGlossaryCache()         → Nocturne (记忆索引预热)
-    ├─→ cleanupOldHistory()         → 清理过期历史 (只打日志)
-    └─→ startNocturneBackend()      → spawn Python 进程 (Electron)
+    ├─→ warmGlossaryCache()         → Memory v2 搜索预热
+    ├─→ cleanupOldHistory()         → 兼容壳（当前不执行物理清理）
+    └─→ startGateway()              → Node 进程 (Electron)
 ```
 
 ---

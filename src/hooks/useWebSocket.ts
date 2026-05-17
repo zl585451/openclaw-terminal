@@ -11,7 +11,6 @@ import type {
   GatewayStatusPayload,
   GatewayToolPayload,
   GatewayUsagePayload,
-  NocturneHealthResult,
 } from '../types/gateway';
 
 const noopIpcRenderer: IpcRendererLike = {
@@ -104,7 +103,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
   const [wsConnected, setWsConnected] = useState(false);
   const [wsReconnecting, setWsReconnecting] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
-  const [nocturneOnline, setNocturneOnline] = useState(false);
+  const [memoryOnline, setMemoryOnline] = useState(false);
 
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -291,22 +290,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
   }, []);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const checkNocturne = async () => {
-      try {
-        const result = await ipcRenderer.invoke<NocturneHealthResult>('nocturne-health');
-        setNocturneOnline(result?.ok === true);
-      } catch {
-        setNocturneOnline(false);
-      }
-    };
-
-    checkNocturne();
-    timer = setInterval(checkNocturne, 15000);
-
-    return () => {
-      if (timer) clearInterval(timer);
-    };
+    setMemoryOnline(true);
   }, []);
 
   const send = async (
@@ -341,7 +325,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
     wsConnected,
     wsReconnecting,
     wsError,
-    nocturneOnline,
+    memoryOnline,
     send,
   };
 }

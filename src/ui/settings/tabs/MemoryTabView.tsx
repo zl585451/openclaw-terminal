@@ -1,31 +1,4 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import { useSettings } from '../../../contexts/SettingsContext';
-import type { NocturneMemoryItem, NocturneReadResult } from '../../../types/electronAPI';
-
-export type NocturneStatusBrief = { available: boolean; path: string } | null;
-
-export type NocturneDetailState = {
-  available: boolean;
-  path: string;
-  backendAlive?: boolean;
-  frontendAlive?: boolean;
-  domains?: Array<{ domain: string; root_count?: number }>;
-  coreMemoryUris?: string[];
-  coreMemoryStatus?: Array<{
-    uri: string;
-    ok: boolean;
-    hasContent: boolean;
-    contentLength: number;
-    error?: string;
-  }>;
-  coreMemoryReadyCount?: number;
-  coreMemoryMissingCount?: number;
-  dbPath?: string;
-  dbUrl?: string;
-  envPath?: string;
-  diagnosticLogPath?: string;
-  stderrLogPath?: string;
-} | null;
 
 export type AiLibStatusState = {
   healthy: boolean;
@@ -36,35 +9,6 @@ export type AiLibStatusState = {
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function isMemoryItem(value: unknown): value is NocturneMemoryItem {
-  return !!value && typeof value === 'object';
-}
-
-function getMemoryItemContent(item: NocturneMemoryItem): string {
-  return item.node?.content ?? item.content ?? '';
-}
-
-function formatSingleMemoryContent(uri: string, result: NocturneReadResult): string {
-  const data = result.data;
-  if (typeof data === 'string') return `[${uri}]\n\n${data || '（空）'}`;
-  if (isMemoryItem(data)) {
-    const node = data.node || data;
-    const content = node.content ?? JSON.stringify(data);
-    return `[${uri}]\n\n${content || '（空）'}`;
-  }
-  return `[${uri}]\n\n${data ? JSON.stringify(data) : '（空）'}`;
-}
-
-function formatBootMemoryContent(data: NocturneReadResult['data']): string {
-  if (!Array.isArray(data)) return JSON.stringify(data);
-  const parts = data.map((item) => {
-    const u = item.uri || '';
-    const c = getMemoryItemContent(item);
-    return `[${u}]\n${c}`;
-  });
-  return parts.join('\n\n---\n\n') || '（无内容）';
 }
 
 type VectorProvider = 'bailian' | 'volcengine' | 'custom';
@@ -96,25 +40,6 @@ const VECTOR_PROVIDER_PRESETS: Record<VectorProvider, {
 };
 
 export interface MemoryTabViewProps {
-  nocturneStatus: NocturneStatusBrief;
-  nocturneDetail: NocturneDetailState;
-  setNocturneDetail: Dispatch<SetStateAction<NocturneDetailState>>;
-  nocturneDashboardStatus: { backendRunning: boolean; frontendRunning: boolean } | null;
-  setNocturneDashboardStatus: Dispatch<SetStateAction<{ backendRunning: boolean; frontendRunning: boolean } | null>>;
-  nocturneStarting: boolean;
-  setNocturneStarting: (v: boolean) => void;
-  nocturneSetupStatus: 'idle' | 'loading' | 'success' | 'error';
-  setNocturneSetupStatus: Dispatch<SetStateAction<'idle' | 'loading' | 'success' | 'error'>>;
-  nocturneSetupError: string;
-  setNocturneSetupError: (v: string) => void;
-  restartingBackend: boolean;
-  setRestartingBackend: (v: boolean) => void;
-  memoryReadContent: string | null;
-  setMemoryReadContent: Dispatch<SetStateAction<string | null>>;
-  memoryReadLoading: boolean;
-  setMemoryReadLoading: (v: boolean) => void;
-  amyWorkModeWriting: boolean;
-  setAmyWorkModeWriting: (v: boolean) => void;
   aiLibAutoStart: boolean;
   setAiLibAutoStart: (v: boolean) => void;
   aiLibPort: number;
@@ -126,25 +51,6 @@ export interface MemoryTabViewProps {
 }
 
 export function MemoryTabView({
-  nocturneStatus,
-  nocturneDetail,
-  setNocturneDetail,
-  nocturneDashboardStatus,
-  setNocturneDashboardStatus,
-  nocturneStarting,
-  setNocturneStarting,
-  nocturneSetupStatus,
-  setNocturneSetupStatus,
-  nocturneSetupError,
-  setNocturneSetupError,
-  restartingBackend,
-  setRestartingBackend,
-  memoryReadContent,
-  setMemoryReadContent,
-  memoryReadLoading,
-  setMemoryReadLoading,
-  amyWorkModeWriting,
-  setAmyWorkModeWriting,
   aiLibAutoStart,
   setAiLibAutoStart,
   aiLibPort,
@@ -154,9 +60,6 @@ export function MemoryTabView({
   aiLibSaving,
   setAiLibSaving,
 }: MemoryTabViewProps) {
-  const { settings } = useSettings();
-  const assistantName = settings.aiName || 'OpenClaw';
-  const userName = settings.userName || '用户';
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const [summarizerEnabled, setSummarizerEnabled] = useState(true);
   const [summarizerBaseUrl, setSummarizerBaseUrl] = useState('');
@@ -229,27 +132,39 @@ export function MemoryTabView({
   return (
     <div className="settings-tab-content">
       <div className="settings-guide-card settings-guide-card-spaced">
-        <h4>Nocturne 记忆系统 使用说明</h4>
+        <h4>Memory v2 使用说明</h4>
         <div className="settings-description-flow">
-          <p className="settings-guide-copy"><strong>什么是记忆系统？</strong></p>
-          <p className="settings-guide-copy-lg">记忆系统可以让 AI 「记住」你的个人信息、偏好、习惯等，让对话更加个性化和智能。例如：你的名字、职业、常用工具等。</p>
+          <p className="settings-guide-copy"><strong>现在的默认记忆链路：</strong></p>
+          <p className="settings-guide-copy-lg">
+            OCT 默认使用本地文件后端。原始对话写入 <code>~/.openclaw/memory/turns</code>，
+            显式记忆写入 <code>notes</code>，三级摘要写入 <code>summaries</code>。
+          </p>
 
-          <p className="settings-guide-copy"><strong>快速开始（3 步）：</strong></p>
+          <p className="settings-guide-copy"><strong>体感上的变化：</strong></p>
           <ol className="settings-guide-list">
-            <li>确认下方后端状态为可访问</li>
-            <li>点击「初始化预设记忆」补齐系统基础记忆</li>
-            <li>再用「刷新核心记忆」检查 system://boot 是否已有内容</li>
+            <li>启动时不再依赖外部 Python / Dashboard 服务</li>
+            <li>对话原文会直接落本地，离线也更稳</li>
+            <li>向量召回默认更克制，只索引更值得长期记住的内容</li>
           </ol>
 
-          <p className="settings-guide-copy"><strong>系统要求：</strong></p>
-          <p className="settings-guide-indent">发布版基础记忆初始化不再依赖本机 Python；只有开发态调试后端脚本时才需要 Python 3.10+</p>
+          <p className="settings-guide-copy"><strong>说明：</strong></p>
+          <p className="settings-guide-indent">
+            这一页保留的是 Memory v2 和 AI.library 的有效配置。
+          </p>
         </div>
       </div>
+
+      <section className="settings-section">
+        <h3>Memory v2 本地存储</h3>
+        <p className="settings-desc">
+          当前默认使用 Memory v2 文件后端，不再需要单独的记忆服务或管理面板。
+        </p>
+      </section>
 
       <section className="settings-section settings-section-spaced">
         <h3>AI.library 项目书库</h3>
         <p className="settings-description-code">
-          与 Nocturne（端口 <strong>8000</strong>）并行；项目书库服务默认 <strong>8001</strong>。当前版本由 OCT 内置 Node 服务提供上传、切章、列表和章节读取，不再依赖 Python。
+          项目书库服务默认 <strong>8001</strong>，由 OCT 内置 Node 服务提供上传、切章、列表和章节读取。
         </p>
         {aiLibStatus && (
           <div className="settings-status-card settings-status-card-tight">
@@ -547,285 +462,6 @@ export function MemoryTabView({
             ×
           </button>
         </div>
-      )}
-
-      {nocturneStatus?.available ? (
-        <section className="settings-section">
-          <h3>记忆系统控制台</h3>
-          <div className="settings-status-card settings-status-card-spaced">
-            <p className="settings-status-line-primary">
-              后端状态：{nocturneDetail?.backendAlive ? '✅ http://localhost:8000 可访问' : '❌ 不可用'}
-            </p>
-            <p className="settings-status-line-primary">
-              前端状态：{nocturneDetail?.frontendAlive ? '✅ http://localhost:3000 可访问' : '❌ 不可用'}
-            </p>
-            <p className="settings-status-line-muted">
-              已加载记忆：{nocturneDetail?.domains?.length ?? 0} 个 domain
-            </p>
-            <p className="settings-status-line-muted">
-              核心记忆：{nocturneDetail?.coreMemoryReadyCount ?? 0} / {nocturneDetail?.coreMemoryUris?.length ?? 0} 已就绪
-            </p>
-            {nocturneDetail?.dbPath ? (
-              <p className="settings-status-line-muted">数据库：{nocturneDetail.dbPath}</p>
-            ) : null}
-            {nocturneDetail?.diagnosticLogPath ? (
-              <p className="settings-status-line-muted">诊断日志：{nocturneDetail.diagnosticLogPath}</p>
-            ) : null}
-            {nocturneDetail?.stderrLogPath ? (
-              <p className="settings-status-line-muted">后端日志：{nocturneDetail.stderrLogPath}</p>
-            ) : null}
-            {(nocturneDetail?.coreMemoryMissingCount ?? 0) > 0 ? (
-              <p className="settings-error">
-                缺失核心记忆：
-                {nocturneDetail?.coreMemoryStatus
-                  ?.filter((item) => !item.ok || !item.hasContent)
-                  .map((item) => item.uri)
-                  .join('，') || '未知'}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="settings-btn-row">
-            <button
-              type="button"
-              className={`settings-btn ${nocturneDashboardStatus?.backendRunning ? 'settings-btn-danger' : 'settings-btn-primary'}`}
-              onClick={async () => {
-                const api = window.electronAPI;
-                if (!api) return;
-                if (nocturneDashboardStatus?.backendRunning) {
-                  if (!api.stopNocturneDashboard) return;
-                  await api.stopNocturneDashboard();
-                  setNocturneDashboardStatus({ backendRunning: false, frontendRunning: false });
-                  setNocturneDetail((d) => d ? { ...d, backendAlive: false, frontendAlive: false } : null);
-                } else {
-                  if (!api.startNocturneDashboard) return;
-                  setNocturneStarting(true);
-                  const r = await api.startNocturneDashboard();
-                  setNocturneStarting(false);
-                  if (r.success) {
-                    setNocturneDashboardStatus({ backendRunning: true, frontendRunning: true });
-                    api.getNocturneStatus?.().then((r2) => setNocturneDetail(r2)).catch((err: unknown) => {
-                      const msg = getErrorMessage(err);
-                      console.warn('[MemoryTabView] Dashboard 启动后状态刷新失败', msg);
-                      setRefreshWarning(`Dashboard 启动后状态刷新失败：${msg}`);
-                    });
-                  } else {
-                    alert('启动失败：' + (r.error || '未知错误'));
-                  }
-                }
-              }}
-              disabled={nocturneStarting}
-            >
-              {nocturneStarting ? '启动中...' : nocturneDashboardStatus?.backendRunning ? '■ 停止 Dashboard' : '▶ 启动 Dashboard'}
-            </button>
-            <button
-              type="button"
-              className="settings-btn"
-              onClick={async () => {
-                const api = window.electronAPI;
-                if (!api?.restartNocturneBackend) return;
-                setRestartingBackend(true);
-                await api.restartNocturneBackend();
-                await new Promise((r) => setTimeout(r, 2000));
-                api.getNocturneStatus?.().then((r) => setNocturneDetail(r)).catch((err: unknown) => {
-                  const msg = getErrorMessage(err);
-                  console.warn('[MemoryTabView] 重启后端后状态刷新失败', msg);
-                  setRefreshWarning(`重启后端后状态刷新失败：${msg}`);
-                });
-                setRestartingBackend(false);
-              }}
-              disabled={restartingBackend}
-            >
-              {restartingBackend ? '重启中...' : '仅重启后端'}
-            </button>
-            <button
-              type="button"
-              className="settings-btn"
-              onClick={() => window.electronAPI?.openNocturneManagement?.()}
-            >
-              打开管理界面
-            </button>
-          </div>
-
-          <div className="settings-btn-row settings-btn-row-spaced">
-            <button
-              type="button"
-              className="settings-btn"
-              onClick={() => {
-                setNocturneSetupStatus('loading');
-                setNocturneSetupError('');
-                window.electronAPI?.setupNocturneMemory?.().then((r) => {
-                  if (r.success) setNocturneSetupStatus('success');
-                  else { setNocturneSetupStatus('error'); setNocturneSetupError(r.error || '未知错误'); }
-                }).catch((err: unknown) => { setNocturneSetupStatus('error'); setNocturneSetupError(getErrorMessage(err)); });
-              }}
-              disabled={nocturneSetupStatus === 'loading'}
-            >
-              {nocturneSetupStatus === 'loading' ? '安装中...' : nocturneSetupStatus === 'success' ? '依赖已安装 ✓' : '安装 Python 依赖（开发调试）'}
-            </button>
-            <button
-              type="button"
-              className="settings-btn"
-              onClick={async () => {
-                window.electronAPI?.seedNocturneMemories?.().then((r) => {
-                  alert(r.success ? '初始化成功！\n' + (r.output || '') : '初始化失败：\n' + (r.error || ''));
-                  window.electronAPI?.getNocturneStatus?.().then((detail) => {
-                    setNocturneDetail(detail);
-                    if (detail?.backendAlive !== undefined) {
-                      setNocturneDashboardStatus({
-                        backendRunning: detail.backendAlive,
-                        frontendRunning: !!detail.frontendAlive,
-                      });
-                    }
-                  }).catch((err: unknown) => {
-                    const msg = getErrorMessage(err);
-                    console.warn('[MemoryTabView] 初始化预设记忆后状态刷新失败', msg);
-                    setRefreshWarning(`初始化预设记忆后状态刷新失败：${msg}`);
-                  });
-                });
-              }}
-            >
-              初始化预设记忆
-            </button>
-            <button
-              type="button"
-              className="settings-btn"
-              disabled={amyWorkModeWriting}
-              onClick={async () => {
-                const api = window.electronAPI;
-                if (!api?.nocturneCreate) return;
-                setAmyWorkModeWriting(true);
-                const workModeContent = `${userName} 的工作团队分工：
-${assistantName}（行政助理）：日常对话、信息整理、记忆管理、任务分发、提示词优化。处理80%的日常问题。
-Cursor（执行总监）：所有代码编写、文件修改、项目实现。${assistantName} 生成提示词，${userName} 交给 Cursor 执行。
-Claude（技术顾问/总策划）：复杂架构决策、技术路线规划、高级问题咨询。费用较高，只在必要时使用。
-
-判断标准：
-- 日常问题、信息查询、文档整理 → ${assistantName} 直接解决
-- 代码编写、文件修改 → ${assistantName} 生成 Cursor 提示词
-- 架构设计、技术选型、复杂 bug → 提醒 ${userName} 咨询 Claude
-- 需要咨询 Claude 时，${assistantName} 先帮 ${userName} 整理问题、优化提示词、提炼关键信息，减少 token 消耗`;
-                const claudeRoutingContent = `当 ${userName} 需要咨询 Claude 时，${assistantName} 的工作流程：
-1. 先理解 ${userName} 的问题
-2. 整理成结构化的提示词（背景+问题+已尝试的方案+期望结果）
-3. 精简掉不必要的细节，控制在500字以内
-4. 告知 ${userName}：是否需要附图、哪些截图最关键
-5. 输出一段可以直接复制给 Claude 的提示词
-
-格式模板：
-【背景】OCT项目，[简短背景]
-【问题】[核心问题一句话]
-【已知】[已尝试的方案]
-【期望】[想要的结果]
-【文件】[如需附上的关键代码片段]`;
-                try {
-                  const r1 = await api.nocturneCreate('core://agent/work_mode', workModeContent, 0, '工作模式、分工、角色、顾问、Claude、Cursor');
-                  const r2 = await api.nocturneCreate('core://agent/claude_routing', claudeRoutingContent, 1, '咨询Claude、问题整理、提示词优化、token节省');
-                  if (r1?.ok && r2?.ok) {
-                    alert(`已写入 ${assistantName} 工作模式记忆：core://agent/work_mode、core://agent/claude_routing`);
-                    api.getNocturneStatus?.().then((r) => setNocturneDetail(r)).catch((err: unknown) => {
-                      const msg = getErrorMessage(err);
-                      console.warn('[MemoryTabView] 写入工作模式记忆后状态刷新失败', msg);
-                      setRefreshWarning(`写入工作模式记忆后状态刷新失败：${msg}`);
-                    });
-                  } else {
-                    alert('写入失败：' + (r1?.error || r2?.error || '未知错误'));
-                  }
-                } catch (e: unknown) {
-                  alert('写入失败：' + getErrorMessage(e));
-                }
-                setAmyWorkModeWriting(false);
-              }}
-            >
-              {amyWorkModeWriting ? '写入中...' : `写入 ${assistantName} 工作模式记忆`}
-            </button>
-          </div>
-          {nocturneSetupError && <p className="settings-error">{nocturneSetupError}</p>}
-
-          {(nocturneDetail?.coreMemoryUris?.length ?? 0) > 0 && (
-            <div className="settings-uri-section">
-              <h4 className="settings-uri-title">核心记忆 URI</h4>
-              <ul className="settings-uri-list">
-                {nocturneDetail?.coreMemoryUris?.map((uri) => (
-                  <li key={uri} className="settings-uri-item">
-                    <code className="settings-uri-code">
-                      {uri}
-                      {(() => {
-                        const status = nocturneDetail?.coreMemoryStatus?.find((item) => item.uri === uri);
-                        if (!status) return '';
-                        if (status.ok && status.hasContent) return '  [OK]';
-                        return `  [MISSING${status.error ? `: ${status.error}` : ''}]`;
-                      })()}
-                    </code>
-                    <button
-                      type="button"
-                      className="settings-btn settings-small-btn"
-                      onClick={async () => {
-                        const api = window.electronAPI;
-                        if (!api?.nocturneRead) return;
-                        setMemoryReadLoading(true);
-                        setMemoryReadContent(null);
-                        try {
-                          const r = await api.nocturneRead(uri);
-                          if (r?.ok && r?.data) {
-                            setMemoryReadContent(formatSingleMemoryContent(uri, r));
-                          } else {
-                            setMemoryReadContent('读取失败：' + (r?.error || '未知错误'));
-                          }
-                        } catch (e: unknown) {
-                          setMemoryReadContent('错误：' + getErrorMessage(e));
-                        }
-                        setMemoryReadLoading(false);
-                      }}
-                      disabled={memoryReadLoading}
-                    >
-                      查看
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="settings-btn-row settings-btn-row-tight">
-                <button
-                  type="button"
-                  className="settings-btn"
-                  onClick={async () => {
-                    const api = window.electronAPI;
-                    if (!api?.nocturneRead) return;
-                    setMemoryReadLoading(true);
-                    setMemoryReadContent(null);
-                    try {
-                      const r = await api.nocturneRead('system://boot');
-                      if (r?.ok && Array.isArray(r?.data)) {
-                        setMemoryReadContent(formatBootMemoryContent(r.data));
-                      } else {
-                        setMemoryReadContent(r?.ok ? JSON.stringify(r.data) : '失败：' + (r?.error || ''));
-                      }
-                    } catch (e: unknown) {
-                      setMemoryReadContent('错误：' + getErrorMessage(e));
-                    }
-                    setMemoryReadLoading(false);
-                  }}
-                  disabled={memoryReadLoading}
-                >
-                  刷新核心记忆
-                </button>
-              </div>
-            </div>
-          )}
-          {memoryReadContent !== null && (
-            <div className="settings-status-card settings-preview-panel">
-              <button type="button" className="settings-btn settings-preview-close" onClick={() => setMemoryReadContent(null)}>关闭</button>
-              <pre className="settings-preview-pre">{memoryReadContent}</pre>
-            </div>
-          )}
-        </section>
-      ) : (
-        <section className="settings-section">
-          <h3>记忆系统不可用</h3>
-          <p className="settings-desc">
-            未检测到 Nocturne 记忆模块。请确保项目 resources/nocturne_memory 目录存在。
-          </p>
-        </section>
       )}
     </div>
   );

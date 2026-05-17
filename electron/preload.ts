@@ -217,15 +217,6 @@ const electronAPI = {
   getLocalVisionStatus: () => ipcRenderer.invoke('get-local-vision-status'),
   downloadLocalVisionModel: () => ipcRenderer.invoke('download-local-vision-model'),
   saveLocalVisionSettings: (payload: { enabled?: boolean; mirrorHost?: string }) => ipcRenderer.invoke('save-local-vision-settings', payload),
-  // Nocturne 记忆系统
-  getNocturneStatus: () => ipcRenderer.invoke('get-nocturne-status'),
-  setupNocturneMemory: () => ipcRenderer.invoke('setup-nocturne-memory'),
-  seedNocturneMemories: () => ipcRenderer.invoke('seed-nocturne-memories'),
-  startNocturneDashboard: () => ipcRenderer.invoke('start-nocturne-dashboard'),
-  stopNocturneDashboard: () => ipcRenderer.invoke('stop-nocturne-dashboard'),
-  getNocturneDashboardStatus: () => ipcRenderer.invoke('nocturne-dashboard-status'),
-  openNocturneManagement: () => ipcRenderer.invoke('open-nocturne-management'),
-  restartNocturneBackend: () => ipcRenderer.invoke('restart-nocturne-backend'),
   getAiLibraryPlugin: () => ipcRenderer.invoke('get-ai-library-plugin'),
   saveAiLibraryPlugin: (payload: {
     OCT_AI_LIBRARY_AUTO_START?: boolean;
@@ -250,29 +241,6 @@ const electronAPI = {
     threshold?: number;
     topK?: number;
   }) => ipcRenderer.invoke('save-memory-vector-recall-config', payload),
-  // Nocturne Memory — 完整 6 工具直接访问
-  nocturneHealth: () => ipcRenderer.invoke('nocturne-health'),
-  nocturneRead: (uri: string) => ipcRenderer.invoke('nocturne-read', { uri }),
-  nocturneCreate: (uri: string, content: string, priority?: number, disclosure?: string) =>
-    ipcRenderer.invoke('nocturne-create', { uri, content, priority, disclosure }),
-  nocturneUpdate: (uri: string, content?: string, priority?: number, disclosure?: string) =>
-    ipcRenderer.invoke('nocturne-update', { uri, content, priority, disclosure }),
-  nocturneDelete: (uri: string) => ipcRenderer.invoke('nocturne-delete', { uri }),
-  nocturneAlias: (sourceUri: string, targetUri: string, priority?: number, disclosure?: string) =>
-    ipcRenderer.invoke('nocturne-alias', { sourceUri, targetUri, priority, disclosure }),
-  nocturneSearch: (query: string, domain?: string) =>
-    ipcRenderer.invoke('nocturne-search', { query, domain }),
-  nocturneBatchImport: (memories: Array<{ uri: string; content: string; priority?: number; disclosure?: string }>) =>
-    ipcRenderer.invoke('nocturne-batch-import', { memories }),
-  // Task Board 任务看板
-  nocturneGetTasks: () => ipcRenderer.invoke('nocturne-get-tasks'),
-  nocturneUpdateTask: (taskId: string, done: boolean) =>
-    ipcRenderer.invoke('nocturne-update-task', { taskId, done }),
-  nocturneAddTask: (content: string, priority: 'p0' | 'p1' | 'p2', source: 'amy' | 'user') =>
-    ipcRenderer.invoke('nocturne-add-task', { content, priority, source }),
-  nocturneClearCompletedTasks: () => ipcRenderer.invoke('nocturne-clear-completed-tasks'),
-  nocturneSetIntention: (intention: string) =>
-    ipcRenderer.invoke('nocturne-set-intention', { intention }),
   invokeGatewayTool: (toolName: string, args: any) =>
     ipcRenderer.invoke('invoke-gateway-tool', toolName, args),
   // MCP Server 管理

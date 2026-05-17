@@ -5,7 +5,7 @@
 ---
 
 ## 做什么
-每轮对话压缩后写入 Nocturne
+每轮对话结束后写入本地 raw turn JSONL
 
 ## 文件
 `oct-gateway/memory_history.js` → `saveHistorySummary()`
@@ -20,7 +20,7 @@ onDone → saveHistorySummary(userMsg, fullReply) → memory.createMemory()
 
 ## 前置条件
 - `config.memory.auto_save_history === true`
-- Nocturne 在线
+- Memory v2 可写
 
 ## 验证方法
 终端看到 `[Memory] 对话摘要已写入:`
