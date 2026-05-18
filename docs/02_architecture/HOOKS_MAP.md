@@ -19,9 +19,9 @@
 
 **返回值**（摘要）：连接与 FSM 相位、流式与 `sendMessage` / `quickSend`、token/活动时间线/工具与网关能力、流式 DOM ref 等。
 
-**内部依赖**：`useMessages.gateway`、`useTokenUsage`、`useActivityTimeline`、`useStreamPainting`、`useMessages.helpers`；`useProject`。
+**内部依赖**：`useMessages.gateway`、`useMessages.runtime`、`useTokenUsage`、`useActivityTimeline`、`useMessages.helpers`；`useProject`。
 
-**补充说明**：从 2026-05-18 起，流式收尾、chat done 写回、tool card 内联同步、系统命令判断等纯状态变换已下沉到 `src/hooks/useMessages.helpers.ts`；WebSocket 事件绑定与系统状态回复解析已下沉到 `src/hooks/useMessages.gateway.ts`。`useMessages` 继续保留编排职责。
+**补充说明**：从 2026-05-18 起，流式收尾、chat done 写回、tool card 内联同步、系统命令判断等纯状态变换已下沉到 `src/hooks/useMessages.helpers.ts`；WebSocket 事件绑定与系统状态回复解析已下沉到 `src/hooks/useMessages.gateway.ts`；streaming lifecycle、超时收尾与 stream completion handling 已下沉到 `src/hooks/useMessages.runtime.ts`。`useMessages` 继续保留编排与发送入口职责。
 
 ## useMessages.gateway
 
@@ -35,7 +35,17 @@
 
 **被谁使用**：仅 `useMessages`。
 
-**被谁使用**：`ChatTab.v2.tsx`。
+## useMessages.runtime
+
+**职责**：承接聊天主链路的 streaming lifecycle，包括 stream painting、stream completion 收尾、assistant streaming 占位同步，以及请求超时定时器的启动/清理。
+
+**输入参数**：`useMessages` 提供的 runtime refs、消息 setter、scroll 协调对象、typing sound 配置与 timeline 清理回调。
+
+**返回值**：`startPainting`、`stopPainting`、`ensureStreamingAssistantMessage`、`clearRoundTimeout`、`startRoundTimeout`、`scheduleFinalizeFallback`。
+
+**内部依赖**：`useStreamPainting`、`useMessages.helpers`。
+
+**被谁使用**：仅 `useMessages`。
 
 ## useTokenUsage
 

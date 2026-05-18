@@ -79,7 +79,7 @@
 ### Phase 3
 
 - Tag: `refactor-plan-phase3-chat-state-split`
-- Status: in_progress
+- Status: completed
 - Target: 拆解 `useMessages` 的协议层、流式层和 UI 层
 - Files:
 - `src/hooks/useMessages.ts`
@@ -96,7 +96,9 @@
 - 已把流式收尾、chat done 写回、tool card 同步与系统命令判断迁出为纯 helper
 - 已新增 `src/hooks/useMessages.gateway.ts`
 - `useWebSocket` 事件处理与 `🦞` 状态解析已从 `useMessages` 抽离
-- `useMessages` 继续保留 orchestration，后续再评估 streaming lifecycle 是否继续下沉
+- 已新增 `src/hooks/useMessages.runtime.ts`
+- streaming lifecycle、timeout cleanup、stream completion handling 已从 `useMessages` 抽离
+- `useMessages` 当前主要保留状态组合与发送入口
 - Exit Criteria:
 - `useMessages.ts` 不再同时管理所有职责
 - 现有 hooks tests 继续通过，必要时补测试

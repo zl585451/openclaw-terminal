@@ -29,5 +29,5 @@
 
 ## Notes
 
-- 当前 `Phase 3` 仍未结束，`useMessages` 还保留发送入口与部分 streaming lifecycle 装配
-- 下一步可继续评估是否把 timeout / stream completion lifecycle 也下沉
+- 本切片之后继续完成了 `useMessages.runtime.ts` 拆分
+- `Phase 3` 已在后续收口为 completed

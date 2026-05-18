@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import { TurnFSM, deriveLegacyFlags, TurnPhase } from '../core/turnFSM';
-import { StreamRouter, StreamState } from '../core/streamRouter';
+import { StreamRouter } from '../core/streamRouter';
 import { BlockIngest } from '../core/blockIngest';
 import type { WorkbenchRoundtripContext } from '../workbench/types';
 import { workbenchBus } from '../workbench/WorkbenchBus';
@@ -15,15 +15,11 @@ import { useProject } from '../contexts/ProjectContext';
 import { useTokenUsage } from './useTokenUsage';
 import { useActivityTimeline } from './useActivityTimeline';
 import { useMessagesGateway } from './useMessages.gateway';
-import { useStreamPainting } from './useStreamPainting';
+import { useMessagesRuntime } from './useMessages.runtime';
 import type { ActivityEntry } from './useActivityTimeline';
 import {
-  applyStreamingFinalizeFallback,
-  ensureStreamingAssistantMessageState,
-  finalizeStreamingAssistantMessages,
   isSystemCommand,
   recoverOctStreamFromEndFailure,
-  sanitizeAssistantText,
 } from './useMessages.helpers';
 export type { ActivityEntryType, ActivityEntry } from './useActivityTimeline';
 export { preferDoneTextWhenMoreComplete } from './useMessages.helpers';
@@ -168,7 +164,6 @@ export function useMessages({
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
   const roundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ROUND_TIMEOUT_MS = 10 * 60 * 1000;
   // ── isStreaming (memo) ────────────────────────────────────────────────────
   const isStreaming = useMemo(() => {
     const lf = deriveLegacyFlags(fsmPhase);
@@ -179,130 +174,35 @@ export function useMessages({
       (!!last?.isStreaming && last.role === 'assistant')
     );
   }, [fsmPhase, messages]);
-  const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
-    const finalRaw = sanitizeAssistantText(rawText ?? fullTextRef.current ?? '');
-    if (finalizeFallbackTimerRef.current != null) {
-      clearTimeout(finalizeFallbackTimerRef.current);
-      finalizeFallbackTimerRef.current = null;
-    }
-    pendingStreamFinalizeRef.current = false;
-    // Advance FSM through any intermediate states that may have been skipped,
-    // then complete the turn. If anything throws, force-reset to IDLE so the
-    // next turn can start cleanly.
-    try {
-      const p = oct.fsm.getPhase();
-      if (p === TurnPhase.STREAMING || p === TurnPhase.STREAM_PAUSED) {
-        oct.fsm.onStreamEnd();    // → STREAM_COMPLETE
-      }
-      if (oct.fsm.getPhase() === TurnPhase.STREAM_COMPLETE) {
-        oct.fsm.onRenderDone();   // → RENDER_COMPLETE
-      }
-      oct.fsm.onTurnFinish();     // → TURN_FINISHED → IDLE
-    } catch (e) {
-      console.warn('[useMessages] fsm.onTurnFinish error, force-resetting to IDLE:', e);
-      oct.fsm.resetToIdle();
-    }
-    oct.ingest.reset();
-    setMessages((prev) => finalizeStreamingAssistantMessages(prev, finalRaw));
-  }, [oct, setMessages]);
-
-  const scheduleFinalizeFallback = useCallback((rawText?: string) => {
-    if (finalizeFallbackTimerRef.current != null) {
-      clearTimeout(finalizeFallbackTimerRef.current);
-    }
-    finalizeFallbackTimerRef.current = setTimeout(() => {
-      finalizeFallbackTimerRef.current = null;
-      const fallbackRaw = sanitizeAssistantText(rawText ?? fullTextRef.current ?? '');
-      setMessages((prev) => applyStreamingFinalizeFallback(prev, fallbackRaw));
-      try {
-        recoverOctStreamFromEndFailure(oct);
-      } catch {
-        /* ignore */
-      }
-    }, 180);
-  }, [oct, setMessages]);
-
-  const { startPainting, stopPainting } = useStreamPainting(
-    {
-      ...oct,
-      __streamPainting: {
-        scrollReconcile: scrollRef.current.reconcile,
-        streamSpeedMsRef,
-        typingSound,
-        typingSoundVolume,
-        fullTextRef,
-        streamingDomRef,
-        onVisibleText: setStreamingRenderText,
-        finalizeStreamingAssistantMessage,
-        pendingStreamFinalizeRef,
-        lastStreamReconcileMsRef,
-      },
-    },
+  const {
+    startPainting,
+    stopPainting,
+    ensureStreamingAssistantMessage,
+    clearRoundTimeout,
+    startRoundTimeout,
+    scheduleFinalizeFallback,
+  } = useMessagesRuntime({
+    oct,
+    scroll: scrollRef.current,
+    getNextMessageId,
     setMessages,
-    scrollRef.current.reconcile,
-  );
-
-  // ── ensureStreamingAssistantMessage ───────────────────────────────────────
-  const ensureStreamingAssistantMessage = useCallback(() => {
-    if (pendingFullTextSyncRafRef.current != null) return;
-    pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
-      pendingFullTextSyncRafRef.current = null;
-      const buf = fullTextRef.current;
-      setMessages((prev) => ensureStreamingAssistantMessageState(prev, getNextMessageId(), Date.now(), buf));
-    });
-  }, [getNextMessageId, setMessages]);
-
-  const clearRoundTimeout = useCallback(() => {
-    if (roundTimeoutRef.current != null) {
-      clearTimeout(roundTimeoutRef.current);
-      roundTimeoutRef.current = null;
-    }
-  }, []);
-
-  const startRoundTimeout = useCallback(() => {
-    clearRoundTimeout();
-    roundTimeoutRef.current = setTimeout(() => {
-      roundTimeoutRef.current = null;
-      setAwaitingResponse(false);
-      setAgentPhase('idle');
-      setActiveTools([]);
-      removeTimelineTypes(['keepalive_hint']);
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        const timeoutText = '⏱️ 本轮请求超时（10 分钟），已自动结束。你可以重试，或先让我用不依赖工具的方式回答。';
-        if (last?.role === 'assistant' && last.isStreaming) {
-          return [
-            ...prev.slice(0, -1),
-            {
-              ...last,
-              isStreaming: false,
-              isStreamingRaw: false,
-              content: timeoutText,
-              isSystemReply: true,
-              timestamp: Date.now(),
-            },
-          ];
-        }
-        return [
-          ...prev,
-          {
-            id: getNextMessageId(),
-            role: 'assistant' as const,
-            content: timeoutText,
-            isStreaming: false,
-            isSystemReply: true,
-            timestamp: Date.now(),
-          },
-        ];
-      });
-      try {
-        oct.stream.abortToIdle();
-      } catch {}
-      try {
-        recoverOctStreamFromEndFailure(oct);
-      } catch {}
-    }, ROUND_TIMEOUT_MS);
-  }, [ROUND_TIMEOUT_MS, clearRoundTimeout, getNextMessageId, oct, setMessages]);
+    streamSpeedMsRef,
+    typingSound,
+    typingSoundVolume,
+    streamingMessageRef,
+    fullTextRef,
+    streamingDomRef,
+    pendingFullTextSyncRafRef,
+    setStreamingRenderText,
+    pendingStreamFinalizeRef,
+    lastStreamReconcileMsRef,
+    finalizeFallbackTimerRef,
+    roundTimeoutRef,
+    setAwaitingResponse,
+    setAgentPhase,
+    setActiveTools,
+    removeTimelineTypes,
+  });
 
   const ws = useMessagesGateway({
     oct,
@@ -347,64 +247,6 @@ export function useMessages({
     });
   }, [oct.fsm]);
 
-  // ── OCT stream subscription ───────────────────────────────────────────────
-  useEffect(() => {
-    const { stream, ingest } = oct;
-
-    const applyRawToMessages = () => {
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          return prev.map((m, idx) =>
-            idx === prev.length - 1
-              ? (
-                  m.isStreamingRaw
-                    ? m
-                    : { ...m, isStreamingRaw: true }
-                )
-              : m
-          );
-        }
-        return [
-          ...prev,
-          {
-            id: getNextMessageId(),
-            role: 'assistant' as const,
-            content: '',
-            isStreaming: true,
-            isStreamingRaw: true,
-            timestamp: Date.now(),
-          },
-        ];
-      });
-    };
-
-    const unsubscribe = stream.subscribe((event) => {
-      if (event.type === 'tokens') {
-        ingest.ingest(event.payload.batch);
-        const raw = ingest.getAccumulatedRaw();
-        streamingMessageRef.current = raw;
-        fullTextRef.current = raw;
-        applyRawToMessages();
-        startPainting();
-      }
-        if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
-        queueMicrotask(() => {
-          // 取消 fallback 定时器：流式结束，由 runStreamPaintTick 负责终止，不需要 fallback 抢先
-          if (finalizeFallbackTimerRef.current != null) {
-            clearTimeout(finalizeFallbackTimerRef.current);
-            finalizeFallbackTimerRef.current = null;
-          }
-          pendingStreamFinalizeRef.current = true;
-          stopPainting();
-          try { stream.close(); } catch (e) { console.warn('[useMessages] stream.close', e); }
-        });
-      }
-    });
-
-    return () => { unsubscribe(); };
-  }, [oct, getNextMessageId, setMessages, startPainting, stopPainting]);
-
   // ── pendingPills: reset on messages change ────────────────────────────────
   useEffect(() => {
     setPendingPills(null);
@@ -414,21 +256,6 @@ export function useMessages({
   useEffect(() => {
     onStatusChange?.(ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax);
   }, [ws.wsConnected, isStreaming, modelName, tokenIn, tokenOut, ctxUsed, ctxMax, onStatusChange]);
-
-  // ── cleanup ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      if (roundTimeoutRef.current != null) {
-        clearTimeout(roundTimeoutRef.current);
-        roundTimeoutRef.current = null;
-      }
-      if (finalizeFallbackTimerRef.current != null) {
-        clearTimeout(finalizeFallbackTimerRef.current);
-        finalizeFallbackTimerRef.current = null;
-      }
-      stopPainting();
-    };
-  }, [stopPainting]);
 
   async function _sendMessageCore(options: {
     text: string;
