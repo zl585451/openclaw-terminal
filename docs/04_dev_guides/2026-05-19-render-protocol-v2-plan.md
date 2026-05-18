@@ -166,8 +166,8 @@
 
 ## 推荐执行顺序
 
-1. 先做 Phase 1：协议文档和提示词。
-2. 做 Phase 2：Gateway normalizer 和测试。
+1. 先做 Phase 1：协议文档和提示词。（已完成：`dbc8949`）
+2. 做 Phase 2：Gateway normalizer 和测试。（已完成）
 3. 做 Phase 3：前端流式容错和测试。
 4. 最后做 Phase 4：真实样例回归集。
 
@@ -196,4 +196,3 @@
 - 不改变 `[pills]` / `[question]` / `[tasklist]` / `[clarify_card]` 现有协议语义。
 - 不直接合并或推送 `main`。
 - 不把所有模型输出强制转成 JSON。
-
