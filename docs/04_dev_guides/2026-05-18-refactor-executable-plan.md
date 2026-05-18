@@ -58,7 +58,7 @@
 ### Phase 2
 
 - Tag: `refactor-plan-phase2-config-split`
-- Status: in_progress
+- Status: completed
 - Target: 拆解 `config.js` 的装载、注册表、缓存和默认值
 - Files:
 - `oct-gateway/config.js`
@@ -69,6 +69,9 @@
 - 分离 probe cache
 - 分离 memory/vector/summarizer 默认配置
 - 保持现有导出接口向后兼容
+- Result:
+- `config.js` 已从超大逻辑文件收口为装配入口
+- `oct-gateway/config/` 已承接 file sources、provider runtime、model registry、probe cache、memory config、agent permissions
 - Exit Criteria:
 - `config.js` 退化为组装入口，而不是超大逻辑文件
 - provider/config 行为无可见回归
