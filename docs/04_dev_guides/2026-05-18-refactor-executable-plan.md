@@ -40,6 +40,7 @@
 ### Phase 1
 
 - Tag: `refactor-plan-phase1-gateway-capability-core`
+- Status: completed
 - Target: 抽离 `ai.js` 和 `gateway/slash.js` 的重复 provider 能力逻辑
 - Files:
 - `oct-gateway/ai.js`

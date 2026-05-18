@@ -9,6 +9,10 @@ const { createLogger } = require('./logger');
 const log = createLogger('ai');
 const ProviderRouter = require('./runtime/providerRouter');
 const ToolLoop = require('./runtime/toolLoop');
+const {
+  buildChatHeaders,
+  probeModelToolsSupport,
+} = require('./runtime/providerCapabilities');
 const { ProxyAgent } = require('undici');
 const {
   isGoogleNativeMode,
@@ -1276,105 +1280,6 @@ function extractAllPseudoToolCalls(text) {
   return extractFunctionStyleToolCalls(text);
 }
 
-function buildChatHeaders(baseUrl, apiKey) {
-  const _baseForAuth = String(baseUrl || '');
-  const isVertexAIEndpoint = _baseForAuth.includes('aiplatform.googleapis.com');
-  return isVertexAIEndpoint
-    ? {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      }
-    : {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      };
-}
-
-function classifyProbeFailure(message) {
-  const m = String(message || '').toLowerCase();
-  const unsupportedHints = [
-    'tool',
-    'function calling',
-    'function_call',
-    'tool_calls',
-    'tool_choice',
-    'unrecognized request argument',
-    'unknown field',
-    'does not support',
-    'not supported',
-    'invalid parameter',
-  ];
-  const hasToolHint = unsupportedHints.some((token) => m.includes(token));
-  if (hasToolHint) return 'unsupported';
-  return 'unknown';
-}
-
-async function probeModelToolsSupport({ provider, baseUrl, apiKey, model }) {
-  const cached = config.getProbeCacheEntry?.({
-    providerId: provider.id,
-    baseUrl,
-    modelId: model,
-  });
-  if (cached?.toolsSupport) return cached;
-
-  const probeToolName = 'oct_capability_probe_noop';
-  const probeBody = {
-    model,
-    stream: false,
-    max_tokens: 1,
-    messages: [
-      { role: 'system', content: 'You are running a capability probe.' },
-      { role: 'user', content: 'Call the probe function now.' },
-    ],
-    tools: [
-      {
-        type: 'function',
-        function: {
-          name: probeToolName,
-          description: 'Capability probe noop tool.',
-          parameters: { type: 'object', properties: {} },
-        },
-      },
-    ],
-    tool_choice: {
-      type: 'function',
-      function: { name: probeToolName },
-    },
-  };
-
-  const endpoint = `${String(baseUrl || '').replace(/\/$/, '')}/chat/completions`;
-  try {
-    const res = await fetchWithRetry(endpoint, {
-      method: 'POST',
-      headers: buildChatHeaders(baseUrl, apiKey),
-      body: JSON.stringify(probeBody),
-    }, 0);
-    const json = await res.json().catch(() => ({}));
-    const choice = json?.choices?.[0] || {};
-    const finishReason = choice?.finish_reason || '';
-    const toolCalls = choice?.message?.tool_calls || [];
-    const toolsSupport = (Array.isArray(toolCalls) && toolCalls.length > 0) || finishReason === 'tool_calls'
-      ? 'supported'
-      : 'unknown';
-    return config.setProbeCacheEntry?.({
-      providerId: provider.id,
-      baseUrl,
-      modelId: model,
-      toolsSupport,
-      capabilitySource: 'runtime_probe',
-    }) || { toolsSupport, capabilitySource: 'runtime_probe' };
-  } catch (e) {
-    const toolsSupport = classifyProbeFailure(e?.message || String(e));
-    return config.setProbeCacheEntry?.({
-      providerId: provider.id,
-      baseUrl,
-      modelId: model,
-      toolsSupport,
-      capabilitySource: 'runtime_probe',
-    }) || { toolsSupport, capabilitySource: 'runtime_probe' };
-  }
-}
-
 function hasUnverifiedExecutionNarrative(text) {
   const source = String(text || '');
   if (!source.trim()) return false;
@@ -1704,7 +1609,14 @@ async function streamChat({
 
   try {
     if (caps.toolsSupport === 'unknown') {
-      const probeResult = await probeModelToolsSupport({ provider, baseUrl, apiKey, model });
+      const probeResult = await probeModelToolsSupport({
+        provider,
+        baseUrl,
+        apiKey,
+        model,
+        config,
+        fetchImpl: (url, options) => fetchWithRetry(url, options, 0),
+      });
       if (probeResult?.toolsSupport) {
         caps.toolsSupport = probeResult.toolsSupport;
         caps.supportsTools = probeResult.toolsSupport === 'supported';

@@ -80,6 +80,7 @@
 | 做什么 | 调用阿里云百炼/DeepSeek API，处理流式响应和工具调用 |
 | 文件 | `oct-gateway/ai.js` |
 | 调用链 | streamChat() → fetch 百炼 API → 解析 SSE → onDelta/onDone 回调 |
+| Phase 1 收口 | `oct-gateway/runtime/providerCapabilities.js` 统一承接 chat headers、工具能力 probe 与 probe 结果缓存写回，`ai.js` 和 `gateway/slash.js` 不再各自复制一套实现 |
 | 依赖 | config.js（API Key、模型 ID、Base URL） |
 | 特性 | 百炼失败时自动 fallback 到 DeepSeek |
 | 验证 | 终端看到 `[Gateway] Stream done` |
@@ -140,4 +141,4 @@
 
 ---
 
-> **最后更新**：2026-03-24（OCT 握手、Orchestrator、后台任务、HTTP 工具端口）
+> **最后更新**：2026-05-18（Gateway provider capability Phase 1 收口）
