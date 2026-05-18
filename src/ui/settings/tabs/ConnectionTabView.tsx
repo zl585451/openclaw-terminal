@@ -14,6 +14,12 @@ import {
   buildChatProviderConnectionPayload,
   getChatProviderBaseUrlField,
   getChatProviderBaseUrlValue,
+  getChatProviderViewSchema,
+  shouldHideAdvancedBaseUrl,
+  shouldShowCustomModelInput,
+  shouldShowCustomProviderExtras,
+  shouldUseFreeTextModelInput,
+  type ConnectionTextSegment,
 } from '../providerConnectionSchema';
 
 export type { ProviderEntry } from '../providerTypes';
@@ -258,9 +264,16 @@ export function ConnectionTabView({
   apiKeysRefreshing,
   refetchApiKeys,
 }: ConnectionTabViewProps) {
+  const providerViewSchema = getChatProviderViewSchema(currentProviderId);
   const customPresetId = currentProviderId === 'custom'
     ? (apiKeys.CUSTOM_BASE_URL || '').toLowerCase().includes('siliconflow') ? 'siliconflow' : ''
     : '';
+
+  const renderSegments = (segments: ConnectionTextSegment[]) => segments.map((segment, index) => {
+    if (segment.type === 'code') return <code key={index}>{segment.value}</code>;
+    if (segment.type === 'strong') return <strong key={index}>{segment.value}</strong>;
+    return <span key={index}>{segment.value}</span>;
+  });
 
   if (settingsMode === 'beginner') {
     return (
@@ -420,28 +433,15 @@ export function ConnectionTabView({
               {currentProvider?.keyLink && (
                 <a href={currentProvider.keyLink} target="_blank" rel="noopener noreferrer" className="settings-link">获取 API Key →</a>
               )}
-              {currentProviderId === 'minimax' && (
+              {providerViewSchema.notice && (
                 <p className="settings-desc settings-desc-spaced">
-                  MiniMax M2.7 现在建议使用 Token Plan 专属 API Key，通常以 <code>sk-cp-</code> 开头；大陆区 Base URL 保持 <code>https://api.minimaxi.com/v1</code> 即可。
-                </p>
-              )}
-              {currentProviderId === 'google' && (
-                <p className="settings-desc settings-desc-spaced">
-                  默认走 Google 官方 <strong>@google/genai / Vertex AI 原生 SDK</strong>。建议把 Base URL 填成
-                  <code>https://aiplatform.googleapis.com/v1beta1/projects/你的PROJECT_ID/locations/us-central1/endpoints/openapi</code>，
-                  这样网关能自动识别项目与区域；计费直接落到你的 GCP 项目，工具调用与多轮兼容性也会比 OpenAI 兼容层更稳。
-                </p>
-              )}
-              {currentProviderId === 'newapi' && (
-                <p className="settings-desc settings-desc-spaced">
-                  New API 建议作为外部分发网关单独部署；这里填写 New API 里创建的令牌，Base URL 通常是
-                  <code>http://127.0.0.1:3000/v1</code> 或你的公网网关地址。
+                  {renderSegments(providerViewSchema.notice.segments)}
                 </p>
               )}
             </div>
             <div className="settings-field">
               <label>当前模型</label>
-              {currentProviderId === 'siliconflow' ? (
+              {shouldUseFreeTextModelInput(currentProviderId) ? (
                 <>
                   <input
                     type="text"
@@ -449,22 +449,26 @@ export function ConnectionTabView({
                     onChange={(e) => setApiKeys((k) => ({ ...k, OCT_MODEL: e.target.value }))}
                     placeholder={
                       currentProvider?.defaultModel
-                      || 'Qwen/Qwen2.5-72B-Instruct（与硅基模型广场 ID 一致）'
+                      || providerViewSchema.model.textPlaceholder
                     }
                     className="settings-input settings-input-focusable settings-input-full"
                     autoComplete="off"
                   />
-                  <p className="settings-desc settings-desc-compact">
-                    硅基流动模型较多且更新快，请直接填写官方模型 ID（与 OpenAI 兼容字段 <code>model</code> 一致）。
-                    <a
-                      href="https://docs.siliconflow.cn/cn/userguide/quickstart"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="settings-link settings-link-inline"
-                    >
-                      文档与模型广场 →
-                    </a>
-                  </p>
+                  {providerViewSchema.model.hintSegments && (
+                    <p className="settings-desc settings-desc-compact">
+                      {renderSegments(providerViewSchema.model.hintSegments)}
+                      {providerViewSchema.model.hintLink && (
+                        <a
+                          href={providerViewSchema.model.hintLink.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="settings-link settings-link-inline"
+                        >
+                          {providerViewSchema.model.hintLink.label}
+                        </a>
+                      )}
+                    </p>
+                  )}
                   <div className="settings-chip-row">
                     {(currentProvider?.models || []).map((m) => (
                       <button
@@ -514,7 +518,7 @@ export function ConnectionTabView({
               )}
             </div>
             {/* 自定义模型输入框 - 当选择 __custom__ 或 provider 支持自定义模型时显示 */}
-            {(apiKeys.OCT_MODEL === '__custom__' || currentProvider?.allowCustomModel) && (
+            {shouldShowCustomModelInput(apiKeys, currentProvider) && (
               <div className="settings-field">
                 <label>自定义模型名称</label>
                 <input
@@ -531,10 +535,10 @@ export function ConnectionTabView({
                 <p className="settings-desc settings-desc-compact">
                   输入任意 OpenAI 兼容格式的模型名称
                 </p>
-                {currentProviderId === 'custom' && (
+                {shouldShowCustomProviderExtras(currentProviderId) && (
                   <>
                     <div className="settings-chip-row">
-                      {SILICONFLOW_MODEL_EXAMPLES.map((model) => (
+                      {(providerViewSchema.customModelExamples || SILICONFLOW_MODEL_EXAMPLES).map((model) => (
                         <button
                           key={model}
                           type="button"
@@ -555,7 +559,7 @@ export function ConnectionTabView({
                 )}
               </div>
             )}
-            {currentProviderId === 'custom' && (
+            {shouldShowCustomProviderExtras(currentProviderId) && (
               <>
                 <div className="settings-field">
                   <label>请求地址预设</label>
@@ -613,7 +617,7 @@ export function ConnectionTabView({
             <details className="settings-details settings-details-tight">
               <summary>高级：Base URL</summary>
               <div className="settings-details-content">
-                {currentProviderId === 'custom' ? (
+                {shouldHideAdvancedBaseUrl(currentProviderId) ? (
                   <p className="settings-desc">
                     自定义服务的请求地址已在上方主表单中配置，这里无需重复填写。
                   </p>
@@ -627,11 +631,11 @@ export function ConnectionTabView({
                       const key = getChatProviderBaseUrlField(currentProviderId);
                       setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                     }}
-                    placeholder={currentProviderId === 'custom' ? 'https://your-api.com/v1' : 'https://...'}
+                    placeholder={shouldHideAdvancedBaseUrl(currentProviderId) ? 'https://your-api.com/v1' : 'https://...'}
                     className="settings-input settings-input-focusable"
                     autoComplete="off"
                   />
-                  {currentProviderId === 'custom' && (
+                  {shouldShowCustomProviderExtras(currentProviderId) && (
                     <p className="settings-desc settings-desc-compact">
                       输入 OpenAI 兼容格式的 API 地址，通常以 /v1 结尾。按硅基流动中文文档，推荐填写 https://api.siliconflow.cn/v1
                     </p>

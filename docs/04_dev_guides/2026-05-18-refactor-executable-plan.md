@@ -106,7 +106,7 @@
 ### Phase 4
 
 - Tag: `refactor-plan-phase4-settings-schema`
-- Status: in_progress
+- Status: completed
 - Target: 把连接设置页从硬编码分支改成 schema 驱动
 - Files:
 - `src/ui/settings/tabs/ConnectionTabView.tsx`
@@ -120,6 +120,8 @@
 - Result:
 - 已新增 `src/ui/settings/providerConnectionSchema.ts`
 - provider baseUrl field 选择、provider 切换回填、连接测试 payload 已开始改用 mapper/schema 层
+- provider 提示文案、模型输入模式、自定义 provider 扩展区显隐已开始改用 view schema
+- `ConnectionTabView.tsx` 中新增 provider 所需的主表单条件分支已基本收口到 schema 层
 - Exit Criteria:
 - 新增 provider 时不再要求复制整段 JSX/条件分支
 - 设置页连接测试逻辑由映射层统一生成
