@@ -43,6 +43,8 @@ import {
   type ProductionQueueItem,
 } from './services/gatewayProduction';
 import type { DeliveryOptions, TaskCreationContract } from './types/batch';
+import { useTaskCreateWizardGatewayEvents } from './hooks/useTaskCreateWizardGatewayEvents';
+import { getTaskWizardFooterPolicy } from './wizardFooterPolicy';
 import styles from './styles/scriptAdapter.module.css';
 
 type ScriptAdapterScreen = 'home' | 'create' | 'workspace' | 'library';
@@ -457,71 +459,22 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     };
   }, [selectedBookId, selectedChapterIndex]);
 
-  useEffect(() => {
-    if (!window.electronAPI?.onScriptAdapterEvent) return undefined;
-    return window.electronAPI.onScriptAdapterEvent((payload) => {
-      const eventName = typeof payload.event === 'string' ? payload.event : '';
-      if (!eventName.startsWith('intake.')) return;
-      const nextRun = payload.intakeRun as GatewayIntakeRun | undefined;
-      if (!nextRun?.id || !Array.isArray(nextRun.steps)) return;
-      setIntakeRun(nextRun);
-      const runningIndex = nextRun.steps.findIndex((step) => step.status === 'running');
-      const doneCount = nextRun.steps.filter((step) => step.status === 'succeeded').length;
-      setIntakeStepIndex(runningIndex >= 0 ? runningIndex : doneCount);
-      if (nextRun.status === 'running') setIntakeStatus('running');
-      if (nextRun.status === 'succeeded') setIntakeStatus('completed');
-      if (nextRun.status === 'failed') {
-        setIntakeStatus('failed');
-        setIntakeError(nextRun.error || '素材摄入失败');
-      }
-      return;
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!window.electronAPI?.onScriptAdapterEvent) return undefined;
-    return window.electronAPI.onScriptAdapterEvent((payload) => {
-      const eventName = typeof payload.event === 'string' ? payload.event : '';
-      if (!eventName.startsWith('analysis.')) return;
-      const nextRun = payload.analysisRun as GatewayAnalysisRun | undefined;
-      if (!nextRun?.id || !Array.isArray(nextRun.steps)) return;
-      setAnalysisRun(nextRun);
-      if (nextRun.status === 'running') setAnalysisStatus('running');
-      if (nextRun.status === 'succeeded') {
-        if (nextRun.result) {
-          setAnalysisReport(nextRun.result);
-          setSelectedStrategyId(nextRun.result.recommendedStrategyId);
-          setAnalysisStatus('completed');
-          setActiveStep(3);
-        } else {
-          setAnalysisStatus('failed');
-          setAnalysisError('ANALYSIS_RESULT_EMPTY: 业务分析完成但没有返回报告');
-        }
-      }
-      if (nextRun.status === 'failed') {
-        setAnalysisStatus('failed');
-        setAnalysisError(nextRun.error || '业务分析失败');
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!window.electronAPI?.onScriptAdapterEvent) return undefined;
-    return window.electronAPI.onScriptAdapterEvent((payload) => {
-      const eventName = typeof payload.event === 'string' ? payload.event : '';
-      if (!eventName.startsWith('production.')) return;
-      const nextRun = payload.productionRun as GatewayProductionRun | undefined;
-      if (!nextRun?.id || !Array.isArray(nextRun.steps)) return;
-      setProductionRun(nextRun);
-      if (nextRun.result?.productionQueue) setProductionQueue(nextRun.result.productionQueue);
-      if (nextRun.status === 'running') setProductionStatus('running');
-      if (nextRun.status === 'succeeded') setProductionStatus('completed');
-      if (nextRun.status === 'failed') {
-        setProductionStatus('failed');
-        setProductionError(nextRun.error || '制作交接失败');
-      }
-    });
-  }, []);
+  useTaskCreateWizardGatewayEvents({
+    setIntakeRun,
+    setIntakeStepIndex,
+    setIntakeStatus,
+    setIntakeError,
+    setAnalysisRun,
+    setAnalysisStatus,
+    setAnalysisReport,
+    setSelectedStrategyId,
+    setActiveStep,
+    setAnalysisError,
+    setProductionRun,
+    setProductionQueue,
+    setProductionStatus,
+    setProductionError,
+  });
 
   const canOpenStep = (step: WizardStep) => {
     if (step === 1) return true;
@@ -873,48 +826,25 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     }
   };
 
-  const getFooterTitle = () => {
-    if (activeStep === 1) {
-      if (isIntakeRunning) return '正在确认素材';
-      if (sourceConfirmed) return `已确认：${selectedRangeLabel}`;
-      return sourceReady ? `待确认：${selectedRangeLabel}` : '等待选择任务素材';
-    }
-    if (activeStep === 2) {
-      return isAnalysisRunning ? 'AI 初读分析中' : sourceConfirmed ? '等待确认目标和范围' : '请先完成素材确认';
-    }
-    if (isProductionRunning) return '正在生成制作执行单';
-    if (productionStatus === 'failed') return '制作交接失败';
-    return analysisCompleted ? '等待确认修改方向' : isAnalysisRunning ? 'AI 初读分析中' : '等待目标和范围确认';
-  };
-
-  const getFooterDesc = () => {
-    if (activeStep === 1) return '确认后会进入目标和范围配置；后台解析会自动完成，不需要你理解技术链路。';
-    if (activeStep === 2) return '确认后只进入 AI 初读分析，不会直接改稿；分析完成会自动进入第 3 步。';
-    if (isProductionRunning) return '正在校验策略、生成执行合同并解析制作队列。';
-    if (productionStatus === 'failed') return productionError || '请查看状态机证据后重试。';
-    return '确认修改方向和交付清单后，生成工作台执行单；制作 Agent 仍会在工作台开工后启动。';
-  };
-
-  const getFooterButtonText = () => {
-    if (activeStep === 1) return isIntakeRunning ? '正在确认素材' : sourceConfirmed ? '重新确认素材' : '确认这份素材，继续配置目标';
-    if (activeStep === 2) return isAnalysisRunning ? 'AI 初读分析中' : analysisCompleted ? '重新分析并进入第 3 步' : '确认目标和范围，进入第 3 步';
-    if (isProductionRunning) return '正在生成执行单';
-    if (productionStatus === 'failed') return '重试生成执行单';
-    return '确认方向，进入工作台';
-  };
-
-  const isFooterButtonDisabled = () => {
-    if (activeStep === 1) return isIntakeRunning || !sourceReady;
-    if (activeStep === 2) return !sourceConfirmed || isAnalysisRunning;
-    return !analysisCompleted || !selectedStrategyId || isProductionRunning;
-  };
+  const footerPolicy = getTaskWizardFooterPolicy({
+    activeStep,
+    intakeStatus,
+    sourceReady,
+    sourceConfirmed,
+    selectedRangeLabel,
+    analysisStatus,
+    analysisCompleted,
+    selectedStrategyId,
+    productionStatus,
+    productionError,
+  });
 
   const handleFooterAction = () => {
-    if (activeStep === 1) {
+    if (footerPolicy.action === 'confirm_source') {
       void handleConfirmSource();
       return;
     }
-    if (activeStep === 2) {
+    if (footerPolicy.action === 'run_analysis') {
       void handleRunAnalysis();
       return;
     }
@@ -1719,8 +1649,8 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
 
       <footer className={styles.composerActionBar}>
         <div>
-          <strong>{getFooterTitle()}</strong>
-          <span>{getFooterDesc()}</span>
+          <strong>{footerPolicy.title}</strong>
+          <span>{footerPolicy.desc}</span>
         </div>
         <div className={styles.createFooterActions}>
           <button type="button" className={styles.ghostButton} onClick={onBack}>
@@ -1732,10 +1662,10 @@ function TaskCreateWizard({ onBack, onStart }: WizardProps) {
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={isFooterButtonDisabled()}
+            disabled={footerPolicy.disabled}
             onClick={handleFooterAction}
           >
-            {getFooterButtonText()}
+            {footerPolicy.buttonText}
           </button>
         </div>
       </footer>
