@@ -14,7 +14,7 @@ import CoTBlock from '../../components/CoTBlock';
 import ActivityPanel from '../../components/ActivityPanel';
 import AmyAvatar from '../../components/AmyAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
-import { getCachedPreprocessedMarkdown, normalizeCustomEchartBlocks } from '../../utils/markdownPreprocess';
+import { getCachedPreprocessedMarkdown, stabilizeStreamingMarkdown } from '../../utils/markdownPreprocess';
 import type { ChatMessage } from './ChatTab.v2';
 import type { ActivityEntry } from '../../hooks/useMessages';
 
@@ -168,9 +168,10 @@ const FinalizedMarkdownContent = memo(
         // 1. 流式内容每帧都变，无法命中缓存，每帧都重算开销高
         // 2. 表格从 |---| 文本变成 <table> DOM 时结构突变，造成跳动
         // 流式阶段 remark-gfm 已能渲染大部分 markdown，不需要预处理
-        // 但仍需转换 [echart]/[canvas] 标签，避免图表 JSON 裸露在聊天区
+        // 但仍需转换 [echart]/[canvas] 标签，并临时闭合未完成代码围栏，避免半截 fence
+        // 在 token 到达过程中反复改变 ReactMarkdown 的块级结构。
         if (streaming || segmentKey?.includes('stream')) {
-          return normalizeCustomEchartBlocks(content || '');
+          return stabilizeStreamingMarkdown(content || '');
         }
         return limitChatMermaidBlocks(
           getCachedPreprocessedMarkdown(messageId, segmentKey, content || '')

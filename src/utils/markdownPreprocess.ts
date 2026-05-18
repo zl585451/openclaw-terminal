@@ -227,6 +227,36 @@ export function preprocessMarkdown(text: string): string {
   return processed;
 }
 
+/**
+ * Streaming Markdown is often syntactically incomplete while tokens are still
+ * arriving. Keep the displayed DOM stable by closing a currently open fence
+ * only for rendering; the underlying message text remains untouched.
+ */
+export function stabilizeStreamingMarkdown(text: string): string {
+  let processed = normalizeCustomEchartBlocks(text || '');
+  if (!processed) return processed;
+
+  const lines = processed.split('\n');
+  let openFence: '```' | '~~~' | null = null;
+
+  for (const line of lines) {
+    const match = line.match(/^\s*(```|~~~)/);
+    if (!match) continue;
+
+    const marker = match[1] as '```' | '~~~';
+    if (!openFence) {
+      openFence = marker;
+    } else if (marker === openFence) {
+      openFence = null;
+    }
+  }
+
+  if (!openFence) return processed;
+  const needsLeadingNewline = !processed.endsWith('\n');
+  processed += `${needsLeadingNewline ? '\n' : ''}${openFence}`;
+  return processed;
+}
+
 /**  finalized 消息的 Markdown 预处理结果缓存（仅 UI，不改消息结构） */
 export const processedMarkdownCache = new Map<string, string>();
 export const MAX_PROCESSED_MD_CACHE = 400;

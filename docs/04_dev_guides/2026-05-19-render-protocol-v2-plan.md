@@ -167,8 +167,8 @@
 ## 推荐执行顺序
 
 1. 先做 Phase 1：协议文档和提示词。（已完成：`dbc8949`）
-2. 做 Phase 2：Gateway normalizer 和测试。（已完成）
-3. 做 Phase 3：前端流式容错和测试。
+2. 做 Phase 2：Gateway normalizer 和测试。（已完成：`a6acd42`）
+3. 做 Phase 3：前端流式容错和测试。（已完成）
 4. 最后做 Phase 4：真实样例回归集。
 
 每个阶段单独提交，提交粒度建议：
