@@ -1,6 +1,7 @@
 # FEATURE_MAP 变更日志
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
+| 2026-05-19 | Render Protocol v2 Phase 2：新增 Gateway Markdown normalizer，在最终回复入库前修复未闭合代码块、模糊语言标记、说明文字误进代码块和表格粘连 | `oct-gateway/services/markdownNormalizer.js`, `oct-gateway/runtime/chatEngine.js`, `oct-gateway/index.js`, `src/utils/markdownNormalizer.gateway.test.ts`, `docs/05_changelog/2026-05-19-render-protocol-v2-phase2.md` | 前端流式中间态仍留到 Phase 3；本阶段先保证最终消息和历史消息稳定 |
 | 2026-05-19 | Render Protocol v2 Phase 1：新增 Markdown 输出稳定协议，规范正文、命令块、表格和交互标签的混排规则 | `docs/03_specs/RENDER_PROTOCOL.md`, `docs/01_system_prompts/OCT_PROTOCOL.md`, `docs/01_system_prompts/templates/OCT_PROTOCOL.template.md`, `docs/05_changelog/2026-05-19-render-protocol-v2-phase1.md` | 先约束模型输出格式，后续再实现 Gateway normalizer 与前端流式容错 |
 | 2026-05-11 | React Flow 结构图默认布局优化：结构图协议从竖向单链路改为横向主链路 + 阶段能力下挂，并让 `shape` 在渲染器中真正影响节点形态 | `oct-gateway/runtime/contextBuilder.js`, `src/components/canvas/ReactFlowRenderer.tsx`, `src/components/canvas/ReactFlowRenderer.css`, `docs/01_system_prompts/DIAGRAM_PROTOCOL.md`, `docs/05_changelog/2026-05-11-react-flow-structure-diagram-preview.md` | 改善结构图预览可读性，避免节点排成一根竖线 |
 | 2026-05-11 | 内容创作工作台：切换 `工作台 / 团队流程 / Agent 池` 不再误中断后台任务；批次失败改为 `paused / 待重跑`，章节列表只显示每章最新 attempt | `src/modules/script-adapter/store/*.ts`, `src/modules/script-adapter/ui/Workbench/*.tsx`, `src/modules/script-adapter/services/gatewayBatch.ts`, `oct-gateway/script_adapter/batchOrchestrator.js`, `oct-gateway/script_adapter/persistence.js`, `docs/05_changelog/2026-05-11-workbench-resume-and-batch-rerun-ux.md` | 修复切页丢任务、重跑失败行堆叠和批次终态语义误导 |

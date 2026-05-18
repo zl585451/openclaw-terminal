@@ -88,6 +88,7 @@ const StreamController = require('./runtime/streamController');
 const ContextBuilder = require('./runtime/contextBuilder');
 const ProviderRouter = require('./runtime/providerRouter');
 const { createStreamSmoother } = require('./runtime/streamUtils');
+const { normalizeAssistantMarkdown } = require('./services/markdownNormalizer');
 const {
   extractMemorySearchTerms,
   hasRecallIntent,
@@ -182,6 +183,7 @@ const chatEngine = new ChatEngine({
   session,
   postProcessor,
   sanitizeAssistantReply,
+  normalizeAssistantMarkdown,
   streamControllerFactory: (emitter, pacingMs) => new StreamController({
     emitter,
     pacingMs,

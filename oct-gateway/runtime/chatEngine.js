@@ -6,6 +6,7 @@ class ChatEngine {
     session,
     postProcessor,
     sanitizeAssistantReply,
+    normalizeAssistantMarkdown,
     streamControllerFactory,
     logger,
   }) {
@@ -13,6 +14,7 @@ class ChatEngine {
     this.session = session;
     this.postProcessor = postProcessor;
     this.sanitizeAssistantReply = sanitizeAssistantReply;
+    this.normalizeAssistantMarkdown = normalizeAssistantMarkdown || ((text) => text);
     this.streamControllerFactory = streamControllerFactory;
     this.log = logger;
   }
@@ -36,6 +38,7 @@ class ChatEngine {
 
         const finalizedReply = streamCtrl.getFullReply() || _text || '';
         let sanitizedReply = this.sanitizeAssistantReply(finalizedReply);
+        sanitizedReply = this.normalizeAssistantMarkdown(sanitizedReply);
         if (!sanitizedReply || !String(sanitizedReply).trim()) {
           sanitizedReply = '⚠️ 本轮未产出可用内容（可能是模型状态异常）。请重试，或切换模型后再继续。';
           this.log.warn('empty assistant reply coerced to fallback text', {
