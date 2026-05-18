@@ -62,6 +62,7 @@ async function main() {
     role: 'model',
     parts: [
       {
+        thoughtSignature: 'sig-model-fc',
         functionCall: {
           id: 'legacy_call',
           name: 'web_search',
@@ -78,21 +79,49 @@ async function main() {
     ],
   });
   assert.equal('id' in sanitized.parts[0].functionCall, false);
+  assert.equal(sanitized.parts[0].thoughtSignature, 'sig-model-fc');
   assert.equal('id' in sanitized.parts[1].functionResponse, false);
 
   const merged = _internals.mergeFunctionCalls([], [
-    { id: 'fc_1', name: 'read_file', args: { path: 'a.txt' } },
+    { id: 'fc_1', name: 'read_file', args: { path: 'a.txt' }, thoughtSignature: 'sig-a' },
   ]);
   const mergedAgain = _internals.mergeFunctionCalls(merged, [
     { id: 'fc_1', name: 'read_file', args: { encoding: 'utf8' } },
   ]);
   assert.deepEqual(mergedAgain[0].args, { path: 'a.txt', encoding: 'utf8' });
+  assert.equal(mergedAgain[0].thoughtSignature, 'sig-a');
+
+  const extracted = _internals.extractFunctionCallsFromChunk({
+    candidates: [{
+      content: {
+        parts: [{
+          thoughtSignature: 'sig-from-part',
+          functionCall: {
+            name: 'request_clarify',
+            args: { title: '确认频率' },
+          },
+        }],
+      },
+    }],
+  });
+  assert.equal(extracted[0].name, 'request_clarify');
+  assert.equal(extracted[0].thoughtSignature, 'sig-from-part');
 
   const normalized = normalizeGoogleFunctionCalls([
-    { id: 'fc_2', name: 'write_file', args: { path: 'b.txt', content: 'ok' } },
+    { id: 'fc_2', name: 'write_file', args: { path: 'b.txt', content: 'ok' }, thoughtSignature: 'sig-b' },
   ]);
   assert.equal(normalized[0].function.name, 'write_file');
   assert.equal(normalized[0].extra_content.google_native.id, 'fc_2');
+  assert.equal(normalized[0].extra_content.google_native.thoughtSignature, 'sig-b');
+
+  const convertedSigned = convertMessagesToGoogleContents([
+    {
+      role: 'assistant',
+      content: '',
+      tool_calls: [normalized[0]],
+    },
+  ]);
+  assert.equal(convertedSigned.contents[0].parts[0].thoughtSignature, 'sig-b');
 
   console.log('PASS google native helpers normalize Vertex config, message conversion, and function calls');
 }

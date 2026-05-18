@@ -145,15 +145,40 @@ function contentToGoogleParts(content) {
   return parts;
 }
 
+function getGoogleThoughtSignature(part) {
+  if (!part || typeof part !== 'object') return '';
+  return String(
+    part.thoughtSignature
+    || part.thought_signature
+    || part.functionCall?.thoughtSignature
+    || part.functionCall?.thought_signature
+    || ''
+  ).trim();
+}
+
+function getToolCallThoughtSignature(toolCall) {
+  if (!toolCall || typeof toolCall !== 'object') return '';
+  return String(
+    toolCall.extra_content?.google_native?.thoughtSignature
+    || toolCall.extra_content?.google_native?.thought_signature
+    || toolCall.extra_content?.google?.thoughtSignature
+    || toolCall.extra_content?.google?.thought_signature
+    || ''
+  ).trim();
+}
+
 function sanitizeGoogleNativePart(part) {
   if (!part || typeof part !== 'object') return null;
   if (part.functionCall && typeof part.functionCall === 'object') {
-    return {
+    const sanitized = {
       functionCall: {
         name: part.functionCall.name,
         args: part.functionCall.args || {},
       },
     };
+    const thoughtSignature = getGoogleThoughtSignature(part);
+    if (thoughtSignature) sanitized.thoughtSignature = thoughtSignature;
+    return sanitized;
   }
   if (part.functionResponse && typeof part.functionResponse === 'object') {
     return {
@@ -235,12 +260,15 @@ function convertMessagesToGoogleContents(messages) {
           args = JSON.parse(toolCall?.function?.arguments || '{}');
         } catch {}
         if (name) {
-          parts.push({
+          const functionCallPart = {
             functionCall: {
               name,
               args,
             },
-          });
+          };
+          const thoughtSignature = getToolCallThoughtSignature(toolCall);
+          if (thoughtSignature) functionCallPart.thoughtSignature = thoughtSignature;
+          parts.push(functionCallPart);
         }
       }
     }
@@ -297,6 +325,7 @@ function mergeFunctionCalls(acc, nextCalls) {
       id: callId || `google-fn-${merged.length}`,
       name: String(call.name || '').trim(),
       args: call.args && typeof call.args === 'object' ? call.args : {},
+      thoughtSignature: String(call.thoughtSignature || call.thought_signature || '').trim(),
     };
     if (existingIndex >= 0) {
       merged[existingIndex] = {
@@ -306,6 +335,7 @@ function mergeFunctionCalls(acc, nextCalls) {
           ...(merged[existingIndex]?.args || {}),
           ...(normalized.args || {}),
         },
+        thoughtSignature: normalized.thoughtSignature || merged[existingIndex]?.thoughtSignature || '',
       };
     } else {
       merged.push(normalized);
@@ -315,19 +345,43 @@ function mergeFunctionCalls(acc, nextCalls) {
 }
 
 function normalizeGoogleFunctionCalls(functionCalls) {
-  return (Array.isArray(functionCalls) ? functionCalls : []).map((call, index) => ({
-    id: String(call?.id || `google-fn-${index}`),
-    type: 'function',
-    function: {
-      name: String(call?.name || ''),
-      arguments: JSON.stringify(call?.args || {}),
-    },
-    extra_content: {
-      google_native: {
-        id: String(call?.id || `google-fn-${index}`),
+  return (Array.isArray(functionCalls) ? functionCalls : []).map((call, index) => {
+    const id = String(call?.id || `google-fn-${index}`);
+    const thoughtSignature = String(call?.thoughtSignature || call?.thought_signature || '').trim();
+    return {
+      id,
+      type: 'function',
+      function: {
+        name: String(call?.name || ''),
+        arguments: JSON.stringify(call?.args || {}),
       },
-    },
-  }));
+      extra_content: {
+        google_native: {
+          id,
+          ...(thoughtSignature
+            ? { thoughtSignature, thought_signature: thoughtSignature }
+            : {}),
+        },
+      },
+    };
+  });
+}
+
+function extractFunctionCallsFromChunk(chunk) {
+  const fromParts = [];
+  const candidates = Array.isArray(chunk?.candidates) ? chunk.candidates : [];
+  for (const candidate of candidates) {
+    const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+    for (const part of parts) {
+      if (!part?.functionCall) continue;
+      fromParts.push({
+        ...part.functionCall,
+        thoughtSignature: getGoogleThoughtSignature(part),
+      });
+    }
+  }
+  if (fromParts.length > 0) return fromParts;
+  return Array.isArray(chunk?.functionCalls) ? chunk.functionCalls : [];
 }
 
 function usageToOpenAiShape(usageMetadata) {
@@ -384,8 +438,9 @@ async function generateNativeChat({
       fullText += chunk.text;
       if (onDelta) onDelta(chunk.text);
     }
-    if (Array.isArray(chunk?.functionCalls) && chunk.functionCalls.length > 0) {
-      functionCalls = mergeFunctionCalls(functionCalls, chunk.functionCalls);
+    const chunkFunctionCalls = extractFunctionCallsFromChunk(chunk);
+    if (chunkFunctionCalls.length > 0) {
+      functionCalls = mergeFunctionCalls(functionCalls, chunkFunctionCalls);
     }
     if (chunk?.usageMetadata) {
       usage = usageToOpenAiShape(chunk.usageMetadata);
@@ -396,12 +451,15 @@ async function generateNativeChat({
   const assistantParts = [];
   if (fullText) assistantParts.push({ text: fullText });
   for (const call of functionCalls) {
-    assistantParts.push({
+    const functionCallPart = {
       functionCall: {
         name: call.name,
         args: call.args || {},
       },
-    });
+    };
+    const thoughtSignature = String(call.thoughtSignature || call.thought_signature || '').trim();
+    if (thoughtSignature) functionCallPart.thoughtSignature = thoughtSignature;
+    assistantParts.push(functionCallPart);
   }
 
   return {
@@ -508,6 +566,7 @@ module.exports = {
   _internals: {
     buildGoogleToolConfig,
     mergeFunctionCalls,
+    extractFunctionCallsFromChunk,
     sanitizeGoogleNativeContent,
     usageToOpenAiShape,
     toGoogleInlineDataFromDataUrl,
