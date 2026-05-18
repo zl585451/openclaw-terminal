@@ -283,16 +283,7 @@ Round 3: AI 给出具体建议（不再追问）
 
 ## 八、废弃说明
 
-以下机制已废弃，不再使用：
-
-- ❌ `[THINK_MODE:xxx]` 标记
-- ❌ SocraticPanel 面板
-- ❌ ThinkModeMenu 菜单
-- ❌ "◈ 思维模式" 按钮
-- ❌ 固定模板（confusion/decision/goal/priority/stuck）
-- ❌ socraticTemplates.ts 中的模板定义和 detectTemplate 函数
-
-取而代之：AI 在回复正文中自然追问 + 使用渲染标签 + 情绪感知 + 偏好学习。
+旧 SocraticPanel / THINK_MODE / 固定模板机制已于 2026-03 起废弃，代码已清理。当前使用自然追问 + 渲染标签 + 情绪感知 + 偏好学习。
 
 ---
 

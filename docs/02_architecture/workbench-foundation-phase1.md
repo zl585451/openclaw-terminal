@@ -32,7 +32,7 @@ Canvas 现在开始作为 `Workbench` 子系统演进，但仍保留 `Canvas` �
 
 - [src/contexts/CanvasContext.tsx](/e:/windows-window/OpenClaw-Terminal/src/contexts/CanvasContext.tsx)
 - [src/components/canvas/CanvasHost.tsx](/e:/windows-window/OpenClaw-Terminal/src/components/canvas/CanvasHost.tsx)
-- [src/components/CanvasPanel.tsx](/e:/windows-window/OpenClaw-Terminal/src/components/CanvasPanel.tsx)
+- CanvasPanel 兼容入口已移除，相关样式与工作台入口已并入 [src/components/workbench/WorkbenchPanel.tsx](/e:/windows-window/OpenClaw-Terminal/src/components/workbench/WorkbenchPanel.tsx) 与 [src/components/workbench/WorkbenchPanel.css](/e:/windows-window/OpenClaw-Terminal/src/components/workbench/WorkbenchPanel.css)
 - [src/hooks/useCanvasBridge.ts](/e:/windows-window/OpenClaw-Terminal/src/hooks/useCanvasBridge.ts)
 
 ## 分层职责

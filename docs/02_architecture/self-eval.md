@@ -1,6 +1,6 @@
 # 2.2 自我评估评分
 
-> **最后更新**：2026-03-20 | **状态**：🔇 已停用（评分不准确，2026-03-20 起停用）
+> **最后更新**：2026-05-18 | **状态**：🗃️ 已移除（历史链路已下线，仓库不再保留实现文件）
 
 ---
 
@@ -8,9 +8,9 @@
 用 AI 对 AMY 的回复打 1-5 分，记录优缺点
 
 ## 文件
-`oct-gateway/self_eval.js` → `evaluateReply()`
+当前仓库已无实现文件。历史实现曾位于 `oct-gateway/self_eval.js`。
 
-## 调用链
+## 历史调用链
 ```
 onDone → evaluateReply(userMsg, fullReply) → AI 打分 → memory.writeMemory()
 ```
@@ -25,7 +25,7 @@ onDone → evaluateReply(userMsg, fullReply) → AI 打分 → memory.writeMemor
 终端看到 `[SelfEval] 评分：X/5`
 
 ## 状态
-🔇 已停用（2026-03-20）：评分不准确，改为依赖用户反馈检测。`index.js` 中调用已注释，可恢复。
+🗃️ 已移除：该链路先于 2026-03-20 停用，现已从仓库删除实现文件；如需恢复，需要重新设计并重新接回主链。
 
 ---
 

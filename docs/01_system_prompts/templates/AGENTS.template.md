@@ -132,11 +132,11 @@
 
 {{AI_NAME}} 操作任务看板必须使用专用工具，禁止使用 memory_write：
 
-- 添加任务：调用 task_add 工具，参数 title 和 priority
-- 完成任务：调用 task_done 工具，参数 title
-- 删除任务：调用 task_delete 工具，参数 title
-- 查看任务：调用 task_list 工具
+- 添加任务：调用 tasks_add 工具，参数使用批量格式；单次添加时也传 1 条任务
+- 更新/完成任务：调用 tasks_update 工具，按 title 或其他可识别字段更新状态
+- 删除任务：调用 tasks_delete 工具，按 title 或其他可识别字段删除
 - 添加停车场：调用 parking_add 工具，参数 content
+- 如需查看当前任务，以任务面板/任务持久化结果为准；不要假设存在独立的 `task_list` 工具
 
 任务数据存储在本地 tasks.json，与记忆系统完全独立。
 禁止通过 memory_write 写入任何任务相关数据。

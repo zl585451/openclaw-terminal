@@ -45,12 +45,7 @@
 
 ### 1.4 废弃说明
 
-以下机制不再使用：
-- ~~`[THINK_MODE:xxx]` 标记~~
-- ~~SocraticPanel 面板~~
-- ~~ThinkModeMenu 菜单~~
-- ~~"◈ 思维模式" 按钮~~
-- ~~固定模板（confusion/decision/goal/priority/stuck）~~
+旧 SocraticPanel / THINK_MODE / 固定模板机制已于 2026-03 起废弃，代码已清理。当前使用自然追问 + 渲染标签 + 情绪感知 + 偏好学习。
 
 ---
 

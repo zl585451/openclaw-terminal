@@ -23,8 +23,8 @@
 | 项目 | 内容 |
 |------|------|
 | 做什么 | 用 AI 对 AMY 的回复打 1-5 分，记录优缺点 |
-| 文件 | `oct-gateway/self_eval.js` → `evaluateReply()` |
-| 调用链 | onDone → evaluateReply(userMsg, fullReply) → AI 打分 → memory.writeMemory() |
+| 文件 | 已移除（历史实现曾位于 `oct-gateway/self_eval.js`） |
+| 调用链 | 已停用；当前回复链路不会再触发自评估写入 |
 | 写到哪 | `core://agent/self_eval/YYYY-MM-DD/HH-MM-SS` |
 | 额外消耗 | 每条回复额外调一次 AI API（评估用） |
 | 验证 | 终端看到 `[SelfEval] 评分：X/5` |
@@ -37,7 +37,7 @@
 | 项目 | 内容 |
 |------|------|
 | 做什么 | 每积累约 20 条评估，用 AI 提炼改进规则，写入 SOUL.md |
-| 文件 | `oct-gateway/self_eval.js` → `maybeDistill()` + `distillPatterns()` + `updateLearnedRulesInSoul()` |
+| 文件 | 已移除（历史实现曾位于 `oct-gateway/self_eval.js`） |
 | 调用链 | 该链路已停用；当前不再自动蒸馏长期规则到记忆层 |
 | 写到哪 | 无 |
 | 验证 | 终端看到 `[SelfEval] 触发模式提炼` 和 `[SelfEval] SOUL.md 已更新学习规则` |

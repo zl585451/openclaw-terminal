@@ -7,8 +7,8 @@
 || 项目 | 内容 |
 ||------|------|
 || 做什么 | web_search、web_fetch、read_file、write_file、exec_command、**search_knowledge**（AI.library 知识检索） |
-|| 文件 | `oct-gateway/tools.js`、`oct-gateway/tools/ai_library.js`、`src/gateway/search.ts`（TypeScript 封装） |
-|| 调用链 | AI 返回 tool_calls → ai.js executeTool() → tools.js 执行 → 结果返回 AI 继续生成 |
+|| 文件 | `oct-gateway/tool_loader.js`、`oct-gateway/tools/ai_library.js`、`src/gateway/search.ts`（TypeScript 封装） |
+|| 调用链 | AI 返回 tool_calls → `runtime/toolLoop.js` 调度 → `tool_loader.js` 加载并执行具体工具 → 结果返回 AI 继续生成 |
 || 状态 | ✅ 正常 |
 
 ### web_search（多引擎搜索）

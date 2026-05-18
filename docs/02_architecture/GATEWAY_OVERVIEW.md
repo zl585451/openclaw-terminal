@@ -37,7 +37,7 @@
 | `runtime/streamController.js` | 流控、合并节流、中止等 |
 | `runtime/providerRouter.js` | 给定模型 ID → 选定 provider/API Key/Base URL（及工具能力语义） |
 | `runtime/toolLoop.js` | 模型产出 `tool_calls` 后：逐个执行、`onToolEvent` 推送、归档与截断摘要、超限保护 |
-| `tool_loader.js` / `tools.js` | 工具注册与实际执行入口（`oct-gateway/tools/` 下为各工具模块） |
+| `tool_loader.js` | 工具注册与实际执行入口（`oct-gateway/tools/` 下为各工具模块） |
 | `gateway/router.js` | **`chat.send`** 走聊天或 Slash；**`sessions.list`** 等走 session |
 | `gateway/slash.js` | `/` 命令与系统指令 |
 | `transport/ws.js` | WebSocket server、鉴权钩子、分发到上层 `onAuthenticatedMessage` |
