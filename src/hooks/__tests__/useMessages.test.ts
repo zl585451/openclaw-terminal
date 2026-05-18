@@ -5,6 +5,7 @@ import {
   applyStreamingFinalizeFallback,
   applyToolResultToMessage,
   ensureStreamingAssistantMessageState,
+  parseSystemReplyStatus,
   reconcileChatDoneMessages,
 } from '../useMessages.helpers';
 
@@ -89,5 +90,22 @@ describe('useMessages helpers', () => {
     });
     expect(next).toHaveLength(1);
     expect(next[0].content).toBe('最终答案');
+  });
+
+  it('parses lobster status system replies into structured fields', () => {
+    const parsed = parseSystemReplyStatus(
+      '🦞 Model: qwen3-max\nTokens: 14.8k / 200k\nContext: 12.0 / 128k (9%)\nRuntime: direct\nThink: high\nCompactions: 2\nQueue: idle\napi-key (models.json)',
+    );
+    expect(parsed).toMatchObject({
+      modelName: 'qwen3-max',
+      tokenIn: 14800,
+      ctxUsed: 12000,
+      ctxMax: 128000,
+      runtimeMode: 'direct',
+      thinkMode: 'high',
+      compactions: 2,
+      queueInfo: 'idle',
+      apiKeyInfo: 'api-key (models.json)',
+    });
   });
 });

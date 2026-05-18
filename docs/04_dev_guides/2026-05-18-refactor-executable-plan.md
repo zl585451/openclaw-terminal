@@ -94,7 +94,9 @@
 - Result:
 - 已新增 `src/hooks/useMessages.helpers.ts`
 - 已把流式收尾、chat done 写回、tool card 同步与系统命令判断迁出为纯 helper
-- `useMessages` 继续保留 orchestration，后续再拆 transport binding
+- 已新增 `src/hooks/useMessages.gateway.ts`
+- `useWebSocket` 事件处理与 `🦞` 状态解析已从 `useMessages` 抽离
+- `useMessages` 继续保留 orchestration，后续再评估 streaming lifecycle 是否继续下沉
 - Exit Criteria:
 - `useMessages.ts` 不再同时管理所有职责
 - 现有 hooks tests 继续通过，必要时补测试

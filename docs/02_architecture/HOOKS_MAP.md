@@ -19,9 +19,21 @@
 
 **返回值**（摘要）：连接与 FSM 相位、流式与 `sendMessage` / `quickSend`、token/活动时间线/工具与网关能力、流式 DOM ref 等。
 
-**内部依赖**：`useWebSocket`、`useTokenUsage`、`useActivityTimeline`、`useStreamPainting`、`useMessages.helpers`；`useProject`。
+**内部依赖**：`useMessages.gateway`、`useTokenUsage`、`useActivityTimeline`、`useStreamPainting`、`useMessages.helpers`；`useProject`。
 
-**补充说明**：从 2026-05-18 起，流式收尾、chat done 写回、tool card 内联同步、系统命令判断等纯状态变换已下沉到 `src/hooks/useMessages.helpers.ts`，`useMessages` 继续保留编排职责。
+**补充说明**：从 2026-05-18 起，流式收尾、chat done 写回、tool card 内联同步、系统命令判断等纯状态变换已下沉到 `src/hooks/useMessages.helpers.ts`；WebSocket 事件绑定与系统状态回复解析已下沉到 `src/hooks/useMessages.gateway.ts`。`useMessages` 继续保留编排职责。
+
+## useMessages.gateway
+
+**职责**：承接聊天主链路的 WebSocket 事件绑定，把 `chat delta/done`、tool、keepalive、usage、workbench 事件映射回 `useMessages` 需要的状态变更。
+
+**输入参数**：`useMessages` 提供的 refs、状态 setter、timeline 回调、stream painting 协调函数。
+
+**返回值**：`useWebSocket` 的连接状态与 `send` 能力。
+
+**内部依赖**：`useWebSocket`、`useMessages.helpers`、`WorkbenchBus`。
+
+**被谁使用**：仅 `useMessages`。
 
 **被谁使用**：`ChatTab.v2.tsx`。
 

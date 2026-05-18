@@ -3,10 +3,8 @@ import type { MutableRefObject } from 'react';
 import { TurnFSM, deriveLegacyFlags, TurnPhase } from '../core/turnFSM';
 import { StreamRouter, StreamState } from '../core/streamRouter';
 import { BlockIngest } from '../core/blockIngest';
-import { useWebSocket } from './useWebSocket';
 import type { WorkbenchRoundtripContext } from '../workbench/types';
 import { workbenchBus } from '../workbench/WorkbenchBus';
-import { toWorkbenchCommand } from '../workbench/types';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
@@ -16,19 +14,14 @@ import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
 import { useTokenUsage } from './useTokenUsage';
 import { useActivityTimeline } from './useActivityTimeline';
+import { useMessagesGateway } from './useMessages.gateway';
 import { useStreamPainting } from './useStreamPainting';
 import type { ActivityEntry } from './useActivityTimeline';
 import {
-  appendExecutingTool,
-  appendToolCallToStreamingMessage,
   applyStreamingFinalizeFallback,
-  applyToolResult,
-  applyToolResultToMessage,
   ensureStreamingAssistantMessageState,
   finalizeStreamingAssistantMessages,
   isSystemCommand,
-  preferDoneTextWhenMoreComplete,
-  reconcileChatDoneMessages,
   recoverOctStreamFromEndFailure,
   sanitizeAssistantText,
 } from './useMessages.helpers';
@@ -311,185 +304,40 @@ export function useMessages({
     }, ROUND_TIMEOUT_MS);
   }, [ROUND_TIMEOUT_MS, clearRoundTimeout, getNextMessageId, oct, setMessages]);
 
-  // ── useWebSocket ──────────────────────────────────────────────────────────
-  const ws = useWebSocket({
-    onChatDelta: (content, isDelta, isSystemReply, turnId) => {
-      const currentTurnId = lastSentRequestId.current;
-      if (turnId && currentTurnId && turnId !== currentTurnId) return;
-      if (!content) return;
-      if (!isSystemReply) {
-        setAwaitingResponse(false);
-        if (isDelta) setAgentPhase('typing');
-      }
-
-      const pendingSystemReplyKey = turnId || currentTurnId;
-      const pendingSysDelta = isSystemReply || (pendingSystemReplyMap.current.get(pendingSystemReplyKey) ?? false);
-      if (pendingSysDelta) {
-        systemReplyBufferRef.current = isDelta
-          ? systemReplyBufferRef.current + content
-          : content;
-        // 系统命令只保留一份最终输出，不走流式占位，避免重复渲染。
-      } else {
-        if (isDelta) {
-          streamingMessageRef.current += content;
-        } else {
-          streamingMessageRef.current = content;
-        }
-        fullTextRef.current = streamingMessageRef.current;
-
-        scheduleCotSyncFromFullText(fullTextRef.current);
-
-        if (isDelta && oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
-          try { oct.fsm.onToken(); } catch {}
-        }
-
-        startPainting();
-        ensureStreamingAssistantMessage();
-      }
-    },
-
-    onChatDone: (content, systemReplyHint, turnId) => {
-      const currentRequestId = lastSentRequestId.current;
-      if (turnId && currentRequestId && turnId !== currentRequestId) return;
-      clearRoundTimeout();
-      const systemReplyKey = turnId || currentRequestId;
-      const systemReply = systemReplyHint || (pendingSystemReplyMap.current.get(systemReplyKey) ?? false);
-      pendingSystemReplyMap.current.delete(systemReplyKey);
-
-      if (!systemReply) {
-        setAwaitingResponse(false);
-        setAgentPhase('idle');
-        setActiveTools([]);
-        removeTimelineTypes(['keepalive_hint', 'thinking_placeholder']);
-      }
-
-      if (!systemReply) {
-        const fallbackText = sanitizeAssistantText(String(content || '').trim());
-        const finalText = preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
-        if (finalText !== fullTextRef.current) {
-          streamingMessageRef.current = finalText;
-          fullTextRef.current = finalText;
-          ensureStreamingAssistantMessage();
-        }
-        try {
-          oct.stream.end();
-          scheduleFinalizeFallback(finalText);
-        } catch {
-          recoverOctStreamFromEndFailure(oct);
-          const fb = finalText;
-          if (fb) {
-            streamingMessageRef.current = fb;
-            fullTextRef.current = fb;
-            pendingStreamFinalizeRef.current = true;
-            stopPainting();
-            ensureStreamingAssistantMessage();
-          } else {
-            scheduleFinalizeFallback('');
-          }
-        }
-        return;
-      }
-
-      let finalStreamContent = systemReplyBufferRef.current || content;
-      systemReplyBufferRef.current = '';
-      if (finalStreamContent) {
-        if (!systemReply) {
-          streamingMessageRef.current = finalStreamContent;
-          fullTextRef.current = finalStreamContent;
-        }
-      }
-
-      const text = finalStreamContent;
-      if (systemReply && text.startsWith('🦞')) {
-        const modelMatch = text.match(/Model:\s*(.+)/);
-        const tokensMatch = text.match(/Tokens:\s*([\d.]+)k?\s*\/\s*([\d.]+)k/i);
-        const ctxMatch1 = text.match(/Context:\s*([\d.]+)\s*\/\s*([\d.]+)k\s*\((\d+)%\)/i);
-        const ctxMatch2 = text.match(/Context:\s*([\d.]+)k\s*tokens/i);
-
-        if (modelMatch) setModelName(modelMatch[1].trim());
-        if (tokensMatch) {
-          setFromSystemReply({
-            tokenIn: parseFloat(tokensMatch[1]) * 1000,
-            ctxMax: parseFloat(tokensMatch[2]) * 1000,
-          });
-        }
-        if (ctxMatch1) {
-          setFromSystemReply({
-            ctxUsed: parseFloat(ctxMatch1[1]) * 1000,
-            ctxMax: parseFloat(ctxMatch1[2]) * 1000,
-          });
-        } else if (ctxMatch2) {
-          setFromSystemReply({
-            ctxUsed: parseFloat(ctxMatch2[1]) * 1000,
-          });
-        }
-
-        const apiKeyMatch = text.match(/api-key\s*\(([^)]+)\)/i);
-        const thinkMatch = text.match(/(?:Reasoning|Think):\s*(\S+)/i);
-        const runtimeMatch = text.match(/Runtime:\s*(\S+)/i);
-        const compactMatch = text.match(/Compactions:\s*(\d+)/i);
-        const queueMatch = text.match(/Queue:\s*(.+)/i);
-
-        if (apiKeyMatch) setApiKeyInfo(`api-key (${apiKeyMatch[1]})`);
-        if (thinkMatch) setThinkMode(thinkMatch[1]);
-        if (runtimeMatch) setRuntimeMode(runtimeMatch[1]);
-        if (compactMatch) setCompactions(parseInt(compactMatch[1]));
-        if (queueMatch) setQueueInfo(queueMatch[1].trim());
-      }
-
-      setMessages((prev) => reconcileChatDoneMessages(prev, {
-        finalStreamContent,
-        systemReply,
-        nextMessageId: getNextMessageId(),
-        timestamp: Date.now(),
-      }));
-    },
-
-    onAgentPhase: (phase, elapsed) => {
-      setAgentPhase(phase);
-      if (phase === 'thinking' && elapsed != null) setThinkingElapsed(elapsed);
-      if (phase === 'idle' || phase === 'typing') setThinkingElapsed(0);
-    },
-
-    onToolEvent: (payload) => {
-      if (payload.type === 'tool_call') {
-        setActiveTools((prev) => {
-          const next = appendExecutingTool(prev, payload);
-          if (prev.length === 0 && next.length > 0) {
-            requestAnimationFrame(() => { scroll.reconcile(); });
-          }
-          return next;
-        });
-        setMessages((prev) => appendToolCallToStreamingMessage(prev, payload, Date.now()));
-        onToolEventTimeline(payload);
-      } else if (payload.type === 'tool_result') {
-        setActiveTools((prev) => applyToolResult(prev, payload));
-        setMessages((prev) => applyToolResultToMessage(prev, payload));
-        onToolEventTimeline(payload);
-      }
-    },
-
-    onClarifyOpen: (spec) => {
-      onClarifyOpen?.(spec);
-    },
-
-    onKeepalive: (payload) => {
-      onKeepaliveTimeline(payload);
-    },
-
-    onWorkbenchEvent: (event) => {
-      workbenchBus.dispatch(toWorkbenchCommand(event));
-    },
-
-    onUsage: (usage, isSnapshot) => {
-      onUsage(usage, isSnapshot);
-    },
-
-    onModelName: (name) => setModelName(name),
-    onGatewayCapabilities: (caps) => {
-      setGatewayCapabilities(caps);
-      if (caps?.model) setModelName(caps.model);
-    },
+  const ws = useMessagesGateway({
+    oct,
+    scroll,
+    getNextMessageId,
+    setMessages,
+    onClarifyOpen,
+    setAwaitingResponse,
+    setAgentPhase,
+    setActiveTools,
+    setGatewayCapabilities,
+    setThinkingElapsed,
+    setModelName,
+    setApiKeyInfo,
+    setThinkMode,
+    setRuntimeMode,
+    setCompactions,
+    setQueueInfo,
+    onUsage,
+    setFromSystemReply,
+    onToolEventTimeline,
+    onKeepaliveTimeline,
+    removeTimelineTypes,
+    scheduleCotSyncFromFullText,
+    ensureStreamingAssistantMessage,
+    startPainting,
+    stopPainting,
+    scheduleFinalizeFallback,
+    clearRoundTimeout,
+    streamingMessageRef,
+    fullTextRef,
+    pendingStreamFinalizeRef,
+    pendingSystemReplyMap,
+    lastSentRequestId,
+    systemReplyBufferRef,
   });
 
   // ── FSM subscribe ─────────────────────────────────────────────────────────

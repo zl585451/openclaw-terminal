@@ -17,6 +17,18 @@ export interface ActiveToolState {
   resultPreview?: string;
 }
 
+export interface ParsedSystemReplyStatus {
+  modelName?: string;
+  tokenIn?: number;
+  ctxUsed?: number;
+  ctxMax?: number;
+  apiKeyInfo?: string;
+  thinkMode?: string;
+  runtimeMode?: string;
+  compactions?: number;
+  queueInfo?: string;
+}
+
 export function isSystemCommand(text: string): boolean {
   const t = (text || '').trim();
   return /^\/\w/.test(t);
@@ -59,6 +71,41 @@ export function sanitizeAssistantText(rawText: string): string {
   return stripTextToolAnnotations(
     stripLeakedToolCallSections(stripThinkModeMarker(rawText || '')),
   );
+}
+
+export function parseSystemReplyStatus(rawText: string): ParsedSystemReplyStatus | null {
+  const text = rawText || '';
+  if (!text.startsWith('🦞')) return null;
+
+  const modelMatch = text.match(/Model:\s*(.+)/);
+  const tokensMatch = text.match(/Tokens:\s*([\d.]+)k?\s*\/\s*([\d.]+)k/i);
+  const ctxMatch1 = text.match(/Context:\s*([\d.]+)\s*\/\s*([\d.]+)k\s*\((\d+)%\)/i);
+  const ctxMatch2 = text.match(/Context:\s*([\d.]+)k\s*tokens/i);
+  const apiKeyMatch = text.match(/api-key\s*\(([^)]+)\)/i);
+  const thinkMatch = text.match(/(?:Reasoning|Think):\s*(\S+)/i);
+  const runtimeMatch = text.match(/Runtime:\s*(\S+)/i);
+  const compactMatch = text.match(/Compactions:\s*(\d+)/i);
+  const queueMatch = text.match(/Queue:\s*(.+)/i);
+
+  const parsed: ParsedSystemReplyStatus = {};
+  if (modelMatch) parsed.modelName = modelMatch[1].trim();
+  if (tokensMatch) {
+    parsed.tokenIn = parseFloat(tokensMatch[1]) * 1000;
+    parsed.ctxMax = parseFloat(tokensMatch[2]) * 1000;
+  }
+  if (ctxMatch1) {
+    parsed.ctxUsed = parseFloat(ctxMatch1[1]) * 1000;
+    parsed.ctxMax = parseFloat(ctxMatch1[2]) * 1000;
+  } else if (ctxMatch2) {
+    parsed.ctxUsed = parseFloat(ctxMatch2[1]) * 1000;
+  }
+  if (apiKeyMatch) parsed.apiKeyInfo = `api-key (${apiKeyMatch[1]})`;
+  if (thinkMatch) parsed.thinkMode = thinkMatch[1];
+  if (runtimeMatch) parsed.runtimeMode = runtimeMatch[1];
+  if (compactMatch) parsed.compactions = parseInt(compactMatch[1], 10);
+  if (queueMatch) parsed.queueInfo = queueMatch[1].trim();
+
+  return Object.keys(parsed).length > 0 ? parsed : {};
 }
 
 export function finalizeStreamingAssistantMessages(prev: ChatMessage[], finalRaw: string): ChatMessage[] {
