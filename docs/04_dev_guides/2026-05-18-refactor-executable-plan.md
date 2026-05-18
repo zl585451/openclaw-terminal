@@ -58,6 +58,7 @@
 ### Phase 2
 
 - Tag: `refactor-plan-phase2-config-split`
+- Status: in_progress
 - Target: 拆解 `config.js` 的装载、注册表、缓存和默认值
 - Files:
 - `oct-gateway/config.js`

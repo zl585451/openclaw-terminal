@@ -2,12 +2,16 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { PROVIDERS } = require('./providers');
+const { DEFAULT_AGENT_PERMISSIONS, normalizeAgentPermissions } = require('./config/agentPermissions');
+const {
+  createOpenClawConfigReader,
+  loadConfigFile,
+  loadGoogleScopedConfig,
+  resolveConfigPath,
+} = require('./config/fileSources');
+const { buildMemoryConfig } = require('./config/memoryConfig');
+const { createProbeCacheStore } = require('./config/probeCache');
 const { sanitizeGoogleOpenAiBaseUrl } = require('./shared/googleBaseUrl.js');
-
-const CAPABILITY_PROBE_CACHE_FILE = 'capability-probe-cache.json';
-const PROBE_TTL_SUPPORTED_MS = 7 * 24 * 60 * 60 * 1000;
-const PROBE_TTL_UNSUPPORTED_MS = 7 * 24 * 60 * 60 * 1000;
-const PROBE_TTL_UNKNOWN_MS = 24 * 60 * 60 * 1000;
 
 const envLocalPath = path.join(__dirname, '..', '.env.local');
 if (fs.existsSync(envLocalPath)) {
@@ -37,110 +41,6 @@ function ensureLocalBypassForOct() {
 }
 
 ensureLocalBypassForOct();
-
-function loadConfigFile() {
-  // Try to load from multiple sources in priority order
-  const configSources = [
-    process.env.OCT_CONFIG_FILE,
-    // Try Electron userData config first (where settings panel saves)
-    // Common Electron userData paths
-    path.join(os.homedir(), 'AppData', 'Roaming', 'openclaw-terminal', 'config.json'), // Windows
-    path.join(os.homedir(), 'Library', 'Application Support', 'openclaw-terminal', 'config.json'), // macOS
-    path.join(os.homedir(), '.config', 'openclaw-terminal', 'config.json'), // Linux
-    // Also try with the exact app name
-    path.join(os.homedir(), 'AppData', 'Roaming', 'OpenClaw Terminal', 'config.json'), // Windows with spaces
-    // Fallback to local config
-    path.join(__dirname, 'config.json')
-  ].filter(Boolean);
-
-  for (const configFile of configSources) {
-    if (fs.existsSync(configFile)) {
-      try {
-        const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
-        console.log(`[Config] Loaded config from: ${configFile}`);
-        return config;
-      } catch (err) {
-        console.warn(`[Config] Failed to parse ${configFile}:`, err.message);
-      }
-    }
-  }
-  
-  console.log('[Config] No config file found, using defaults');
-  return {};
-}
-
-const GOOGLE_SCOPED_KEYS = new Set([
-  'GOOGLE_AI_API_KEY',
-  'GOOGLE_AI_BASE_URL',
-  'GOOGLE_HTTPS_PROXY',
-  'GOOGLE_TOOLS_MODE',
-  'GOOGLE_API_MODE',
-  'GOOGLE_CLOUD_PROJECT',
-  'GOOGLE_CLOUD_LOCATION',
-  'GOOGLE_GENAI_API_VERSION',
-]);
-
-function loadGoogleScopedConfig() {
-  const customPath = (process.env.OCT_GOOGLE_CONFIG_FILE || '').trim();
-  const defaultPath = path.join(__dirname, 'google.profile.json');
-  const candidates = [customPath, defaultPath].filter(Boolean);
-  for (const cfgPath of candidates) {
-    if (!fs.existsSync(cfgPath)) continue;
-    try {
-      const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
-      if (!parsed || typeof parsed !== 'object') continue;
-      const picked = {};
-      for (const key of GOOGLE_SCOPED_KEYS) {
-        if (Object.prototype.hasOwnProperty.call(parsed, key)) {
-          const value = parsed[key];
-          // 空字符串不覆盖主配置（避免 google.profile.json 里的占位空值把 userData/config.json 的真实 Key 覆盖掉）
-          if (typeof value === 'string') {
-            if (!value.trim()) continue;
-            picked[key] = value;
-            continue;
-          }
-          if (value !== null && value !== undefined) picked[key] = value;
-        }
-      }
-      if (Object.keys(picked).length > 0) {
-        console.log(`[Config] Loaded google scoped config from: ${cfgPath}`);
-        return picked;
-      }
-    } catch (err) {
-      console.warn(`[Config] Failed to parse google scoped config ${cfgPath}:`, err.message);
-    }
-  }
-  return {};
-}
-
-const openclawJsonPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
-let openclawJson = null;
-
-function loadOpenClawJson() {
-  if (openclawJson) return openclawJson;
-  if (fs.existsSync(openclawJsonPath)) {
-    try {
-      openclawJson = JSON.parse(fs.readFileSync(openclawJsonPath, 'utf-8'));
-    } catch {}
-  }
-  return openclawJson || {};
-}
-
-function loadOpenClawLegacyConfig() {
-  const cfg = loadOpenClawJson();
-  const p = cfg?.models?.providers || {};
-  const bailian = p.bailian || p.dashscope || p.qwen || {};
-  const deepseek = p.deepseek || {};
-  const primaryModel = cfg?.agents?.defaults?.model?.primary || '';
-  const modelId = primaryModel.includes('/') ? primaryModel.split('/').pop() : primaryModel;
-  return {
-    DASHSCOPE_API_KEY: bailian.apiKey || '',
-    DASHSCOPE_BASE_URL: bailian.baseUrl || '',
-    DASHSCOPE_MODEL: modelId || (bailian.models?.[0]?.id) || '',
-    DEEPSEEK_API_KEY: deepseek.apiKey || '',
-    DEEPSEEK_BASE_URL: deepseek.baseUrl || '',
-  };
-}
 
 // ══════════════════════════════════════════════════
 // 模型能力注册表 — 每个模型声明自己支持什么
@@ -522,7 +422,7 @@ function getModelCaps(modelId) {
 }
 
 function loadAvailableModels() {
-  const cfg = loadOpenClawJson();
+  const cfg = openClawConfigReader.loadOpenClawJson();
   const p = cfg?.models?.providers || {};
   const bailian = p.bailian || {};
   const deepseek = p.deepseek || {};
@@ -553,8 +453,9 @@ function loadAvailableModels() {
   return models;
 }
 
-const _baseFileConfig = loadConfigFile();
-const _googleScopedConfig = loadGoogleScopedConfig();
+const openClawConfigReader = createOpenClawConfigReader({ fs, path, os });
+const _baseFileConfig = loadConfigFile({ env: process.env, fs, path, os, configDir: __dirname });
+const _googleScopedConfig = loadGoogleScopedConfig({ env: process.env, fs, path, configDir: __dirname });
 const _fileConfig = { ..._baseFileConfig, ..._googleScopedConfig };
 
 // 出站代理：设置面板（用户 config.json）优先于 .env/系统环境，避免旧环境变量覆盖用户最新设置
@@ -579,24 +480,8 @@ const _fileConfig = { ..._baseFileConfig, ..._googleScopedConfig };
 })();
 
 // 记录第一个命中的配置文件路径，用于 mcp/manager 写入
-const _configSources = [
-  process.env.OCT_CONFIG_FILE,
-  path.join(os.homedir(), 'AppData', 'Roaming', 'openclaw-terminal', 'config.json'),
-  path.join(os.homedir(), 'Library', 'Application Support', 'openclaw-terminal', 'config.json'),
-  path.join(os.homedir(), '.config', 'openclaw-terminal', 'config.json'),
-  path.join(os.homedir(), 'AppData', 'Roaming', 'OpenClaw Terminal', 'config.json'),
-  path.join(__dirname, 'config.json'),
-].filter(Boolean);
-let _configPath = null;
-for (const f of _configSources) {
-  if (fs.existsSync(f)) { _configPath = f; break; }
-}
-const legacyConfig = loadOpenClawLegacyConfig();
-
-function getProbeCachePath() {
-  const baseDir = _configPath ? path.dirname(_configPath) : path.join(os.homedir(), '.openclaw');
-  return path.join(baseDir, CAPABILITY_PROBE_CACHE_FILE);
-}
+const _configPath = resolveConfigPath({ env: process.env, fs, path, os, configDir: __dirname });
+const legacyConfig = openClawConfigReader.loadOpenClawLegacyConfig();
 
 function normalizeModelId(modelId) {
   const raw = String(modelId || '').trim();
@@ -640,76 +525,6 @@ function buildModelIdCandidates(modelId) {
     out.add(normalizeModelId(tail));
   }
   return Array.from(out).filter(Boolean);
-}
-
-let _probeCache = null;
-let _probeCacheLoaded = false;
-
-function loadProbeCache() {
-  if (_probeCacheLoaded) return _probeCache || {};
-  _probeCacheLoaded = true;
-  const p = getProbeCachePath();
-  try {
-    if (fs.existsSync(p)) {
-      const parsed = JSON.parse(fs.readFileSync(p, 'utf-8'));
-      _probeCache = parsed && typeof parsed === 'object' ? parsed : {};
-      return _probeCache;
-    }
-  } catch {}
-  _probeCache = {};
-  return _probeCache;
-}
-
-function saveProbeCache() {
-  const p = getProbeCachePath();
-  const dir = path.dirname(p);
-  try {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(p, JSON.stringify(_probeCache || {}, null, 2), 'utf-8');
-  } catch {}
-}
-
-function buildProbeCacheKey(providerId, baseUrl, modelId) {
-  const p = String(providerId || '').trim().toLowerCase();
-  const b = String(baseUrl || '').trim().toLowerCase().replace(/\/$/, '');
-  const m = normalizeModelId(modelId);
-  return `${p}::${b}::${m}`;
-}
-
-function getProbeCacheEntry({ providerId, baseUrl, modelId }) {
-  const key = buildProbeCacheKey(providerId, baseUrl, modelId);
-  const cache = loadProbeCache();
-  const item = cache[key];
-  if (!item) return null;
-  if (item.expiresAt && Date.now() > item.expiresAt) {
-    delete cache[key];
-    saveProbeCache();
-    return null;
-  }
-  return item;
-}
-
-function setProbeCacheEntry({ providerId, baseUrl, modelId, toolsSupport, capabilitySource = 'runtime_probe' }) {
-  const key = buildProbeCacheKey(providerId, baseUrl, modelId);
-  const cache = loadProbeCache();
-  const ttl = toolsSupport === 'supported'
-    ? PROBE_TTL_SUPPORTED_MS
-    : toolsSupport === 'unsupported'
-      ? PROBE_TTL_UNSUPPORTED_MS
-      : PROBE_TTL_UNKNOWN_MS;
-  cache[key] = {
-    providerId,
-    baseUrl: String(baseUrl || '').trim(),
-    modelId: String(modelId || '').trim(),
-    normalizedModelId: normalizeModelId(modelId),
-    toolsSupport: toolsSupport || 'unknown',
-    capabilitySource,
-    updatedAt: Date.now(),
-    expiresAt: Date.now() + ttl,
-  };
-  _probeCache = cache;
-  saveProbeCache();
-  return cache[key];
 }
 
 function validKey(v) {
@@ -962,157 +777,19 @@ function getProviderConfig() {
   };
 }
 
-const defaultMemoryConfig = {
-  backend: process.env.OCT_MEMORY_BACKEND || 'file',
-  root: process.env.OCT_MEMORY_ROOT || path.join(os.homedir(), '.openclaw', 'memory'),
-  auto_save_history: true,
-  auto_save_feedback: false,
-  enable_memory_search: true,
-  search_cache_ttl: 300,
-  search_default_limit: 10,
-  max_history_days: 7,
-  max_feedback_days: 7,
-  load_feedback_on_boot: false,
-  compress_length: { user: 100, amy: 200 },
-};
-
-const defaultSummarizerConfig = {
-  enabled: process.env.SUMMARIZER_ENABLED !== 'false',
-  api: {
-    baseUrl: process.env.SUMMARIZER_BASE_URL || '',
-    apiKey: process.env.SUMMARIZER_API_KEY || '',
-    model: process.env.SUMMARIZER_MODEL || '',
-  },
-  schedule: {
-    daily: { hour: 4, minute: 0 },
-    weekly: { hour: 4, minute: 30 },
-    monthly: { hour: 5, minute: 0 },
-  },
-  bootInject: {
-    dailyCount: 3,
-    weeklyCount: 1,
-    monthlyCount: 1,
-  },
-  maxTokens: {
-    daily: 3000,
-    weekly: 4000,
-    monthly: 5000,
-  },
-  retry: {
-    maxAttempts: 3,
-    backoffMs: [10000, 60000, 300000],
-  },
-};
-
-const defaultVectorRecallConfig = {
-  enabled: process.env.VECTOR_RECALL_ENABLED === 'true',
-  embedding: {
-    baseUrl: process.env.EMBEDDING_BASE_URL || '',
-    apiKey: process.env.EMBEDDING_API_KEY || '',
-    model: process.env.EMBEDDING_MODEL || '',
-    dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || '1024', 10),
-    version: parseInt(process.env.EMBEDDING_VERSION || '1', 10),
-    timeoutMs: 30000,
-  },
-  dbPath: process.env.VECTOR_DB_PATH || path.join(os.homedir(), '.openclaw', 'vector_recall', 'vectors.db'),
-  recall: {
-    threshold: parseFloat(process.env.VECTOR_RECALL_THRESHOLD || '0.75'),
-    autoThreshold: parseFloat(process.env.VECTOR_RECALL_AUTO_THRESHOLD || '0.78'),
-    strongThreshold: parseFloat(process.env.VECTOR_RECALL_STRONG_THRESHOLD || '0.84'),
-    recallIntentThreshold: parseFloat(process.env.VECTOR_RECALL_INTENT_THRESHOLD || '0.72'),
-    manualThreshold: parseFloat(process.env.VECTOR_RECALL_MANUAL_THRESHOLD || '0.62'),
-    candidateThreshold: parseFloat(process.env.VECTOR_RECALL_CANDIDATE_THRESHOLD || '0.58'),
-    topK: parseInt(process.env.VECTOR_RECALL_TOP_K || '3', 10),
-    candidateTopK: parseInt(process.env.VECTOR_RECALL_CANDIDATE_TOP_K || '12', 10),
-    maxLatencyMs: parseInt(process.env.VECTOR_RECALL_MAX_LATENCY || '2000', 10),
-    minInputLen: 4,
-    minSignalTokens: 2,
-    minLexicalOverlap: 0.18,
-    cooldownMs: 5000,
-    excludeSameSession: true,
-    sameSessionWindowMs: 10 * 60 * 1000,
-    maxInjectCharsPerHit: 420,
-  },
-  write: {
-    async: true,
-    mode: process.env.VECTOR_RECALL_WRITE_MODE || 'selective',
-    minUserChars: parseInt(process.env.VECTOR_RECALL_WRITE_MIN_USER_CHARS || '12', 10),
-    assistantPreviewChars: parseInt(process.env.VECTOR_RECALL_WRITE_ASSISTANT_PREVIEW_CHARS || '360', 10),
-    maxRetries: 3,
-    retryBackoffMs: [5000, 30000, 120000],
-  },
-  backfill: {
-    batchSize: 50,
-    intervalMs: 200,
-  },
-};
-
-const memoryConfig = _fileConfig.memory && typeof _fileConfig.memory === 'object'
-  ? { ...defaultMemoryConfig, ..._fileConfig.memory }
-  : defaultMemoryConfig;
-memoryConfig.summarizer = {
-  ...defaultSummarizerConfig,
-  ...((memoryConfig.summarizer && typeof memoryConfig.summarizer === 'object') ? memoryConfig.summarizer : {}),
-  api: {
-    ...defaultSummarizerConfig.api,
-    ...((memoryConfig.summarizer?.api && typeof memoryConfig.summarizer.api === 'object') ? memoryConfig.summarizer.api : {}),
-  },
-  schedule: {
-    ...defaultSummarizerConfig.schedule,
-    ...((memoryConfig.summarizer?.schedule && typeof memoryConfig.summarizer.schedule === 'object') ? memoryConfig.summarizer.schedule : {}),
-  },
-  bootInject: {
-    ...defaultSummarizerConfig.bootInject,
-    ...((memoryConfig.summarizer?.bootInject && typeof memoryConfig.summarizer.bootInject === 'object') ? memoryConfig.summarizer.bootInject : {}),
-  },
-  maxTokens: {
-    ...defaultSummarizerConfig.maxTokens,
-    ...((memoryConfig.summarizer?.maxTokens && typeof memoryConfig.summarizer.maxTokens === 'object') ? memoryConfig.summarizer.maxTokens : {}),
-  },
-  retry: {
-    ...defaultSummarizerConfig.retry,
-    ...((memoryConfig.summarizer?.retry && typeof memoryConfig.summarizer.retry === 'object') ? memoryConfig.summarizer.retry : {}),
-  },
-};
-memoryConfig.vectorRecall = {
-  ...defaultVectorRecallConfig,
-  ...((memoryConfig.vectorRecall && typeof memoryConfig.vectorRecall === 'object') ? memoryConfig.vectorRecall : {}),
-  embedding: {
-    ...defaultVectorRecallConfig.embedding,
-    ...((memoryConfig.vectorRecall?.embedding && typeof memoryConfig.vectorRecall.embedding === 'object') ? memoryConfig.vectorRecall.embedding : {}),
-  },
-  recall: {
-    ...defaultVectorRecallConfig.recall,
-    ...((memoryConfig.vectorRecall?.recall && typeof memoryConfig.vectorRecall.recall === 'object') ? memoryConfig.vectorRecall.recall : {}),
-  },
-  write: {
-    ...defaultVectorRecallConfig.write,
-    ...((memoryConfig.vectorRecall?.write && typeof memoryConfig.vectorRecall.write === 'object') ? memoryConfig.vectorRecall.write : {}),
-  },
-  backfill: {
-    ...defaultVectorRecallConfig.backfill,
-    ...((memoryConfig.vectorRecall?.backfill && typeof memoryConfig.vectorRecall.backfill === 'object') ? memoryConfig.vectorRecall.backfill : {}),
-  },
-};
-
-const defaultAgentPermissions = {
-  shellCommands: false,
-  fileWrite: false,
-  networkRequests: true,
-  softwareInstall: false,
-  systemConfig: false,
-};
-
-function normalizeAgentPermissions(raw) {
-  const source = raw && typeof raw === 'object' ? raw : {};
-  return {
-    shellCommands: source.shellCommands === true,
-    fileWrite: source.fileWrite === true,
-    networkRequests: source.networkRequests !== false,
-    softwareInstall: source.softwareInstall === true,
-    systemConfig: source.systemConfig === true,
-  };
-}
+const memoryConfig = buildMemoryConfig({
+  fileConfig: _fileConfig,
+  env: process.env,
+  pathModule: path,
+  osModule: os,
+});
+const probeCacheStore = createProbeCacheStore({
+  fs,
+  path,
+  os,
+  configPath: _configPath,
+  normalizeModelId,
+});
 
 const config = {
   PORT: parseInt(process.env.OCT_GATEWAY_PORT || '18789', 10),
@@ -1202,7 +879,7 @@ const config = {
 
   // MCP Server 配置（由前端设置面板写入 config.json）
   MCP_SERVERS: _fileConfig.mcpServers || {},
-  AGENT_PERMISSIONS: normalizeAgentPermissions(_fileConfig.AGENT_PERMISSIONS || defaultAgentPermissions),
+  AGENT_PERMISSIONS: normalizeAgentPermissions(_fileConfig.AGENT_PERMISSIONS || DEFAULT_AGENT_PERMISSIONS),
 
   // 视觉 API（独立于主 provider，用于非视觉模型的图片理解）
   VISION_API_KEY: getEnvOrConfig('VISION_API_KEY') || '',
@@ -1263,10 +940,10 @@ config.getModelCaps = getModelCaps;
 config.getEnvOrConfig = getEnvOrConfig;
 config.normalizeModelId = normalizeModelId;
 config.detectModelFamily = detectModelFamily;
-config.getProbeCacheEntry = getProbeCacheEntry;
-config.setProbeCacheEntry = setProbeCacheEntry;
+config.getProbeCacheEntry = probeCacheStore.getProbeCacheEntry;
+config.setProbeCacheEntry = probeCacheStore.setProbeCacheEntry;
 config.normalizeAgentPermissions = normalizeAgentPermissions;
-config.DEFAULT_AGENT_PERMISSIONS = defaultAgentPermissions;
+config.DEFAULT_AGENT_PERMISSIONS = DEFAULT_AGENT_PERMISSIONS;
 config.setAgentPermissions = (nextPermissions) => {
   const normalized = normalizeAgentPermissions(nextPermissions);
   config.AGENT_PERMISSIONS = normalized;
