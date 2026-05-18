@@ -11,6 +11,12 @@ const {
 } = require('./config/fileSources');
 const { buildMemoryConfig } = require('./config/memoryConfig');
 const { createProbeCacheStore } = require('./config/probeCache');
+const {
+  createConfigValueReaders,
+  createProviderConfigResolver,
+  inferProviderFromBaseUrl,
+  pickKey,
+} = require('./config/providerRuntime');
 const { sanitizeGoogleOpenAiBaseUrl } = require('./shared/googleBaseUrl.js');
 
 const envLocalPath = path.join(__dirname, '..', '.env.local');
@@ -527,55 +533,6 @@ function buildModelIdCandidates(modelId) {
   return Array.from(out).filter(Boolean);
 }
 
-function validKey(v) {
-  return v && typeof v === 'string' && !v.includes('_here') && !v.includes('your_') && v.length > 10;
-}
-
-function pickKey(...sources) {
-  for (const v of sources) {
-    if (validKey(v)) return v;
-  }
-  return '';
-}
-
-/** 去掉首尾空白并移除 URL 内误粘贴的空白（如 https://host /v1），避免 fetch 报 Failed to parse URL */
-function normalizeHttpBaseUrl(raw) {
-  const s = String(raw || '').trim();
-  if (!s) return '';
-  return s.replace(/\s+/g, '');
-}
-
-function normalizeProviderBaseUrl(baseUrl, providerId) {
-  const normalized = normalizeHttpBaseUrl(baseUrl);
-  if (!normalized) return '';
-  if (providerId !== 'newapi') return normalized;
-  try {
-    const parsed = new URL(normalized);
-    if (parsed.pathname === '/' || parsed.pathname === '') {
-      parsed.pathname = '/v1';
-      return parsed.toString().replace(/\/$/, '');
-    }
-  } catch {}
-  return normalized;
-}
-
-// 从 baseUrl 推断 provider id
-function inferProviderFromBaseUrl(baseUrl) {
-  if (!baseUrl || typeof baseUrl !== 'string') return 'bailian-coding';
-  const u = baseUrl.toLowerCase();
-  if (u.includes('coding.dashscope')) return 'bailian-coding';
-  if (u.includes('dashscope')) return 'bailian';
-  if (u.includes('deepseek')) return 'deepseek';
-  if (u.includes('siliconflow')) return 'siliconflow';
-  if (u.includes('moonshot')) return 'moonshot';
-  if (u.includes('groq')) return 'groq';
-  if (u.includes('api.openai.com')) return 'openai';
-  if (u.includes('localhost:11434') || u.includes('127.0.0.1:11434')) return 'ollama';
-  if (u.includes('generativelanguage.googleapis.com')) return 'google';
-  if (u && u.length > 10) return 'custom';
-  return 'bailian-coding';
-}
-
 // Prioritize user settings from Electron config over environment variables
 let _currentProvider = _fileConfig.OCT_PROVIDER || process.env.OCT_PROVIDER
   || inferProviderFromBaseUrl(
@@ -585,197 +542,30 @@ let _currentProvider = _fileConfig.OCT_PROVIDER || process.env.OCT_PROVIDER
 // Prioritize user settings from settings panel over .env file
 let _currentModel = _fileConfig.OCT_MODEL || process.env.OCT_MODEL || legacyConfig.DASHSCOPE_MODEL || 'qwen-plus';
 
-// 优先级：用户设置(_fileConfig) > 系统环境变量(process.env) > 旧配置
-function getEnvOrConfig(key) {
-  if (Object.prototype.hasOwnProperty.call(_fileConfig, key)) return _fileConfig[key];
-  if (Object.prototype.hasOwnProperty.call(process.env, key)) return process.env[key];
-  if (Object.prototype.hasOwnProperty.call(legacyConfig, key)) return legacyConfig[key];
-  return '';
-}
-
-function readBoolConfig(key, fallback = false) {
-  const raw = getEnvOrConfig(key);
-  if (raw === '' || raw === null || raw === undefined) return fallback;
-  return /^(1|true|yes|on)$/i.test(String(raw).trim());
-}
-
-function readPositiveIntConfig(key, fallback) {
-  const parsed = Number(getEnvOrConfig(key));
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.floor(parsed);
-}
-
-function readOptionalBoolConfig(key) {
-  const raw = getEnvOrConfig(key);
-  if (raw === '' || raw === null || raw === undefined) return null;
-  const value = String(raw).trim().toLowerCase();
-  if (!value || value === 'auto' || value === 'default') return null;
-  if (/^(1|true|yes|on)$/i.test(value)) return true;
-  if (/^(0|false|no|off)$/i.test(value)) return false;
-  return null;
-}
-
-function getProviderConfig() {
-  const preset = PROVIDERS[_currentProvider] || PROVIDERS['bailian-coding'];
-  const isBailian = preset.id === 'bailian' || preset.id === 'bailian-coding';
-  const isDeepseek = preset.id === 'deepseek';
-  const isMinimax = preset.id === 'minimax';
-  const isMoonshot = preset.id === 'moonshot';
-  const isGoogle = preset.id === 'google';
-  const isCustom = preset.id === 'custom';
-  const isNewApi = preset.id === 'newapi';
-
-  let apiKey = '';
-  if (preset.fixedApiKey) {
-    apiKey = preset.fixedApiKey;
-  } else if (preset.id === 'siliconflow') {
-    // 硅基与百炼共用 DASHSCOPE_API_KEY 字段时，易把 sk-sp-（Coding Plan）误带到硅基导致 401。
-    // 优先 SILICONFLOW_API_KEY；否则仅当 DASHSCOPE 不像百炼 Coding 前缀时才采用。
-    const sfKey = pickKey(
-      _fileConfig.SILICONFLOW_API_KEY,
-      process.env.SILICONFLOW_API_KEY,
-    );
-    const dashKey = pickKey(
-      _fileConfig.DASHSCOPE_API_KEY,
-      process.env.DASHSCOPE_API_KEY,
-      legacyConfig.DASHSCOPE_API_KEY,
-    );
-    const dashLooksCodingPlan = dashKey && String(dashKey).trim().toLowerCase().startsWith('sk-sp-');
-    if (sfKey) {
-      apiKey = sfKey;
-    } else if (dashKey && !dashLooksCodingPlan) {
-      apiKey = dashKey;
-    } else {
-      apiKey = '';
-      if (dashLooksCodingPlan) {
-        try {
-          const { createLogger } = require('./logger');
-          createLogger('config').warn(
-            'OCT_PROVIDER=siliconflow：DASHSCOPE_API_KEY 为百炼 Coding(sk-sp-)，不能用于硅基。请填写硅基 API Key（设置保存会写入 SILICONFLOW_API_KEY），或编辑 config.json。',
-          );
-        } catch (_) {
-          console.warn('[config] siliconflow: sk-sp- in DASHSCOPE is not valid for api.siliconflow.cn');
-        }
-      }
-    }
-  } else if (preset.keyEnvVars && preset.keyEnvVars.length > 0) {
-    const sources = preset.keyEnvVars.flatMap(k => [
-      _fileConfig[k],
-      process.env[k],
-      isBailian ? legacyConfig.DASHSCOPE_API_KEY : null,
-      isDeepseek ? legacyConfig.DEEPSEEK_API_KEY : null,
-      isMinimax ? legacyConfig.MINIMAX_API_KEY : null,
-    ].filter(Boolean));
-    apiKey = pickKey(...sources);
-    if (isMoonshot && apiKey && String(apiKey).trim().toLowerCase().startsWith('sk-sp-')) {
-      apiKey = '';
-      try {
-        const { createLogger } = require('./logger');
-        createLogger('config').warn(
-          'OCT_PROVIDER=moonshot：检测到阿里云百炼 Coding(sk-sp-) Key，不能用于 Kimi 官方直连接口。请填写 MOONSHOT_API_KEY。',
-        );
-      } catch (_) {
-        console.warn('[config] moonshot: sk-sp- key is not valid for api.moonshot.cn');
-      }
-    }
-  }
-
-  let baseUrl = preset.baseUrl || '';
-  if (isBailian) {
-    baseUrl = getEnvOrConfig('DASHSCOPE_BASE_URL') || preset.baseUrl;
-  } else if (isDeepseek) {
-    baseUrl = getEnvOrConfig('DEEPSEEK_BASE_URL') || preset.baseUrl;
-  } else if (isMinimax) {
-    baseUrl = getEnvOrConfig('MINIMAX_BASE_URL') || preset.baseUrl;
-  } else if (isMoonshot) {
-    baseUrl = getEnvOrConfig('MOONSHOT_BASE_URL') || preset.baseUrl;
-  } else if (isGoogle) {
-    baseUrl = sanitizeGoogleOpenAiBaseUrl(getEnvOrConfig('GOOGLE_AI_BASE_URL') || preset.baseUrl);
-  } else if (isNewApi) {
-    baseUrl = getEnvOrConfig('NEWAPI_BASE_URL') || preset.baseUrl;
-  } else if (isCustom) {
-    // 自定义服务：从配置中读取 Base URL 和 API Key
-    baseUrl = _fileConfig.CUSTOM_BASE_URL || process.env.CUSTOM_BASE_URL || '';
-    apiKey = _fileConfig.CUSTOM_API_KEY || process.env.CUSTOM_API_KEY || '';
-  }
-
-  // 处理自定义模型
-  let effectiveModel = _currentModel;
-  if (isCustom && _fileConfig.CUSTOM_MODEL) {
-    effectiveModel = _fileConfig.CUSTOM_MODEL;
-  }
-  if (isGoogle && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
-    effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
-  }
-  if (isNewApi && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
-    effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
-  }
-  const customModelSupportsTools = readOptionalBoolConfig('CUSTOM_MODEL_SUPPORTS_TOOLS');
-
-  let models = preset.models || [];
-  if ((isCustom || isNewApi) && effectiveModel && effectiveModel !== '__custom__') {
-    const customModelToolMode = customModelSupportsTools === true
-      ? 'enabled'
-      : customModelSupportsTools === false
-        ? 'disabled'
-        : 'auto_probe';
-    const customModelEntry = {
-      id: effectiveModel,
-      label: `${effectiveModel} (自定义，工具${customModelToolMode === 'auto_probe' ? '自动探测' : customModelToolMode === 'enabled' ? '开启' : '关闭'})`,
-      thinking: false,
-    };
-    if (customModelToolMode === 'enabled') {
-      customModelEntry.tools = true;
-      customModelEntry.toolReliability = 'loose';
-    } else if (customModelToolMode === 'disabled') {
-      customModelEntry.tools = false;
-      customModelEntry.toolReliability = 'none';
-    }
-    // 如果用户设置了自定义模型，添加到模型列表
-    models = [
-      customModelEntry,
-      ...models.filter(m => m.id !== effectiveModel)
-    ];
-  }
-  if (isGoogle && effectiveModel && effectiveModel !== '__custom__' && !models.some((m) => m.id === effectiveModel)) {
-    models = [
-      { id: effectiveModel, label: `${effectiveModel} (自定义)`, tools: false, thinking: false },
-      ...models,
-    ];
-  }
-  if (models.length === 0 && preset.defaultModel) {
-    const defaultCaps = getModelCaps(preset.defaultModel);
-    models = [{
-      id: preset.defaultModel,
-      label: preset.defaultModel,
-      tools: !!defaultCaps.supportsTools,
-      thinking: !!defaultCaps.supportsThinking,
-    }];
-  }
-  if (models.length === 0) {
-    models = loadAvailableModels().map(m => {
-      const caps = getModelCaps(m.id);
-      return {
-        id: m.id,
-        label: caps.label,
-        tools: caps.supportsTools,
-        toolReliability: caps.toolReliability,
-        thinking: caps.supportsThinking,
-      };
-    });
-  }
-
-  baseUrl = normalizeProviderBaseUrl(baseUrl, preset.id);
-
-  return {
-    ...preset,
-    apiKey,
-    baseUrl,
-    models,
-    customModel: (isCustom || isNewApi) ? effectiveModel : undefined,
-    customModelSupportsTools: (isCustom || isNewApi) ? customModelSupportsTools : undefined,
-  };
-}
+const readers = createConfigValueReaders({
+  fileConfig: _fileConfig,
+  env: process.env,
+  legacyConfig,
+});
+const {
+  getEnvOrConfig,
+  readBoolConfig,
+  readPositiveIntConfig,
+  readOptionalBoolConfig,
+} = readers;
+const getProviderConfig = createProviderConfigResolver({
+  providers: PROVIDERS,
+  fileConfig: _fileConfig,
+  env: process.env,
+  legacyConfig,
+  getCurrentProvider: () => _currentProvider,
+  getCurrentModel: () => _currentModel,
+  getModelCaps,
+  loadAvailableModels,
+  sanitizeGoogleOpenAiBaseUrl,
+  createLogger: require('./logger').createLogger,
+  readers,
+});
 
 const memoryConfig = buildMemoryConfig({
   fileConfig: _fileConfig,

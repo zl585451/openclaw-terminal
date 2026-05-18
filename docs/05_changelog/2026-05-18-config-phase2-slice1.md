@@ -7,6 +7,7 @@
 - `probeCache.js`
 - `memoryConfig.js`
 - `agentPermissions.js`
+- `providerRuntime.js`
 
 ## Why
 
