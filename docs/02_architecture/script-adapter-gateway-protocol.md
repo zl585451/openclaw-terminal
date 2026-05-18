@@ -132,3 +132,22 @@ Electron main process now tracks pending script adapter request ids, so start/ca
 - `subscribeGatewayExecutionEvents(callback)`
 
 The UI does not yet show a cancel button or run history panel; this commit only opens the stable bridge for those controls.
+
+## Frontend Wizard Layering
+
+截至 2026-05-18，`TaskCreateWizard` 已按「容器 + hook/policy + view shell」收口：
+
+- `src/modules/script-adapter/ScriptAdapterApp.tsx`
+  - 保留创建向导容器、步骤切换、核心业务动作触发与主视图装配。
+- `src/modules/script-adapter/hooks/useTaskCreateWizardSource.ts`
+  - 负责素材库加载、章节列表/预览、上传入库与 source 派生计算。
+- `src/modules/script-adapter/hooks/useTaskCreateWizardGatewayEvents.ts`
+  - 负责 intake / analysis / production 三类 Gateway 事件订阅与状态回填。
+- `src/modules/script-adapter/wizardFooterPolicy.ts`
+  - 负责 footer CTA 标题、描述、按钮文案、disabled 与 action 策略。
+- `src/modules/script-adapter/ui/TaskCreateWizardSidebar.tsx`
+  - 负责进度 rail 与步骤列表视图。
+- `src/modules/script-adapter/ui/TaskCreateWizardFooter.tsx`
+  - 负责底部操作条视图。
+
+这层拆分的目标不是改变创建流程，而是降低 `ScriptAdapterApp.tsx` 单文件继续膨胀的风险，并让 source loading、gateway event binding、footer action policy 有独立测试和回归边界。

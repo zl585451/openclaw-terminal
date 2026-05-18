@@ -129,7 +129,7 @@
 ### Phase 5
 
 - Tag: `refactor-plan-phase5-script-adapter-wizard-state`
-- Status: in_progress
+- Status: completed
 - Target: 降低 `ScriptAdapterApp.tsx` 和任务创建向导的状态复杂度
 - Files:
 - `src/modules/script-adapter/ScriptAdapterApp.tsx`
@@ -146,6 +146,9 @@
 - footer CTA 策略与 gateway event 订阅已从 `TaskCreateWizard` 主组件迁出
 - 已新增 `hooks/useTaskCreateWizardSource.ts`
 - 素材库加载、上传、章节预览与 source 派生计算已从 `TaskCreateWizard` 主组件迁出
+- 已新增 `ui/TaskCreateWizardSidebar.tsx`
+- 已新增 `ui/TaskCreateWizardFooter.tsx`
+- `TaskCreateWizard` 现已具备容器 + hook/policy + view shell 分层
 - Exit Criteria:
 - `TaskCreateWizard` 以容器 + 视图片区分层
 - 关键业务流程可单独测试
