@@ -63,9 +63,6 @@ const DEFAULT_CONFIG = {
   OCT_AI_LIBRARY_AUTO_START: true,
   OCT_AI_LIBRARY_PATH: '',
   OCT_AI_LIBRARY_PORT: 8001,
-  /** SQLite busy_timeout(ms)，缓解 database is locked，默认 10000，可设为 5000~60000 */
-  NOCTURNE_BUSY_TIMEOUT: 10000,
-  OCT_NOCTURNE_AUTOSTART: false,
 };
 
 type LocalVisionDownloadState = {
