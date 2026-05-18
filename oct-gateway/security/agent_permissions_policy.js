@@ -124,7 +124,7 @@ function inferCapabilitiesFromToolContext({ toolName, args, meta, definition, is
   }
 
   if (/^(web_search|web_fetch|http_request|search_knowledge)$/i.test(name)) caps.networkRequests = true;
-  if (/^(write_file|memory_write|tasks_add|tasks_update|tasks_delete|task_add|task_done|task_delete|parking_add|vault_ops)$/i.test(name)) caps.fileWrite = true;
+  if (/^(write_file|memory_write|tasks_add|tasks_update|tasks_delete|parking_add|vault_ops)$/i.test(name)) caps.fileWrite = true;
 
   if (isMcpTool) {
     // MCP 外部工具视为高风险面：无法可靠识别能力时走默认拒绝。

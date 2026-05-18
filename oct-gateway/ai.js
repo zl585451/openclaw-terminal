@@ -2039,7 +2039,7 @@ async function streamChat({
         || /<tool_code>/i.test(textToCheck)
         || /<function=\w+>/i.test(textToCheck)
         || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
-        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
+        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
       if (hasToolCallResidue) {
         log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
           model: responseModel || model,
