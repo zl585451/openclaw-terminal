@@ -15,6 +15,7 @@
 - `oct-gateway/config/memoryConfig.js` — memory/summarizer/vectorRecall 默认值与合并
 - `oct-gateway/config/agentPermissions.js` — Agent 权限默认值与归一化
 - `oct-gateway/config/providerRuntime.js` — provider 推断、配置读取器、getProviderConfig 解析
+- `oct-gateway/config/modelRegistry.js` — 模型注册表、模型能力解析、availableModels 装载
 
 ## 数据源
 `OCT_CONFIG_FILE`（Electron userData/config.json）> `.env` / `.env.local` > `~/.openclaw/openclaw.json` > 仓库默认值
@@ -84,7 +85,7 @@
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
-| 2026-05-18 | Phase 2 持续拆分：将 runtime config source、google scoped config、legacy openclaw config 读取，以及 probe cache、memory config、agent permissions、provider runtime 解析从 `config.js` 抽到 `oct-gateway/config/` 下独立模块，`config.js` 保持对外接口不变 |
+| 2026-05-18 | Phase 2 持续拆分：将 runtime config source、google scoped config、legacy openclaw config 读取，以及 probe cache、memory config、agent permissions、provider runtime、model registry 解析从 `config.js` 抽到 `oct-gateway/config/` 下独立模块，`config.js` 保持对外接口不变 |
 | 2026-04-22 | 新增 `OCT_SETTINGS_MODE`：设置页支持 beginner / advanced 两层模式，字段仅供前端 UI 使用 |
 | 2026-03-21 | 新增 ai_library 配置节（P1 集成） |
 | 2026-03-20 | Provider 抽象、多服务商、OCT_PROVIDER/OCT_MODEL |

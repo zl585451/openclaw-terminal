@@ -8,6 +8,7 @@
 - `memoryConfig.js`
 - `agentPermissions.js`
 - `providerRuntime.js`
+- `modelRegistry.js`
 
 ## Why
 
