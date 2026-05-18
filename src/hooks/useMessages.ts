@@ -10,56 +10,30 @@ import { toWorkbenchCommand } from '../workbench/types';
 import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
-import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTypes';
+import type { ChatMessage, UploadedFile } from '../ui/chat/chatTypes';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
-import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
-import { stripThinkModeMarker } from '../utils/socraticTemplates';
 import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
 import { useTokenUsage } from './useTokenUsage';
 import { useActivityTimeline } from './useActivityTimeline';
 import { useStreamPainting } from './useStreamPainting';
 import type { ActivityEntry } from './useActivityTimeline';
+import {
+  appendExecutingTool,
+  appendToolCallToStreamingMessage,
+  applyStreamingFinalizeFallback,
+  applyToolResult,
+  applyToolResultToMessage,
+  ensureStreamingAssistantMessageState,
+  finalizeStreamingAssistantMessages,
+  isSystemCommand,
+  preferDoneTextWhenMoreComplete,
+  reconcileChatDoneMessages,
+  recoverOctStreamFromEndFailure,
+  sanitizeAssistantText,
+} from './useMessages.helpers';
 export type { ActivityEntryType, ActivityEntry } from './useActivityTimeline';
-
-// ── Util helpers ──────────────────────────────────────────────────────────────
-function isSystemCommand(text: string): boolean {
-  const t = (text || '').trim();
-  return /^\/\w/.test(t);
-}
-
-function recoverOctStreamFromEndFailure(oct: { stream: StreamRouter; fsm: TurnFSM }): void {
-  try {
-    oct.stream.abortToIdle();
-  } catch {
-    /* ignore */
-  }
-  try {
-    if (oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
-      oct.fsm.onToken();                  // → STREAMING
-    }
-    if (oct.fsm.getPhase() === TurnPhase.STREAMING ||
-        oct.fsm.getPhase() === TurnPhase.STREAM_PAUSED) {
-      oct.fsm.onStreamEnd();              // → STREAM_COMPLETE
-    }
-    if (oct.fsm.getPhase() === TurnPhase.STREAM_COMPLETE) {
-      oct.fsm.onRenderDone();             // → RENDER_COMPLETE
-    }
-    oct.fsm.onTurnFinish();               // → TURN_FINISHED → IDLE
-  } catch (e) {
-    console.warn('[useMessages] recoverOctStreamFromEndFailure', e);
-    oct.fsm.resetToIdle();                // last-resort force reset
-  }
-}
-
-export function preferDoneTextWhenMoreComplete(currentRaw: string, doneText: string): string {
-  const current = currentRaw || '';
-  const done = doneText || '';
-  if (!done.trim()) return current;
-  if (!current.trim()) return done;
-  if (done.length > current.length) return done;
-  return current;
-}
+export { preferDoneTextWhenMoreComplete } from './useMessages.helpers';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface ActiveTool {
@@ -213,9 +187,7 @@ export function useMessages({
     );
   }, [fsmPhase, messages]);
   const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
-    const finalRaw = stripTextToolAnnotations(
-      stripLeakedToolCallSections(stripThinkModeMarker(rawText ?? fullTextRef.current ?? '')),
-    );
+    const finalRaw = sanitizeAssistantText(rawText ?? fullTextRef.current ?? '');
     if (finalizeFallbackTimerRef.current != null) {
       clearTimeout(finalizeFallbackTimerRef.current);
       finalizeFallbackTimerRef.current = null;
@@ -238,17 +210,7 @@ export function useMessages({
       oct.fsm.resetToIdle();
     }
     oct.ingest.reset();
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (last?.role === 'assistant' && last.isStreaming) {
-        return prev.map((msg, idx) =>
-          idx === prev.length - 1
-            ? { ...msg, content: finalRaw || msg.content, isStreaming: false, isStreamingRaw: false }
-            : msg
-        );
-      }
-      return prev;
-    });
+    setMessages((prev) => finalizeStreamingAssistantMessages(prev, finalRaw));
   }, [oct, setMessages]);
 
   const scheduleFinalizeFallback = useCallback((rawText?: string) => {
@@ -257,23 +219,8 @@ export function useMessages({
     }
     finalizeFallbackTimerRef.current = setTimeout(() => {
       finalizeFallbackTimerRef.current = null;
-      const fallbackRaw = stripTextToolAnnotations(
-        stripLeakedToolCallSections(stripThinkModeMarker(rawText ?? fullTextRef.current ?? '')),
-      );
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (!(last?.role === 'assistant' && last.isStreaming)) {
-          return prev;
-        }
-        if (fallbackRaw.trim()) {
-          return prev.map((msg, idx) =>
-            idx === prev.length - 1
-              ? { ...msg, content: fallbackRaw, isStreaming: false, isStreamingRaw: false }
-              : msg
-          );
-        }
-        return prev.filter((_, idx) => idx !== prev.length - 1);
-      });
+      const fallbackRaw = sanitizeAssistantText(rawText ?? fullTextRef.current ?? '');
+      setMessages((prev) => applyStreamingFinalizeFallback(prev, fallbackRaw));
       try {
         recoverOctStreamFromEndFailure(oct);
       } catch {
@@ -308,24 +255,7 @@ export function useMessages({
     pendingFullTextSyncRafRef.current = requestAnimationFrame(() => {
       pendingFullTextSyncRafRef.current = null;
       const buf = fullTextRef.current;
-      const visibleMain = getAssistantVisibleMain(buf);
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          return prev;
-        }
-        if (!visibleMain || !visibleMain.trim()) return prev;
-        return [
-          ...prev,
-          {
-            id: getNextMessageId(),
-            role: 'assistant' as const,
-            content: buf,
-            isStreaming: true,
-            timestamp: Date.now(),
-          },
-        ];
-      });
+      setMessages((prev) => ensureStreamingAssistantMessageState(prev, getNextMessageId(), Date.now(), buf));
     });
   }, [getNextMessageId, setMessages]);
 
@@ -434,9 +364,7 @@ export function useMessages({
       }
 
       if (!systemReply) {
-        const fallbackText = stripTextToolAnnotations(
-          stripLeakedToolCallSections(stripThinkModeMarker(String(content || '').trim())),
-        );
+        const fallbackText = sanitizeAssistantText(String(content || '').trim());
         const finalText = preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
         if (finalText !== fullTextRef.current) {
           streamingMessageRef.current = finalText;
@@ -509,38 +437,12 @@ export function useMessages({
         if (queueMatch) setQueueInfo(queueMatch[1].trim());
       }
 
-      setMessages((prev) => {
-        const cleanedPrev = systemReply
-          ? prev.filter((msg) => !(msg.role === 'assistant' && msg.isStreaming))
-          : prev;
-        const last = cleanedPrev[cleanedPrev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          return cleanedPrev.map((msg, idx) =>
-            idx === cleanedPrev.length - 1
-              ? { ...msg, content: finalStreamContent, isStreaming: false }
-              : msg
-          );
-        }
-        if (finalStreamContent) {
-          const textContent = finalStreamContent.trim();
-          if (!textContent) return cleanedPrev;
-          if (last?.role === 'assistant' && !last.isStreaming && last.content?.trim() === textContent) {
-            return cleanedPrev;
-          }
-          return [
-            ...cleanedPrev,
-            {
-              id: getNextMessageId(),
-              role: 'assistant' as const,
-              content: textContent,
-                isStreaming: false,
-                isSystemReply: systemReply,
-                timestamp: Date.now(),
-              },
-          ];
-        }
-        return cleanedPrev;
-      });
+      setMessages((prev) => reconcileChatDoneMessages(prev, {
+        finalStreamContent,
+        systemReply,
+        nextMessageId: getNextMessageId(),
+        timestamp: Date.now(),
+      }));
     },
 
     onAgentPhase: (phase, elapsed) => {
@@ -552,55 +454,17 @@ export function useMessages({
     onToolEvent: (payload) => {
       if (payload.type === 'tool_call') {
         setActiveTools((prev) => {
-          const next = [
-            ...prev,
-            { callId: payload.callId, tool: payload.tool, state: 'executing' as const },
-          ];
+          const next = appendExecutingTool(prev, payload);
           if (prev.length === 0 && next.length > 0) {
             requestAnimationFrame(() => { scroll.reconcile(); });
           }
           return next;
         });
-        // 同步写入当前 streaming 消息的 toolEvents
-        setMessages((prev) => {
-          const lastIdx = prev.length - 1;
-          const last = prev[lastIdx];
-          if (!last || last.role !== 'assistant' || !last.isStreaming) return prev;
-          const newEvent: ToolEventItem = {
-            callId: payload.callId || payload.tool + '_' + Date.now(),
-            tool: payload.tool,
-            args: payload.args as Record<string, unknown> | undefined,
-            state: 'executing',
-            startedAt: Date.now(),
-          };
-          return [...prev.slice(0, lastIdx), { ...last, toolEvents: [...(last.toolEvents || []), newEvent] }];
-        });
+        setMessages((prev) => appendToolCallToStreamingMessage(prev, payload, Date.now()));
         onToolEventTimeline(payload);
       } else if (payload.type === 'tool_result') {
-        const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
-        setActiveTools((prev) =>
-          prev.map((t) =>
-            t.callId === payload.callId
-              ? { ...t, state: finalState, resultPreview: payload.resultPreview }
-              : t
-          )
-        );
-        // 同步更新消息里对应卡片的状态
-        setMessages((prev) => {
-          const lastIdx = prev.length - 1;
-          const last = prev[lastIdx];
-          if (!last || last.role !== 'assistant' || !last.toolEvents?.length) return prev;
-          const updatedEvents = last.toolEvents.map((evt) =>
-            evt.callId !== payload.callId ? evt : {
-              ...evt,
-              state: finalState,
-              resultPreview: payload.resultPreview,
-              error: payload.error,
-              elapsedMs: payload.elapsedMs,
-            }
-          );
-          return [...prev.slice(0, lastIdx), { ...last, toolEvents: updatedEvents }];
-        });
+        setActiveTools((prev) => applyToolResult(prev, payload));
+        setMessages((prev) => applyToolResultToMessage(prev, payload));
         onToolEventTimeline(payload);
       }
     },

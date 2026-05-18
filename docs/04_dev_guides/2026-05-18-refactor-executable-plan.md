@@ -79,10 +79,11 @@
 ### Phase 3
 
 - Tag: `refactor-plan-phase3-chat-state-split`
+- Status: in_progress
 - Target: 拆解 `useMessages` 的协议层、流式层和 UI 层
 - Files:
 - `src/hooks/useMessages.ts`
-- `src/hooks/` 下新增拆分 hooks
+- `src/hooks/` 下新增拆分 hooks / helpers
 - `src/core/` 相关类型
 - Work Items:
 - 抽出 transport event binding
@@ -90,6 +91,10 @@
 - 抽出 tool timeline sync
 - 抽出 message mutation helpers
 - 保持 `useMessages` 作为组合层
+- Result:
+- 已新增 `src/hooks/useMessages.helpers.ts`
+- 已把流式收尾、chat done 写回、tool card 同步与系统命令判断迁出为纯 helper
+- `useMessages` 继续保留 orchestration，后续再拆 transport binding
 - Exit Criteria:
 - `useMessages.ts` 不再同时管理所有职责
 - 现有 hooks tests 继续通过，必要时补测试
