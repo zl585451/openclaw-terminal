@@ -119,6 +119,7 @@ npm run electron:dev
 - `npm run build`
 - `npx tsc --noEmit`
 - `npx vitest run`
+- `npm run repo:hygiene`
 
 ---
 

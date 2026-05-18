@@ -32,7 +32,9 @@
     "electron:build:linux": "npm run rebuild:gateway:native && npm run build && electron-builder --linux --x64",
     "electron:build:all": "npm run rebuild:gateway:native && npm run build && electron-builder --win --mac --linux --x64",
     "test": "npm run check:node && vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "repo:hygiene": "node scripts/repo-hygiene-report.js",
+    "repo:hygiene:json": "node scripts/repo-hygiene-report.js --json"
   },
   "build": {
     "appId": "com.openclaw.terminal",
