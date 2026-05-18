@@ -18,6 +18,7 @@
 - `oct-gateway/services/googleNative.js` — Google Vertex 原生 SDK 适配层（认证、消息转换、函数调用、生图）
 - `oct-gateway/index.js` — `/model`、`/provider` 命令
 - `src/ui/settings/tabs/ConnectionTabView.tsx` — 连接页：服务商选择器、Key、Base URL、测试连接；**硅基流动**（`OCT_PROVIDER=siliconflow`）下「当前模型」为文本框，直接编辑 `OCT_MODEL`，并附带常用模型快捷填入
+- `src/ui/settings/providerConnectionSchema.ts` — provider 到 Base URL 字段、provider 切换回填、测试连接 payload 的映射层；用于减少 `ConnectionTabView.tsx` 中的 provider 条件分支
 
 ## 预设服务商
 | ID | 名称 | Base URL |

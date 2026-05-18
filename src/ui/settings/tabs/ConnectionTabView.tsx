@@ -9,6 +9,12 @@ import {
   isAnyChatProviderKeyVisible,
   isChatProviderKeyVisible,
 } from '../providerViewHelpers';
+import {
+  applyChatProviderSelection,
+  buildChatProviderConnectionPayload,
+  getChatProviderBaseUrlField,
+  getChatProviderBaseUrlValue,
+} from '../providerConnectionSchema';
 
 export type { ProviderEntry } from '../providerTypes';
 export type SettingsApiKeysState = ApiKeysState;
@@ -374,18 +380,7 @@ export function ConnectionTabView({
                 onChange={(e) => {
                   const id = e.target.value;
                   const p = providers[id];
-                  setApiKeys((k) => ({
-                    ...k,
-                    OCT_PROVIDER: id,
-                    OCT_MODEL: p?.defaultModel || k.OCT_MODEL,
-                    DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' || id === 'google' || id === 'newapi' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
-                    DEEPSEEK_BASE_URL: id === 'deepseek' ? (p?.baseUrl || '') : k.DEEPSEEK_BASE_URL,
-                    MINIMAX_BASE_URL: id === 'minimax' ? (p?.baseUrl || '') : k.MINIMAX_BASE_URL,
-                    MOONSHOT_BASE_URL: id === 'moonshot' ? (p?.baseUrl || '') : k.MOONSHOT_BASE_URL,
-                    NEWAPI_BASE_URL: id === 'newapi' ? (p?.baseUrl || '') : k.NEWAPI_BASE_URL,
-                    CUSTOM_BASE_URL: id === 'custom' ? (p?.baseUrl || '') : k.CUSTOM_BASE_URL,
-                    GOOGLE_AI_BASE_URL: id === 'google' ? (p?.baseUrl || '') : k.GOOGLE_AI_BASE_URL,
-                  }));
+                  setApiKeys((k) => applyChatProviderSelection(k, id, p));
                 }}
                 className="settings-input settings-input-focusable settings-input-full"
               >
@@ -627,24 +622,9 @@ export function ConnectionTabView({
                   <label>Base URL（通常自动填充，自定义时可修改）</label>
                   <input
                     type="text"
-                    value={
-                      currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : 
-                      currentProviderId === 'minimax' ? apiKeys.MINIMAX_BASE_URL :
-                      currentProviderId === 'moonshot' ? apiKeys.MOONSHOT_BASE_URL :
-                      currentProviderId === 'custom' ? apiKeys.CUSTOM_BASE_URL :
-                      currentProviderId === 'google' ? apiKeys.GOOGLE_AI_BASE_URL :
-                      currentProviderId === 'newapi' ? apiKeys.NEWAPI_BASE_URL :
-                      apiKeys.DASHSCOPE_BASE_URL
-                    }
+                    value={getChatProviderBaseUrlValue(apiKeys, currentProviderId)}
                     onChange={(e) => {
-                      let key: keyof SettingsApiKeysState;
-                      if (currentProviderId === 'deepseek') key = 'DEEPSEEK_BASE_URL';
-                      else if (currentProviderId === 'minimax') key = 'MINIMAX_BASE_URL';
-                      else if (currentProviderId === 'moonshot') key = 'MOONSHOT_BASE_URL';
-                      else if (currentProviderId === 'newapi') key = 'NEWAPI_BASE_URL';
-                      else if (currentProviderId === 'custom') key = 'CUSTOM_BASE_URL';
-                      else if (currentProviderId === 'google') key = 'GOOGLE_AI_BASE_URL';
-                      else key = 'DASHSCOPE_BASE_URL';
+                      const key = getChatProviderBaseUrlField(currentProviderId);
                       setApiKeys((k) => ({ ...k, [key]: e.target.value }));
                     }}
                     placeholder={currentProviderId === 'custom' ? 'https://your-api.com/v1' : 'https://...'}
@@ -671,34 +651,9 @@ export function ConnectionTabView({
                   setTestConnectionError('');
                   const providerId = currentProviderId;
                   const p = providers[providerId];
-                  let testModel = apiKeys.OCT_MODEL || p?.defaultModel || 'qwen3.5-plus';
-                  if (providerId === 'custom' && apiKeys.CUSTOM_MODEL) {
-                    testModel = apiKeys.CUSTOM_MODEL;
-                  }
-                  if (providerId === 'newapi' && testModel === '__custom__' && apiKeys.CUSTOM_MODEL) {
-                    testModel = apiKeys.CUSTOM_MODEL;
-                  }
-                  if (providerId === 'google' && testModel === '__custom__' && apiKeys.CUSTOM_MODEL) {
-                    testModel = apiKeys.CUSTOM_MODEL;
-                  }
-                    const result = await api.testAIConnection({
-                      OCT_PROVIDER: providerId,
-                      OCT_MODEL: testModel,
-                      DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
-                      DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
-                      MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
-                      MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY,
-                      CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
-                      NEWAPI_API_KEY: apiKeys.NEWAPI_API_KEY,
-                      GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY,
-                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' || providerId === 'google' || providerId === 'moonshot' || providerId === 'newapi' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
-                      DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
-                      MINIMAX_BASE_URL: providerId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || p?.baseUrl || '') : '',
-                      MOONSHOT_BASE_URL: providerId === 'moonshot' ? (apiKeys.MOONSHOT_BASE_URL || p?.baseUrl || '') : '',
-                      NEWAPI_BASE_URL: providerId === 'newapi' ? (apiKeys.NEWAPI_BASE_URL || p?.baseUrl || '') : '',
-                      CUSTOM_BASE_URL: providerId === 'custom' ? (apiKeys.CUSTOM_BASE_URL || p?.baseUrl || '') : '',
-                      GOOGLE_AI_BASE_URL: providerId === 'google' ? (apiKeys.GOOGLE_AI_BASE_URL || p?.baseUrl || '') : '',
-                    });
+                  const result = await api.testAIConnection(
+                    buildChatProviderConnectionPayload(apiKeys, providerId, p),
+                  );
                   setTestConnectionStatus(result.success ? 'success' : 'error');
                   if (!result.success) setTestConnectionError(result.error || '');
                   setTimeout(() => setTestConnectionStatus('idle'), 3000);
