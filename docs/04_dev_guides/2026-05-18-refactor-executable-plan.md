@@ -144,6 +144,8 @@
 - 已新增 `wizardFooterPolicy.ts`
 - 已新增 `hooks/useTaskCreateWizardGatewayEvents.ts`
 - footer CTA 策略与 gateway event 订阅已从 `TaskCreateWizard` 主组件迁出
+- 已新增 `hooks/useTaskCreateWizardSource.ts`
+- 素材库加载、上传、章节预览与 source 派生计算已从 `TaskCreateWizard` 主组件迁出
 - Exit Criteria:
 - `TaskCreateWizard` 以容器 + 视图片区分层
 - 关键业务流程可单独测试
