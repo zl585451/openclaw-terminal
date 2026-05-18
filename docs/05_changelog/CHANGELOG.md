@@ -1,6 +1,7 @@
 # FEATURE_MAP 变更日志
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
+| 2026-05-19 | Render Protocol v2 Phase 4：新增真实坏样例回归集，覆盖说明误进代码块、表格/代码/选项混排、流式未闭合围栏和模糊语言标记 | `src/utils/renderProtocolRegression.test.ts`, `docs/05_changelog/2026-05-19-render-protocol-v2-phase4.md` | 将本轮观察到的渲染事故固化为自动化测试，降低后续回归风险 |
 | 2026-05-19 | Render Protocol v2 Phase 3：前端流式 Markdown 渲染增加临时闭合代码围栏，避免半截代码块在 token 到达过程中被拆成多段代码框 | `src/utils/markdownPreprocess.ts`, `src/ui/chat/MessageList.tsx`, `src/utils/markdownPreprocess.test.ts`, `docs/05_changelog/2026-05-19-render-protocol-v2-phase3.md` | 只影响流式显示层，不改最终消息文本；最终内容仍由 Gateway normalizer 收束 |
 | 2026-05-19 | Render Protocol v2 Phase 2：新增 Gateway Markdown normalizer，在最终回复入库前修复未闭合代码块、模糊语言标记、说明文字误进代码块和表格粘连 | `oct-gateway/services/markdownNormalizer.js`, `oct-gateway/runtime/chatEngine.js`, `oct-gateway/index.js`, `src/utils/markdownNormalizer.gateway.test.ts`, `docs/05_changelog/2026-05-19-render-protocol-v2-phase2.md` | 前端流式中间态仍留到 Phase 3；本阶段先保证最终消息和历史消息稳定 |
 | 2026-05-19 | Render Protocol v2 Phase 1：新增 Markdown 输出稳定协议，规范正文、命令块、表格和交互标签的混排规则 | `docs/03_specs/RENDER_PROTOCOL.md`, `docs/01_system_prompts/OCT_PROTOCOL.md`, `docs/01_system_prompts/templates/OCT_PROTOCOL.template.md`, `docs/05_changelog/2026-05-19-render-protocol-v2-phase1.md` | 先约束模型输出格式，后续再实现 Gateway normalizer 与前端流式容错 |
