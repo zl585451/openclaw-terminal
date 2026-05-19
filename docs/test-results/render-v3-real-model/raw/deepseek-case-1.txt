@@ -1,0 +1,6 @@
+run id: deepseek-case-1
+provider: deepseek
+model: deepseek-v4-pro
+caseId: case-1-mixed-components
+raw output status: missing
+TODO: capture exact raw model output from logs or copied message

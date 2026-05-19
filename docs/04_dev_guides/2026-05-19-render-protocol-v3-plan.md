@@ -16,7 +16,9 @@
 | Phase 5：Golden Tests 与稳定性压测 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/ui/chat/__fixtures__/renderProtocolV3GoldenFixtures.ts`, `src/ui/chat/renderProtocolV3Golden.test.ts`, `oct-gateway/test/renderBlocksNormalizer.test.js` |
 | Phase 6：迁移与 Legacy 收敛 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/utils/optionBoxParser.ts`, `src/utils/optionBoxParser.test.ts`, `docs/01_system_prompts/OCT_PROTOCOL.md`, `docs/03_specs/RENDER_PROTOCOL.md` |
 | Phase 7：真实模型输出审计 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase7-real-model-evaluation.md` |
-| Phase 8：真实模型 Corpus Scaffold | Started | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase8-real-model-corpus.md`, `docs/test-results/render-v3-real-model/corpus.json` |
+| Phase 8：真实模型 Corpus Scaffold | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase8-real-model-corpus.md`, `docs/test-results/render-v3-real-model/corpus.json` |
+| Phase 9：Raw Output Corpus 测试入口 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/utils/renderProtocolV3Corpus.test.ts`, `docs/05_changelog/2026-05-19-render-protocol-v3-phase9-corpus-test-entry.md` |
+| Phase 10：Raw Output 占位文件索引 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/test-results/render-v3-real-model/raw/*.txt`, `docs/test-results/render-v3-real-model/corpus.json`, `src/utils/renderProtocolV3Corpus.test.ts` |
 
 ## 背景
 
@@ -359,6 +361,51 @@ v3 推荐引入 `render_blocks` 作为内部标准结构。模型可以直接输
 
 `render-v3-phase8-real-model-corpus`
 
+## Phase 9：Raw Output Corpus 测试入口
+
+目标：先建立 raw output corpus 的自动化测试入口，不调用真实模型 API，不修改运行时代码。
+
+任务：
+
+- 新增 Vitest 测试文件，加载 `docs/test-results/render-v3-real-model/corpus.json`。
+- 验证 `corpus.json` 可作为合法 JSON 加载。
+- 验证每个 run 都能匹配到 corpus 中声明的 `caseId`。
+- 对 `rawOutputStatus` 为 `missing` 的 run 标记为 pending/skip，不作为失败处理。
+- 验证 `expectedBlocks`、`missingBlocks`、`unexpectedBlocks` 字段结构有效。
+
+验收标准：
+
+- 测试入口可以通过 `npx vitest run src/utils/renderProtocolV3Corpus.test.ts` 单独执行。
+- 不调用 Gemini、DeepSeek 或任何外部 API。
+- 不修改 Gateway normalizer、前端 renderer、`optionBoxParser` 或 corpus 审查结论。
+
+建议标签：
+
+`render-v3-phase9-corpus-test-entry`
+
+## Phase 10：Raw Output 占位文件索引
+
+目标：在不调用真实模型 API、不改动运行时代码的前提下，为 8 条真实模型 run 建立 raw output 文件路径索引和显式占位文件，方便后续补录真实 raw output。
+
+任务：
+
+- 为 Gemini / DeepSeek 共 8 条 run 增加 `rawOutputPath`。
+- 在 `docs/test-results/render-v3-real-model/raw/` 下新增对应 `.txt` 占位文件。
+- 保持 `rawOutputStatus: "missing"`，不从截图反推或伪造真实 raw output。
+- 扩展 corpus 测试入口，验证 `rawOutputPath` 指向本地文件。
+- 对 `rawOutputStatus` 为 `missing` 的 run 验证占位文件存在且声明缺失状态，真实 raw output 内容断言继续 pending/skip。
+
+验收标准：
+
+- `npx vitest run src/utils/renderProtocolV3Corpus.test.ts` 可单独执行。
+- 所有 `rawOutputPath` 都指向存在的本地 corpus 文件。
+- 不调用 Gemini、DeepSeek 或任何外部 API。
+- 不修改 Gateway normalizer、前端 renderer、`optionBoxParser` 或 corpus 审查结论。
+
+建议标签：
+
+`render-v3-phase10-raw-output-placeholders`
+
 ## 推荐执行顺序
 
 1. Phase 0：先冻结现状和样例。
@@ -370,6 +417,8 @@ v3 推荐引入 `render_blocks` 作为内部标准结构。模型可以直接输
 7. Phase 6：最后再收敛 legacy。
 8. Phase 7：用真实模型输出反向校验协议稳定性，并规划 real model golden corpus。
 9. Phase 8：建立 real model corpus scaffold，等待 raw output 补录后接入自动化断言。
+10. Phase 9：建立 raw output corpus 测试入口，先验证 corpus 结构和 pending/skip 行为。
+11. Phase 10：为真实模型 corpus 建立 raw output 占位文件索引，等待后续补录真实 raw output。
 
 ## 合并策略
 
