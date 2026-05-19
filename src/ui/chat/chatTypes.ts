@@ -25,6 +25,23 @@ export interface UploadedFile {
   path?: string;
 }
 
+export interface RenderBlockItem {
+  id?: string;
+  label: string;
+  value?: string;
+}
+
+export type RenderBlock =
+  | { type: 'markdown'; id?: string; content: string }
+  | { type: 'code'; id?: string; language?: string; content: string }
+  | { type: 'table'; id?: string; columns: string[]; rows: string[][] }
+  | { type: 'tasklist'; id?: string; title?: string; prompt?: string; items: RenderBlockItem[] }
+  | { type: 'pills'; id?: string; title?: string; prompt?: string; items: RenderBlockItem[] }
+  | { type: 'checkbox'; id?: string; title?: string; prompt?: string; items: RenderBlockItem[] }
+  | { type: 'question'; id?: string; title?: string; prompt?: string; items: RenderBlockItem[] }
+  | { type: 'clarify_card'; id?: string; title?: string; fields: unknown[] }
+  | { type: 'notice'; id?: string; variant?: 'info' | 'success' | 'warning' | 'error'; content: string };
+
 export interface ChatMessage {
   id: number;
   role: 'user' | 'assistant' | 'system';
@@ -38,6 +55,8 @@ export interface ChatMessage {
   files?: UploadedFile[];
   /** 内联工具调用卡片数据，跟随消息持久展示 */
   toolEvents?: ToolEventItem[];
+  /** Render Protocol v3 结构化渲染块 */
+  renderBlocks?: RenderBlock[];
 }
 
 export interface ChatTabProps {

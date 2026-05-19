@@ -18,6 +18,7 @@ import { getCachedPreprocessedMarkdown, stabilizeStreamingMarkdown } from '../..
 import type { ChatMessage } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
 import StreamingMarkdownContent from './StreamingMarkdownContent';
+import { renderBlocksCacheKey, renderBlocksToParsedContent } from './renderBlocksAdapter';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
 
@@ -1079,14 +1080,20 @@ export const ChatMessageList = function ChatMessageList({
                   // CoT 统一由消息循环外部的 CoTBlock 渲染（使用通用提取器）
                   const { mainContent: nonStreamingCotStripped } = extractAssistantCotAndMain(fc);
                   const cachedFinal = finalizedParseCacheRef.current.get(msg.id);
-                  if (cachedFinal && cachedFinal.input === nonStreamingCotStripped) {
+                  const cacheInput = renderBlocksCacheKey(nonStreamingCotStripped, msg.renderBlocks);
+                  if (cachedFinal && cachedFinal.input === cacheInput) {
                     return cachedFinal.output;
                   }
-                  const blocks = blockRouter(nonStreamingCotStripped);
-                  const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
-                  const finalParsed = parseOptionBox(bridgedText);
+                  let finalParsed;
+                  if (msg.renderBlocks && msg.renderBlocks.length > 0) {
+                    finalParsed = renderBlocksToParsedContent(msg.renderBlocks);
+                  } else {
+                    const blocks = blockRouter(nonStreamingCotStripped);
+                    const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
+                    finalParsed = parseOptionBox(bridgedText);
+                  }
                   finalizedParseCacheRef.current.set(msg.id, {
-                    input: nonStreamingCotStripped,
+                    input: cacheInput,
                     output: finalParsed,
                   });
                   return finalParsed;
