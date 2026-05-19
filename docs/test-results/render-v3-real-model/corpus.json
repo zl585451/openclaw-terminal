@@ -1,0 +1,157 @@
+{
+  "version": "render-protocol-v3-real-model-corpus-0.1",
+  "createdAt": "2026-05-19",
+  "sourcePrompts": "docs/test-results/stability_test_prompts.md",
+  "evidenceMode": "screenshot-derived",
+  "rawOutputPolicy": "Do not infer or fabricate raw model outputs from screenshots. Capture raw outputs in a future run before wiring automated assertions.",
+  "cases": [
+    {
+      "id": "case-1-mixed-components",
+      "promptRef": "测试口令一：结构化组件混合压测",
+      "expectedBlocks": ["markdown", "code", "table", "pills"],
+      "mustNotContainBlocks": [],
+      "acceptanceNotes": "Code block and Markdown table must remain display content. Only the final choices should become pills."
+    },
+    {
+      "id": "case-2-symbol-defense",
+      "promptRef": "测试口令二：自动检测防御测试",
+      "expectedBlocks": ["markdown"],
+      "mustNotContainBlocks": ["pills", "question", "tasklist", "clarify_card"],
+      "acceptanceNotes": "Symbols such as ■, ● and ◆ must remain explanation text and must not create clickable UI."
+    },
+    {
+      "id": "case-3-clarify-card",
+      "promptRef": "测试口令三：InlineInquiry (clarify_card) 极端压测",
+      "expectedBlocks": ["markdown", "clarify_card"],
+      "mustNotContainBlocks": ["pills"],
+      "requiredDimensions": [
+        "目标平台",
+        "自动化频率",
+        "核心功能描述",
+        "是否需要接入 AI 自动润色"
+      ],
+      "acceptanceNotes": "Inline inquiry must include all requested dimensions and each label must be a full question."
+    },
+    {
+      "id": "case-4-tasklist-vs-pills",
+      "promptRef": "测试口令四：任务清单 vs 复选框 边界测试",
+      "expectedBlocks": ["markdown", "tasklist", "pills"],
+      "mustNotContainBlocks": [],
+      "acceptanceNotes": "TaskList must not send messages when checked. PillOptionBox must send only the clicked value."
+    }
+  ],
+  "runs": [
+    {
+      "id": "gemini-case-1",
+      "provider": "google",
+      "model": "gemini-3.1-flash-lite-preview",
+      "caseId": "case-1-mixed-components",
+      "rawOutputStatus": "missing",
+      "evidenceSource": "screenshot",
+      "verdict": "partial",
+      "observedBlocks": ["markdown", "code", "table"],
+      "missingBlocks": ["pills"],
+      "unexpectedBlocks": [],
+      "failureLayer": "model_output_or_gateway_repair",
+      "notes": "Markdown, TypeScript code block and comparison table were visible. Final pill choices were not reliably visible as a stable PillOptionBox."
+    },
+    {
+      "id": "gemini-case-2",
+      "provider": "google",
+      "model": "gemini-3.1-flash-lite-preview",
+      "caseId": "case-2-symbol-defense",
+      "rawOutputStatus": "missing",
+      "evidenceSource": "screenshot",
+      "verdict": "fail",
+      "observedBlocks": ["markdown", "pills"],
+      "missingBlocks": [],
+      "unexpectedBlocks": ["pills"],
+      "failureLayer": "model_output",
+      "notes": "The prompt requested no real interaction buttons, but final CTA-style pills appeared."
+    },
+    {
+      "id": "gemini-case-3",
+      "provider": "google",
+      "model": "gemini-3.1-flash-lite-preview",
+      "caseId": "case-3-clarify-card",
+      "rawOutputStatus": "missing",
+      "evidenceSource": "screenshot",
+      "verdict": "partial",
+      "observedBlocks": ["markdown", "clarify_card"],
+      "missingBlocks": [],
+      "unexpectedBlocks": [],
+      "failureLayer": "model_output_or_inquiry_generation",
+      "notes": "Inline inquiry appeared. Visible progress suggested 3 pages while the prompt requested 4 dimensions."
+    },
+    {
+      "id": "gemini-case-4",
+      "provider": "google",
+      "model": "gemini-3.1-flash-lite-preview",
+      "caseId": "case-4-tasklist-vs-pills",
+      "rawOutputStatus": "missing",
+      "evidenceSource": "screenshot",
+      "verdict": "partial",
+      "observedBlocks": ["markdown", "tasklist"],
+      "missingBlocks": ["pills"],
+      "unexpectedBlocks": [],
+      "failureLayer": "model_output_or_legacy_conversion",
+      "notes": "TaskList rendered, but separate pill choices did not reliably render as PillOptionBox."
+    },
+    {
+      "id": "deepseek-case-1",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "caseId": "case-1-mixed-components",
+      "rawOutputStatus": "missing",
+      "evidenceSource": "screenshot",
+      "verdict": "pass",
+      "observedBlocks": ["markdown", "code", "table", "pills"],
+      "missingBlocks": [],
+      "unexpectedBlocks": [],
+      "failureLayer": "none_observed",
+      "notes": "Markdown, code block, table and final choices rendered cleanly in the screenshot."
+    },
+    {
+      "id": "deepseek-case-2",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "caseId": "case-2-symbol-defense",
+      "rawOutputStatus": "missing",
+      "evidenceSource": "screenshot",
+      "verdict": "pass",
+      "observedBlocks": ["markdown"],
+      "missingBlocks": [],
+      "unexpectedBlocks": [],
+      "failureLayer": "none_observed",
+      "notes": "Symbol examples remained explanatory and did not become accidental buttons."
+    },
+    {
+      "id": "deepseek-case-3",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "caseId": "case-3-clarify-card",
+      "rawOutputStatus": "missing",
+      "evidenceSource": "screenshot",
+      "verdict": "partial",
+      "observedBlocks": ["markdown", "clarify_card"],
+      "missingBlocks": [],
+      "unexpectedBlocks": [],
+      "failureLayer": "model_output_or_inquiry_generation",
+      "notes": "Inline inquiry appeared for the platform question. Visible progress suggested 3 pages while the prompt requested 4 dimensions."
+    },
+    {
+      "id": "deepseek-case-4",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "caseId": "case-4-tasklist-vs-pills",
+      "rawOutputStatus": "missing",
+      "evidenceSource": "screenshot",
+      "verdict": "partial",
+      "observedBlocks": ["markdown", "table"],
+      "missingBlocks": ["tasklist", "pills"],
+      "unexpectedBlocks": [],
+      "failureLayer": "model_output",
+      "notes": "Output was visually polished but relied on Markdown tables and bracketed choices instead of exact TaskList plus PillOptionBox compliance."
+    }
+  ]
+}

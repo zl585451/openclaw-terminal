@@ -15,7 +15,8 @@
 | Phase 4：Provider Adapter 与提示词分层 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/03_specs/RENDER_PROVIDER_CAPABILITIES.md`, `oct-gateway/providers.js`, `oct-gateway/runtime/providerRouter.js` |
 | Phase 5：Golden Tests 与稳定性压测 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/ui/chat/__fixtures__/renderProtocolV3GoldenFixtures.ts`, `src/ui/chat/renderProtocolV3Golden.test.ts`, `oct-gateway/test/renderBlocksNormalizer.test.js` |
 | Phase 6：迁移与 Legacy 收敛 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/utils/optionBoxParser.ts`, `src/utils/optionBoxParser.test.ts`, `docs/01_system_prompts/OCT_PROTOCOL.md`, `docs/03_specs/RENDER_PROTOCOL.md` |
-| Phase 7：真实模型输出审计 | Started | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase7-real-model-evaluation.md` |
+| Phase 7：真实模型输出审计 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase7-real-model-evaluation.md` |
+| Phase 8：真实模型 Corpus Scaffold | Started | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase8-real-model-corpus.md`, `docs/test-results/render-v3-real-model/corpus.json` |
 
 ## 背景
 
@@ -325,6 +326,39 @@ v3 推荐引入 `render_blocks` 作为内部标准结构。模型可以直接输
 
 `render-v3-phase7-real-model-evaluation`
 
+## Phase 8：真实模型 Corpus Scaffold
+
+目标：把 Phase 7 的 Gemini / DeepSeek 截图审查结果转成稳定的 corpus scaffold，为后续自动化 real model golden tests 做准备。
+
+任务：
+
+- 新增 `docs/test-results/render-v3-real-model/`。
+- 记录 4 条稳定性测试口令对应的期望 block：
+  - Case 1：`markdown + code + table + pills`。
+  - Case 2：仅 `markdown`，禁止交互组件。
+  - Case 3：`markdown + clarify_card`，必须包含所有要求维度。
+  - Case 4：`markdown + tasklist + pills`。
+- 记录 Gemini 与 DeepSeek 共 8 条截图观察结果：
+  - provider。
+  - model。
+  - verdict。
+  - observed blocks。
+  - missing blocks。
+  - unexpected blocks。
+  - failure layer。
+- 明确 raw model output 当前缺失，后续必须从 raw log、WebSocket trace 或复制消息中补录，不能从截图反推。
+
+验收标准：
+
+- 有 corpus README。
+- 有合法 JSON corpus manifest。
+- 有 raw output capture template。
+- 本阶段不修改运行时代码。
+
+建议标签：
+
+`render-v3-phase8-real-model-corpus`
+
 ## 推荐执行顺序
 
 1. Phase 0：先冻结现状和样例。
@@ -335,6 +369,7 @@ v3 推荐引入 `render_blocks` 作为内部标准结构。模型可以直接输
 6. Phase 4：等基础结构稳定后做 provider adapter。
 7. Phase 6：最后再收敛 legacy。
 8. Phase 7：用真实模型输出反向校验协议稳定性，并规划 real model golden corpus。
+9. Phase 8：建立 real model corpus scaffold，等待 raw output 补录后接入自动化断言。
 
 ## 合并策略
 
