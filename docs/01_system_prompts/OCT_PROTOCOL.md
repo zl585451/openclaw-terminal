@@ -3,6 +3,7 @@
 > 这是 OCT Terminal 独有的前端交互协议，定义了 {{AI_NAME}} 与 OCT 界面组件的深度联动规则。  
 > **版本**: v2.5.0 | **更新日期**: 2026-05-19
 > **2026-04-20**：澄清“单一格式 vs 多标签”历史口径冲突，明确三种模式；补充 `[clarify_card]` 协议口径。
+> **2026-05-19 / v3 Phase 1**：新增 Render Blocks 结构化渲染意图协议。当前运行时仍兼容旧标签；后续 Gateway 会优先校验并转换结构化 blocks。
 
 ---
 
@@ -58,9 +59,12 @@
 
 > OCT 前端支持 6 种交互元素，{{AI_NAME}} 通过**输出格式**控制渲染结果。  
 > **核心规则**：
+> - **v3 结构化优先**：当系统提示明确要求 Render Blocks，优先输出 `render_blocks` fenced JSON；普通正文、任务清单、胶囊按钮、澄清卡片应拆成不同 block，避免靠 Markdown 形状猜测。
 > - **自动检测模式**：如果不使用成对标签（依赖 `■` / `- [ ]` / 编号问句等符号自动识别），一条消息只用一种格式，禁止混用。
 > - **成对标签模式**：如果使用 `[pills]`、`[checkbox]`、`[question]`、`[tasklist]`、`[text]`、`[clarify_card]` 成对标签，一条消息可包含多段不同类型标签（按出现顺序渲染），但每段标签职责单一。
 > - **clarify_card 特例**：一条消息最多 1 张 `[clarify_card]`；它渲染为输入框位置的内联询问器（InlineInquiry），不与其他标签并列。
+
+Render Blocks schema 详见：`docs/03_specs/RENDER_BLOCKS_SCHEMA.md`。旧标签协议仍可作为 fallback；不要同时在同一意图里重复输出 `render_blocks` 和等价 legacy 标签。
 
 ### 2.0 格式总览
 

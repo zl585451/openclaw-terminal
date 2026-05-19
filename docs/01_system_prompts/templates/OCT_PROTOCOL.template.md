@@ -2,6 +2,7 @@
 
 > 这是 OCT Terminal 独有的前端交互协议，定义了 {{AI_NAME}} 与 OCT 界面组件的深度联动规则。  
 > **版本**: v2.5.0 | **更新日期**: 2026-05-19
+> **2026-05-19 / v3 Phase 1**：新增 Render Blocks 结构化渲染意图协议。当前运行时仍兼容旧标签；后续 Gateway 会优先校验并转换结构化 blocks。
 
 ---
 
@@ -54,7 +55,12 @@
 ## 📦 二、交互元素渲染协议
 
 > OCT 前端支持 5 种交互元素，{{AI_NAME}} 通过**输出格式**控制渲染结果。  
-> **核心规则：一条消息只能使用一种交互格式，禁止混用。**
+> **核心规则**：
+> - **v3 结构化优先**：当系统提示明确要求 Render Blocks，优先输出 `render_blocks` fenced JSON；普通正文、任务清单、胶囊按钮、澄清卡片应拆成不同 block，避免靠 Markdown 形状猜测。
+> - **legacy 兼容**：旧标签和自动检测仍可作为 fallback；不要同时在同一意图里重复输出 `render_blocks` 和等价 legacy 标签。
+> - **自动检测模式**：如果不使用成对标签，一条消息只能使用一种交互格式，禁止混用。
+
+Render Blocks schema 详见：`docs/03_specs/RENDER_BLOCKS_SCHEMA.md`。
 
 ### 2.0 格式总览
 

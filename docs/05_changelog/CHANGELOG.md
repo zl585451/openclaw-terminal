@@ -1,6 +1,7 @@
 # FEATURE_MAP 变更日志
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
+| 2026-05-19 | Render Protocol v3 Phase 1：新增 Render Blocks Schema，定义结构化渲染 envelope、block 类型、字段限制、降级策略和安全约束 | `docs/03_specs/RENDER_BLOCKS_SCHEMA.md`, `docs/03_specs/RENDER_PROTOCOL.md`, `docs/01_system_prompts/OCT_PROTOCOL.md`, `docs/01_system_prompts/templates/OCT_PROTOCOL.template.md`, `docs/04_dev_guides/2026-05-19-render-protocol-v3-plan.md`, `docs/05_changelog/2026-05-19-render-protocol-v3-phase1-schema.md` | 仅协议与提示词文档，不改运行时代码 |
 | 2026-05-19 | Render Protocol v3 Phase 0：冻结当前渲染链路、稳定性测试口令和 legacy/v3 边界，作为结构化渲染协议实施起点 | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase0-baseline.md`, `docs/04_dev_guides/2026-05-19-render-protocol-v3-plan.md`, `docs/test-results/stability_test_prompts.md`, `docs/05_changelog/2026-05-19-render-protocol-v3-phase0-baseline.md` | 仅文档与测试口令 fixture 入库，不改运行时代码 |
 | 2026-05-19 | Render Protocol v3 执行计划：规划结构化 Render Blocks、Gateway 校验、前端确定性渲染、Provider Adapter 与 Golden Tests | `docs/04_dev_guides/2026-05-19-render-protocol-v3-plan.md`, `docs/05_changelog/2026-05-19-render-protocol-v3-plan.md` | 仅新增计划文档，不改运行时代码 |
 | 2026-05-19 | TaskList Google 输出格式兜底：支持自然语言任务清单标题、加粗 checkbox 项与空框符号，避免测试 4 被渲染成普通 Markdown 复选框 | `src/utils/optionBoxParser.ts`, `src/utils/optionBoxParser.test.ts`, `docs/03_specs/RENDER_PROTOCOL.md`, `docs/01_system_prompts/OCT_PROTOCOL.md`, `docs/01_system_prompts/templates/OCT_PROTOCOL.template.md`, `docs/05_changelog/2026-05-19-tasklist-google-format-fallback.md` | 针对 Google 渠道模型常见输出形态补回归测试，不改变 `[tasklist]` / `[pills]` 协议语义 |
