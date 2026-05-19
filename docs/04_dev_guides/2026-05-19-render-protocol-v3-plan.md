@@ -19,6 +19,7 @@
 | Phase 8：真实模型 Corpus Scaffold | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase8-real-model-corpus.md`, `docs/test-results/render-v3-real-model/corpus.json` |
 | Phase 9：Raw Output Corpus 测试入口 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/utils/renderProtocolV3Corpus.test.ts`, `docs/05_changelog/2026-05-19-render-protocol-v3-phase9-corpus-test-entry.md` |
 | Phase 10：Raw Output 占位文件索引 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/test-results/render-v3-real-model/raw/*.txt`, `docs/test-results/render-v3-real-model/corpus.json`, `src/utils/renderProtocolV3Corpus.test.ts` |
+| Phase 11+：后续执行路线 | Planned | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-next-execution-plan.md` |
 
 ## 背景
 
@@ -419,6 +420,7 @@ v3 推荐引入 `render_blocks` 作为内部标准结构。模型可以直接输
 9. Phase 8：建立 real model corpus scaffold，等待 raw output 补录后接入自动化断言。
 10. Phase 9：建立 raw output corpus 测试入口，先验证 corpus 结构和 pending/skip 行为。
 11. Phase 10：为真实模型 corpus 建立 raw output 占位文件索引，等待后续补录真实 raw output。
+12. Phase 11+：按照 `docs/04_dev_guides/2026-05-19-render-protocol-v3-next-execution-plan.md` 执行，不再靠临场推断推进。
 
 ## 合并策略
 
