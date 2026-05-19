@@ -4,6 +4,12 @@
 
 建议分支：`codex/render-protocol-v3-structured-blocks`
 
+## Phase Status
+
+| Phase | Status | Branch | Evidence |
+|---|---|---|---|
+| Phase 0：现状盘点与风险冻结 | Started | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase0-baseline.md` |
+
 ## 背景
 
 Render Protocol v2 已经提升了 Markdown、代码块、表格和交互标签的基础稳定性，但近期 Google 渠道模型测试暴露出更深一层的问题：
