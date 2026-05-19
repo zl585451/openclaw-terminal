@@ -19,7 +19,9 @@
 | Phase 8：真实模型 Corpus Scaffold | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase8-real-model-corpus.md`, `docs/test-results/render-v3-real-model/corpus.json` |
 | Phase 9：Raw Output Corpus 测试入口 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/utils/renderProtocolV3Corpus.test.ts`, `docs/05_changelog/2026-05-19-render-protocol-v3-phase9-corpus-test-entry.md` |
 | Phase 10：Raw Output 占位文件索引 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/test-results/render-v3-real-model/raw/*.txt`, `docs/test-results/render-v3-real-model/corpus.json`, `src/utils/renderProtocolV3Corpus.test.ts` |
-| Phase 11+：后续执行路线 | Planned | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-next-execution-plan.md` |
+| Phase 11：Raw Output Discovery | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase11-raw-output-discovery.md` |
+| Phase 11.5：Raw Output Recapture Plan | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase11-5-raw-output-recapture-plan.md` |
+| Phase 12+：后续执行路线 | Planned (blocked) | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-next-execution-plan.md` |
 
 ## 背景
 
