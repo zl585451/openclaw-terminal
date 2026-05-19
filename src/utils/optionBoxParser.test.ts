@@ -450,6 +450,50 @@ describe('边界情况', () => {
     expect(taskSeg).toBeUndefined();
   });
 
+  it('Google 风格的自然任务清单标题 + 加粗 checkbox 应渲染为 TaskList', () => {
+    const input = `接下来你需要执行的任务清单
+
+- [ ] **任务 1**：提供当前 Bug 的具体现象。
+- [ ] **任务 2**：确认复现步骤。
+- [ ] **任务 3**：补充期望行为。`;
+
+    const result = parseOptionBox(input);
+
+    expect(result.isTaskList).toBe(true);
+    expect(result.options.map((o) => o.label)).toEqual([
+      '任务 1：提供当前 Bug 的具体现象。',
+      '任务 2：确认复现步骤。',
+      '任务 3：补充期望行为。',
+    ]);
+  });
+
+  it('TaskList 与 pills 混排时应分段渲染且互不干扰', () => {
+    const input = `接下来你需要执行的任务清单
+
+- [ ] **任务 1**：提供当前 Bug 的具体现象。
+- [ ] **任务 2**：确认复现步骤。
+- [ ] **任务 3**：补充期望行为。
+
+是否需要我提供相关的代码模板？
+
+[pills]
+■ 需要，提供代码模板
+■ 暂不需要，直接修 Bug
+[/pills]`;
+
+    const result = parseOptionBox(input);
+
+    const taskSeg = result.segments?.find((s) => s.type === 'tasklist');
+    const pillsSeg = result.segments?.find((s) => s.type === 'pills');
+    expect(taskSeg).toBeDefined();
+    expect(taskSeg?.options).toHaveLength(3);
+    expect(pillsSeg).toBeDefined();
+    expect(pillsSeg?.options.map((o) => o.label)).toEqual([
+      '需要，提供代码模板',
+      '暂不需要，直接修 Bug',
+    ]);
+  });
+
   it('普通编号步骤说明保持为正文，不自动渲染成交互组件', () => {
     const input = `排查步骤：
 

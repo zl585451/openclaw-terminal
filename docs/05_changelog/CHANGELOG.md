@@ -1,6 +1,7 @@
 # FEATURE_MAP 变更日志
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
+| 2026-05-19 | TaskList Google 输出格式兜底：支持自然语言任务清单标题、加粗 checkbox 项与空框符号，避免测试 4 被渲染成普通 Markdown 复选框 | `src/utils/optionBoxParser.ts`, `src/utils/optionBoxParser.test.ts`, `docs/03_specs/RENDER_PROTOCOL.md`, `docs/01_system_prompts/OCT_PROTOCOL.md`, `docs/01_system_prompts/templates/OCT_PROTOCOL.template.md`, `docs/05_changelog/2026-05-19-tasklist-google-format-fallback.md` | 针对 Google 渠道模型常见输出形态补回归测试，不改变 `[tasklist]` / `[pills]` 协议语义 |
 | 2026-05-19 | Google Native thoughtSignature 修复：工具调用续轮保留 Gemini part 级签名，避免 `request_clarify` 等工具后触发 400 | `oct-gateway/services/googleNative.js`, `oct-gateway/test/googleNative.test.js`, `docs/05_changelog/2026-05-19-google-native-thought-signature-fix.md` | 修复 Google 专用原生通道，不影响 OpenAI 兼容 provider |
 | 2026-05-19 | Google Gemini 模型配置更新：默认模型切到 Gemini 2.0 Flash，补充 Gemini 2.0/1.5/3.x 模型注册并恢复用户配置改动 | `oct-gateway/providers.js`, `oct-gateway/config.js`, `docs/05_changelog/2026-05-19-google-gemini-models-update.md` | 合并到 Memory v2 / Nocturne removal 底座时去掉重复模型项，避免能力判断不稳定 |
 | 2026-05-19 | Nocturne 配置残留清理：移除 Electron 默认配置中最后两个 Nocturne 命名字段，避免误判旧记忆后端仍参与运行时 | `electron/main.ts`, `docs/05_changelog/2026-05-19-nocturne-config-residue-cleanup.md` | 历史文档和历史日志中的 Nocturne 记录保留，仅清理运行时默认配置残留 |

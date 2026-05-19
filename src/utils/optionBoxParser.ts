@@ -54,8 +54,9 @@ const TASK_HEADER_KEYWORDS = [
 ];
 
 function isTaskHeader(line: string): boolean {
-  const lower = line.toLowerCase().trim();
-  return TASK_HEADER_KEYWORDS.some((k) => lower.startsWith(k.toLowerCase()));
+  const lower = line.toLowerCase().replace(/[#>*_`]/g, '').trim();
+  if (TASK_HEADER_KEYWORDS.some((k) => lower.startsWith(k.toLowerCase()))) return true;
+  return /(?:接下来|下面|以下|需要|执行|待完成|待处理).{0,16}(?:任务清单|待办清单|任务列表|执行清单|步骤清单)/.test(lower);
 }
 
 const CHOICE_CUE_KEYWORDS = [
@@ -109,13 +110,15 @@ export function parseNumberedOptions(text: string): OptionItem[] {
 export function parseCheckboxOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
   const options: OptionItem[] = [];
-  const rx = /^[\s]*(?:[-*+]\s*)?\[\s*(?:[✓xX]|\s)\s*\]\s*(.+)$/;
+  const rx = /^[\s]*(?:[-*+]\s*)?(?:\[\s*(?:[✓xX]|\s)\s*\]|[☐□☑✓])\s*(.+)$/;
   for (const line of lines) {
-    if (/[*]/.test(line)) continue;
     const m = line.trim().match(rx);
     if (m) {
-      const full = m[1].trim();
-      if (full.length > 0 && full.length < 150 && !/[*]/.test(full)) {
+      const full = m[1]
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/__(.*?)__/g, '$1')
+        .trim();
+      if (full.length > 0 && full.length < 150) {
         const parts = full.split(/[\s]*—[\s]*/);
         const value = parts[0]?.trim() || full;
         const label = full;
@@ -349,7 +352,7 @@ function removeCheckboxLinesOutsideCodeBlocks(text: string, placeholder?: string
   const lines = text.split('\n');
   let inCodeBlock = false;
   let placeholderInserted = false;
-  const checkRx = /^[\s]*(?:[-*+]\s*)?\[\s*(?:[✓xX]|\s)\s*\]\s*/;
+  const checkRx = /^[\s]*(?:[-*+]\s*)?(?:\[\s*(?:[✓xX]|\s)\s*\]|[☐□☑✓])\s*/;
   const result: string[] = [];
   for (const line of lines) {
     if (/^`{3,}/.test(line.trim())) {
@@ -456,7 +459,7 @@ function enhanceTextSegmentsWithInlineCheckboxes(segments: RenderSegment[]): Ren
       for (let j = lines.length - 1; j >= 0; j--) {
         const t = lines[j].trim().toLowerCase();
         if (!t) continue;
-        return TASK_HEADER_KEYWORDS.some((k) => t.startsWith(k.toLowerCase()));
+        return isTaskHeader(t);
       }
     }
     return false;
@@ -481,6 +484,8 @@ function enhanceTextSegmentsWithInlineCheckboxes(segments: RenderSegment[]): Ren
           const label = cl
             .replace(/^[•\-*+]?\s*[□☐☑✓✗]\s*/, '')
             .replace(/^[•\-*+]?\s*\[\s*[xX✓ ]?\s*\]\s*/, '')
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/__(.*?)__/g, '$1')
             .trim();
           return { num: i + 1, label, value: label };
         })
