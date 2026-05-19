@@ -87,6 +87,10 @@ class ProviderRouter {
           supportsStreamOptions: provider.supportsStreamOptions,
           supportsThinking: registryCaps.supportsThinking ?? false,
           thinkingFormat: registryCaps.thinkingFormat ?? null,
+          supportsStructuredOutput: registryCaps.supportsStructuredOutput ?? provider.supportsStructuredOutput ?? false,
+          supportsRenderBlocks: registryCaps.supportsRenderBlocks ?? provider.supportsRenderBlocks ?? true,
+          preferredRenderMode: registryCaps.preferredRenderMode || provider.preferredRenderMode || 'gateway_normalized',
+          renderPromptProfile: registryCaps.renderPromptProfile || provider.renderPromptProfile || 'provider_unknown',
           maxTokens: modelDef.maxTokens || registryCaps.maxTokens || 4096,
         }
       : {

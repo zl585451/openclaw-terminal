@@ -491,11 +491,33 @@ function normalizeToolReliability(raw, { toolsSupport, provider } = {}) {
   return strictProviders.has(String(provider || '').toLowerCase()) ? 'strict' : 'loose';
 }
 
+function normalizePreferredRenderMode(raw) {
+  const value = String(raw || '').trim();
+  const allowed = new Set(['render_blocks', 'gateway_normalized', 'legacy_tags', 'markdown']);
+  return allowed.has(value) ? value : 'gateway_normalized';
+}
+
+function normalizeRenderCapabilities(caps = {}) {
+  const providerRenderCaps = PROVIDERS[caps.provider] || {};
+  const preferredRenderMode = normalizePreferredRenderMode(
+    caps.preferredRenderMode || providerRenderCaps.preferredRenderMode,
+  );
+  return {
+    supportsStructuredOutput: caps.supportsStructuredOutput === true || providerRenderCaps.supportsStructuredOutput === true,
+    supportsRenderBlocks: caps.supportsRenderBlocks !== undefined
+      ? caps.supportsRenderBlocks === true
+      : providerRenderCaps.supportsRenderBlocks !== false,
+    preferredRenderMode,
+    renderPromptProfile: caps.renderPromptProfile || providerRenderCaps.renderPromptProfile || 'provider_unknown',
+  };
+}
+
 function normalizeModelCaps(caps, source, modelId) {
   const toolsSupport = caps?.toolsSupport
     || (caps?.supportsTools === true ? 'supported'
       : caps?.supportsTools === false ? 'unsupported'
         : 'unknown');
+  const renderCaps = normalizeRenderCapabilities(caps);
   return {
     ...caps,
     label: caps?.label || modelId,
@@ -507,6 +529,7 @@ function normalizeModelCaps(caps, source, modelId) {
       toolsSupport,
       provider: caps?.provider,
     }),
+    ...renderCaps,
     capabilitySource: source,
   };
 }

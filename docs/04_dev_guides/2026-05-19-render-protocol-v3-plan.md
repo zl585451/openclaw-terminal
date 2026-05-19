@@ -12,6 +12,7 @@
 | Phase 1：定义 Render Blocks Schema | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/03_specs/RENDER_BLOCKS_SCHEMA.md` |
 | Phase 2：Gateway Render Normalizer | Completed | `codex/render-protocol-v3-structured-blocks` | `oct-gateway/services/renderBlocksNormalizer.js`, `oct-gateway/test/renderBlocksNormalizer.test.js` |
 | Phase 3：前端 Render Blocks 渲染层 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/ui/chat/renderBlocksAdapter.ts`, `src/ui/chat/renderBlocksAdapter.test.ts`, `src/ui/chat/MessageList.tsx` |
+| Phase 4：Provider Adapter 与提示词分层 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/03_specs/RENDER_PROVIDER_CAPABILITIES.md`, `oct-gateway/providers.js`, `oct-gateway/runtime/providerRouter.js` |
 
 ## 背景
 

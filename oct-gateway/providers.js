@@ -17,8 +17,80 @@ const TOOL_RELIABILITY_BY_PROVIDER = {
   ollama: 'none',
 };
 
+const RENDER_CAPABILITIES_BY_PROVIDER = {
+  google: {
+    supportsStructuredOutput: true,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'render_blocks',
+    renderPromptProfile: 'strict_fenced_json',
+  },
+  openai: {
+    supportsStructuredOutput: true,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'render_blocks',
+    renderPromptProfile: 'strict_fenced_json',
+  },
+  bailian: {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'gateway_normalized',
+    renderPromptProfile: 'legacy_tags_with_schema_hint',
+  },
+  'bailian-coding': {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'gateway_normalized',
+    renderPromptProfile: 'legacy_tags_with_schema_hint',
+  },
+  deepseek: {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'gateway_normalized',
+    renderPromptProfile: 'legacy_tags_with_schema_hint',
+  },
+  minimax: {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'gateway_normalized',
+    renderPromptProfile: 'legacy_tags_with_schema_hint',
+  },
+  moonshot: {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'gateway_normalized',
+    renderPromptProfile: 'legacy_tags_with_schema_hint',
+  },
+  newapi: {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'gateway_normalized',
+    renderPromptProfile: 'provider_unknown',
+  },
+  custom: {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'gateway_normalized',
+    renderPromptProfile: 'provider_unknown',
+  },
+  ollama: {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: false,
+    preferredRenderMode: 'legacy_tags',
+    renderPromptProfile: 'legacy_tags_only',
+  },
+};
+
 function resolveDefaultToolReliability(providerId) {
   return TOOL_RELIABILITY_BY_PROVIDER[providerId] || 'loose';
+}
+
+function resolveProviderRenderCapabilities(providerId) {
+  return RENDER_CAPABILITIES_BY_PROVIDER[providerId] || {
+    supportsStructuredOutput: false,
+    supportsRenderBlocks: true,
+    preferredRenderMode: 'gateway_normalized',
+    renderPromptProfile: 'provider_unknown',
+  };
 }
 
 function withToolReliability(providerId, models) {
@@ -285,7 +357,8 @@ const PROVIDERS = {
 };
 
 for (const [providerId, provider] of Object.entries(PROVIDERS)) {
+  Object.assign(provider, resolveProviderRenderCapabilities(providerId));
   provider.models = withToolReliability(providerId, provider.models);
 }
 
-module.exports = { PROVIDERS };
+module.exports = { PROVIDERS, resolveProviderRenderCapabilities };
