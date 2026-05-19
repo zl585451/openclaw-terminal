@@ -8,8 +8,9 @@
 
 | Phase | Status | Branch | Evidence |
 |---|---|---|---|
-| Phase 0：现状盘点与风险冻结 | Started | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase0-baseline.md` |
-| Phase 1：定义 Render Blocks Schema | Started | `codex/render-protocol-v3-structured-blocks` | `docs/03_specs/RENDER_BLOCKS_SCHEMA.md` |
+| Phase 0：现状盘点与风险冻结 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase0-baseline.md` |
+| Phase 1：定义 Render Blocks Schema | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/03_specs/RENDER_BLOCKS_SCHEMA.md` |
+| Phase 2：Gateway Render Normalizer | Completed | `codex/render-protocol-v3-structured-blocks` | `oct-gateway/services/renderBlocksNormalizer.js`, `oct-gateway/test/renderBlocksNormalizer.test.js` |
 
 ## 背景
 
