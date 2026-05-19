@@ -139,6 +139,23 @@ function main() {
   const fenced = _internals.extractRenderBlocksFence('```json render_blocks\n{"version":"3.0","blocks":[]}\n```');
   assert.equal(fenced.json, '{"version":"3.0","blocks":[]}');
 
+  const nestedFence = normalizeRenderBlocks([
+    '```render_blocks',
+    JSON.stringify({
+      version: '3.0',
+      blocks: [
+        {
+          type: 'markdown',
+          content: ['示例：', '```text', '■ 只是文档示例', '```'].join('\n'),
+        },
+      ],
+    }, null, 2),
+    '```',
+  ].join('\n'));
+  assert.equal(nestedFence.source, 'render_blocks');
+  assert.equal(nestedFence.blocks[0].type, 'markdown');
+  assert.match(nestedFence.blocks[0].content, /只是文档示例/);
+
   console.log('PASS renderBlocksNormalizer parses structured and legacy render blocks');
 }
 

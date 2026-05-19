@@ -59,16 +59,48 @@ function markdownResult(text, errors) {
 }
 
 function extractRenderBlocksFence(text) {
-  const fenceRx = /```([^\r\n`]*)\r?\n([\s\S]*?)```/g;
+  const startRx = /```([^\r\n`]*)\r?\n/g;
   let match;
-  while ((match = fenceRx.exec(text)) !== null) {
+  while ((match = startRx.exec(text)) !== null) {
     const info = String(match[1] || '').trim().toLowerCase();
     if (info === 'render_blocks' || info === 'json render_blocks' || info === 'render_blocks json') {
+      const contentStart = startRx.lastIndex;
+      const fallback = findFirstFenceCandidate(text, match.index, contentStart);
+      const parseable = findParseableFenceCandidate(text, match.index, contentStart);
+      return parseable || fallback;
+    }
+  }
+  return null;
+}
+
+function findFirstFenceCandidate(text, start, contentStart) {
+  const closeRx = /```/g;
+  closeRx.lastIndex = contentStart;
+  const close = closeRx.exec(text);
+  if (!close) return null;
+  return {
+    json: text.slice(contentStart, close.index).trim(),
+    start,
+    end: close.index + close[0].length,
+  };
+}
+
+function findParseableFenceCandidate(text, start, contentStart) {
+  const closeRx = /```/g;
+  closeRx.lastIndex = contentStart;
+  let close;
+  while ((close = closeRx.exec(text)) !== null) {
+    const json = text.slice(contentStart, close.index).trim();
+    try {
+      JSON.parse(json);
       return {
-        json: String(match[2] || '').trim(),
-        start: match.index,
-        end: match.index + match[0].length,
+        json,
+        start,
+        end: close.index + close[0].length,
       };
+    } catch {
+      // A render_blocks JSON string may contain markdown code fences; keep looking
+      // for the real outer fence before reporting invalid JSON.
     }
   }
   return null;
