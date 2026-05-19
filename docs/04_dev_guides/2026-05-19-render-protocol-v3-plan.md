@@ -15,6 +15,7 @@
 | Phase 4：Provider Adapter 与提示词分层 | Completed | `codex/render-protocol-v3-structured-blocks` | `docs/03_specs/RENDER_PROVIDER_CAPABILITIES.md`, `oct-gateway/providers.js`, `oct-gateway/runtime/providerRouter.js` |
 | Phase 5：Golden Tests 与稳定性压测 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/ui/chat/__fixtures__/renderProtocolV3GoldenFixtures.ts`, `src/ui/chat/renderProtocolV3Golden.test.ts`, `oct-gateway/test/renderBlocksNormalizer.test.js` |
 | Phase 6：迁移与 Legacy 收敛 | Completed | `codex/render-protocol-v3-structured-blocks` | `src/utils/optionBoxParser.ts`, `src/utils/optionBoxParser.test.ts`, `docs/01_system_prompts/OCT_PROTOCOL.md`, `docs/03_specs/RENDER_PROTOCOL.md` |
+| Phase 7：真实模型输出审计 | Started | `codex/render-protocol-v3-structured-blocks` | `docs/04_dev_guides/2026-05-19-render-protocol-v3-phase7-real-model-evaluation.md` |
 
 ## 背景
 
@@ -290,6 +291,40 @@ v3 推荐引入 `render_blocks` 作为内部标准结构。模型可以直接输
 
 `render-v3-phase6-legacy-convergence`
 
+## Phase 7：真实模型输出审计
+
+目标：把 Gemini 与 DeepSeek 的真实输出从截图观察转成可追踪的工程评估，避免继续用单点 parser 补丁追着模型漂移跑。
+
+任务：
+
+- 基于真实测试截图记录 4 条稳定性口令的模型表现：
+  - Markdown + code + table + pills。
+  - 符号说明不误触发交互按钮。
+  - `[clarify_card]` 生成完整问询。
+  - `TaskList` 与 `PillOptionBox` 同时稳定出现。
+- 分别评价 Gemini 与 DeepSeek：
+  - Markdown 稳定性。
+  - 代码块和表格稳定性。
+  - 交互组件触发准确性。
+  - 误触发防护能力。
+  - 输出完整性。
+- 将失败归因到：
+  - 模型输出失败。
+  - Gateway normalizer / repair 失败。
+  - 前端 parser / renderer 失败。
+- 形成后续 real model golden corpus 的采样计划。
+
+验收标准：
+
+- 有一份真实模型输出审计文档。
+- 文档明确区分“视觉质量好”和“协议合规”。
+- 文档建议先固化 raw outputs，再做 provider prompt、Gateway repair 或 frontend parser 的后续改动。
+- 本阶段不修改运行时代码。
+
+建议标签：
+
+`render-v3-phase7-real-model-evaluation`
+
 ## 推荐执行顺序
 
 1. Phase 0：先冻结现状和样例。
@@ -299,6 +334,7 @@ v3 推荐引入 `render_blocks` 作为内部标准结构。模型可以直接输
 5. Phase 5：尽早补 golden tests，最好和 Phase 2/3 穿插推进。
 6. Phase 4：等基础结构稳定后做 provider adapter。
 7. Phase 6：最后再收敛 legacy。
+8. Phase 7：用真实模型输出反向校验协议稳定性，并规划 real model golden corpus。
 
 ## 合并策略
 
