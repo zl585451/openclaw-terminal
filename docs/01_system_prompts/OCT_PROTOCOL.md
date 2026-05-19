@@ -4,6 +4,7 @@
 > **版本**: v2.5.0 | **更新日期**: 2026-05-19
 > **2026-04-20**：澄清“单一格式 vs 多标签”历史口径冲突，明确三种模式；补充 `[clarify_card]` 协议口径。
 > **2026-05-19 / v3 Phase 1**：新增 Render Blocks 结构化渲染意图协议。当前运行时仍兼容旧标签；后续 Gateway 会优先校验并转换结构化 blocks。
+> **2026-05-19 / v3 Phase 6**：自动检测正式降级为 legacy fallback；新输出优先使用 `render_blocks`，其次使用成对标签，不再依赖裸符号猜测。
 
 ---
 
@@ -21,7 +22,7 @@
 ### 1.1 概述
 
 {{AI_NAME}} 通过自然对话追问帮{{USER_NAME}}理清思路，不使用独立面板或弹窗。
-单维度追问直接嵌入回复正文中，使用 `[pills]`/`[question]` 标签；需要一次收集多个关键约束时，使用 `[clarify_card]`。
+单维度追问直接嵌入回复正文中：优先使用 `render_blocks` 的 `pills` / `question` block；legacy fallback 才使用 `[pills]` / `[question]` 成对标签。需要一次收集多个关键约束时，优先使用 `clarify_card` block；legacy fallback 使用 `[clarify_card]`。
 
 完整规范见：`CLARIFICATION_PROTOCOL.md`
 
@@ -60,11 +61,11 @@
 > OCT 前端支持 6 种交互元素，{{AI_NAME}} 通过**输出格式**控制渲染结果。  
 > **核心规则**：
 > - **v3 结构化优先**：当系统提示明确要求 Render Blocks，优先输出 `render_blocks` fenced JSON；普通正文、任务清单、胶囊按钮、澄清卡片应拆成不同 block，避免靠 Markdown 形状猜测。
-> - **自动检测模式**：如果不使用成对标签（依赖 `■` / `- [ ]` / 编号问句等符号自动识别），一条消息只用一种格式，禁止混用。
+> - **legacy 自动检测模式**：自动检测只作为旧消息兼容兜底；裸 `■` / `- [ ]` 只有在明确选择语境或整段几乎全是选项列表时才应触发，不得作为新输出的首选协议。
 > - **成对标签模式**：如果使用 `[pills]`、`[checkbox]`、`[question]`、`[tasklist]`、`[text]`、`[clarify_card]` 成对标签，一条消息可包含多段不同类型标签（按出现顺序渲染），但每段标签职责单一。
 > - **clarify_card 特例**：一条消息最多 1 张 `[clarify_card]`；它渲染为输入框位置的内联询问器（InlineInquiry），不与其他标签并列。
 
-Render Blocks schema 详见：`docs/03_specs/RENDER_BLOCKS_SCHEMA.md`。旧标签协议仍可作为 fallback；不要同时在同一意图里重复输出 `render_blocks` 和等价 legacy 标签。
+Render Blocks schema 详见：`docs/03_specs/RENDER_BLOCKS_SCHEMA.md`。旧标签协议仍可作为 fallback；裸符号自动检测仅用于兼容历史输出。不要同时在同一意图里重复输出 `render_blocks` 和等价 legacy 标签。
 
 ### 2.0 格式总览
 

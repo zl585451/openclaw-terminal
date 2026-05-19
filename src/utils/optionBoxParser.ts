@@ -84,6 +84,45 @@ function hasChoiceCue(text: string): boolean {
   return CHOICE_CUE_KEYWORDS.some((keyword) => normalized.includes(keyword.replace(/\s+/g, '').toLowerCase()));
 }
 
+function hasNegativeInteractionCue(text: string): boolean {
+  const normalized = text.replace(/\s+/g, '').toLowerCase();
+  return [
+    '不是选项',
+    '不是用户待选项',
+    '不是按钮',
+    '不触发任何真正的交互按钮',
+    '只是协议说明',
+    '只是文档示例',
+    '语法示例',
+  ].some((keyword) => normalized.includes(keyword.replace(/\s+/g, '').toLowerCase()));
+}
+
+function isMostlySymbolOptionBlock(text: string): boolean {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2) return false;
+  const symbolLineRx = new RegExp(`^(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*.+$`);
+  return lines.every((line) => symbolLineRx.test(line));
+}
+
+function isMostlyCheckboxOptionBlock(text: string): boolean {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2) return false;
+  const checkboxLineRx = /^(?:[-*+]\s*)?(?:\[\s*(?:[✓xX]|\s)\s*\]|[☐□☑✓])\s*.+$/;
+  return lines.every((line) => checkboxLineRx.test(line));
+}
+
+function shouldAutoDetectSymbolOptions(text: string, options: OptionItem[]): boolean {
+  if (options.length < 2) return false;
+  if (hasNegativeInteractionCue(text) && !isMostlySymbolOptionBlock(text)) return false;
+  return hasChoiceCue(text) || isMostlySymbolOptionBlock(text);
+}
+
+function shouldAutoDetectCheckboxOptions(text: string, options: OptionItem[], hasTaskHeader: boolean): boolean {
+  if (options.length < 2) return false;
+  if (hasNegativeInteractionCue(text) && !isMostlyCheckboxOptionBlock(text)) return false;
+  return hasTaskHeader || hasChoiceCue(text) || isMostlyCheckboxOptionBlock(text);
+}
+
 const START_MARKER = '[选项框开始]';
 const END_MARKER = '[选项框结束]';
 const OPTION_REGEX = /\[选项\s*(\d+)\s*:\s*([^\|\]]+)\s*\|\s*([^\]]+)\]/g;
@@ -853,24 +892,24 @@ function _parseOptionBox(content: string): ParsedContent {
 
   // 自动检测 [ ] checkbox 列表——仅在代码块外部检测
   const checkboxOpts = parseCheckboxOptions(textForDetection);
-  if (checkboxOpts.length >= 1) {
+  const linesBeforeCheckbox = textForDetection.split('\n');
+  let foundTaskHeader = false;
+  for (const line of linesBeforeCheckbox) {
+    if (/^\s*[\-\*\+]?\s*\[\s*(?:[✓xX]|\s)\s*\]/.test(line)) break;
+    if (isTaskHeader(line)) { foundTaskHeader = true; break; }
+  }
+  if (shouldAutoDetectCheckboxOptions(textForDetection, checkboxOpts, foundTaskHeader)) {
     const totalPages = parseTotalPages(contentWithoutHint);
     const cleaned = removeCheckboxLinesOutsideCodeBlocks(contentWithoutHint, OPTIONS_PLACEHOLDER);
     const text = filterExpectedEffect(cleaned.replace(/\n{3,}/g, '\n\n').trim());
 
-    // 精确关键词匹配：只有带冒号的任务标题行才触发 TaskList
-    const linesBeforeCheckbox = textForDetection.split('\n');
-    let foundTaskHeader = false;
-    for (const line of linesBeforeCheckbox) {
-      if (/^\s*[\-\*\+]?\s*\[\s*(?:[✓xX]|\s)\s*\]/.test(line)) break;
-      if (isTaskHeader(line)) { foundTaskHeader = true; break; }
-    }
+    // 精确关键词匹配：只有带任务语义的标题行才触发 TaskList
     return finalCleanup({ text, options: checkboxOpts, totalPages, isTaskList: foundTaskHeader, forcePills: false });
   }
 
   // 自动检测 ■ ● ◆ ○ 等符号开头的选项
   const symbolOpts = parseSymbolOptions(textForDetection);
-  if (symbolOpts.length >= 1) {
+  if (shouldAutoDetectSymbolOptions(textForDetection, symbolOpts)) {
     const totalPages = parseTotalPages(contentWithoutHint);
     // 只移除选项行（■ 开头），保留所有其他内容（表格、代码块等）
     // 在第一个选项行位置插入占位符，其余选项行删除

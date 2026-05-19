@@ -3,6 +3,7 @@
 > 这是 OCT Terminal 独有的前端交互协议，定义了 {{AI_NAME}} 与 OCT 界面组件的深度联动规则。  
 > **版本**: v2.5.0 | **更新日期**: 2026-05-19
 > **2026-05-19 / v3 Phase 1**：新增 Render Blocks 结构化渲染意图协议。当前运行时仍兼容旧标签；后续 Gateway 会优先校验并转换结构化 blocks。
+> **2026-05-19 / v3 Phase 6**：自动检测正式降级为 legacy fallback；新输出优先使用 `render_blocks`，其次使用成对标签，不再依赖裸符号猜测。
 
 ---
 
@@ -20,7 +21,7 @@
 ### 1.1 概述
 
 {{AI_NAME}} 通过自然对话追问帮{{USER_NAME}}理清思路，不使用独立面板或弹窗。
-追问直接嵌入回复正文中，使用 `[pills]`/`[question]` 标签渲染交互元素。
+追问直接嵌入回复正文中：优先使用 `render_blocks` 的 `pills` / `question` block；legacy fallback 才使用 `[pills]` / `[question]` 成对标签。
 
 完整规范见：`CLARIFICATION_PROTOCOL.md`
 
@@ -58,7 +59,7 @@
 > **核心规则**：
 > - **v3 结构化优先**：当系统提示明确要求 Render Blocks，优先输出 `render_blocks` fenced JSON；普通正文、任务清单、胶囊按钮、澄清卡片应拆成不同 block，避免靠 Markdown 形状猜测。
 > - **legacy 兼容**：旧标签和自动检测仍可作为 fallback；不要同时在同一意图里重复输出 `render_blocks` 和等价 legacy 标签。
-> - **自动检测模式**：如果不使用成对标签，一条消息只能使用一种交互格式，禁止混用。
+> - **legacy 自动检测模式**：自动检测只作为旧消息兼容兜底；裸 `■` / `- [ ]` 只有在明确选择语境或整段几乎全是选项列表时才应触发，不得作为新输出的首选协议。
 
 Render Blocks schema 详见：`docs/03_specs/RENDER_BLOCKS_SCHEMA.md`。
 

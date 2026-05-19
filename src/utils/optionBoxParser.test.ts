@@ -222,6 +222,21 @@ describe('自动检测 ■ 选项（无标签）', () => {
     const result = parseOptionBox(input);
     expect(result.options.length).toBeGreaterThanOrEqual(3);
   });
+
+  it('说明符号语法时不因裸符号列表误触发胶囊', () => {
+    const input = `符号检测支持这些示例：
+
+■ 方块表示一种候选行
+● 圆点表示另一种候选行
+◆ 菱形也是候选符号
+
+以上只是协议说明，不是在让用户选择。`;
+
+    const result = parseOptionBox(input);
+    expect(result.options).toHaveLength(0);
+    expect(result.segments).toBeUndefined();
+    expect(result.text).toContain('■ 方块表示一种候选行');
+  });
 });
 
 // ============================================================
@@ -448,6 +463,20 @@ describe('边界情况', () => {
     const taskSeg = result.segments!.find((s) => s.type === 'tasklist');
     expect(checkboxSeg).toBeDefined();
     expect(taskSeg).toBeUndefined();
+  });
+
+  it('说明 Markdown checkbox 语法时不因裸 checkbox 误触发交互', () => {
+    const input = `Markdown checkbox 的语法示例：
+
+- [ ] 未完成事项
+- [x] 已完成事项
+
+这些只是文档示例，不是用户待选项。`;
+
+    const result = parseOptionBox(input);
+    expect(result.options).toHaveLength(0);
+    expect(result.segments).toBeUndefined();
+    expect(result.text).toContain('- [ ] 未完成事项');
   });
 
   it('Google 风格的自然任务清单标题 + 加粗 checkbox 应渲染为 TaskList', () => {
