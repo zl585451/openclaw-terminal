@@ -316,6 +316,7 @@ const PROVIDERS = {
     keyEnvVars: ['GOOGLE_AI_API_KEY', 'GEMINI_API_KEY'],
     defaultModel: 'google/gemini-2.0-flash',
     models: [
+      { id: 'google/gemini-3.5-flash',           label: 'Gemini 3.5 Flash', tools: true,  thinking: false },
       { id: 'google/gemini-2.0-flash',           label: 'Gemini 2.0 Flash（正式版，极速）', tools: true,  thinking: false },
       { id: 'google/gemini-2.0-flash-lite-preview-02-05', label: 'Gemini 2.0 Flash-Lite（低延迟）', tools: true,  thinking: false },
       { id: 'google/gemini-2.0-pro-exp-02-05',    label: 'Gemini 2.0 Pro（顶级推理实验版）', tools: true,  thinking: false },

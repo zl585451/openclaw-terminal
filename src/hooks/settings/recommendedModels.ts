@@ -5,6 +5,7 @@ export const RECOMMENDED_MODELS: Record<string, string[]> = {
   minimax: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5'],
   siliconflow: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3', 'Pro/Qwen/Qwen2.5-7B-Instruct'],
   google: [
+    'google/gemini-3.5-flash',
     'google/gemini-3.1-flash-lite-preview',
     'google/gemini-2.5-flash',
     'google/gemini-3.1-pro-preview',
