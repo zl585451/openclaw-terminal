@@ -388,11 +388,13 @@ describe('OmniRoute Governance Core', () => {
     const status = omniRoute.inspectCapability('oct-tool-safe');
     expect(status).toBeDefined();
     expect(status.capability).toBe('oct-tool-safe');
+    expect(status.status).toBe('degraded');
 
     const openaiCandidate = status.candidates.find((c) => c.provider === 'openai');
     expect(openaiCandidate).toBeDefined();
     expect(openaiCandidate.available).toBe(true);
     expect(openaiCandidate.hasApiKey).toBe(true);
+    expect(openaiCandidate.source).toBe('omniroute_candidate_openai');
 
     const serialized = JSON.stringify(status);
     expect(serialized).not.toContain('sk-super-secret-key-99999');
@@ -434,10 +436,12 @@ describe('OmniRoute Governance Core', () => {
 
     const toolSafe = responseBody.capabilities.find(c => c.capability === 'oct-tool-safe');
     expect(toolSafe).toBeDefined();
+    expect(toolSafe.status).toBe('degraded');
     const openaiCandidate = toolSafe.candidates.find(cand => cand.provider === 'openai');
     expect(openaiCandidate).toBeDefined();
     expect(openaiCandidate.available).toBe(true);
     expect(openaiCandidate.hasApiKey).toBe(true);
+    expect(openaiCandidate.source).toBe('omniroute_candidate_openai');
 
     const rawString = JSON.stringify(responseBody);
     expect(rawString).not.toContain('sk-extremely-secret-key-12345');

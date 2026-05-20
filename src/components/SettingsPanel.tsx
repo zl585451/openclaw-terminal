@@ -11,6 +11,7 @@ import { ConnectionTabView } from '../ui/settings/tabs/ConnectionTabView';
 import { InterfaceTabView } from '../ui/settings/tabs/InterfaceTabView';
 import { MemoryTabView } from '../ui/settings/tabs/MemoryTabView';
 import { McpTabView, type McpServerInfo } from '../ui/settings/tabs/McpTabView';
+import { OmniRouteTabView } from '../ui/settings/tabs/OmniRouteTabView';
 import { useAiLibrary } from '../hooks/settings/useAiLibrary';
 import { useApiKeys } from '../hooks/settings/useApiKeys';
 import { useScreenshotShortcut } from '../hooks/settings/useScreenshotShortcut';
@@ -327,6 +328,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     { id: 'memory', label: '③ 记忆系统' },
     { id: 'advanced', label: '④ 高级' },
     { id: 'mcp', label: '⑤ MCP 工具' },
+    { id: 'omniroute', label: '⑥ 智能路由' },
   ];
 
   return (
@@ -475,6 +477,10 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               }}
               onRefresh={loadMcpStatus}
             />
+          )}
+
+          {activeTab === 'omniroute' && (
+            <OmniRouteTabView />
           )}
         </div>
         <div className="settings-footer">

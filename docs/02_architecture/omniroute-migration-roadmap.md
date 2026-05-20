@@ -23,6 +23,7 @@
 | Phase 6: ToolAdapter Minimal Governance | 已完成 | `omniroute-phase6-tool-adapter` | 最小 ToolAdapter 参数清洗、尾逗号修复、Markdown 脱壳与截断 JSON 的保守失败防护 |
 | Phase 7: Credential Vault / 配置收敛 | 已完成 | `omniroute-phase7-credential-vault` | 最小配置结构设计，本地路由与凭证 Vault 收敛持久化，无缝向下兼容旧配置 |
 | Phase 8: Observability, Cost & Rate Limits | 已完成 | `omniroute-phase8-observability` | 运行时低侵入式本地脱敏指标观测、延迟及 Token 使用量聚合、本地只读状态合并输出，以及预留限流整流接口 |
+| Phase 9: UI / Operations Panel | 已完成 | `omniroute-phase9-ui-operations` | 诊断运维面板界面设计、路由候选实时状态展示、低侵入耗时及 Token 统计聚合面板、最近请求滚动脱敏追踪日志 |
 
 ---
 
@@ -309,6 +310,12 @@ OCT 当前已经具备以下实际功能：
 - 不在 UI 中显示 API Key。
 - 不在未完成 Vault 前做复杂 Key 编辑。
 - 不改变 `/model` 原命令语义。
+
+### 验收状态
+
+已完成并打标：
+
+- `omniroute-phase9-ui-operations`
 
 ---
 

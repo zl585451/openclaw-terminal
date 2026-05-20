@@ -84,14 +84,22 @@ function inspectCapability(capability, context = {}) {
       available: res.ok,
       baseUrl: res.baseUrl,
       hasApiKey: res.hasApiKey,
+      source: res.source,
       reason: res.reason,
     };
   });
+  const firstCandidate = inspectedCandidates[0];
+  const status = firstCandidate && firstCandidate.available
+    ? 'healthy'
+    : inspectedCandidates.some((candidate) => candidate.available)
+      ? 'degraded'
+      : 'unavailable';
 
   return {
     capability,
     description: def.description,
     tools: def.tools,
+    status,
     candidates: inspectedCandidates,
   };
 }

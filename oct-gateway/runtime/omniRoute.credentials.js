@@ -180,7 +180,7 @@ function resolveCandidate(candidate, options = {}) {
  * 安全诊断单个候选通道，不泄漏 API Key
  * @param {object} candidate - `{ provider, model }`
  * @param {object} options - 选项，如 `{ originalResolve: Function }`
- * @returns {object} 返回 `{ ok, provider, model, baseUrl, hasApiKey, reason }`
+ * @returns {object} 返回 `{ ok, provider, model, baseUrl, hasApiKey, source, reason }`
  */
 function inspectCandidate(candidate, options = {}) {
   const resolved = resolveCandidate(candidate, options);
@@ -190,6 +190,7 @@ function inspectCandidate(candidate, options = {}) {
     model: resolved.model,
     baseUrl: resolved.baseUrl,
     hasApiKey: !!resolved.apiKey,
+    source: resolved.source,
     reason: resolved.reason,
   };
 }
