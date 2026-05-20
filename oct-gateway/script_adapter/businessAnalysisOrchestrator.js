@@ -211,7 +211,7 @@ async function executeStep(stepId, params, context) {
   }
 
   if (stepId === 'business_analysis') {
-    const provider = resolveProviderFor('script_adapter');
+    const provider = resolveProviderFor('script_adapter', 'oct-plan');
     const result = await runBusinessAnalysisCompletion({ provider, params, context });
     context.analysisReport = normalizeAnalysisReport(parseJsonObject(result.content), params);
     return { model: formatProviderLabel(result.model, provider) };

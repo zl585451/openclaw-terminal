@@ -88,11 +88,153 @@ function buildHeaders(baseUrl, apiKey) {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
 }
 
+function resolveCandidateProvider(providerId, modelId) {
+  if (!config || !config.PROVIDERS || !config.PROVIDERS[providerId]) {
+    return null;
+  }
+  const preset = config.PROVIDERS[providerId];
+  const getEnvVal = (key) => {
+    if (config && typeof config.getEnvOrConfig === 'function') {
+      return config.getEnvOrConfig(key);
+    }
+    return process.env[key] || '';
+  };
+
+  // 1. Resolve Base URL
+  let baseUrl = preset.baseUrl || '';
+  if (providerId === 'bailian' || providerId === 'bailian-coding') {
+    baseUrl = getEnvVal('DASHSCOPE_BASE_URL') || baseUrl;
+  } else if (providerId === 'deepseek') {
+    baseUrl = getEnvVal('DEEPSEEK_BASE_URL') || baseUrl;
+  } else if (providerId === 'minimax') {
+    baseUrl = getEnvVal('MINIMAX_BASE_URL') || baseUrl;
+  } else if (providerId === 'moonshot') {
+    baseUrl = getEnvVal('MOONSHOT_BASE_URL') || baseUrl;
+  } else if (providerId === 'google') {
+    baseUrl = getEnvVal('GOOGLE_AI_BASE_URL') || baseUrl;
+  } else if (providerId === 'newapi') {
+    baseUrl = getEnvVal('NEWAPI_BASE_URL') || baseUrl;
+  } else if (providerId === 'custom') {
+    baseUrl = getEnvVal('CUSTOM_BASE_URL') || baseUrl;
+  }
+
+  // 2. Resolve API Key
+  let apiKey = '';
+  if (preset.fixedApiKey) {
+    apiKey = preset.fixedApiKey;
+  } else if (providerId === 'siliconflow') {
+    const sfKey = getEnvVal('SILICONFLOW_API_KEY');
+    const dashKey = getEnvVal('DASHSCOPE_API_KEY');
+    const dashLooksCodingPlan = dashKey && String(dashKey).trim().toLowerCase().startsWith('sk-sp-');
+    if (sfKey) {
+      apiKey = sfKey;
+    } else if (dashKey && !dashLooksCodingPlan) {
+      apiKey = dashKey;
+    }
+  } else {
+    const envVars = preset.keyEnvVars || [];
+    for (const keyVar of envVars) {
+      const val = getEnvVal(keyVar);
+      if (val) {
+        if (providerId === 'moonshot' && String(val).trim().toLowerCase().startsWith('sk-sp-')) {
+          continue;
+        }
+        apiKey = val;
+        break;
+      }
+    }
+  }
+
+  // 3. Resolve Model
+  const model = modelId || preset.defaultModel || '';
+
+  if (!baseUrl || !apiKey || !model) {
+    return null;
+  }
+
+  return {
+    baseUrl: baseUrl.replace(/\/$/, ''),
+    apiKey,
+    model,
+    source: `omniroute_candidate_${providerId}`,
+  };
+}
+
 /**
  * 解析 script_adapter 等场景的 provider 配置。
  * script_adapter：SCRIPT_ADAPTER_* → SUMMARIZER_*（含 memory.summarizer.api）→ 当前 Gateway provider。
  */
-function resolveProviderFor(purpose = 'general') {
+function resolveProviderFor(purpose = 'general', capability = null) {
+  if (capability === 'oct-plan') {
+    let getCandidatesFor;
+    try {
+      const mapping = require('../runtime/omniRoute.mapping.draft');
+      getCandidatesFor = mapping.getCandidatesFor;
+    } catch (err) {
+      // ignore
+    }
+
+    if (typeof getCandidatesFor === 'function') {
+      const candidates = getCandidatesFor('oct-plan');
+      if (Array.isArray(candidates) && candidates.length > 0) {
+        const getEnvVal = (key) => {
+          if (config && typeof config.getEnvOrConfig === 'function') {
+            return config.getEnvOrConfig(key);
+          }
+          return process.env[key] || '';
+        };
+
+        const originalResolve = () => {
+          if (purpose === 'script_adapter') {
+            const scriptAdapterProvider = resolveScriptAdapterProvider();
+            if (scriptAdapterProvider) return scriptAdapterProvider;
+            const currentProvider = resolveCurrentProvider();
+            if (currentProvider) return currentProvider;
+            const summarizerProvider = resolveSummarizerProvider();
+            if (summarizerProvider) return summarizerProvider;
+            return null;
+          } else {
+            const prefixes = ['SUMMARIZER'];
+            for (const prefix of prefixes) {
+              const baseUrl = String(
+                getEnvVal('SUMMARIZER_BASE_URL') ||
+                config.memory?.summarizer?.api?.baseUrl || ''
+              ).trim();
+              const apiKey = String(
+                getEnvVal('SUMMARIZER_API_KEY') ||
+                config.memory?.summarizer?.api?.apiKey || ''
+              ).trim();
+              const model = String(
+                getEnvVal('SUMMARIZER_MODEL') ||
+                config.memory?.summarizer?.api?.model || ''
+              ).trim();
+              if (baseUrl && apiKey && model) {
+                return { baseUrl: baseUrl.replace(/\/$/, ''), apiKey, model };
+              }
+            }
+            const currentProvider = resolveCurrentProvider();
+            if (currentProvider) return currentProvider;
+            return null;
+          }
+        };
+
+        for (const candidate of candidates) {
+          if (candidate.provider === 'current' && candidate.model === 'current') {
+            const orig = originalResolve();
+            if (orig) {
+              return orig;
+            }
+          } else {
+            const resolved = resolveCandidateProvider(candidate.provider, candidate.model);
+            if (resolved) {
+              return resolved;
+            }
+          }
+        }
+      }
+    }
+  }
+
   if (purpose === 'script_adapter') {
     const scriptAdapterProvider = resolveScriptAdapterProvider();
     if (scriptAdapterProvider) return scriptAdapterProvider;

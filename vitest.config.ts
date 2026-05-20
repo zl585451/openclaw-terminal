@@ -18,6 +18,7 @@ export default defineConfig({
       'oct-gateway/test/spanScriptComposer.test.js',
       'oct-gateway/test/innerVoiceSpanExtractor.test.js',
       'oct-gateway/test/textRewriterE2E.test.js',
+      'oct-gateway/test/llmClient.test.js',
     ],
   },
   resolve: {

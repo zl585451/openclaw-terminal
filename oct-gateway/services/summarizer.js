@@ -174,6 +174,21 @@ function resolveSummarizerProvider(options = {}) {
     };
   }
 
+  try {
+    const { resolveProviderFor } = require('./llmClient');
+    const resolved = resolveProviderFor('general', 'oct-plan');
+    if (resolved) {
+      if (resolved.source === 'current_provider') {
+        const providerConfig = config.getProviderConfig?.() || {};
+        const model = chooseFastModel(providerConfig.provider || providerConfig.id, resolved.model);
+        return { baseUrl: resolved.baseUrl, apiKey: resolved.apiKey, model };
+      }
+      return { baseUrl: resolved.baseUrl, apiKey: resolved.apiKey, model: resolved.model };
+    }
+  } catch (err) {
+    // ignore and fallback
+  }
+
   const providerConfig = config.getProviderConfig?.() || {};
   const baseUrl = String(options.baseUrl || providerConfig.baseUrl || '').trim().replace(/\/$/, '');
   const apiKey = String(options.apiKey || providerConfig.apiKey || '').trim();

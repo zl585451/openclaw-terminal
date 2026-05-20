@@ -62,7 +62,7 @@ async function runQualityReviewerAgent(ctx) {
     sampleSegments || '无',
   ].join('\n');
 
-  const provider = resolveProviderFor('script_adapter');
+  const provider = resolveProviderFor('script_adapter', 'oct-plan');
   const result = await chatCompletion({
     provider,
     messages: [

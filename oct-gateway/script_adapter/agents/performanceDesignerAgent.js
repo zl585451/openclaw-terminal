@@ -27,7 +27,7 @@ async function runPerformanceDesignerAgent(ctx) {
     : [];
   if (segments.length === 0) throw new Error('PERF_DESIGNER_EMPTY_SEGMENTS');
 
-  const provider = resolveProviderFor('script_adapter');
+  const provider = resolveProviderFor('script_adapter', 'oct-plan');
   const userInput = [
     `章节标题:${adaptedScript.payload.chapterTitle || '未命名'}`,
     `角色音表:${JSON.stringify((voiceRegistry?.payload?.registry || []).slice(0, 6), null, 2)}`,
