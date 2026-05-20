@@ -97,6 +97,10 @@ async function chatCompletionRaw({
   };
   if (responseJson) body.response_format = { type: 'json_object' };
 
+  let status = 200;
+  let errorType = null;
+  let usage = null;
+
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -105,11 +109,14 @@ async function chatCompletionRaw({
       signal: controller.signal,
     });
     if (!response.ok) {
+      status = response.status;
+      errorType = 'LlmClientHttpError';
       const errBody = await response.text().catch(() => '');
       throw new LlmClientHttpError(response.status, errBody);
     }
     const data = await response.json();
     const content = String(data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '').trim();
+    usage = data?.usage;
     return {
       content,
       usage: data?.usage,
@@ -117,12 +124,30 @@ async function chatCompletionRaw({
       latencyMs: Date.now() - startedAt,
     };
   } catch (error) {
+    status = error.status || 500;
     if (error?.name === 'AbortError') {
+      errorType = 'LlmClientTimeoutError';
       throw new LlmClientTimeoutError(`LLM 请求超时:${timeoutMs}ms`);
     }
+    errorType = error.name || 'Error';
     throw error;
   } finally {
     clearTimeout(timer);
+    const latencyMs = Date.now() - startedAt;
+    try {
+      const metrics = require('../runtime/omniRoute.metrics');
+      metrics.recordRequest({
+        capability: provider.capability || null,
+        providerId: provider.providerId || null,
+        model: provider.model || null,
+        latencyMs,
+        status,
+        errorType,
+        usage,
+      });
+    } catch (_) {
+      // ignore
+    }
   }
 }
 

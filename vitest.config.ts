@@ -22,6 +22,7 @@ export default defineConfig({
       'oct-gateway/test/chatEngine.test.js',
       'oct-gateway/test/omniRoute.test.js',
       'oct-gateway/test/toolAdapter.test.js',
+      'oct-gateway/test/omniRoute.metrics.test.js',
     ],
   },
   resolve: {

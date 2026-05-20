@@ -124,8 +124,17 @@ function createHttpRequestHandler({
         };
 
         const status = omniRoute.listCapabilityStatus(context);
+        let metricsData = null;
+        try {
+          const metrics = require('../runtime/omniRoute.metrics');
+          metricsData = metrics.getMetrics();
+        } catch (_) {}
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ capabilities: status }));
+        res.end(JSON.stringify({
+          capabilities: status,
+          metrics: metricsData
+        }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: err.message }));

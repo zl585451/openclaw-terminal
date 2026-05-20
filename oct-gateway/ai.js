@@ -1537,6 +1537,48 @@ function buildToolResultFallbackReply(messages, error) {
   ].join('\n');
 }
 
+function resolveStreamErrorStatus(err) {
+  if (!err) return 200;
+  if (typeof err.status === 'number') return err.status;
+
+  const msg = String(err.message || '');
+  const match = msg.match(/(?:HTTP|Error|Status|API Error)\s*(\d{3})/i);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+
+  if (err.name === 'LlmClientTimeoutError' || msg.includes('timeout') || msg.includes('超时')) {
+    return 408;
+  }
+
+  return 500;
+}
+
+function resolveStreamErrorType(err) {
+  if (!err) return null;
+  if (err.name && err.name !== 'Error') return err.name;
+
+  const msg = String(err.message || '').toLowerCase();
+  if (msg.includes('timeout') || msg.includes('超时') || err.code === 'ETIMEDOUT') {
+    return 'TimeoutError';
+  }
+  if (msg.includes('fetch failed') || msg.includes('network error') || err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
+    return 'NetworkError';
+  }
+  if (msg.includes('socket') || msg.includes('connection') || msg.includes('hang up') || err.code === 'EPIPE') {
+    return 'ConnectionError';
+  }
+
+  if (typeof err.status === 'number' && err.status >= 400) {
+    return 'ApiError';
+  }
+  if (msg.includes('api error') || msg.includes('http ')) {
+    return 'ApiError';
+  }
+
+  return err.code || 'StreamError';
+}
+
 async function streamChat(options) {
   let activeCapability = options.capability;
   if (options.preserveToolChain || options.toolRound > 0) {
@@ -1724,10 +1766,18 @@ async function streamChatRaw({
     messages: Array.isArray(effectiveMessages) ? effectiveMessages.length : 0,
   });
 
-  if (!apiKey) {
-    onError(new Error('API Key 未配置，请在设置中填入' + (provider.keyLink ? `（${provider.name}）` : '')));
-    return;
-  }
+  const startedAt = Date.now();
+  let streamStatus = 200;
+  let streamErrorType = null;
+  let streamUsage = null;
+
+  try {
+    if (!apiKey) {
+      streamStatus = 401;
+      streamErrorType = 'ConfigurationError';
+      onError(new Error('API Key 未配置，请在设置中填入' + (provider.keyLink ? `（${provider.name}）` : '')));
+      return;
+    }
 
   if (provider.id === 'google' && isGoogleNativeMode(config)) {
     try {
@@ -1780,6 +1830,10 @@ async function streamChatRaw({
         },
       });
 
+      if (result.usage) {
+        streamUsage = result.usage;
+      }
+
       if (result.toolCalls.length > 0) {
         await toolLoop.handleToolCalls({
           toolCalls: result.toolCalls,
@@ -1803,6 +1857,8 @@ async function streamChatRaw({
       onDone(result.text || '', result.usage || null, result.responseModel || model);
       return;
     } catch (e) {
+      streamStatus = e.status || 500;
+      streamErrorType = e.name || 'Error';
       log.error('google native streamChat error', {
         error: e?.message || String(e),
         model,
@@ -2162,6 +2218,7 @@ async function streamChatRaw({
 
         if (parsed?.usage) {
           totalUsage = parsed.usage;
+          streamUsage = parsed.usage;
         }
         if (parsed?.model && !responseModel) {
           responseModel = parsed.model;
@@ -2321,6 +2378,8 @@ async function streamChatRaw({
     });
     onDone(safeReply, totalUsage, responseModel);
   } catch (e) {
+    streamStatus = resolveStreamErrorStatus(e);
+    streamErrorType = resolveStreamErrorType(e);
     stopHeartbeat();
     log.error('流中断:', e?.message || String(e), {
       provider: provider.name,
@@ -2415,6 +2474,23 @@ async function streamChatRaw({
     } else {
       log.error('streamChat error', { error: e?.message || String(e) });
       onError(e);
+    }
+  }
+  } finally {
+    if (apiKey) {
+      const elapsed = Date.now() - startedAt;
+      try {
+        const metrics = require('./runtime/omniRoute.metrics');
+        metrics.recordRequest({
+          capability: capability || (preserveToolChain || toolRound > 0 ? 'oct-tool-safe' : null),
+          providerId: provider.id || null,
+          model: model || null,
+          latencyMs: elapsed,
+          status: streamStatus,
+          errorType: streamErrorType,
+          usage: streamUsage,
+        });
+      } catch (_) {}
     }
   }
 }
