@@ -33,9 +33,30 @@ const log = createLogger('agent_runner');
  * 优先调用 config.getProviderConfig()，若不可用则降级到直接读取字段。
  *
  * @param {string|null} modelId
+ * @param {string[]} [allowedTools]
  * @returns {{ baseUrl: string, apiKey: string, model: string }}
  */
-function resolveProviderConfig(modelId) {
+function resolveProviderConfig(modelId, allowedTools = []) {
+  if (Array.isArray(allowedTools) && allowedTools.length > 0) {
+    try {
+      const omniRoute = require('../runtime/omniRoute');
+      const resolved = omniRoute.resolveCapability('oct-tool-safe', {
+        originalResolve: () => {
+          const pc = config.getProviderConfig();
+          const baseUrl = pc.baseUrl || config.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1';
+          const apiKey = pc.apiKey || config.DASHSCOPE_API_KEY || '';
+          const model = modelId || config.DASHSCOPE_MODEL || config.OCT_MODEL || 'qwen-plus';
+          return { id: pc.id, providerId: pc.id, baseUrl, apiKey, model };
+        }
+      });
+      if (resolved) {
+        return { baseUrl: resolved.baseUrl, apiKey: resolved.apiKey, model: resolved.model };
+      }
+    } catch (err) {
+      // ignore
+    }
+  }
+
   // 使用当前全局 provider 配置（支持运行时切换 provider）
   const pc = config.getProviderConfig();
   const baseUrl = pc.baseUrl || config.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1';
@@ -206,16 +227,16 @@ async function runAgent({ agent, task, onAgentEvent }) {
 
   onEvent({ type: 'agent_status', agent: agentName, status: 'running', taskId });
 
-  // ── 1. 解析 provider 配置 ────────────────────────────────────────
-  const { baseUrl, apiKey, model } = resolveProviderConfig(agent.model);
-  log.info(`[${agentName}] 启动`, { taskId, model, baseUrl: baseUrl.slice(0, 40) + '...' });
-
-  // ── 2. 构建工具白名单（task 级可追加） ───────────────────────────
+  // ── 1. 构建工具白名单（task 级可追加） ───────────────────────────
   const mergedAllowedTools = Array.from(new Set([
     ...(agent.allowedTools || []),
     ...(task.allowedTools || []),
   ]));
   const toolDefs = buildToolDefinitions(mergedAllowedTools);
+
+  // ── 2. 解析 provider 配置 ────────────────────────────────────────
+  const { baseUrl, apiKey, model } = resolveProviderConfig(agent.model, mergedAllowedTools);
+  log.info(`[${agentName}] 启动`, { taskId, model, baseUrl: baseUrl.slice(0, 40) + '...' });
 
   // ── 3. 构建 system prompt（含额外上下文） ────────────────────────
   let systemContent = agent.systemPrompt || '';

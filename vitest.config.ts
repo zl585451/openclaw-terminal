@@ -20,6 +20,7 @@ export default defineConfig({
       'oct-gateway/test/textRewriterE2E.test.js',
       'oct-gateway/test/llmClient.test.js',
       'oct-gateway/test/chatEngine.test.js',
+      'oct-gateway/test/omniRoute.test.js',
     ],
   },
   resolve: {

@@ -248,6 +248,7 @@ class ToolLoop {
       toolRound: toolRound + 1,
       toolSignatures: [...toolSignatures, toolSignature].slice(-8),
       turnId,
+      capability: 'oct-tool-safe',
     });
     return true;
   }

@@ -1548,13 +1548,56 @@ async function streamChat({
   toolSignatures = [],
   toolChoice = 'auto',
   turnId = null,
+  capability = null,
 }) {
   const hasMultimodalParts = (msgs) => Array.isArray(msgs) && msgs.some((m) =>
     Array.isArray(m?.content) && m.content.some((part) =>
       part && typeof part === 'object' && part.type && part.type !== 'text'
     )
   );
-  const resolved = providerRouter.resolve();
+
+  let activeCapability = capability;
+  if (preserveToolChain || toolRound > 0) {
+    activeCapability = 'oct-tool-safe';
+  }
+
+  let resolved = null;
+  if (activeCapability) {
+    try {
+      const omniRoute = require('./runtime/omniRoute');
+      let origResolved = null;
+      const routeRes = omniRoute.resolveCapability(activeCapability, {
+        originalResolve: () => {
+          origResolved = providerRouter.resolve();
+          return origResolved;
+        }
+      });
+      if (routeRes) {
+        if (routeRes.source === 'original_resolve' && origResolved) {
+          resolved = origResolved;
+        } else {
+          const preset = config.PROVIDERS[routeRes.providerId];
+          resolved = {
+            provider: preset || { id: routeRes.providerId, name: routeRes.providerId },
+            apiKey: routeRes.apiKey,
+            baseUrl: routeRes.baseUrl,
+            model: routeRes.model,
+            caps: config.getModelCaps(routeRes.model),
+            fallback: {
+              canFallbackToDeepseek: false,
+              canFallbackToBailian: false,
+            },
+          };
+        }
+      }
+    } catch (err) {
+      log.warn('OmniRoute resolve capability error', { capability: activeCapability, error: err.message });
+    }
+  }
+
+  if (!resolved) {
+    resolved = providerRouter.resolve();
+  }
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 
   // 上下文截断优化：防止消息过长
