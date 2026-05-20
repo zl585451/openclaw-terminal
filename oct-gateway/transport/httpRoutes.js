@@ -60,11 +60,12 @@ const SCRIPT_ROLE_DETECT_SYSTEM_PROMPT = `你是小说对话角色识别助手�
 - attributions: 只包含你有把握判断的引号句
 - confidence 只能是 high / medium / low`;
 
-function runOneShotCompletion(messages) {
+function runOneShotCompletion(messages, capability = null) {
   return new Promise((resolve, reject) => {
     streamChat({
       messages,
       toolChoice: 'none',
+      capability,
       onDelta: () => {},
       onToolEvent: () => {},
       onDone: (reply) => resolve(String(reply || '')),

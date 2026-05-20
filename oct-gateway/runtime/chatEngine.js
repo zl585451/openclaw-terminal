@@ -28,6 +28,7 @@ class ChatEngine {
       messages: request.messages,
       toolChoice: request.toolChoice || 'auto',
       turnId: request.turnId,
+      capability: request.capability,
       onDelta: smoother.feed,
       onToolEvent: (evt) => emitter.onToolEvent(evt),
       onDone: (_text, usage, responseModel) => {
