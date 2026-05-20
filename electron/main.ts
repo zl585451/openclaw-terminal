@@ -1233,15 +1233,17 @@ function createWindow() {
 function createFloatWindow() {
   if (floatWindow) return;
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
-  const size = 80;
+  const width = 220;
+  const height = 250;
   floatWindow = new BrowserWindow({
-    width: size,
-    height: size,
-    x: sw - size - 20,
-    y: sh - size - 20,
+    width,
+    height,
+    x: sw - width - 24,
+    y: sh - height - 24,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
+    hasShadow: false,
     resizable: false,
     skipTaskbar: true,
     webPreferences: {
