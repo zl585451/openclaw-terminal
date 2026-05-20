@@ -116,9 +116,13 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
 
   let args = {};
   try {
-    args = JSON.parse(toolCall.function.arguments || '{}');
-  } catch {
-    args = {};
+    const toolAdapter = require('../runtime/toolAdapter');
+    args = toolAdapter.cleanAndParseArguments(toolCall.function.arguments || '{}');
+  } catch (err) {
+    log.error(`工具参数解析失败: ${toolName}`, { callId, error: err.message });
+    const errMsg = `ERROR: Failed to parse arguments for tool "${toolName}". Details: ${err.message}`;
+    onEvent({ type: 'tool_result', tool: toolName, callId, state: 'error', resultPreview: errMsg });
+    return errMsg;
   }
 
   onEvent({ type: 'tool_call', tool: toolName, args, callId, state: 'executing' });

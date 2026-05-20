@@ -20,6 +20,7 @@
 | Phase 3: Tool-Safe Governance | 已完成 | `omniroute-phase3-tool-safe-governance` | 工具循环与带工具 Agent 自动尝试 `oct-tool-safe`；无工具 Agent 保持原行为 |
 | Phase 4: Config Governance Status | 已完成 | `omniroute-phase4-config-governance` | 能力路由定义抽离、轻量 CredentialResolver、只读状态诊断、仅本机可访问的 `/omniroute/status` |
 | Phase 5: Request Fallback & Error Governance | 已完成 | `omniroute-phase5-request-fallback` | 统一网络与可恢复 HTTP 错误分类分类器、非流式与流式下受控能力候选集循环自愈重试机制 |
+| Phase 6: ToolAdapter Minimal Governance | 已完成 | `omniroute-phase6-tool-adapter` | 最小 ToolAdapter 参数清洗、尾逗号修复、Markdown 脱壳与截断 JSON 的保守失败防护 |
 
 ---
 
@@ -205,6 +206,12 @@ OCT 当前已经具备以下实际功能：
 - 最小 ToolAdapter 模块。
 - 接入点仅在 tool call 参数解析前后。
 - 失败时给出清晰错误，不进入死循环。
+
+### 验收状态
+
+已完成并打标：
+
+- `omniroute-phase6-tool-adapter`
 
 ---
 

@@ -67,7 +67,31 @@ class ToolLoop {
     const toolResults = [];
     for (const toolCall of normalizedToolCalls) {
       let args = {};
-      try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch {}
+      try {
+        const toolAdapter = require('./toolAdapter');
+        args = toolAdapter.cleanAndParseArguments(toolCall.function.arguments || '{}');
+      } catch (err) {
+        this.log.error('tool arguments parsing failed', { name: toolCall.function.name, error: err.message });
+        const result = `ERROR: Failed to parse arguments for tool "${toolCall.function.name}". Details: ${err.message}`;
+        toolResults.push({
+          tool_call_id: toolCall.id,
+          role: 'tool',
+          name: toolCall.function.name,
+          content: result,
+        });
+        if (onToolEvent) {
+          try {
+            onToolEvent({
+              type: 'tool_result',
+              tool: toolCall.function.name,
+              callId: toolCall.id,
+              state: 'error',
+              resultPreview: result,
+            });
+          } catch {}
+        }
+        continue;
+      }
       this.log.info('tool call', { name: toolCall.function.name, args, turnId: turnId || null });
       const toolName = toolCall.function.name;
       const toolTimeoutMs = this.toolLoader.getToolMeta?.(toolName)?.timeoutMs || 30000;
