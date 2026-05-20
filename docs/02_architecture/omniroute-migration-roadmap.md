@@ -1,60 +1,324 @@
-# OmniRoute 迁移路线图 (Phase 1)
+# OmniRoute 迁移路线图
 
-为确保 OpenClaw Terminal (OCT) 在向多模型、多通道自适应路由演进的过程中不发生破坏性回归，本路线图规划了分阶段的迁移和整合战略。整体迁移分为三个核心阶段。
+本文档是 OCT OmniRoute 迁移的当前执行基准。后续 Kilo/Cursor/Gemini 执行与 Codex 阶段验收都应以本文档为准。
 
----
+执行原则：
 
-## Phase 1: Observe + Draft (观察与静态草案阶段)
-
-### 1.1 阶段目标
-不修改任何核心调用链代码，完成架构盘点、资产梳理，定义最小的逻辑路由并以完全解耦的静态文件方式落地。
-
-### 1.2 交付物与行动项
-- **调用入口盘点**：梳理并输出 `docs/02_architecture/omniroute-ai-call-sites.md`，明确系统内大模型调用的发起位置。
-- **配置来源盘点**：梳理并输出 `docs/02_architecture/omniroute-config-sources.md`，盘点所有 API Key 和 Base URL 的读取行为和 fallback 级联顺序。
-- **最小能力设计**：输出 `docs/02_architecture/omniroute-minimal-capabilities.md`，完成对 `oct-chat`、`oct-plan`、`oct-tool-safe` 三大核心能力的边界界定。
-- **静态映射草案**：创建 `oct-gateway/runtime/omniRoute.mapping.draft.js`。该文件仅供参考，禁止被任何主逻辑引用，且不得包含环境变量或任何对 `config.js` 的动态引用。
-- **验证原则**：对整个网关进行静态扫描，确保未对主逻辑调用链文件（`config.js`、`ai.js`、`agent_runner.js`、`toolLoop.js`、`providerRouter.js`、`slash.js`）引入任何修改，保证 100% 后向兼容。
+- 一个 Phase 是一个完整交付物，不拆成多轮碎片任务。
+- 每个 Phase 完成后停止，由 Codex 做代码审查、测试验证、commit 与 tag。
+- 不临时新增阶段；如需改变阶段边界，先说明原因。
+- 默认保持后向兼容，不破坏 `/model`、现有 Provider、现有工具执行逻辑。
 
 ---
 
-## Phase 2: Soft Integration (轻量软件集成阶段)
+## 当前完成状态
 
-### 2.1 阶段目标
-以极低侵入性的方式将 `oct-chat` 和 `oct-plan` 引入核心聊天链路。此时，系统的物理行为（如默认的提供商、模型名和凭证来源）必须与此前完全一致，只有当特定参数被显示传递时，才触发能力软切换。
-
-### 2.2 具体行动项
-1. **轻量参数扩展**：
-   - 保持 `/model` 切换及 `OCT_MODEL` 语义完全不变。
-   - 在 `streamChat` / `chatCompletion` 入口参数中增加可选的 `capability` 字段（例如 `{ capability: 'oct-chat' }`）。若不传或传入未知能力，其调用行为与当前的全局 providerRouter 解析完全一致。
-2. **打通软解析链路**：
-   - 仅将逻辑能力别名应用到：
-     - `oct-chat`：普通对话、文本重写。
-     - `oct-plan`：工具结果自动压缩（`toolResultSummarizer.js`）、剧本引擎的提取与整理子 Agent 等。
-   - **不接入** `oct-tool-safe`：主工具循环（`toolLoop.js`）及 `agent_runner.js` 在该阶段仍保持硬编码或基于原全局 Active Provider 的解析逻辑。
-   - **不改动** `/model` 切换命令的行为。
-3. **安全防错与回归测试**：
-   - 为 `streamChat` 增加兜底防御：当通过 `capability` 查找物理模型失败（如对应候选提供商没有配置 Key）时，静默、无感地退回并使用全局当前的 Active Provider。
-   - 增加回归测试单元（Vitest 脚本），证明在没有配置任何专门的能力别名 Key 时，系统读取旧版 `.env` / `config.json` 依然能完全正常地启动和响应对话。
+| Phase | 状态 | Tag | 实际交付 |
+| --- | --- | --- | --- |
+| Phase 1: Observe + Draft | 已完成 | 包含于后续提交 | 调用入口盘点、配置来源盘点、三条最小能力别名设计、静态映射草案 |
+| Phase 2: Soft Integration | 已完成 | `omniroute-phase2-oct-plan-soft-routing` / `omniroute-phase2-capability-passthrough` | `oct-plan` 软接入 script_adapter 与 summarizer；主聊天链路具备 capability 透传能力 |
+| Phase 3: Tool-Safe Governance | 已完成 | `omniroute-phase3-tool-safe-governance` | 工具循环与带工具 Agent 自动尝试 `oct-tool-safe`；无工具 Agent 保持原行为 |
+| Phase 4: Config Governance Status | 已完成 | `omniroute-phase4-config-governance` | 能力路由定义抽离、轻量 CredentialResolver、只读状态诊断、仅本机可访问的 `/omniroute/status` |
+| Phase 5: Request Fallback & Error Governance | 已完成 | `omniroute-phase5-request-fallback` | 统一网络与可恢复 HTTP 错误分类分类器、非流式与流式下受控能力候选集循环自愈重试机制 |
 
 ---
 
-## Phase 3: Governance (全面路由治理阶段)
+## 当前实际能力
 
-### 3.1 阶段目标
-实现高可用、可自愈、带跨商商级 Fallback 和成本限流机制的完整 OmniRoute 调用网关。在这一阶段中，彻底切断物理模型配置与业务场景的硬耦合。
+OCT 当前已经具备以下实际功能：
 
-### 3.2 具体行动项
-1. **接入 `oct-tool-safe`**：
-   - 开启工具调用隔离。即使主聊天切换到了快速/弱工具支持模型（如 R1、Thinking 等专注于思考或极速响应的纯文本模型），凡是进入 Tool 循环的任务自动路由到经过严格白盒测试的 `oct-tool-safe` 物理通道。
-2. **引入统一账密解析器 (CredentialResolver / Vault)**：
-   - 统一整理、解耦 `providers.js` 中的服务商，建立全新的凭证保管箱（CredentialResolver）。
-   - 用户不再混用 `DASHSCOPE_API_KEY`，而是通过图形化界面为 `oct-chat`、`oct-plan`、`oct-tool-safe` 三大逻辑别名分别分配其优先级的 Key、Base URL，并支持无感绑定到多条物理中转链。
-3. **引入多级 Fallback 与自愈层 (Fallback & Self-Healing)**：
-   - 对 `streamChat` 和 `chatCompletion` 封装统一的逻辑层重试（例如，百炼 Coding Plan 的 `qwen3.5-plus` 如果返回 500 或 429 报错，自动降级至 DeepSeek 官方直连通道）。
-4. **格式检查器与适配层 (Adapters)**：
-   - 引入各物理提供商特有的适配器（Provider-specific Adapter），负责处理思考文本（Thinking/Reasoning Content）、多模态 payload 变换等底层差异，向业务层提供完全一致的统一 payload。
-5. **成本统计与限流 (Rate Limiting & Token Cost)**：
-   - 在统一逻辑出口处监控每一次物理调用的 Token 消耗、耗时、计费，并由 OpsScheduler 统一拦截违规的突发大流量或超时请求。
-6. **最终语义重构**：
-   - 将主界面底部的模型名称从单纯的「物理名称」（如 `qwen-plus`）向「逻辑角色别名」（如「极速对话」、「重推理规划」、「高刚性工具」）转换，让普通用户彻底摆脱对繁杂物理模型及中转商的记忆负担。
+- 对内有三条核心能力别名：
+  - `oct-chat`：普通聊天与轻量对话。
+  - `oct-plan`：规划、摘要、剧本整理等非工具型任务。
+  - `oct-tool-safe`：工具循环与带工具 Agent 的安全工具通道。
+- `oct-plan` 已接入 script_adapter 子 Agent 与 summarizer。
+- 主聊天链路已支持 capability 透传，为 `oct-chat` 继续接入保留入口。
+- 工具循环与带工具 Agent 已具备 `oct-tool-safe` 隔离能力。
+- OmniRoute 可以诊断每条能力背后的候选通道是否具备 Base URL、API Key、Model。
+- `/omniroute/status` 提供本地只读诊断，不返回 API Key 明文，且非本机请求被拒绝。
+
+当前尚未具备：
+
+- 统一 Vault 或加密凭证管理。
+- 完整策略化 fallback 配置、权重治理与 UI 可视化管理。
+- ToolAdapter、VisionAdapter 或 provider-specific payload adapter。
+- 成本统计、token 账单、限流。
+- UI 配置页或用户可视化路由权重调整。
+
+---
+
+## Phase 1: Observe + Draft
+
+### 阶段目标
+
+不修改任何核心调用链代码，完成架构盘点、资产梳理，定义最小逻辑路由，并以解耦草案文件落地。
+
+### 已完成交付
+
+- `docs/02_architecture/omniroute-ai-call-sites.md`
+- `docs/02_architecture/omniroute-config-sources.md`
+- `docs/02_architecture/omniroute-minimal-capabilities.md`
+- `oct-gateway/runtime/omniRoute.mapping.draft.js`
+
+### 验收状态
+
+已完成。该阶段只做观察与草案，不改核心调用链。
+
+---
+
+## Phase 2: Soft Integration
+
+### 阶段目标
+
+以低侵入方式引入 `oct-plan` 与 capability 透传。默认物理 Provider、模型名、凭证来源保持不变。
+
+### 已完成交付
+
+- `oct-gateway/services/llmClient.js` 支持可选 `capability`。
+- script_adapter 子 Agent 显式传入 `oct-plan`。
+- `oct-gateway/services/summarizer.js` 在原 summarizer 配置缺失时可走 `oct-plan`。
+- `oct-gateway/runtime/chatEngine.js` 与 `oct-gateway/transport/httpRoutes.js` 支持 capability 透传占位。
+- 对应 Vitest 覆盖已补齐。
+
+### 验收状态
+
+已完成并打标：
+
+- `omniroute-phase2-oct-plan-soft-routing`
+- `omniroute-phase2-capability-passthrough`
+
+---
+
+## Phase 3: Tool-Safe Governance
+
+### 阶段目标
+
+接入 `oct-tool-safe`，让工具循环与带工具 Agent 在需要工具调用时优先走稳定工具通道，同时保持无工具任务原行为不变。
+
+### 已完成交付
+
+- 新增 `oct-gateway/runtime/omniRoute.js` 作为 OmniRoute 主解析入口。
+- `oct-gateway/ai.js` 支持 capability 解析，并在工具续轮场景触发 `oct-tool-safe`。
+- `oct-gateway/runtime/toolLoop.js` 在工具结果续轮时传入 `oct-tool-safe`。
+- `oct-gateway/agents/agent_runner.js` 仅在 `allowedTools` 非空时尝试 `oct-tool-safe`。
+- 测试覆盖工具 Agent、无工具 Agent、fallback 保留等关键契约。
+
+### 验收状态
+
+已完成并打标：
+
+- `omniroute-phase3-tool-safe-governance`
+
+---
+
+## Phase 4: Config Governance Status
+
+### 阶段目标
+
+建立轻量配置治理基础。将能力路由定义、候选物理通道、Key/Base URL 可用性判断整理成独立可测试模块，并提供本地只读状态诊断。
+
+### 已完成交付
+
+- `oct-gateway/runtime/omniRoute.routes.js`
+  - 抽离三条能力别名与候选物理通道定义。
+- `oct-gateway/runtime/omniRoute.credentials.js`
+  - 只读封装现有 `config.PROVIDERS` 与 `config.getEnvOrConfig`。
+  - 判断候选通道是否具备 Base URL、API Key、Model。
+- `oct-gateway/runtime/omniRoute.js`
+  - 保留原 `resolveCapability` 等 API。
+  - 新增 `inspectCapability`、`listCapabilityStatus`。
+- `GET /omniroute/status`
+  - 本地只读诊断接口。
+  - 非本机请求返回 403。
+  - 不返回 API Key 明文。
+
+### 验收状态
+
+已完成并打标：
+
+- `omniroute-phase4-config-governance`
+
+---
+
+## Phase 5: Request Fallback & Error Governance
+
+### 阶段目标
+
+在不改变默认行为的前提下，为 OmniRoute 建立请求级错误治理基础。重点处理 429、5xx、网络超时等可恢复错误，并允许能力别名在同一请求上下文中尝试下一个可用候选。
+
+### 范围
+
+允许做：
+
+- 为 OmniRoute 增加统一错误分类。
+- 为能力路由增加“请求失败后尝试下一个候选”的最小机制。
+- 仅对显式 capability 调用启用 fallback。
+- 保留原 providerRouter 既有 fallback 语义。
+- 增加详细测试覆盖。
+
+禁止做：
+
+- 不做 Vault。
+- 不做 UI。
+- 不做成本统计。
+- 不做 ToolAdapter。
+- 不改变 `/model` 命令。
+- 不让无 capability 的普通调用进入新 fallback。
+
+### 预期交付
+
+- 新增或扩展 OmniRoute fallback helper。
+- `ai.js` 或统一调用出口在显式 capability 下支持受控重试。
+- 测试覆盖：
+  - 429/5xx 触发下一候选。
+  - 401/403 不盲目重试。
+  - 无 capability 保持原行为。
+  - `originalResolve` 路径不破坏原 fallback 属性。
+
+---
+
+## Phase 6: ToolAdapter Minimal Governance
+
+### 阶段目标
+
+治理工具调用最容易失败的输入输出格式问题，但不改工具执行语义。
+
+### 范围
+
+允许做：
+
+- Tool Schema pre-flight 检查。
+- tool call 参数 Markdown code fence 清理。
+- 明显 JSON 字符串包裹修正。
+- 截断 JSON 的保守失败报告。
+- 测试覆盖常见 tool_calls 参数异常。
+
+禁止做：
+
+- 不改变 tools 目录下具体工具实现。
+- 不做命令注入复杂策略。
+- 不做跨供应商完整 tool spec adapter。
+- 不让 adapter 自动执行任何工具。
+
+### 预期交付
+
+- 最小 ToolAdapter 模块。
+- 接入点仅在 tool call 参数解析前后。
+- 失败时给出清晰错误，不进入死循环。
+
+---
+
+## Phase 7: Credential Vault / 配置收敛
+
+### 阶段目标
+
+开始从“读取旧配置”走向“统一凭证与路由配置”，但必须渐进迁移，避免破坏用户现有配置。
+
+### 范围
+
+允许做：
+
+- 设计并实现最小 `omniRoute.config.json` 或等价配置结构。
+- 支持为 `oct-chat`、`oct-plan`、`oct-tool-safe` 配置候选优先级。
+- 旧 `.env`、`config.json` 继续兼容。
+- 提供迁移提示和配置校验。
+
+禁止做：
+
+- 不一次性删除旧配置。
+- 不强制用户迁移。
+- 不把 Key 明文暴露给 renderer。
+- 不做复杂 UI。
+
+### 预期交付
+
+- 最小配置结构。
+- 只读/写入 helper。
+- 迁移兼容测试。
+
+---
+
+## Phase 8: Observability, Cost & Rate Limits
+
+### 阶段目标
+
+为 OmniRoute 增加运行时观测能力，记录每条能力、每个 provider 的延迟、错误率和 token 使用，为后续成本治理打基础。
+
+### 范围
+
+允许做：
+
+- 记录能力别名、provider、model、耗时、状态码、错误类型。
+- 如果响应中有 token usage，则记录 usage。
+- 提供本地只读状态接口。
+- 增加简单限流预留接口。
+
+禁止做：
+
+- 不做复杂账单系统。
+- 不做云端上报。
+- 不上传用户 prompt 或响应内容。
+- 不默认阻断用户请求。
+
+### 预期交付
+
+- 本地 metrics 聚合。
+- 只读诊断输出。
+- 测试覆盖脱敏与无内容泄露。
+
+---
+
+## Phase 9: UI / Operations Panel
+
+### 阶段目标
+
+在前面配置、fallback、观测能力稳定后，再考虑 UI 化，让用户能看到逻辑能力状态，而不是直接面对一堆物理模型。
+
+### 范围
+
+允许做：
+
+- 展示 `oct-chat`、`oct-plan`、`oct-tool-safe` 当前解析结果。
+- 展示候选通道是否可用。
+- 展示最近错误与延迟。
+- 提供只读优先的运维面板。
+
+禁止做：
+
+- 不在 UI 中显示 API Key。
+- 不在未完成 Vault 前做复杂 Key 编辑。
+- 不改变 `/model` 原命令语义。
+
+---
+
+## 后续执行规则
+
+后续每个 Phase 都应由 Codex 输出一次完整 Kilo/Cursor 执行口令。执行 AI 完成后必须输出：
+
+```text
+完成内容：
+- 修改文件列表：
+- 每个文件改了什么：
+
+未做内容：
+- 是否改了禁止文件：
+- 是否改了核心调用链：
+- 是否改了工具执行逻辑：
+- 是否引入新依赖：
+
+验证状态：
+- 执行了什么测试：
+- 测试结果：
+
+风险/备注：
+- 是否存在默认行为变化：
+- 需要 Codex 重点审查的文件/逻辑：
+```
+
+Codex 验收规则：
+
+- 先看 git diff 与关键文件。
+- 再跑必要测试。
+- 先给“通过 / 不通过”。
+- 通过后 commit + tag。
+- 不通过时只给一个集中返工口令。

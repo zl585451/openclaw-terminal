@@ -13,6 +13,8 @@ describe('OmniRoute Governance Core', () => {
     'DEEPSEEK_BASE_URL',
     'OPENAI_API_KEY',
     'OPENAI_BASE_URL',
+    'NEWAPI_API_KEY',
+    'NEWAPI_BASE_URL',
   ];
 
   let originalGetProviderConfig;
@@ -43,6 +45,7 @@ describe('OmniRoute Governance Core', () => {
         models: [
           { id: 'qwen3.5-plus', tools: true },
           { id: 'deepseek-v4-flash', tools: true },
+          { id: 'deepseek-v4-pro', tools: true },
           { id: 'gpt-4o', tools: true },
           { id: 'orig-model', tools: true }
         ],
@@ -421,7 +424,7 @@ describe('OmniRoute Governance Core', () => {
     const req = {
       method: 'GET',
       url: '/omniroute/status',
-      socket: { remoteAddress: '127.0.0.1' }, // Local request!
+      socket: { remoteAddress: '127.0.0.1' },
     };
 
     const handled = await handleHttpRequest(req, res);
@@ -463,7 +466,7 @@ describe('OmniRoute Governance Core', () => {
     const req = {
       method: 'GET',
       url: '/omniroute/status',
-      socket: { remoteAddress: '192.168.1.100' }, // Non-local request!
+      socket: { remoteAddress: '192.168.1.100' },
     };
 
     const handled = await handleHttpRequest(req, res);
@@ -472,6 +475,173 @@ describe('OmniRoute Governance Core', () => {
     expect(responseBody).toBeDefined();
     expect(responseBody.ok).toBe(false);
     expect(responseBody.error).toBe('internal_endpoint_local_only');
-    expect(responseBody.capabilities).toBeUndefined(); // Capabilities must NOT be leaked!
+    expect(responseBody.capabilities).toBeUndefined();
+  });
+
+  it('14. isRetryableError classifies可恢复/不可恢复错误 correctly', () => {
+    const { isRetryableError } = require('../runtime/omniRoute');
+    const { LlmClientHttpError, LlmClientTimeoutError } = require('../services/llmClient');
+
+    expect(isRetryableError(new LlmClientHttpError(429, 'Rate Limit'))).toBe(true);
+    expect(isRetryableError(new LlmClientHttpError(500, 'Server Error'))).toBe(true);
+    expect(isRetryableError(new LlmClientHttpError(503, 'Service Unavailable'))).toBe(true);
+
+    expect(isRetryableError(new LlmClientHttpError(401, 'Unauthorized'))).toBe(false);
+    expect(isRetryableError(new LlmClientHttpError(403, 'Forbidden'))).toBe(false);
+    expect(isRetryableError(new LlmClientHttpError(400, 'Bad Request'))).toBe(false);
+
+    expect(isRetryableError(new LlmClientTimeoutError('Timeout'))).toBe(true);
+    const abortErr = new Error('The user aborted a request.');
+    abortErr.name = 'AbortError';
+    expect(isRetryableError(abortErr)).toBe(true);
+
+    const fetchErr = new TypeError('fetch failed');
+    expect(isRetryableError(fetchErr)).toBe(true);
+    const connRefused = new Error('connection refused');
+    connRefused.code = 'ECONNREFUSED';
+    expect(isRetryableError(connRefused)).toBe(true);
+  });
+
+  it('15. chatCompletion retries candidate providers on 429/5xx and throws on 401 immediately', async () => {
+    const { chatCompletion } = require('../services/llmClient');
+
+    process.env.DEEPSEEK_BASE_URL = 'https://ds-fallback.api/v1';
+    process.env.DEEPSEEK_API_KEY = 'ds-key-fallback';
+
+    process.env.NEWAPI_BASE_URL = 'https://newapi-fallback.api/v1';
+    process.env.NEWAPI_API_KEY = 'newapi-key-fallback';
+
+    const originalFetch = globalThis.fetch;
+    let requestCount = 0;
+    const requestedUrls = [];
+
+    globalThis.fetch = async (url, options) => {
+      requestCount++;
+      requestedUrls.push(url);
+      if (url.includes('newapi-fallback.api')) {
+        return {
+          ok: false,
+          status: 503,
+          text: async () => 'Service Unavailable',
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'successful fallback summary' } }]
+        }),
+      };
+    };
+
+    try {
+      const res = await chatCompletion({
+        provider: {
+          capability: 'oct-plan', // skips current/current since it is unconfigured
+        },
+        messages: [{ role: 'user', content: 'test-summary' }],
+      });
+
+      expect(res.content).toBe('successful fallback summary');
+      expect(requestCount).toBe(2);
+      expect(requestedUrls[0]).toBe('https://newapi-fallback.api/v1/chat/completions');
+      expect(requestedUrls[1]).toBe('https://ds-fallback.api/v1/chat/completions');
+
+      requestCount = 0;
+      requestedUrls.length = 0;
+      globalThis.fetch = async (url, options) => {
+        requestCount++;
+        requestedUrls.push(url);
+        return {
+          ok: false,
+          status: 401,
+          text: async () => 'Unauthorized',
+        };
+      };
+
+      await expect(chatCompletion({
+        provider: {
+          capability: 'oct-plan',
+        },
+        messages: [{ role: 'user', content: 'test-summary' }],
+      })).rejects.toThrow('LLM_HTTP_401');
+
+      expect(requestCount).toBe(1);
+      expect(requestedUrls[0]).toBe('https://newapi-fallback.api/v1/chat/completions');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('16. streamChat retries candidate providers on 503 and respects delta cutoff', async () => {
+    const { streamChat } = require('../ai');
+    const ProviderRouter = require('../runtime/providerRouter');
+
+    const originalResolve = ProviderRouter.prototype.resolve;
+    ProviderRouter.prototype.resolve = function() {
+      return null; // skips current/current
+    };
+
+    process.env.DEEPSEEK_BASE_URL = 'https://ds-test.api/v1';
+    process.env.DEEPSEEK_API_KEY = 'ds-key-test';
+
+    process.env.DASHSCOPE_BASE_URL = 'https://bailian-test.api/v1';
+    process.env.DASHSCOPE_API_KEY = 'bailian-key-test';
+
+    const originalFetch = globalThis.fetch;
+    const requestedUrls = [];
+
+    globalThis.fetch = async (url, options) => {
+      requestedUrls.push(url);
+
+      if (url.includes('ds-test.api')) {
+        return {
+          ok: false,
+          status: 503,
+          text: async () => 'Service Unavailable',
+        };
+      }
+
+      const encoder = new TextEncoder();
+      const mockChunk = `data: ${JSON.stringify({
+        choices: [{
+          delta: { content: 'bailian candidate stream content' },
+          index: 0,
+          finish_reason: null
+        }]
+      })}\n\ndata: [DONE]\n\n`;
+
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(mockChunk));
+          controller.close();
+        }
+      });
+
+      return {
+        ok: true,
+        body: stream,
+        headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+      };
+    };
+
+    try {
+      let resultText = '';
+      await streamChat({
+        messages: [{ role: 'user', content: 'test-stream' }],
+        capability: 'oct-chat',
+        onDelta: (delta) => {
+          resultText += delta;
+        },
+        onDone: () => {},
+        onError: () => {},
+      });
+
+      expect(resultText).toBe('bailian candidate stream content');
+      expect(requestedUrls).toContain('https://ds-test.api/v1/chat/completions');
+      expect(requestedUrls).toContain('https://bailian-test.api/v1/chat/completions');
+    } finally {
+      globalThis.fetch = originalFetch;
+      ProviderRouter.prototype.resolve = originalResolve;
+    }
   });
 });

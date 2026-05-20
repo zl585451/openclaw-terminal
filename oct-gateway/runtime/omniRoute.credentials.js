@@ -19,13 +19,13 @@ function resolveCandidate(candidate, options = {}) {
   if (providerId === 'current' && modelId === 'current') {
     if (typeof options.originalResolve === 'function') {
       const orig = options.originalResolve();
-      if (orig) {
+      if (orig && orig.baseUrl && orig.apiKey) {
         return {
           ok: true,
           provider: orig.id || orig.providerId || 'current',
           model: orig.model,
-          baseUrl: orig.baseUrl ? orig.baseUrl.replace(/\/$/, '') : null,
-          apiKey: orig.apiKey || '',
+          baseUrl: orig.baseUrl.replace(/\/$/, ''),
+          apiKey: orig.apiKey,
           source: orig.source || 'original_resolve',
           reason: null,
         };

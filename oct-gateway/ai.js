@@ -1537,7 +1537,106 @@ function buildToolResultFallbackReply(messages, error) {
   ].join('\n');
 }
 
-async function streamChat({
+async function streamChat(options) {
+  let activeCapability = options.capability;
+  if (options.preserveToolChain || options.toolRound > 0) {
+    activeCapability = 'oct-tool-safe';
+  }
+
+  if (options._omniRouteResolved || !activeCapability) {
+    return streamChatRaw(options);
+  }
+
+  const omniRoute = require('./runtime/omniRoute');
+  let origResolved = null;
+  const context = {
+    originalResolve: () => {
+      origResolved = providerRouter.resolve();
+      return origResolved;
+    }
+  };
+
+  const activeCandidates = omniRoute.resolveAllCandidates(activeCapability, context);
+  if (activeCandidates.length <= 1) {
+    return streamChatRaw(options);
+  }
+
+  let lastError = null;
+  let hasReceivedDelta = false;
+
+  const interceptedOnDelta = (delta) => {
+    hasReceivedDelta = true;
+    if (typeof options.onDelta === 'function') {
+      options.onDelta(delta);
+    }
+  };
+
+  const resolvedCandidates = activeCandidates.map((routeRes) => {
+    if (routeRes.source === 'original_resolve' && origResolved) {
+      return origResolved;
+    }
+    const preset = config.PROVIDERS[routeRes.providerId];
+    return {
+      provider: preset || { id: routeRes.providerId, name: routeRes.providerId },
+      apiKey: routeRes.apiKey,
+      baseUrl: routeRes.baseUrl,
+      model: routeRes.model,
+      caps: config.getModelCaps(routeRes.model),
+      fallback: {
+        canFallbackToDeepseek: false,
+        canFallbackToBailian: false,
+      },
+    };
+  });
+
+  const runCandidate = (candidateResolved) => {
+    return new Promise((resolve, reject) => {
+      streamChatRaw({
+        ...options,
+        _omniRouteResolved: candidateResolved,
+        onDelta: interceptedOnDelta,
+        onDone: (...args) => {
+          if (typeof options.onDone === 'function') {
+            options.onDone(...args);
+          }
+          resolve();
+        },
+        onError: (err) => {
+          reject(err);
+        }
+      }).catch(reject);
+    });
+  };
+
+  for (let i = 0; i < resolvedCandidates.length; i++) {
+    const candidateResolved = resolvedCandidates[i];
+    try {
+      return await runCandidate(candidateResolved);
+    } catch (err) {
+      if (omniRoute.isRetryableError(err) && !hasReceivedDelta) {
+        lastError = err;
+        log.warn('OmniRoute streamChat candidate failed, trying next', {
+          capability: activeCapability,
+          providerId: candidateResolved.provider?.id || 'unknown',
+          model: candidateResolved.model,
+          error: err.message
+        });
+        continue;
+      }
+      if (typeof options.onError === 'function') {
+        options.onError(err);
+      }
+      return;
+    }
+  }
+
+  const finalError = lastError || new Error(`OmniRoute streamChat error: All candidates for ${activeCapability} failed`);
+  if (typeof options.onError === 'function') {
+    options.onError(finalError);
+  }
+}
+
+async function streamChatRaw({
   messages,
   onDelta,
   onDone,
@@ -1549,6 +1648,7 @@ async function streamChat({
   toolChoice = 'auto',
   turnId = null,
   capability = null,
+  _omniRouteResolved = null,
 }) {
   const hasMultimodalParts = (msgs) => Array.isArray(msgs) && msgs.some((m) =>
     Array.isArray(m?.content) && m.content.some((part) =>
@@ -1556,47 +1656,49 @@ async function streamChat({
     )
   );
 
-  let activeCapability = capability;
-  if (preserveToolChain || toolRound > 0) {
-    activeCapability = 'oct-tool-safe';
-  }
-
-  let resolved = null;
-  if (activeCapability) {
-    try {
-      const omniRoute = require('./runtime/omniRoute');
-      let origResolved = null;
-      const routeRes = omniRoute.resolveCapability(activeCapability, {
-        originalResolve: () => {
-          origResolved = providerRouter.resolve();
-          return origResolved;
-        }
-      });
-      if (routeRes) {
-        if (routeRes.source === 'original_resolve' && origResolved) {
-          resolved = origResolved;
-        } else {
-          const preset = config.PROVIDERS[routeRes.providerId];
-          resolved = {
-            provider: preset || { id: routeRes.providerId, name: routeRes.providerId },
-            apiKey: routeRes.apiKey,
-            baseUrl: routeRes.baseUrl,
-            model: routeRes.model,
-            caps: config.getModelCaps(routeRes.model),
-            fallback: {
-              canFallbackToDeepseek: false,
-              canFallbackToBailian: false,
-            },
-          };
-        }
-      }
-    } catch (err) {
-      log.warn('OmniRoute resolve capability error', { capability: activeCapability, error: err.message });
-    }
-  }
-
+  let resolved = _omniRouteResolved;
   if (!resolved) {
-    resolved = providerRouter.resolve();
+    let activeCapability = capability;
+    if (preserveToolChain || toolRound > 0) {
+      activeCapability = 'oct-tool-safe';
+    }
+
+    if (activeCapability) {
+      try {
+        const omniRoute = require('./runtime/omniRoute');
+        let origResolved = null;
+        const routeRes = omniRoute.resolveCapability(activeCapability, {
+          originalResolve: () => {
+            origResolved = providerRouter.resolve();
+            return origResolved;
+          }
+        });
+        if (routeRes) {
+          if (routeRes.source === 'original_resolve' && origResolved) {
+            resolved = origResolved;
+          } else {
+            const preset = config.PROVIDERS[routeRes.providerId];
+            resolved = {
+              provider: preset || { id: routeRes.providerId, name: routeRes.providerId },
+              apiKey: routeRes.apiKey,
+              baseUrl: routeRes.baseUrl,
+              model: routeRes.model,
+              caps: config.getModelCaps(routeRes.model),
+              fallback: {
+                canFallbackToDeepseek: false,
+                canFallbackToBailian: false,
+              },
+            };
+          }
+        }
+      } catch (err) {
+        log.warn('OmniRoute resolve capability error', { capability: activeCapability, error: err.message });
+      }
+    }
+
+    if (!resolved) {
+      resolved = providerRouter.resolve();
+    }
   }
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 

@@ -28,7 +28,53 @@ class LlmClientHttpError extends Error {
  * @param {number} [options.timeoutMs=30000]
  * @returns {Promise<{ content: string, usage?: object, model: string, latencyMs: number }>}
  */
-async function chatCompletion({
+async function chatCompletion(options) {
+  const provider = options.provider || {};
+  if (!provider.capability) {
+    return chatCompletionRaw(options);
+  }
+
+  const omniRoute = require('../runtime/omniRoute');
+  const context = {
+    originalResolve: () => {
+      return provider;
+    }
+  };
+
+  const activeCandidates = omniRoute.resolveAllCandidates(provider.capability, context);
+  if (activeCandidates.length <= 1) {
+    return chatCompletionRaw(options);
+  }
+
+  let lastError = null;
+  for (let i = 0; i < activeCandidates.length; i++) {
+    const candidate = activeCandidates[i];
+    try {
+      return await chatCompletionRaw({
+        ...options,
+        provider: {
+          baseUrl: candidate.baseUrl,
+          apiKey: candidate.apiKey,
+          model: candidate.model,
+          source: candidate.source,
+          providerId: candidate.providerId,
+          capability: candidate.capability,
+        }
+      });
+    } catch (err) {
+      if (omniRoute.isRetryableError(err)) {
+        lastError = err;
+        console.warn(`[OmniRoute Fallback] Candidate failed: ${candidate.providerId} (${err.message}). Trying next...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError || new Error(`OmniRoute error: All candidates for ${provider.capability} failed`);
+}
+
+async function chatCompletionRaw({
   provider,
   messages,
   maxTokens = 1024,

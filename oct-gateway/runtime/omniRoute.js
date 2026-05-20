@@ -107,6 +107,93 @@ function listCapabilityStatus(context = {}) {
   });
 }
 
+/**
+ * 解析并列出特定逻辑能力下所有已配置可用的物理候选提供商列表
+ * @param {string} capability - 逻辑能力别名 (如 oct-chat, oct-plan, oct-tool-safe)
+ * @param {object} context - 包含 originalResolve 回调的上下文
+ * @returns {Array<object>} 已解析的物理候选列表
+ */
+function resolveAllCandidates(capability, context = {}) {
+  if (!isCapabilityAlias(capability)) {
+    return [];
+  }
+  const def = routes.getCapabilityDefinition(capability);
+  const candidates = def.candidates;
+  const resolvedList = [];
+
+  for (const candidate of candidates) {
+    const res = credentials.resolveCandidate(candidate, context);
+    if (res.ok) {
+      resolvedList.push({
+        providerId: res.provider,
+        baseUrl: res.baseUrl,
+        apiKey: res.apiKey,
+        model: res.model,
+        source: res.source,
+        capability,
+      });
+    }
+  }
+
+  return resolvedList;
+}
+
+/**
+ * 判断错误是否属于网络超时、429、5xx 服务器内部异常等可恢复错误
+ * @param {Error} err - 错误对象
+ * @returns {boolean}
+ */
+function isRetryableError(err) {
+  if (!err) return false;
+
+  // 1. HTTP 错误响应代码分类
+  if (err.name === 'LlmClientHttpError' || typeof err.status === 'number') {
+    const status = err.status;
+    if (status === 429 || (status >= 500 && status < 600)) {
+      return true;
+    }
+    return false;
+  }
+
+  // 1.5. 检查 streamChat 抛出的 "API Error [status]" 格式字符串
+  if (err.message && err.message.startsWith('API Error ')) {
+    const match = err.message.match(/API Error (\d+)/);
+    if (match) {
+      const status = Number(match[1]);
+      if (status === 429 || (status >= 500 && status < 600)) {
+        return true;
+      }
+      return false;
+    }
+  }
+
+  // 2. 超时错误检测
+  if (
+    err.name === 'LlmClientTimeoutError' ||
+    err.message?.includes('超时') ||
+    err.message?.includes('timeout')
+  ) {
+    return true;
+  }
+
+  // 3. 网络故障、套接字与断连错误
+  const msg = String(err.message || '').toLowerCase();
+  if (
+    err.code === 'ECONNREFUSED' ||
+    err.code === 'ENOTFOUND' ||
+    err.code === 'ETIMEDOUT' ||
+    err.code === 'EPIPE' ||
+    msg.includes('fetch failed') ||
+    msg.includes('network error') ||
+    msg.includes('socket hang up') ||
+    msg.includes('aborted')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 module.exports = {
   OMNI_ROUTE_CAPABILITIES,
   isCapabilityAlias,
@@ -114,4 +201,6 @@ module.exports = {
   resolveCapability,
   inspectCapability,
   listCapabilityStatus,
+  resolveAllCandidates,
+  isRetryableError,
 };
