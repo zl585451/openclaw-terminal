@@ -50,7 +50,7 @@ let currentGatewayCapabilities: {
   mcpConnectedServers?: number;
 } | undefined;
 const SESSION_STATE_FILE = path.join(app.getPath('userData'), 'session-state.json');
-const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
+const CONFIG_FILE = path.join(os.homedir(), '.openclaw', 'config.json');
 
 const DEFAULT_CONFIG = {
   OPENCLAW_WS_URL: 'ws://127.0.0.1:18789',
@@ -2965,12 +2965,12 @@ ipcMain.handle(
         embedding.dimensions = Number.isFinite(n) && n > 0 ? Math.round(n) : 1024;
       }
       if (payload.provider === 'bailian') {
-        embedding.baseUrl = VECTOR_PROVIDER_PRESETS.bailian.baseUrl;
-        embedding.model = VECTOR_PROVIDER_PRESETS.bailian.model;
-        embedding.dimensions = VECTOR_PROVIDER_PRESETS.bailian.dimensions;
+        embedding.baseUrl = payload.baseUrl || VECTOR_PROVIDER_PRESETS.bailian.baseUrl;
+        embedding.model = payload.model || VECTOR_PROVIDER_PRESETS.bailian.model;
+        embedding.dimensions = Number(payload.dimensions || VECTOR_PROVIDER_PRESETS.bailian.dimensions);
       } else if (payload.provider === 'volcengine') {
-        embedding.baseUrl = VECTOR_PROVIDER_PRESETS.volcengine.baseUrl;
-        embedding.dimensions = Number(embedding.dimensions || VECTOR_PROVIDER_PRESETS.volcengine.dimensions);
+        embedding.baseUrl = payload.baseUrl || VECTOR_PROVIDER_PRESETS.volcengine.baseUrl;
+        embedding.dimensions = Number(payload.dimensions || VECTOR_PROVIDER_PRESETS.volcengine.dimensions);
       }
       embedding.version = Number(embedding.version || 1);
       embedding.timeoutMs = Number(embedding.timeoutMs || 30000);

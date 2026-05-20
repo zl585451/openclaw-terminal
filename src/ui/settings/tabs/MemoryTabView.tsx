@@ -411,17 +411,13 @@ export function MemoryTabView({
               setVectorStatus('idle');
               setVectorError('');
               try {
-                const preset = VECTOR_PROVIDER_PRESETS[vectorProvider];
-                const nextBaseUrl = vectorProvider === 'custom' ? vectorBaseUrl : preset.baseUrl;
-                const nextModel = vectorProvider === 'bailian' ? preset.model : vectorModel;
-                const nextDimensions = vectorProvider === 'custom' ? vectorDimensions : preset.dimensions;
                 const r = await api.saveMemoryVectorRecallConfig({
                   enabled: vectorEnabled,
                   provider: vectorProvider,
-                  baseUrl: nextBaseUrl,
+                  baseUrl: vectorBaseUrl,
                   apiKey: vectorApiKey,
-                  model: nextModel,
-                  dimensions: nextDimensions,
+                  model: vectorModel,
+                  dimensions: vectorDimensions,
                   threshold: 0.75,
                   topK: 3,
                 });
