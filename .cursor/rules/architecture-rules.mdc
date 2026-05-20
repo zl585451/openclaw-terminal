@@ -1,0 +1,49 @@
+---
+description: OCT 架构分层规则 — 防止耦合与文件膨胀
+alwaysApply: true
+---
+
+# OCT 架构规则
+
+## 两个独立系统，不要混淆
+
+| 系统 | 目录 | 语言 | 规范 |
+|------|------|------|------|
+| 前端 UI | `src/` | TypeScript + React | ES modules, `.tsx/.ts` |
+| AI 网关 | `oct-gateway/` | Node.js | CommonJS `require()` |
+
+**跨系统绝对禁止**：`src/` 代码不能 import `oct-gateway/`，反之亦然。
+
+## 前端分层（单向依赖）
+
+```
+src/ui/          ← 页面级组件（只组合）
+src/components/  ← 纯 UI 组件（无业务逻辑）
+src/hooks/       ← 业务逻辑（连接 core 和 UI）
+src/core/        ← 核心算法/状态机（不依赖 React）
+src/contexts/    ← 全局状态（通过 hooks 消费）
+src/utils/       ← 纯工具函数（无副作用，无依赖）
+```
+
+**允许方向**：上层可以依赖下层，下层不能依赖上层。
+
+**同级互引禁止**：`components/A.tsx` 不得 import `components/B.tsx`。
+
+## 文件体量警戒线
+
+| 阈值 | 动作 |
+|------|------|
+| > 300 行 | 警告：说明为什么不能拆 |
+| > 500 行 | 必须拆分，先提方案再动手 |
+| import > 10 个 | 检查是否违反分层 |
+
+`src/ui/chat/ChatTab.v2.tsx` 当前 ~3000 行，是已知技术债，
+**禁止在此文件继续添加新功能**，只做拆分和 bug 修复。
+
+## 网关模块规则
+
+`oct-gateway/` 下统一使用 `require()`。
+
+- 工具定义放 `oct-gateway/tools/`
+- 核心协调逻辑放 `index.js` / `orchestrator.js` / `runtime/` / `gateway/`
+- 工具函数模块不得反向 require `index.js`
