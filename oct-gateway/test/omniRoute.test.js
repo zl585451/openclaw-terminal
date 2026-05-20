@@ -377,4 +377,101 @@ describe('OmniRoute Governance Core', () => {
       ProviderRouter.prototype.resolve = originalResolve;
     }
   });
+
+  it('11. inspectCapability lists status without leaking API Key', () => {
+    process.env.OPENAI_API_KEY = 'sk-super-secret-key-99999';
+    process.env.OPENAI_BASE_URL = 'https://openai.api/v1';
+
+    const status = omniRoute.inspectCapability('oct-tool-safe');
+    expect(status).toBeDefined();
+    expect(status.capability).toBe('oct-tool-safe');
+
+    const openaiCandidate = status.candidates.find((c) => c.provider === 'openai');
+    expect(openaiCandidate).toBeDefined();
+    expect(openaiCandidate.available).toBe(true);
+    expect(openaiCandidate.hasApiKey).toBe(true);
+
+    const serialized = JSON.stringify(status);
+    expect(serialized).not.toContain('sk-super-secret-key-99999');
+  });
+
+  it('12. /omniroute/status API handler returns capability status when requested locally', async () => {
+    const handleHttpRequest = require('../transport/httpRoutes')({
+      memory: {},
+      memoryManagementAgent: {},
+      reviewQueueActions: {},
+      toolLoader: {},
+      mcpManager: {},
+    });
+
+    let headers = null;
+    let responseBody = null;
+    const res = {
+      writeHead: (status, h) => {
+        headers = h;
+      },
+      end: (data) => {
+        responseBody = JSON.parse(data);
+      }
+    };
+
+    process.env.OPENAI_API_KEY = 'sk-extremely-secret-key-12345';
+    process.env.OPENAI_BASE_URL = 'https://openai.api/v1';
+
+    const req = {
+      method: 'GET',
+      url: '/omniroute/status',
+      socket: { remoteAddress: '127.0.0.1' }, // Local request!
+    };
+
+    const handled = await handleHttpRequest(req, res);
+    expect(handled).toBe(true);
+    expect(responseBody).toBeDefined();
+    expect(responseBody.capabilities).toBeDefined();
+
+    const toolSafe = responseBody.capabilities.find(c => c.capability === 'oct-tool-safe');
+    expect(toolSafe).toBeDefined();
+    const openaiCandidate = toolSafe.candidates.find(cand => cand.provider === 'openai');
+    expect(openaiCandidate).toBeDefined();
+    expect(openaiCandidate.available).toBe(true);
+    expect(openaiCandidate.hasApiKey).toBe(true);
+
+    const rawString = JSON.stringify(responseBody);
+    expect(rawString).not.toContain('sk-extremely-secret-key-12345');
+  });
+
+  it('13. /omniroute/status API handler rejects with 403 when requested non-locally', async () => {
+    const handleHttpRequest = require('../transport/httpRoutes')({
+      memory: {},
+      memoryManagementAgent: {},
+      reviewQueueActions: {},
+      toolLoader: {},
+      mcpManager: {},
+    });
+
+    let httpStatus = null;
+    let responseBody = null;
+    const res = {
+      writeHead: (status, h) => {
+        httpStatus = status;
+      },
+      end: (data) => {
+        responseBody = JSON.parse(data);
+      }
+    };
+
+    const req = {
+      method: 'GET',
+      url: '/omniroute/status',
+      socket: { remoteAddress: '192.168.1.100' }, // Non-local request!
+    };
+
+    const handled = await handleHttpRequest(req, res);
+    expect(handled).toBe(true);
+    expect(httpStatus).toBe(403);
+    expect(responseBody).toBeDefined();
+    expect(responseBody.ok).toBe(false);
+    expect(responseBody.error).toBe('internal_endpoint_local_only');
+    expect(responseBody.capabilities).toBeUndefined(); // Capabilities must NOT be leaked!
+  });
 });

@@ -101,6 +101,38 @@ function createHttpRequestHandler({
       return true;
     }
 
+    if (req.method === 'GET' && req.url === '/omniroute/status') {
+      if (!isLocalInternalRequest(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'internal_endpoint_local_only' }));
+        return true;
+      }
+      try {
+        const omniRoute = require('../runtime/omniRoute');
+        const ProviderRouter = require('../runtime/providerRouter');
+        const config = require('../config');
+
+        const context = {
+          originalResolve: () => {
+            try {
+              const routerInstance = new ProviderRouter({ config });
+              return routerInstance.resolve();
+            } catch (err) {
+              return null;
+            }
+          }
+        };
+
+        const status = omniRoute.listCapabilityStatus(context);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ capabilities: status }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return true;
+    }
+
     if (req.url?.startsWith('/internal/memory/')) {
       if (!isLocalInternalRequest(req)) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
