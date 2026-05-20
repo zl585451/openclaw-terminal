@@ -21,6 +21,7 @@
 | Phase 4: Config Governance Status | 已完成 | `omniroute-phase4-config-governance` | 能力路由定义抽离、轻量 CredentialResolver、只读状态诊断、仅本机可访问的 `/omniroute/status` |
 | Phase 5: Request Fallback & Error Governance | 已完成 | `omniroute-phase5-request-fallback` | 统一网络与可恢复 HTTP 错误分类分类器、非流式与流式下受控能力候选集循环自愈重试机制 |
 | Phase 6: ToolAdapter Minimal Governance | 已完成 | `omniroute-phase6-tool-adapter` | 最小 ToolAdapter 参数清洗、尾逗号修复、Markdown 脱壳与截断 JSON 的保守失败防护 |
+| Phase 7: Credential Vault / 配置收敛 | 已完成 | `omniroute-phase7-credential-vault` | 最小配置结构设计，本地路由与凭证 Vault 收敛持久化，无缝向下兼容旧配置 |
 
 ---
 
@@ -242,6 +243,12 @@ OCT 当前已经具备以下实际功能：
 - 最小配置结构。
 - 只读/写入 helper。
 - 迁移兼容测试。
+
+### 验收状态
+
+已完成并打标：
+
+- `omniroute-phase7-credential-vault`
 
 ---
 

@@ -644,4 +644,203 @@ describe('OmniRoute Governance Core', () => {
       ProviderRouter.prototype.resolve = originalResolve;
     }
   });
+
+  describe('Phase 7: Credential Vault and Configuration Convergence', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const omniConfig = require('../runtime/omniRoute.config');
+    const tempConfigPath = path.join(os.tmpdir(), `omniRoute.config.test.${process.pid}.${Date.now()}.json`);
+
+    beforeEach(() => {
+      process.env.OMNIROUTE_CONFIG_FILE = tempConfigPath;
+      omniConfig.clearCache();
+      if (fs.existsSync(tempConfigPath)) {
+        try { fs.unlinkSync(tempConfigPath); } catch (_) {}
+      }
+    });
+
+    afterEach(() => {
+      delete process.env.OMNIROUTE_CONFIG_FILE;
+      omniConfig.clearCache();
+      if (fs.existsSync(tempConfigPath)) {
+        try { fs.unlinkSync(tempConfigPath); } catch (_) {}
+      }
+    });
+
+    it('17. gets correct config path and writes default structure if file not exists', () => {
+      expect(omniConfig.getConfigPath()).toBe(tempConfigPath);
+      const loaded = omniConfig.loadConfig();
+      expect(loaded).toEqual({ routes: {}, credentials: {} });
+    });
+
+    it('18. saves and loads routes and credentials correctly', () => {
+      const successRoute = omniConfig.updateRouteCandidates('oct-chat', [
+        { provider: 'deepseek', model: 'deepseek-v4-flash' }
+      ]);
+      expect(successRoute).toBe(true);
+
+      const successCred = omniConfig.updateCredential('deepseek', {
+        apiKey: 'sk-vault-test-12345',
+        baseUrl: 'https://vault.deepseek.api/v1'
+      });
+      expect(successCred).toBe(true);
+
+      omniConfig.clearCache();
+
+      const loaded = omniConfig.loadConfig();
+      expect(loaded.routes['oct-chat'].candidates).toEqual([
+        { provider: 'deepseek', model: 'deepseek-v4-flash' }
+      ]);
+      expect(loaded.credentials['deepseek']).toEqual({
+        apiKey: 'sk-vault-test-12345',
+        baseUrl: 'https://vault.deepseek.api/v1'
+      });
+    });
+
+    it('19. prioritizes dynamic route candidates from omniRoute.config.json', () => {
+      omniConfig.updateRouteCandidates('oct-chat', [
+        { provider: 'newapi', model: 'custom-model-from-vault' }
+      ]);
+
+      const res = omniRoute.resolveCapability('oct-chat');
+      // Default oct-chat would try current, deepseek, etc.
+      // But now it should only resolve using custom candidates override.
+      // Let's configure custom credentials for newapi to make it resolve successfully.
+      process.env.NEWAPI_BASE_URL = 'https://newapi.vault.api/v1';
+      process.env.NEWAPI_API_KEY = 'newapi-vault-key';
+
+      const resolved = omniRoute.resolveCapability('oct-chat');
+      expect(resolved).toBeDefined();
+      expect(resolved.providerId).toBe('newapi');
+      expect(resolved.model).toBe('custom-model-from-vault');
+      expect(resolved.baseUrl).toBe('https://newapi.vault.api/v1');
+    });
+
+    it('20. prioritizes credentials from omniRoute.config.json and reports source as omniroute_vault_<provider>', () => {
+      omniConfig.updateCredential('deepseek', {
+        apiKey: 'sk-vault-secret-key-98765',
+        baseUrl: 'https://vault-endpoint.deepseek.com/v1'
+      });
+
+      // Even if environment variable is set differently, vault takes priority
+      process.env.DEEPSEEK_BASE_URL = 'https://env-endpoint.deepseek.com/v1';
+      process.env.DEEPSEEK_API_KEY = 'sk-env-secret-key';
+
+      const resolved = omniRoute.resolveCapability('oct-chat');
+      expect(resolved).toBeDefined();
+      expect(resolved.providerId).toBe('deepseek');
+      expect(resolved.baseUrl).toBe('https://vault-endpoint.deepseek.com/v1');
+      expect(resolved.apiKey).toBe('sk-vault-secret-key-98765');
+      expect(resolved.source).toBe('omniroute_vault_deepseek');
+    });
+
+    it('21. falls back to legacy credentials/config when vault entry is empty', () => {
+      process.env.DEEPSEEK_BASE_URL = 'https://env-endpoint.deepseek.com/v1';
+      process.env.DEEPSEEK_API_KEY = 'sk-env-secret-key';
+
+      // Load config will return empty since no file exists
+      const resolved = omniRoute.resolveCapability('oct-chat');
+      expect(resolved).toBeDefined();
+      expect(resolved.providerId).toBe('deepseek');
+      expect(resolved.baseUrl).toBe('https://env-endpoint.deepseek.com/v1');
+      expect(resolved.apiKey).toBe('sk-env-secret-key');
+      expect(resolved.source).toBe('omniroute_candidate_deepseek');
+    });
+
+    it('22. status endpoint does not leak dynamic vault credentials', async () => {
+      omniConfig.updateCredential('deepseek', {
+        apiKey: 'sk-vault-secret-key-leak-check',
+        baseUrl: 'https://vault.deepseek.api/v1'
+      });
+
+      const status = omniRoute.inspectCapability('oct-chat');
+      expect(status).toBeDefined();
+      const deepseekCand = status.candidates.find((c) => c.provider === 'deepseek');
+      expect(deepseekCand).toBeDefined();
+      expect(deepseekCand.available).toBe(true);
+      expect(deepseekCand.hasApiKey).toBe(true);
+
+      const serialized = JSON.stringify(status);
+      expect(serialized).not.toContain('sk-vault-secret-key-leak-check');
+    });
+
+    it('23. malformed or invalid json in config file does not crash loadConfig() and returns default empty structure', () => {
+      fs.writeFileSync(tempConfigPath, 'INVALID_JSON_HERE_NO_PARSE', 'utf-8');
+      omniConfig.clearCache();
+      const loaded = omniConfig.loadConfig();
+      expect(loaded).toEqual({ routes: {}, credentials: {} });
+    });
+
+    it('24. filters out malformed or invalid candidate entries in routes, preserving valid ones', () => {
+      const rawWithBadCandidates = {
+        routes: {
+          'oct-chat': {
+            candidates: [
+              { provider: 'deepseek', model: 'deepseek-chat' }, // valid
+              { provider: '', model: 'valid-model' }, // invalid provider
+              { provider: 'valid-provider', model: 123 }, // invalid model type
+              'not-an-object-candidate', // invalid candidate type
+              null, // null candidate
+            ]
+          }
+        }
+      };
+
+      const validated = omniConfig.normalizeAndValidate(rawWithBadCandidates);
+      expect(validated.routes['oct-chat']).toBeDefined();
+      expect(validated.routes['oct-chat'].candidates).toEqual([
+        { provider: 'deepseek', model: 'deepseek-chat' }
+      ]);
+    });
+
+    it('25. returns null for route candidates when all candidates in capability definition are filtered out', () => {
+      const rawAllBad = {
+        routes: {
+          'oct-chat': {
+            candidates: [
+              { provider: '', model: '' },
+              { provider: 'only-provider' }, // missing model
+            ]
+          }
+        }
+      };
+
+      const validated = omniConfig.normalizeAndValidate(rawAllBad);
+      // Since all candidates are invalid, the entire capability key in routes is filtered out
+      expect(validated.routes['oct-chat']).toBeUndefined();
+
+      // getRouteCandidates should return null
+      fs.writeFileSync(tempConfigPath, JSON.stringify(rawAllBad), 'utf-8');
+      omniConfig.clearCache();
+      const res = omniConfig.getRouteCandidates('oct-chat');
+      expect(res).toBeNull();
+    });
+
+    it('26. filters out malformed credential blocks when credentials or specific entry is not an object', () => {
+      const rawBadCredentials = {
+        credentials: {
+          'deepseek': 'not-an-object-credential', // invalid entry
+          'bailian': null, // null entry
+          'openai': { apiKey: 'sk-123', baseUrl: 'https://api.openai.com' } // valid
+        }
+      };
+
+      const validated = omniConfig.normalizeAndValidate(rawBadCredentials);
+      expect(validated.credentials['deepseek']).toBeUndefined();
+      expect(validated.credentials['bailian']).toBeUndefined();
+      expect(validated.credentials['openai']).toEqual({ apiKey: 'sk-123', baseUrl: 'https://api.openai.com' });
+    });
+
+    it('27. normalizes credential properties to empty string if apiKey/baseUrl are not strings', () => {
+      const rawBadTypes = {
+        credentials: {
+          'deepseek': { apiKey: 12345, baseUrl: true } // invalid property types
+        }
+      };
+
+      const validated = omniConfig.normalizeAndValidate(rawBadTypes);
+      expect(validated.credentials['deepseek']).toEqual({ apiKey: '', baseUrl: '' });
+    });
+  });
 });

@@ -5,6 +5,7 @@
  */
 
 const config = require('../config');
+const omniConfig = require('./omniRoute.config');
 
 /**
  * 解析具体候选物理通道配置
@@ -42,7 +43,11 @@ function resolveCandidate(candidate, options = {}) {
     };
   }
 
-  if (!config || !config.PROVIDERS || !config.PROVIDERS[providerId]) {
+  const customCred = omniConfig.getCredential(providerId);
+  const hasPreset = !!(config && config.PROVIDERS && config.PROVIDERS[providerId]);
+  const preset = hasPreset ? config.PROVIDERS[providerId] : {};
+
+  if (!customCred && !hasPreset) {
     return {
       ok: false,
       provider: providerId,
@@ -50,10 +55,10 @@ function resolveCandidate(candidate, options = {}) {
       baseUrl: null,
       apiKey: '',
       source: `omniroute_candidate_${providerId}`,
-      reason: `Provider preset "${providerId}" not found in PROVIDERS`,
+      reason: `Provider preset "${providerId}" not found in PROVIDERS and no credential found in vault`,
     };
   }
-  const preset = config.PROVIDERS[providerId];
+
   const getEnvVal = (key) => {
     if (config && typeof config.getEnvOrConfig === 'function') {
       return config.getEnvOrConfig(key);
@@ -62,55 +67,67 @@ function resolveCandidate(candidate, options = {}) {
   };
 
   // 1. 尝试解析 Base URL
-  let baseUrl = preset.baseUrl || '';
-  if (providerId === 'bailian' || providerId === 'bailian-coding') {
-    baseUrl = getEnvVal('DASHSCOPE_BASE_URL') || baseUrl;
-  } else if (providerId === 'deepseek') {
-    baseUrl = getEnvVal('DEEPSEEK_BASE_URL') || baseUrl;
-  } else if (providerId === 'minimax') {
-    baseUrl = getEnvVal('MINIMAX_BASE_URL') || baseUrl;
-  } else if (providerId === 'moonshot') {
-    baseUrl = getEnvVal('MOONSHOT_BASE_URL') || baseUrl;
-  } else if (providerId === 'google') {
-    baseUrl = getEnvVal('GOOGLE_AI_BASE_URL') || baseUrl;
-  } else if (providerId === 'newapi') {
-    baseUrl = getEnvVal('NEWAPI_BASE_URL') || baseUrl;
-  } else if (providerId === 'custom') {
-    baseUrl = getEnvVal('CUSTOM_BASE_URL') || baseUrl;
+  let baseUrl = '';
+  if (customCred && customCred.baseUrl) {
+    baseUrl = customCred.baseUrl;
   } else {
-    const envVar = `${providerId.toUpperCase().replace('-', '_')}_BASE_URL`;
-    baseUrl = getEnvVal(envVar) || baseUrl;
+    baseUrl = preset.baseUrl || '';
+    if (providerId === 'bailian' || providerId === 'bailian-coding') {
+      baseUrl = getEnvVal('DASHSCOPE_BASE_URL') || baseUrl;
+    } else if (providerId === 'deepseek') {
+      baseUrl = getEnvVal('DEEPSEEK_BASE_URL') || baseUrl;
+    } else if (providerId === 'minimax') {
+      baseUrl = getEnvVal('MINIMAX_BASE_URL') || baseUrl;
+    } else if (providerId === 'moonshot') {
+      baseUrl = getEnvVal('MOONSHOT_BASE_URL') || baseUrl;
+    } else if (providerId === 'google') {
+      baseUrl = getEnvVal('GOOGLE_AI_BASE_URL') || baseUrl;
+    } else if (providerId === 'newapi') {
+      baseUrl = getEnvVal('NEWAPI_BASE_URL') || baseUrl;
+    } else if (providerId === 'custom') {
+      baseUrl = getEnvVal('CUSTOM_BASE_URL') || baseUrl;
+    } else if (providerId !== 'current') {
+      const envVar = `${providerId.toUpperCase().replace('-', '_')}_BASE_URL`;
+      baseUrl = getEnvVal(envVar) || baseUrl;
+    }
   }
 
   // 2. 尝试解析 API Key
   let apiKey = '';
-  if (preset.fixedApiKey) {
-    apiKey = preset.fixedApiKey;
-  } else if (providerId === 'siliconflow') {
-    const sfKey = getEnvVal('SILICONFLOW_API_KEY');
-    const dashKey = getEnvVal('DASHSCOPE_API_KEY');
-    const dashLooksCodingPlan = dashKey && String(dashKey).trim().toLowerCase().startsWith('sk-sp-');
-    if (sfKey) {
-      apiKey = sfKey;
-    } else if (dashKey && !dashLooksCodingPlan) {
-      apiKey = dashKey;
-    }
+  if (customCred && customCred.apiKey) {
+    apiKey = customCred.apiKey;
   } else {
-    const envVars = preset.keyEnvVars || [];
-    for (const keyVar of envVars) {
-      const val = getEnvVal(keyVar);
-      if (val) {
-        if (providerId === 'moonshot' && String(val).trim().toLowerCase().startsWith('sk-sp-')) {
-          continue;
+    if (preset.fixedApiKey) {
+      apiKey = preset.fixedApiKey;
+    } else if (providerId === 'siliconflow') {
+      const sfKey = getEnvVal('SILICONFLOW_API_KEY');
+      const dashKey = getEnvVal('DASHSCOPE_API_KEY');
+      const dashLooksCodingPlan = dashKey && String(dashKey).trim().toLowerCase().startsWith('sk-sp-');
+      if (sfKey) {
+        apiKey = sfKey;
+      } else if (dashKey && !dashLooksCodingPlan) {
+        apiKey = dashKey;
+      }
+    } else {
+      const envVars = preset.keyEnvVars || [];
+      for (const keyVar of envVars) {
+        const val = getEnvVal(keyVar);
+        if (val) {
+          if (providerId === 'moonshot' && String(val).trim().toLowerCase().startsWith('sk-sp-')) {
+            continue;
+          }
+          apiKey = val;
+          break;
         }
-        apiKey = val;
-        break;
       }
     }
   }
 
   // 3. 确定具体 Model
   const model = modelId || preset.defaultModel || '';
+
+  const isFromVault = !!(customCred && customCred.apiKey);
+  const sourceName = isFromVault ? `omniroute_vault_${providerId}` : `omniroute_candidate_${providerId}`;
 
   if (!baseUrl) {
     return {
@@ -119,7 +136,7 @@ function resolveCandidate(candidate, options = {}) {
       model,
       baseUrl: null,
       apiKey: '',
-      source: `omniroute_candidate_${providerId}`,
+      source: sourceName,
       reason: 'Base URL is empty',
     };
   }
@@ -131,7 +148,7 @@ function resolveCandidate(candidate, options = {}) {
       model,
       baseUrl: baseUrl.replace(/\/$/, ''),
       apiKey: '',
-      source: `omniroute_candidate_${providerId}`,
+      source: sourceName,
       reason: 'API Key is empty',
     };
   }
@@ -143,7 +160,7 @@ function resolveCandidate(candidate, options = {}) {
       model: '',
       baseUrl: baseUrl.replace(/\/$/, ''),
       apiKey: '',
-      source: `omniroute_candidate_${providerId}`,
+      source: sourceName,
       reason: 'Model is empty',
     };
   }
@@ -154,7 +171,7 @@ function resolveCandidate(candidate, options = {}) {
     model,
     baseUrl: baseUrl.replace(/\/$/, ''),
     apiKey,
-    source: `omniroute_candidate_${providerId}`,
+    source: sourceName,
     reason: null,
   };
 }

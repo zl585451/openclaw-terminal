@@ -4,6 +4,8 @@
  * OmniRoute 静态逻辑能力与候选通道路由定义模块 (Phase 4)
  */
 
+const omniConfig = require('./omniRoute.config');
+
 const OMNI_ROUTE_CAPABILITIES = {
   'oct-chat': {
     description: 'Low-latency conversational chat and instant response.',
@@ -45,10 +47,14 @@ const OMNI_ROUTE_CAPABILITIES = {
 function getCapabilityDefinition(capability) {
   const definition = OMNI_ROUTE_CAPABILITIES[capability];
   if (!definition) return null;
+
+  const customCandidates = omniConfig.getRouteCandidates(capability);
+  const candidates = customCandidates || definition.candidates;
+
   return {
     description: definition.description,
     tools: definition.tools,
-    candidates: definition.candidates.map((c) => ({ ...c })),
+    candidates: candidates.map((c) => ({ ...c })),
   };
 }
 
