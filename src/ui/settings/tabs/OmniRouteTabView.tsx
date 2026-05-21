@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useApiKeys } from '../../../hooks/settings/useApiKeys';
 
 interface Candidate {
   provider: string;
@@ -71,17 +72,162 @@ interface Metrics {
   recentRequests: RecentRequest[];
 }
 
+interface ExternalGatewayConnectivity {
+  ok: boolean;
+  status: string;
+  httpStatus: number | null;
+  checkedUrl: string | null;
+  error: string | null;
+}
+
+interface ExternalGatewayStatus {
+  enabled: boolean;
+  configured: boolean;
+  baseUrl: string;
+  hasApiKey: boolean;
+  models: Record<string, string>;
+  connectivity: ExternalGatewayConnectivity;
+}
+
 interface StatusResponse {
   capabilities?: CapabilityStatus[];
   metrics?: Metrics | null;
+  externalGateway?: ExternalGatewayStatus | null;
 }
 
 export const OmniRouteTabView: React.FC = () => {
   const [data, setData] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [subTab, setSubTab] = useState<'routing' | 'metrics' | 'recent'>('routing');
+  const [subTab, setSubTab] = useState<'routing' | 'config' | 'metrics' | 'recent'>('routing');
+  const { apiKeys, setApiKeys, saveGatewayAndReconnect, gatewaySaveStatus, hasGatewayConfigChanges } = useApiKeys();
 
+  const handleInputChange = (key: string, value: any) => {
+    setApiKeys((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveConfig = async () => {
+    const ok = await saveGatewayAndReconnect();
+    if (ok) {
+      await fetchStatus();
+    }
+  };
+
+  const externalStatus = data?.externalGateway || null;
+
+  const renderConfigTab = () => {
+    return (
+      <div className="omniroute-config-form">
+        <div className="settings-field-group">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={apiKeys.OCT_USE_EXTERNAL_OMNIROUTE}
+              onChange={(e) => handleInputChange('OCT_USE_EXTERNAL_OMNIROUTE', e.target.checked)}
+            />
+            启用外部 OmniRoute 模式
+          </label>
+        </div>
+
+        <div className="settings-field-group">
+          <label>OmniRoute Base URL</label>
+          <input
+            type="text"
+            value={apiKeys.OMNIROUTE_BASE_URL}
+            onChange={(e) => handleInputChange('OMNIROUTE_BASE_URL', e.target.value)}
+            placeholder="https://api.omniroute.example/v1"
+          />
+        </div>
+
+        <div className="settings-field-group">
+          <label>OmniRoute API Key</label>
+          <input
+            type="password"
+            value={apiKeys.OMNIROUTE_API_KEY}
+            onChange={(e) => handleInputChange('OMNIROUTE_API_KEY', e.target.value)}
+            placeholder="sk-..."
+          />
+        </div>
+
+        <div className="settings-field-group">
+          <label>Chat Model Alias</label>
+          <input
+            type="text"
+            value={apiKeys.OMNIROUTE_CHAT_MODEL}
+            onChange={(e) => handleInputChange('OMNIROUTE_CHAT_MODEL', e.target.value)}
+          />
+        </div>
+
+        <div className="settings-field-group">
+          <label>Plan Model Alias</label>
+          <input
+            type="text"
+            value={apiKeys.OMNIROUTE_PLAN_MODEL}
+            onChange={(e) => handleInputChange('OMNIROUTE_PLAN_MODEL', e.target.value)}
+          />
+        </div>
+
+        <div className="settings-field-group">
+          <label>Tool Model Alias</label>
+          <input
+            type="text"
+            value={apiKeys.OMNIROUTE_TOOL_MODEL}
+            onChange={(e) => handleInputChange('OMNIROUTE_TOOL_MODEL', e.target.value)}
+          />
+        </div>
+
+        <button
+          type="button"
+          className="settings-save-button"
+          disabled={!hasGatewayConfigChanges || gatewaySaveStatus === 'saving'}
+          onClick={handleSaveConfig}
+        >
+          {gatewaySaveStatus === 'saving' ? '正在保存...' : hasGatewayConfigChanges ? '保存配置' : '无需保存'}
+        </button>
+
+        {externalStatus && (
+          <div className="settings-status-card mt-3">
+            <p className="settings-status-line">
+              外部模式：
+              <span className={externalStatus.enabled ? 'settings-status-success' : 'settings-status-muted'}>
+                {externalStatus.enabled ? '已启用' : '未启用'}
+              </span>
+            </p>
+            <p className="settings-status-line">
+              凭证状态：
+              <span className={externalStatus.configured ? 'settings-status-success' : 'settings-status-muted'}>
+                {externalStatus.configured ? 'Base URL / API Key 已配置' : '配置未完成'}
+              </span>
+            </p>
+            <p className="settings-status-line">
+              连通性：
+              <span className={externalStatus.connectivity.ok ? 'settings-status-success' : 'settings-status-muted'}>
+                {externalStatus.connectivity.status}
+                {externalStatus.connectivity.httpStatus ? ` (${externalStatus.connectivity.httpStatus})` : ''}
+              </span>
+            </p>
+            <p className="settings-status-line-muted">
+              地址：{externalStatus.baseUrl || '—'}
+            </p>
+            <p className="settings-status-line-muted">
+              Chat：{externalStatus.models?.['oct-chat'] || '—'}
+            </p>
+            <p className="settings-status-line-muted">
+              Plan：{externalStatus.models?.['oct-plan'] || '—'}
+            </p>
+            <p className="settings-status-line-muted">
+              Tool：{externalStatus.models?.['oct-tool-safe'] || '—'}
+            </p>
+            {externalStatus.connectivity.error && (
+              <p className="settings-status-line-muted">
+                诊断：{externalStatus.connectivity.error}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
   const fetchStatus = async () => {
     setLoading(true);
     setError(null);
@@ -388,6 +534,13 @@ export const OmniRouteTabView: React.FC = () => {
         </button>
         <button
           type="button"
+          className={`omniroute-sub-tab ${subTab === 'config' ? 'active' : ''}`}
+          onClick={() => setSubTab('config')}
+        >
+          外部 OmniRoute 配置
+        </button>
+        <button
+          type="button"
           className={`omniroute-sub-tab ${subTab === 'metrics' ? 'active' : ''}`}
           onClick={() => setSubTab('metrics')}
         >
@@ -408,6 +561,7 @@ export const OmniRouteTabView: React.FC = () => {
         ) : (
           <>
             {subTab === 'routing' && renderRoutingTab()}
+            {subTab === 'config' && renderConfigTab()}
             {subTab === 'metrics' && renderMetricsTab()}
             {subTab === 'recent' && renderRecentTab()}
           </>

@@ -157,6 +157,12 @@ const electronAPI = {
         VISION_API_KEY?: string;
         VISION_BASE_URL?: string;
         VISION_MODEL?: string;
+        OMNIROUTE_BASE_URL?: string;
+        OMNIROUTE_API_KEY?: string;
+        OMNIROUTE_CHAT_MODEL?: string;
+        OMNIROUTE_PLAN_MODEL?: string;
+        OMNIROUTE_TOOL_MODEL?: string;
+        OCT_USE_EXTERNAL_OMNIROUTE?: boolean;
         SILICONFLOW_API_KEY?: string;
       }) => ipcRenderer.invoke('save-api-keys', keys),
   getAgentPermissions: () => ipcRenderer.invoke('get-agent-permissions'),

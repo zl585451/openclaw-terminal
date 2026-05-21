@@ -3334,10 +3334,30 @@ ipcMain.handle('save-agent-permissions', async (_, permissions: {
   }
 });
 
+function parseBooleanConfigValue(raw: unknown): boolean {
+  if (raw === true) return true;
+  if (raw === false || raw === null || raw === undefined) return false;
+  return /^(1|true|yes|on)$/i.test(String(raw).trim());
+}
+
+function syncExternalOmniRouteVault(cfg: Record<string, any>): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const omniRouteConfig = require(path.join(getGatewayDirForHelpers(), 'runtime', 'omniRoute.config.js'));
+    omniRouteConfig?.clearCache?.();
+    omniRouteConfig?.updateCredential?.('external_omniroute', {
+      baseUrl: String(cfg.OMNIROUTE_BASE_URL || '').trim(),
+      apiKey: String(cfg.OMNIROUTE_API_KEY || '').trim(),
+    });
+  } catch (err: any) {
+    console.warn('[OmniRoute Vault] Failed to sync external credential:', err?.message || String(err));
+  }
+}
+
 // API Key 配置管理：config.json 优先（与 save-api-keys 写入一致，保证回填）
 ipcMain.handle('get-api-keys', async () => {
   try {
-    const keys: Record<string, string> = {};
+    const keys: Record<string, any> = {};
     const envObj: Record<string, string> = {};
     const envFilePath = path.join(__dirname, '..', '.env');
     if (fs.existsSync(envFilePath)) {
@@ -3413,6 +3433,14 @@ ipcMain.handle('get-api-keys', async () => {
     keys.VISION_API_KEY = pick('VISION_API_KEY', cfg.VISION_API_KEY);
     keys.VISION_BASE_URL = pick('VISION_BASE_URL', cfg.VISION_BASE_URL);
     keys.VISION_MODEL = pick('VISION_MODEL', cfg.VISION_MODEL);
+    keys.OMNIROUTE_BASE_URL = pick('OMNIROUTE_BASE_URL', cfg.OMNIROUTE_BASE_URL);
+    keys.OMNIROUTE_API_KEY = pick('OMNIROUTE_API_KEY', cfg.OMNIROUTE_API_KEY);
+    keys.OMNIROUTE_CHAT_MODEL = pick('OMNIROUTE_CHAT_MODEL', cfg.OMNIROUTE_CHAT_MODEL);
+    keys.OMNIROUTE_PLAN_MODEL = pick('OMNIROUTE_PLAN_MODEL', cfg.OMNIROUTE_PLAN_MODEL);
+    keys.OMNIROUTE_TOOL_MODEL = pick('OMNIROUTE_TOOL_MODEL', cfg.OMNIROUTE_TOOL_MODEL);
+    keys.OCT_USE_EXTERNAL_OMNIROUTE = parseBooleanConfigValue(
+      cfg.OCT_USE_EXTERNAL_OMNIROUTE ?? envObj.OCT_USE_EXTERNAL_OMNIROUTE
+    );
     return {
       success: true,
       data: {
@@ -3460,6 +3488,12 @@ ipcMain.handle('get-api-keys', async () => {
         VISION_API_KEY: keys.VISION_API_KEY || '',
         VISION_BASE_URL: keys.VISION_BASE_URL || '',
         VISION_MODEL: keys.VISION_MODEL || '',
+        OMNIROUTE_BASE_URL: keys.OMNIROUTE_BASE_URL || '',
+        OMNIROUTE_API_KEY: keys.OMNIROUTE_API_KEY || '',
+        OMNIROUTE_CHAT_MODEL: keys.OMNIROUTE_CHAT_MODEL || '',
+        OMNIROUTE_PLAN_MODEL: keys.OMNIROUTE_PLAN_MODEL || '',
+        OMNIROUTE_TOOL_MODEL: keys.OMNIROUTE_TOOL_MODEL || '',
+        OCT_USE_EXTERNAL_OMNIROUTE: !!keys.OCT_USE_EXTERNAL_OMNIROUTE,
       }
     };
   } catch (e: any) {
@@ -3506,6 +3540,12 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     VISION_API_KEY?: string;
     VISION_BASE_URL?: string;
     VISION_MODEL?: string;
+    OMNIROUTE_BASE_URL?: string;
+    OMNIROUTE_API_KEY?: string;
+    OMNIROUTE_CHAT_MODEL?: string;
+    OMNIROUTE_PLAN_MODEL?: string;
+    OMNIROUTE_TOOL_MODEL?: string;
+    OCT_USE_EXTERNAL_OMNIROUTE?: boolean | string;
     CUSTOM_BASE_URL?: string;
     GOOGLE_AI_API_KEY?: string;
     GOOGLE_AI_BASE_URL?: string;
@@ -3572,11 +3612,20 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.VISION_API_KEY !== undefined) cfg.VISION_API_KEY = keys.VISION_API_KEY || '';
     if (keys.VISION_BASE_URL !== undefined) cfg.VISION_BASE_URL = keys.VISION_BASE_URL || '';
     if (keys.VISION_MODEL !== undefined) cfg.VISION_MODEL = keys.VISION_MODEL || '';
+    if (keys.OMNIROUTE_BASE_URL !== undefined) cfg.OMNIROUTE_BASE_URL = keys.OMNIROUTE_BASE_URL || '';
+    if (keys.OMNIROUTE_API_KEY !== undefined) cfg.OMNIROUTE_API_KEY = keys.OMNIROUTE_API_KEY || '';
+    if (keys.OMNIROUTE_CHAT_MODEL !== undefined) cfg.OMNIROUTE_CHAT_MODEL = keys.OMNIROUTE_CHAT_MODEL || '';
+    if (keys.OMNIROUTE_PLAN_MODEL !== undefined) cfg.OMNIROUTE_PLAN_MODEL = keys.OMNIROUTE_PLAN_MODEL || '';
+    if (keys.OMNIROUTE_TOOL_MODEL !== undefined) cfg.OMNIROUTE_TOOL_MODEL = keys.OMNIROUTE_TOOL_MODEL || '';
+    if (keys.OCT_USE_EXTERNAL_OMNIROUTE !== undefined) {
+      cfg.OCT_USE_EXTERNAL_OMNIROUTE = parseBooleanConfigValue(keys.OCT_USE_EXTERNAL_OMNIROUTE);
+    }
     Object.assign(cfg, {
       OPENCLAW_WS_URL: cfg.OPENCLAW_WS_URL ?? DEFAULT_CONFIG.OPENCLAW_WS_URL,
       OPENCLAW_TOKEN: cfg.OPENCLAW_TOKEN ?? '',
     });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    syncExternalOmniRouteVault(cfg);
 
     // 验证回读
     let verified: Record<string, string> = {};
@@ -3625,7 +3674,13 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       || keys.VISION_API_KEY !== undefined
       || keys.VISION_BASE_URL !== undefined
       || keys.VISION_MODEL !== undefined
-      || keys.SILICONFLOW_API_KEY !== undefined;
+      || keys.SILICONFLOW_API_KEY !== undefined
+      || keys.OMNIROUTE_BASE_URL !== undefined
+      || keys.OMNIROUTE_API_KEY !== undefined
+      || keys.OMNIROUTE_CHAT_MODEL !== undefined
+      || keys.OMNIROUTE_PLAN_MODEL !== undefined
+      || keys.OMNIROUTE_TOOL_MODEL !== undefined
+      || keys.OCT_USE_EXTERNAL_OMNIROUTE !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
       expectOctGatewayProcessExit = true;
       octGatewayProcess.kill();

@@ -50,6 +50,12 @@ export interface ApiKeysState {
   VISION_API_KEY: string;
   VISION_BASE_URL: string;
   VISION_MODEL: string;
+  OMNIROUTE_BASE_URL: string;
+  OMNIROUTE_API_KEY: string;
+  OMNIROUTE_CHAT_MODEL: string;
+  OMNIROUTE_PLAN_MODEL: string;
+  OMNIROUTE_TOOL_MODEL: string;
+  OCT_USE_EXTERNAL_OMNIROUTE: boolean;
 }
 
 const FALLBACK_PROVIDERS: ProvidersState = {
@@ -220,6 +226,12 @@ type GatewayConfigPayload = {
   VISION_API_KEY: string;
   VISION_BASE_URL: string;
   VISION_MODEL: string;
+  OMNIROUTE_BASE_URL: string;
+  OMNIROUTE_API_KEY: string;
+  OMNIROUTE_CHAT_MODEL: string;
+  OMNIROUTE_PLAN_MODEL: string;
+  OMNIROUTE_TOOL_MODEL: string;
+  OCT_USE_EXTERNAL_OMNIROUTE: boolean;
   /** 与 DASHSCOPE_API_KEY 同步写入，供网关 oct-gateway 读取 SILICONFLOW_API_KEY */
   SILICONFLOW_API_KEY: string;
 };
@@ -275,6 +287,10 @@ function normalizeLoadedApiKeys(
   fallbackApiKeys: ApiKeysState,
 ): ApiKeysState {
   const nextApiKeys = { ...fallbackApiKeys, ...data };
+  const externalOmniRouteRaw = (data as Record<string, unknown>).OCT_USE_EXTERNAL_OMNIROUTE;
+  nextApiKeys.OCT_USE_EXTERNAL_OMNIROUTE =
+    externalOmniRouteRaw === true
+    || /^(1|true|yes|on)$/i.test(String(externalOmniRouteRaw ?? '').trim());
   const provider = providerSnapshotForBaseline(providerId, providers);
   const configuredModel = String(nextApiKeys.OCT_MODEL || '').trim();
   const customModel = String(nextApiKeys.CUSTOM_MODEL || '').trim();
@@ -394,6 +410,12 @@ function buildGatewayPayload(
     VISION_API_KEY: apiKeys.VISION_API_KEY || '',
     VISION_BASE_URL: apiKeys.VISION_BASE_URL || '',
     VISION_MODEL: apiKeys.VISION_MODEL || '',
+    OMNIROUTE_BASE_URL: apiKeys.OMNIROUTE_BASE_URL || '',
+    OMNIROUTE_API_KEY: apiKeys.OMNIROUTE_API_KEY || '',
+    OMNIROUTE_CHAT_MODEL: apiKeys.OMNIROUTE_CHAT_MODEL || '',
+    OMNIROUTE_PLAN_MODEL: apiKeys.OMNIROUTE_PLAN_MODEL || '',
+    OMNIROUTE_TOOL_MODEL: apiKeys.OMNIROUTE_TOOL_MODEL || '',
+    OCT_USE_EXTERNAL_OMNIROUTE: !!apiKeys.OCT_USE_EXTERNAL_OMNIROUTE,
     SILICONFLOW_API_KEY:
       currentProviderId === 'siliconflow' ? (apiKeys.DASHSCOPE_API_KEY || '') : '',
   };
@@ -445,6 +467,12 @@ export function useApiKeys() {
     VISION_API_KEY: '',
     VISION_BASE_URL: '',
     VISION_MODEL: '',
+    OMNIROUTE_BASE_URL: '',
+    OMNIROUTE_API_KEY: '',
+    OMNIROUTE_CHAT_MODEL: '',
+    OMNIROUTE_PLAN_MODEL: '',
+    OMNIROUTE_TOOL_MODEL: '',
+    OCT_USE_EXTERNAL_OMNIROUTE: false,
   });
 
   const searchKeysRef = useRef({ BRAVE_SEARCH_API_KEY: '', TAVILY_API_KEY: '' });

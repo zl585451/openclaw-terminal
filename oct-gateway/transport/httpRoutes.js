@@ -109,6 +109,7 @@ function createHttpRequestHandler({
       }
       try {
         const omniRoute = require('../runtime/omniRoute');
+        const externalOmniRoute = require('../runtime/externalOmniRoute');
         const ProviderRouter = require('../runtime/providerRouter');
         const config = require('../config');
 
@@ -124,6 +125,7 @@ function createHttpRequestHandler({
         };
 
         const status = omniRoute.listCapabilityStatus(context);
+        const externalGateway = await externalOmniRoute.inspectExternalGateway();
         let metricsData = null;
         try {
           const metrics = require('../runtime/omniRoute.metrics');
@@ -133,7 +135,8 @@ function createHttpRequestHandler({
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           capabilities: status,
-          metrics: metricsData
+          metrics: metricsData,
+          externalGateway,
         }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
