@@ -1,25 +1,36 @@
 'use strict';
 
 /**
- * OmniRoute 核心配置治理与软集成接口模块 (Phase 4)
+ * OmniRoute 核心配置治理与外部宿主路由接口模块 (Phase 5)
  *
  * 职责：
- * - 统一作为对外主入口，完全保留 Phase 3 现有公开 API
- * - 委托 routes.js 和 credentials.js 分别进行能力路由与凭证就绪检测
+ * - 移除本地 provider 直连路由、fallback 候选、物理展开、本地凭证仓等重复网关职责。
+ * - 真正作为“调用 OmniRoute 的宿主客户端”。
+ * - 所有能力解析直接委托至 externalOmniRoute 外部路由接口。
  */
 
-const routes = require('./omniRoute.routes');
-const credentials = require('./omniRoute.credentials');
+const externalOmniRoute = require('./externalOmniRoute');
 
-/**
- * 获取或导出静态逻辑能力映射关系
- */
-const OMNI_ROUTE_CAPABILITIES = routes.OMNI_ROUTE_CAPABILITIES;
+const OMNI_ROUTE_CAPABILITIES = {
+  'oct-chat': {
+    description: 'Low-latency conversational chat and instant response.',
+    tools: false,
+    candidates: [{ provider: 'external_omniroute', model: 'combo/chat' }],
+  },
+  'oct-plan': {
+    description: 'Structured planning, summarization, and heavy extraction.',
+    tools: false,
+    candidates: [{ provider: 'external_omniroute', model: 'combo/plan' }],
+  },
+  'oct-tool-safe': {
+    description: 'Strict, verified function calling and tool loop execution.',
+    tools: true,
+    candidates: [{ provider: 'external_omniroute', model: 'combo/tool' }],
+  },
+};
 
 /**
  * 判断是否为有效的逻辑能力别名
- * @param {string} name - 别名
- * @returns {boolean}
  */
 function isCapabilityAlias(name) {
   return Object.prototype.hasOwnProperty.call(OMNI_ROUTE_CAPABILITIES, name);
@@ -27,87 +38,53 @@ function isCapabilityAlias(name) {
 
 /**
  * 获取所有支持的逻辑能力别名列表
- * @returns {Array<string>}
  */
 function listCapabilities() {
   return Object.keys(OMNI_ROUTE_CAPABILITIES);
 }
 
 /**
- * 解析具体逻辑能力的提供商配置
- * @param {string} capability - 逻辑能力别名 (如 oct-chat, oct-plan, oct-tool-safe)
- * @param {object} context - 包含 originalResolve 回调的上下文
- * @returns {object|null} 解析成功则返回 `{ providerId, baseUrl, apiKey, model, source, capability }`
+ * 解析具体逻辑能力的提供商配置 (Phase 5: 唯一出口为外部 OmniRoute)
  */
 function resolveCapability(capability, context = {}) {
   if (!isCapabilityAlias(capability)) {
     return null;
   }
-  const def = routes.getCapabilityDefinition(capability);
-  const candidates = def.candidates;
-
-  for (const candidate of candidates) {
-    const res = credentials.resolveCandidate(candidate, context);
-    if (res.ok) {
-      return {
-        providerId: res.provider,
-        baseUrl: res.baseUrl,
-        apiKey: res.apiKey,
-        model: res.model,
-        source: res.source,
-        capability,
-      };
-    }
-  }
-
-  return null;
+  return externalOmniRoute.resolveCapabilityTarget(capability);
 }
 
 /**
- * 安全诊断具体别名下的所有候选物理通道状态，决不泄露明文 API Key
- * @param {string} capability - 逻辑能力别名
- * @param {object} context - 包含 originalResolve 回调的上下文
- * @returns {object|null}
+ * 安全诊断具体别名下的所有候选物理通道状态，仅代表外部 OmniRoute 通道
  */
 function inspectCapability(capability, context = {}) {
   if (!isCapabilityAlias(capability)) {
     return null;
   }
-  const def = routes.getCapabilityDefinition(capability);
-  const candidates = def.candidates;
+  const snapshot = externalOmniRoute.getExternalGatewayConfig();
+  const resolved = resolveCapability(capability, context);
+  const model = snapshot.models[capability] || OMNI_ROUTE_CAPABILITIES[capability].candidates[0].model;
 
-  const inspectedCandidates = candidates.map((candidate) => {
-    const res = credentials.inspectCandidate(candidate, context);
-    return {
-      provider: candidate.provider,
-      model: candidate.model,
-      available: res.ok,
-      baseUrl: res.baseUrl,
-      hasApiKey: res.hasApiKey,
-      source: res.source,
-      reason: res.reason,
-    };
-  });
-  const firstCandidate = inspectedCandidates[0];
-  const status = firstCandidate && firstCandidate.available
-    ? 'healthy'
-    : inspectedCandidates.some((candidate) => candidate.available)
-      ? 'degraded'
-      : 'unavailable';
+  const candidate = {
+    provider: 'external_omniroute',
+    model,
+    available: !!resolved,
+    baseUrl: snapshot.baseUrl || '',
+    hasApiKey: snapshot.hasApiKey,
+    source: 'external_omniroute_config',
+    reason: resolved ? null : 'OMNIROUTE_BASE_URL or OMNIROUTE_API_KEY is not configured',
+  };
 
   return {
     capability,
-    description: def.description,
-    tools: def.tools,
-    status,
-    candidates: inspectedCandidates,
+    description: OMNI_ROUTE_CAPABILITIES[capability].description,
+    tools: OMNI_ROUTE_CAPABILITIES[capability].tools,
+    status: resolved ? 'healthy' : 'unavailable',
+    candidates: [candidate],
   };
 }
 
 /**
  * 罗列系统内所有能力路由的完整就绪状态列表
- * @param {object} context - 包含 originalResolve 回调的上下文
- * @returns {Array<object>}
  */
 function listCapabilityStatus(context = {}) {
   return listCapabilities().map((capability) => {
@@ -116,45 +93,22 @@ function listCapabilityStatus(context = {}) {
 }
 
 /**
- * 解析并列出特定逻辑能力下所有已配置可用的物理候选提供商列表
- * @param {string} capability - 逻辑能力别名 (如 oct-chat, oct-plan, oct-tool-safe)
- * @param {object} context - 包含 originalResolve 回调的上下文
- * @returns {Array<object>} 已解析的物理候选列表
+ * 解析并列出特定逻辑能力下所有已配置可用的物理候选提供商列表 (Phase 5: 仅保留外部 OmniRoute)
  */
 function resolveAllCandidates(capability, context = {}) {
   if (!isCapabilityAlias(capability)) {
     return [];
   }
-  const def = routes.getCapabilityDefinition(capability);
-  const candidates = def.candidates;
-  const resolvedList = [];
-
-  for (const candidate of candidates) {
-    const res = credentials.resolveCandidate(candidate, context);
-    if (res.ok) {
-      resolvedList.push({
-        providerId: res.provider,
-        baseUrl: res.baseUrl,
-        apiKey: res.apiKey,
-        model: res.model,
-        source: res.source,
-        capability,
-      });
-    }
-  }
-
-  return resolvedList;
+  const resolved = resolveCapability(capability, context);
+  return resolved ? [resolved] : [];
 }
 
 /**
  * 判断错误是否属于网络超时、429、5xx 服务器内部异常等可恢复错误
- * @param {Error} err - 错误对象
- * @returns {boolean}
  */
 function isRetryableError(err) {
   if (!err) return false;
 
-  // 1. HTTP 错误响应代码分类
   if (err.name === 'LlmClientHttpError' || typeof err.status === 'number') {
     const status = err.status;
     if (status === 429 || (status >= 500 && status < 600)) {
@@ -163,7 +117,6 @@ function isRetryableError(err) {
     return false;
   }
 
-  // 1.5. 检查 streamChat 抛出的 "API Error [status]" 格式字符串
   if (err.message && err.message.startsWith('API Error ')) {
     const match = err.message.match(/API Error (\d+)/);
     if (match) {
@@ -175,7 +128,6 @@ function isRetryableError(err) {
     }
   }
 
-  // 2. 超时错误检测
   if (
     err.name === 'LlmClientTimeoutError' ||
     err.message?.includes('超时') ||
@@ -184,7 +136,6 @@ function isRetryableError(err) {
     return true;
   }
 
-  // 3. 网络故障、套接字与断连错误
   const msg = String(err.message || '').toLowerCase();
   if (
     err.code === 'ECONNREFUSED' ||

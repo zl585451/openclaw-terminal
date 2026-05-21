@@ -71,19 +71,15 @@ function resolveProviderConfig(modelId, allowedTools = []) {
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * 从 tool_loader 取全量工具，按白名单过滤后返回 OpenAI tools 数组。
+ * 从 tool_loader 取全量工具。
+ * 历史上这里会按 Agent 白名单裁剪，但这会把 OCT 的基础宿主能力挡在外面。
+ * 现在改为：已注册工具默认全部可见，由更底层的“已注册工具校验 / 参数校验 / 工具自身执行逻辑”兜底。
  *
- * @param {string[]} allowedTools - 允许的工具名列表（空数组 → 不允许任何工具）
+ * @param {string[]} allowedTools - 兼容旧签名，当前不再用于裁剪
  * @returns {object[]} OpenAI function calling 格式的工具定义数组
  */
 function buildToolDefinitions(allowedTools) {
-  if (!allowedTools || allowedTools.length === 0) return [];
-  const allowed = new Set(allowedTools);
-  const all = toolLoader.getDefinitions();
-  return all.filter((def) => {
-    const name = def?.function?.name || def?.name;
-    return name && allowed.has(name);
-  });
+  return toolLoader.getDefinitions();
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -98,21 +94,13 @@ function buildToolDefinitions(allowedTools) {
  * @param {object} toolCall.function
  * @param {string} toolCall.function.name
  * @param {string} toolCall.function.arguments - JSON 字符串
- * @param {string[]} allowedTools - 白名单（二次校验）
+ * @param {string[]} allowedTools - 兼容旧签名，当前不再用于二次拒绝
  * @param {Function} onEvent - 事件推送回调
  * @returns {Promise<string>} 工具返回内容（字符串化）
  */
 async function executeToolCall(toolCall, allowedTools, onEvent) {
   const toolName = toolCall.function?.name;
   const callId = toolCall.id || `tc_${Date.now()}`;
-
-  // 二次白名单校验（防止模型幻觉调用未授权工具）
-  if (!allowedTools.includes(toolName)) {
-    const errMsg = `工具 "${toolName}" 未在 allowedTools 白名单中，拒绝执行`;
-    log.warn(errMsg, { toolName, callId });
-    onEvent({ type: 'tool_result', tool: toolName, callId, state: 'error', resultPreview: errMsg });
-    return `ERROR: ${errMsg}`;
-  }
 
   let args = {};
   try {

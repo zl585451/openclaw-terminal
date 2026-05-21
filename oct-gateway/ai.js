@@ -1279,9 +1279,77 @@ function extractFunctionStyleToolCalls(text) {
   return calls;
 }
 
+function extractBracketTagPseudoToolCalls(text) {
+  const source = String(text || '');
+  if (!source) return [];
+
+  const callRe = /\[([a-zA-Z0-9_.-]+)\]([\s\S]*?)\[\/\1\]/gi;
+  const calls = [];
+  let match;
+
+  while ((match = callRe.exec(source)) !== null) {
+    const toolName = String(match[1] || '').trim();
+    if (!toolName || !isRegisteredToolName(toolName)) continue;
+
+    const rawBody = String(match[2] || '').trim();
+    if (!rawBody) continue;
+
+    const args = {};
+    const lines = rawBody
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    for (const line of lines) {
+      const kv = line.match(/^([a-zA-Z0-9_.-]+)\s*:\s*([\s\S]+)$/);
+      if (!kv) continue;
+      const key = String(kv[1] || '').trim();
+      const value = String(kv[2] || '').trim();
+      if (!key || !value) continue;
+      args[key] = value;
+    }
+
+    // 兼容单行短标签：
+    // [web_search] query: xxx [/web_search]
+    // [web_search] xxx [/web_search]
+    if (Object.keys(args).length === 0) {
+      if (toolName === 'web_search' || toolName === 'memory_search' || toolName === 'memory_vector_search') {
+        args.query = rawBody.replace(/^query\s*:\s*/i, '').trim();
+      } else if (toolName === 'web_fetch') {
+        args.url = rawBody.replace(/^url\s*:\s*/i, '').trim();
+      } else if (toolName === 'read_file' || toolName === 'read_document') {
+        args.path = rawBody.replace(/^(path|file_path)\s*:\s*/i, '').trim();
+      } else if (toolName === 'write_file') {
+        args.path = rawBody.replace(/^(path|file_path)\s*:\s*/i, '').trim();
+      }
+    }
+
+    if (Object.keys(args).length === 0 || Object.values(args).some((value) => !String(value || '').trim())) {
+      continue;
+    }
+
+    calls.push({
+      id: `pseudo-bracket-tag-${Date.now()}-${calls.length}`,
+      type: 'function',
+      function: {
+        name: toolName,
+        arguments: JSON.stringify(args),
+      },
+    });
+  }
+
+  return calls;
+}
+
 function extractAllPseudoToolCalls(text) {
   const legacy = extractPseudoToolCalls(text);
-  const rawCalls = legacy.length > 0 ? legacy : extractFunctionStyleToolCalls(text);
+  const rawCalls = legacy.length > 0
+    ? legacy
+    : (() => {
+        const bracketTagCalls = extractBracketTagPseudoToolCalls(text);
+        if (bracketTagCalls.length > 0) return bracketTagCalls;
+        return extractFunctionStyleToolCalls(text);
+      })();
 
   const validCalls = [];
   for (const call of rawCalls) {
@@ -1323,7 +1391,8 @@ function hasPseudoToolResidue(text) {
     /<tool_code>/i.test(source) ||
     /<function=\w+>/i.test(source) ||
     /tool_calls_section_begin/i.test(source) ||
-    /\[[a-zA-Z0-9_.-]+\]\s*<tool_code>/i.test(source)
+    /\[[a-zA-Z0-9_.-]+\]\s*<tool_code>/i.test(source) ||
+    /\[[a-zA-Z0-9_.-]+\][\s\S]*?\[\/[a-zA-Z0-9_.-]+\]/i.test(source)
   );
 }
 
@@ -1334,6 +1403,7 @@ function stripPseudoToolResidue(text) {
   return source
     .replace(/<\|[^|]*tool_calls_section_begin[^|]*\|>[\s\S]*?<\|[^|]*tool_calls_section_end[^|]*\|>/gi, '')
     .replace(/\[[a-zA-Z0-9_.-]+\]\s*<tool_code>[\s\S]*?<\/tool_code>/gi, '')
+    .replace(/\[[a-zA-Z0-9_.-]+\][\s\S]*?\[\/[a-zA-Z0-9_.-]+\]/gi, '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
     .replace(/<function=\w+>[\s\S]*?(?=(?:<function=\w+>|$))/gi, '')
@@ -1645,14 +1715,25 @@ function resolveStreamErrorType(err) {
 }
 
 const PLAN_HINT_RE = /(?:\b(?:summarize|summary|plan|planning|orchestrate|orchestrator|script_adapter|voice_fragment)\b|总结|归纳|提炼|规划|评估|规律)/i;
+const TOOL_INTENT_RE = /(?:\b(?:search|web_search|browse|fetch|lookup|look up|google|price|pricing|source|sources|quote|quotes)\b|搜索|搜一下|查一下|查一查|联网|网页|网搜|抓取|打开链接|打开网页|价格|定价|报价|来源|原文|官网)/i;
 
 function hasPlanHintText(value) {
   return typeof value === 'string' && PLAN_HINT_RE.test(value);
 }
 
+function hasToolIntentText(value) {
+  return typeof value === 'string' && TOOL_INTENT_RE.test(value);
+}
+
 function inferDefaultCapability(messages) {
   if (!Array.isArray(messages)) {
     return 'oct-chat';
+  }
+
+  for (const msg of messages) {
+    if (msg?.role === 'user' && hasToolIntentText(msg.content)) {
+      return 'oct-chat';
+    }
   }
 
   for (const msg of messages) {
@@ -1706,99 +1787,55 @@ async function streamChat(options) {
     return streamChatRaw(options);
   }
 
-  const omniRoute = require('./runtime/omniRoute');
   const externalOmniRoute = require('./runtime/externalOmniRoute');
-  let origResolved = null;
-  const context = {
-    originalResolve: () => {
-      origResolved = providerRouter.resolve();
-      return origResolved;
-    }
-  };
-
   const extResolved = options._disableExternalOmniRoute
     ? null
     : externalOmniRoute.resolveCapabilityTarget(activeCapability);
-  let activeCandidates = omniRoute.resolveAllCandidates(activeCapability, context);
-  activeCandidates = prependExternalCandidate(activeCandidates, extResolved);
 
-  if (activeCandidates.length <= 1 && (!activeCandidates[0] || activeCandidates[0].providerId !== 'external_omniroute')) {
-    return streamChatRaw(options);
+  if (!extResolved) {
+    const finalError = new Error('LLM_NOT_CONFIGURED: 外部 OmniRoute 未配置或配置不完整。请在设置面板中配置 Base URL 和 API Key。');
+    if (typeof options.onError === 'function') {
+      options.onError(finalError);
+    }
+    return;
   }
 
-  let lastError = null;
-  let hasReceivedDelta = false;
-
-  const interceptedOnDelta = (delta) => {
-    hasReceivedDelta = true;
-    if (typeof options.onDelta === 'function') {
-      options.onDelta(delta);
-    }
+  const preset = { id: 'external_omniroute', name: 'OmniRoute' };
+  const candidateResolved = {
+    provider: preset,
+    apiKey: extResolved.apiKey,
+    baseUrl: extResolved.baseUrl,
+    model: extResolved.model,
+    caps: config.getModelCaps(extResolved.model),
+    fallback: {
+      canFallbackToDeepseek: false,
+      canFallbackToBailian: false,
+    },
   };
 
-  const resolvedCandidates = activeCandidates.map((routeRes) => {
-    if (routeRes.source === 'original_resolve' && origResolved) {
-      return origResolved;
-    }
-    const preset = config.PROVIDERS[routeRes.providerId];
-    return {
-      provider: preset || { id: routeRes.providerId, name: routeRes.providerId },
-      apiKey: routeRes.apiKey,
-      baseUrl: routeRes.baseUrl,
-      model: routeRes.model,
-      caps: config.getModelCaps(routeRes.model),
-      fallback: {
-        canFallbackToDeepseek: false,
-        canFallbackToBailian: false,
-      },
-    };
-  });
-
-  const runCandidate = (candidateResolved) => {
-    return new Promise((resolve, reject) => {
-      streamChatRaw({
-        ...options,
-        _omniRouteResolved: candidateResolved,
-        onDelta: interceptedOnDelta,
-        onDone: (...args) => {
-          if (typeof options.onDone === 'function') {
-            options.onDone(...args);
-          }
-          resolve();
-        },
-        onError: (err) => {
-          reject(err);
+  return new Promise((resolve) => {
+    streamChatRaw({
+      ...options,
+      _omniRouteResolved: candidateResolved,
+      onDone: (...args) => {
+        if (typeof options.onDone === 'function') {
+          options.onDone(...args);
         }
-      }).catch(reject);
-    });
-  };
-
-  for (let i = 0; i < resolvedCandidates.length; i++) {
-    const candidateResolved = resolvedCandidates[i];
-    try {
-      return await runCandidate(candidateResolved);
-    } catch (err) {
-      if (omniRoute.isRetryableError(err) && !hasReceivedDelta) {
-        lastError = err;
-        log.warn('OmniRoute streamChat candidate failed, trying next', {
-          capability: activeCapability,
-          providerId: candidateResolved.provider?.id || 'unknown',
-          model: candidateResolved.model,
-          error: err.message
-        });
-        continue;
+        resolve();
+      },
+      onError: (err) => {
+        if (typeof options.onError === 'function') {
+          options.onError(err);
+        }
+        resolve();
       }
+    }).catch((err) => {
       if (typeof options.onError === 'function') {
         options.onError(err);
       }
-      return;
-    }
-  }
-
-  const finalError = lastError || new Error(`OmniRoute streamChat error: All candidates for ${activeCapability} failed`);
-  if (typeof options.onError === 'function') {
-    options.onError(finalError);
-  }
+      resolve();
+    });
+  });
 }
 
 async function streamChatRaw({
@@ -1815,6 +1852,7 @@ async function streamChatRaw({
   capability = null,
   _omniRouteResolved = null,
   _disableExternalOmniRoute = false,
+  _forcedFinalAttempt = false,
 }) {
   const hasMultimodalParts = (msgs) => Array.isArray(msgs) && msgs.some((m) =>
     Array.isArray(m?.content) && m.content.some((part) =>
@@ -1833,39 +1871,24 @@ async function streamChatRaw({
 
     if (activeCapability) {
       try {
-        const omniRoute = require('./runtime/omniRoute');
-        let origResolved = null;
-        const routeRes = omniRoute.resolveCapability(activeCapability, {
-          originalResolve: () => {
-            origResolved = providerRouter.resolve();
-            return origResolved;
-          }
-        });
+        const externalOmniRoute = require('./runtime/externalOmniRoute');
+        const routeRes = externalOmniRoute.resolveCapabilityTarget(activeCapability);
         if (routeRes) {
-          if (routeRes.source === 'original_resolve' && origResolved) {
-            resolved = origResolved;
-          } else {
-            const preset = config.PROVIDERS[routeRes.providerId];
-            resolved = {
-              provider: preset || { id: routeRes.providerId, name: routeRes.providerId },
-              apiKey: routeRes.apiKey,
-              baseUrl: routeRes.baseUrl,
-              model: routeRes.model,
-              caps: config.getModelCaps(routeRes.model),
-              fallback: {
-                canFallbackToDeepseek: false,
-                canFallbackToBailian: false,
-              },
-            };
-          }
+          resolved = {
+            provider: { id: routeRes.providerId, name: 'OmniRoute' },
+            apiKey: routeRes.apiKey,
+            baseUrl: routeRes.baseUrl,
+            model: routeRes.model,
+            caps: config.getModelCaps(routeRes.model),
+            fallback: {
+              canFallbackToDeepseek: false,
+              canFallbackToBailian: false,
+            },
+          };
         }
       } catch (err) {
         log.warn('OmniRoute resolve capability error', { capability: activeCapability, error: err.message });
       }
-    }
-
-    if (!resolved) {
-      resolved = providerRouter.resolve();
     }
   }
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
@@ -2446,6 +2469,31 @@ async function streamChatRaw({
     }
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
+
+    if (!String(fullText || '').trim() && hasToolEvidence && toolChoice !== 'none' && !_forcedFinalAttempt) {
+      log.warn('empty final answer after tool rounds, retrying once with tool_choice=none', {
+        turnId: turnId || null,
+        model: responseModel || model,
+        toolRound,
+      });
+      return await streamChatRaw({
+        messages: effectiveMessages,
+        onDelta,
+        onDone,
+        onError,
+        onToolEvent,
+        preserveToolChain,
+        toolRound,
+        toolSignatures,
+        toolChoice: 'none',
+        turnId,
+        capability: reentryCapability,
+        _omniRouteResolved: resolved,
+        _disableExternalOmniRoute,
+        _forcedFinalAttempt: true,
+      });
+    }
+
     const textToCheck = fullText || assistantResponseContent || '';
     const pseudoResidueDetected = effectiveSupportsTools && hasPseudoToolResidue(textToCheck);
     const shouldDetectPseudo = effectiveSupportsTools && caps.toolReliability === 'loose';
@@ -2662,6 +2710,7 @@ module.exports = {
     isProtocolOrRateLimitError,
     shouldForceFinalFromToolResults,
     buildToolResultFallbackReply,
+    inferDefaultCapability,
     extractAllPseudoToolCalls,
     hasPseudoToolResidue,
     stripPseudoToolResidue,

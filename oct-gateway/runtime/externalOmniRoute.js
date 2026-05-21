@@ -15,10 +15,11 @@ function readBool(raw) {
 function getExternalGatewayConfig() {
   const baseUrl = normalizeBaseUrl(config.getEnvOrConfig('OMNIROUTE_BASE_URL'));
   const apiKey = String(config.getEnvOrConfig('OMNIROUTE_API_KEY') || '').trim();
-  const chatModel = String(config.getEnvOrConfig('OMNIROUTE_CHAT_MODEL') || '').trim();
-  const planModel = String(config.getEnvOrConfig('OMNIROUTE_PLAN_MODEL') || '').trim();
-  const toolModel = String(config.getEnvOrConfig('OMNIROUTE_TOOL_MODEL') || '').trim();
-  const enabled = readBool(config.getEnvOrConfig('OCT_USE_EXTERNAL_OMNIROUTE'));
+  const chatModel = String(config.getEnvOrConfig('OMNIROUTE_CHAT_MODEL') || '').trim() || 'combo/chat';
+  const planModel = String(config.getEnvOrConfig('OMNIROUTE_PLAN_MODEL') || '').trim() || 'combo/plan';
+  const toolModel = String(config.getEnvOrConfig('OMNIROUTE_TOOL_MODEL') || '').trim() || 'combo/tool';
+  const rawEnabled = config.getEnvOrConfig('OCT_USE_EXTERNAL_OMNIROUTE');
+  const enabled = readBool(rawEnabled);
 
   return {
     enabled,

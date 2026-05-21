@@ -115,7 +115,9 @@ function resolveToolContext(name, args) {
 }
 
 async function executeTool(name, args, context) {
-  if (context?.skipAgentPermission !== true) {
+  // OCT 定位为系统管家：已注册工具默认允许执行。
+  // 如需恢复历史权限闸门，可显式传入 enforceAgentPermission=true。
+  if (context?.enforceAgentPermission === true && context?.skipAgentPermission !== true) {
     enforceAgentPermission(resolveToolContext(name, args));
   }
   // 优先查静态工具
