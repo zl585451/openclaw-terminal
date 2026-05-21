@@ -326,4 +326,132 @@ describe('ToolAdapter format governance and safe parsing', () => {
     expect(toolResults[0].name).toBe('mcp_fake_server_read_file');
     expect(toolResults[0].content).toContain('not registered or allowed');
   });
+
+  it('18. extractAllPseudoToolCalls parses bracket tag web_search syntax into a real tool call', () => {
+    const ai = require('../ai');
+    const extract = ai._internals.extractAllPseudoToolCalls;
+
+    const source = '[web_search] query: AI news May 22 2026 [/web_search]';
+    const calls = extract(source);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].function.name).toBe('web_search');
+    expect(JSON.parse(calls[0].function.arguments)).toEqual({
+      query: 'AI news May 22 2026',
+    });
+  });
+
+  it('19. stripPseudoToolResidue removes bracket tag pseudo tool markup from final reply text', () => {
+    const ai = require('../ai');
+    const strip = ai._internals.stripPseudoToolResidue;
+    const hasResidue = ai._internals.hasPseudoToolResidue;
+
+    const source = '先搜索一下。\n\n[web_search] query: AI news May 22 2026 [/web_search]\n\n继续正文。';
+    expect(hasResidue(source)).toBe(true);
+
+    const stripped = strip(source);
+    expect(stripped).toContain('先搜索一下。');
+    expect(stripped).toContain('继续正文。');
+    expect(stripped).not.toContain('[web_search]');
+    expect(stripped).not.toContain('AI news May 22 2026');
+  });
+
+  it('20. agent_runner no longer blocks registered tools when allowedTools is empty', async () => {
+    const agentRunner = require('../agents/agent_runner');
+    const toolLoader = require('../tool_loader');
+
+    const originalExecuteTool = toolLoader.executeTool;
+    let executeToolCalled = false;
+    toolLoader.executeTool = async () => {
+      executeToolCalled = true;
+      return 'mock tool result';
+    };
+
+    const originalFetch = globalThis.fetch;
+    let fetchCount = 0;
+    globalThis.fetch = async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: '',
+                tool_calls: [{
+                  id: 'tc_1',
+                  type: 'function',
+                  function: {
+                    name: 'read_file',
+                    arguments: '{"path":"README.md"}'
+                  }
+                }]
+              },
+              finish_reason: 'tool_calls'
+            }],
+            usage: {},
+          })
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: 'done'
+            },
+            finish_reason: 'stop'
+          }],
+          usage: {},
+        })
+      };
+    };
+
+    try {
+      const agentMock = {
+        name: 'testAgent',
+        model: 'agent-custom-model',
+        systemPrompt: 'System',
+        allowedTools: [],
+        formatUserMessage: () => 'mock prompt',
+        maxTurns: 2,
+        timeoutMs: 10000,
+      };
+
+      const result = await agentRunner.runAgent({
+        agent: agentMock,
+        task: { taskId: 'task-allowedtools-empty' },
+      });
+
+      expect(executeToolCalled).toBe(true);
+      expect(result.result).toBe('done');
+    } finally {
+      toolLoader.executeTool = originalExecuteTool;
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('21. inferDefaultCapability keeps search-first requests on oct-chat even when they mention 总结', () => {
+    const ai = require('../ai');
+    const infer = ai._internals.inferDefaultCapability;
+
+    const capability = infer([
+      { role: 'user', content: '搜索 DeepSeek 最新模型，如果价格低于 $10/M 就写总结' },
+    ]);
+
+    expect(capability).toBe('oct-chat');
+  });
+
+  it('22. inferDefaultCapability still routes pure summarization requests to oct-plan', () => {
+    const ai = require('../ai');
+    const infer = ai._internals.inferDefaultCapability;
+
+    const capability = infer([
+      { role: 'user', content: '把上面的内容总结成 5 条要点' },
+    ]);
+
+    expect(capability).toBe('oct-plan');
+  });
 });

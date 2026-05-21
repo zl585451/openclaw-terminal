@@ -19,6 +19,12 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     'SCRIPT_ADAPTER_MODEL',
     'NEWAPI_API_KEY',
     'NEWAPI_BASE_URL',
+    'OMNIROUTE_BASE_URL',
+    'OMNIROUTE_API_KEY',
+    'OMNIROUTE_CHAT_MODEL',
+    'OMNIROUTE_PLAN_MODEL',
+    'OMNIROUTE_TOOL_MODEL',
+    'OCT_USE_EXTERNAL_OMNIROUTE',
   ];
 
   let originalGetProviderConfig;
@@ -109,34 +115,29 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     expect(provider.model).toBe('sa-model-original');
   });
 
-  it('3. resolves successfully to the first available non-current candidate', () => {
-    // We will configure 'deepseek' candidates
-    process.env.DEEPSEEK_BASE_URL = 'https://ds-omni.api/v1';
-    process.env.DEEPSEEK_API_KEY = 'ds-key-omni';
+  it('3. resolves successfully to external OmniRoute when configured', () => {
+    process.env.OCT_USE_EXTERNAL_OMNIROUTE = 'true';
+    process.env.OMNIROUTE_BASE_URL = 'https://omni-test.api/v1';
+    process.env.OMNIROUTE_API_KEY = 'sk-omni-secret';
+    process.env.OMNIROUTE_PLAN_MODEL = 'combo-plan';
 
     const provider = resolveProviderFor('script_adapter', 'oct-plan');
     expect(provider).toBeDefined();
-    expect(provider.baseUrl).toBe('https://ds-omni.api/v1');
-    expect(provider.apiKey).toBe('ds-key-omni');
-    expect(provider.model).toBe('deepseek-v4-pro'); // matched model defined in candidates
+    expect(provider.baseUrl).toBe('https://omni-test.api/v1');
+    expect(provider.apiKey).toBe('sk-omni-secret');
+    expect(provider.model).toBe('combo-plan');
   });
 
-  it('4. honors current/current if original resolution succeeds', () => {
-    // First candidate in oct-plan draft mapping is current/current.
-    // If we configure both original script adapter AND deepseek:
-    process.env.SCRIPT_ADAPTER_BASE_URL = 'https://original-sa.api/v1';
-    process.env.SCRIPT_ADAPTER_API_KEY = 'sa-key-original';
-    process.env.SCRIPT_ADAPTER_MODEL = 'sa-model-original';
+  it('4. honors SCRIPT_ADAPTER override when OmniRoute is not configured', () => {
+    process.env.SCRIPT_ADAPTER_BASE_URL = 'https://sa-test.api/v1';
+    process.env.SCRIPT_ADAPTER_API_KEY = 'sa-key';
+    process.env.SCRIPT_ADAPTER_MODEL = 'sa-model';
 
-    process.env.DEEPSEEK_BASE_URL = 'https://ds-omni.api/v1';
-    process.env.DEEPSEEK_API_KEY = 'ds-key-omni';
-
-    // It should prioritize current/current and return SCRIPT_ADAPTER config because current/current is the first candidate
-    const provider = resolveProviderFor('script_adapter', 'oct-plan');
+    const provider = resolveProviderFor('script_adapter');
     expect(provider).toBeDefined();
-    expect(provider.baseUrl).toBe('https://original-sa.api/v1');
-    expect(provider.apiKey).toBe('sa-key-original');
-    expect(provider.model).toBe('sa-model-original');
+    expect(provider.baseUrl).toBe('https://sa-test.api/v1');
+    expect(provider.apiKey).toBe('sa-key');
+    expect(provider.model).toBe('sa-model');
   });
 
   it('5. does not read new configs outside env or disturb other purpose priorities', () => {

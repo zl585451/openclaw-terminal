@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { ConnectionTabViewBeginner } from './ConnectionTabView.Beginner';
+
 import type { ApiKeysState, SettingsMode } from '../../../hooks/settings/useApiKeys';
 import type { ProviderEntry } from '../providerTypes';
 import {
@@ -410,26 +411,28 @@ export function ConnectionTabView({
         </div>
 
         {/* Mode selector header */}
-        <div className="omniroute-mode-container">
-          <button
-            type="button"
-            className="omniroute-mode-btn active"
-            onClick={() => {
-              setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
-            }}
-          >
-            ◈ 外部 OmniRoute 模式 (推荐)
-          </button>
-          <button
-            type="button"
-            className="omniroute-mode-btn"
-            onClick={() => {
-              setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: false }));
-            }}
-          >
-            ◈ 本地兼容模式 (旧配置)
-          </button>
-        </div>
+        {settingsMode !== 'beginner' && (
+          <div className="omniroute-mode-container">
+            <button
+              type="button"
+              className="omniroute-mode-btn active"
+              onClick={() => {
+                setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
+              }}
+            >
+              ◈ 外部 OmniRoute 模式 (推荐)
+            </button>
+            <button
+              type="button"
+              className="omniroute-mode-btn"
+              onClick={() => {
+                setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: false }));
+              }}
+            >
+              ◈ 本地兼容模式 (旧配置)
+            </button>
+          </div>
+        )}
 
         <section className="settings-section">
           <h3>OmniRoute 连接配置</h3>
@@ -593,7 +596,6 @@ export function ConnectionTabView({
       </div>
     );
   }
-
   if (settingsMode === 'beginner') {
     return (
       <ConnectionTabViewBeginner

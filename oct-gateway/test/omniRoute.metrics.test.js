@@ -156,19 +156,18 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
 
   it('6. records standard stream failures (such as 503) correctly to metrics', async () => {
     const { streamChat } = require('../ai');
-    const omniRoute = require('../runtime/omniRoute');
-    const originalResolveAll = omniRoute.resolveAllCandidates;
+    const externalOmniRoute = require('../runtime/externalOmniRoute');
+    const originalResolveTarget = externalOmniRoute.resolveCapabilityTarget;
 
-    // Force resolveAllCandidates to only return deepseek to avoid trying google native candidate
-    omniRoute.resolveAllCandidates = () => {
-      return [{
+    externalOmniRoute.resolveCapabilityTarget = () => {
+      return {
         providerId: 'deepseek',
         baseUrl: 'https://api.deepseek.com/v1',
         apiKey: 'sk-mock-key',
         model: 'deepseek-v4-flash',
-        source: 'omniroute_candidate_deepseek',
+        source: 'external_omniroute_config',
         capability: 'oct-chat'
-      }];
+      };
     };
 
     const originalFetch = globalThis.fetch;
@@ -213,7 +212,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
       expect(recent.text).toBeUndefined();
     } finally {
       globalThis.fetch = originalFetch;
-      omniRoute.resolveAllCandidates = originalResolveAll;
+      externalOmniRoute.resolveCapabilityTarget = originalResolveTarget;
     }
   }, 20000);
 });
