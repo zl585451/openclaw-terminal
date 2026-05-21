@@ -193,6 +193,44 @@ export function ConnectionTabViewBeginner({
 
   return (
     <div className="settings-tab-content">
+      {/* Mode selector header */}
+      <div className="omniroute-mode-container">
+        <button
+          type="button"
+          className="omniroute-mode-btn"
+          onClick={() => {
+            setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
+          }}
+        >
+          ◈ 外部 OmniRoute 模式 (推荐)
+        </button>
+        <button
+          type="button"
+          className="omniroute-mode-btn active"
+          onClick={() => {
+            setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: false }));
+          }}
+        >
+          ◈ 本地兼容模式 (旧配置)
+        </button>
+      </div>
+
+      {/* Warning Banner urging upgrade */}
+      <div className="omniroute-alert-banner">
+        <div className="omniroute-alert-banner-text">
+          💡 <strong>当前处于「本地兼容模式」：</strong>我们强烈建议您启用统一的 <strong>OmniRoute 智能自愈网关</strong>，享受更高速、稳定的多模型自愈与智能路由服务。
+        </div>
+        <button
+          type="button"
+          className="omniroute-alert-banner-btn"
+          onClick={() => {
+            setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
+          }}
+        >
+          一键开启外部 OmniRoute
+        </button>
+      </div>
+
       <div className="settings-guide-card">
         <h4>新手快速开始</h4>
         <ol>

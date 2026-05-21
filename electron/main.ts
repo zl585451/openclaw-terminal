@@ -3254,6 +3254,33 @@ ipcMain.handle('gateway-status', async () => {
   };
 });
 
+ipcMain.handle('omniroute-status', async () => {
+  const statusUrl = `http://127.0.0.1:${GATEWAY_PORT + 1}/omniroute/status`;
+  try {
+    const res = await fetch(statusUrl, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) {
+      return {
+        success: false,
+        error: `HTTP Error ${res.status}`,
+        status: res.status,
+        checkedUrl: statusUrl,
+      };
+    }
+    const data = await res.json();
+    return {
+      success: true,
+      data,
+      checkedUrl: statusUrl,
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      error: e?.message || '无法连接 Gateway 后台服务',
+      checkedUrl: statusUrl,
+    };
+  }
+});
+
 ipcMain.handle('get-env', (_, key: string) => process.env[key] || '');
 
 /** 调用 oct-gateway 的工具执行接口（用于保险箱等） */
@@ -3618,7 +3645,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.OMNIROUTE_PLAN_MODEL !== undefined) cfg.OMNIROUTE_PLAN_MODEL = keys.OMNIROUTE_PLAN_MODEL || '';
     if (keys.OMNIROUTE_TOOL_MODEL !== undefined) cfg.OMNIROUTE_TOOL_MODEL = keys.OMNIROUTE_TOOL_MODEL || '';
     if (keys.OCT_USE_EXTERNAL_OMNIROUTE !== undefined) {
-      cfg.OCT_USE_EXTERNAL_OMNIROUTE = parseBooleanConfigValue(keys.OCT_USE_EXTERNAL_OMNIROUTE);
+      cfg.OCT_USE_EXTERNAL_OMNIROUTE = parseBooleanConfigValue(keys.OCT_USE_EXTERNAL_OMNIROUTE) ? 'true' : 'false';
     }
     Object.assign(cfg, {
       OPENCLAW_WS_URL: cfg.OPENCLAW_WS_URL ?? DEFAULT_CONFIG.OPENCLAW_WS_URL,

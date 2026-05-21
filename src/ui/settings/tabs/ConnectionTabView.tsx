@@ -69,6 +69,70 @@ function readScopedImageValues(state: SettingsApiKeysState, providerRaw: string)
   };
 }
 
+interface ExternalGatewayConnectivity {
+  ok: boolean;
+  status: string;
+  httpStatus: number | null;
+  checkedUrl: string | null;
+  error: string | null;
+}
+
+interface ExternalGatewayStatus {
+  enabled: boolean;
+  configured: boolean;
+  baseUrl: string;
+  hasApiKey: boolean;
+  models: Record<string, string>;
+  connectivity: ExternalGatewayConnectivity;
+}
+
+interface OmniRouteStatusResponse {
+  externalGateway?: ExternalGatewayStatus | null;
+}
+
+interface OmniRouteStatusResult {
+  success: boolean;
+  data?: OmniRouteStatusResponse;
+  error?: string;
+  status?: number;
+  checkedUrl?: string;
+}
+
+export const OMNIROUTE_LIVE_ALIAS_UNKNOWN = '未读取到已生效配置';
+
+export function getLiveOmniRouteAlias(
+  externalGateway: ExternalGatewayStatus | null | undefined,
+  capability: 'oct-chat' | 'oct-plan' | 'oct-tool-safe',
+): string | null {
+  const raw = externalGateway?.models?.[capability];
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed || null;
+}
+
+export function formatLiveOmniRouteAlias(
+  externalGateway: ExternalGatewayStatus | null | undefined,
+  capability: 'oct-chat' | 'oct-plan' | 'oct-tool-safe',
+): string {
+  return getLiveOmniRouteAlias(externalGateway, capability) || OMNIROUTE_LIVE_ALIAS_UNKNOWN;
+}
+
+export async function requestOmniRouteStatus(
+  api: { getOmniRouteStatus?: () => Promise<OmniRouteStatusResult> } | null | undefined,
+): Promise<OmniRouteStatusResult> {
+  if (!api?.getOmniRouteStatus) {
+    return { success: false, error: 'Gateway 状态桥未就绪。' };
+  }
+  try {
+    return await api.getOmniRouteStatus();
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || '无法读取 OmniRoute 状态。',
+    };
+  }
+}
+
 export interface ConnectionTabViewProps {
   apiKeysLoaded: boolean;
   apiKeys: SettingsApiKeysState;
@@ -256,6 +320,280 @@ export function ConnectionTabView({
     ? (apiKeys.CUSTOM_BASE_URL || '').toLowerCase().includes('siliconflow') ? 'siliconflow' : ''
     : '';
 
+  const [statusData, setStatusData] = useState<OmniRouteStatusResponse | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [showOmniKey, setShowOmniKey] = useState(false);
+  const [omniTestingStatus, setOmniTestingStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [omniTestingError, setOmniTestingError] = useState('');
+
+  const fetchStatus = async () => {
+    if (!apiKeys.OCT_USE_EXTERNAL_OMNIROUTE) {
+      setStatusData(null);
+      setStatusError(null);
+      return;
+    }
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      const api = (window as any).electronAPI;
+      const result = await requestOmniRouteStatus(api);
+      if (!result.success || !result.data) {
+        throw new Error(result.error || '无法读取 OmniRoute 状态。');
+      }
+      setStatusData(result.data);
+    } catch (err: any) {
+      console.warn('[ConnectionTabView] Failed to fetch OmniRoute status:', err);
+      setStatusError('无法连接 Gateway 后台服务，请检查 Gateway 是否正常启动并运行。');
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+  }, [apiKeys.OCT_USE_EXTERNAL_OMNIROUTE]);
+
+  const handleSaveAndTestOmni = async () => {
+    if (!apiKeys.OMNIROUTE_BASE_URL?.trim() || !apiKeys.OMNIROUTE_API_KEY?.trim()) {
+      setOmniTestingStatus('error');
+      setOmniTestingError('请先填写 Base URL 和 API Key 之后再保存并测试连接。');
+      return;
+    }
+    setOmniTestingStatus('testing');
+    setOmniTestingError('');
+    const ok = await saveGatewayAndReconnect();
+    if (!ok) {
+      setOmniTestingStatus('error');
+      setOmniTestingError('配置保存并 reconnect Gateway 失败，请检查 Gateway 运行状态。');
+      return;
+    }
+    try {
+      const api = (window as any).electronAPI;
+      const result = await requestOmniRouteStatus(api);
+      if (result.success && result.data) {
+        const nextStatus = result.data;
+        setStatusData(nextStatus);
+        if (nextStatus?.externalGateway?.connectivity?.ok) {
+          setOmniTestingStatus('success');
+        } else {
+          setOmniTestingStatus('error');
+          setOmniTestingError(nextStatus?.externalGateway?.connectivity?.error || '外部 OmniRoute 连通性测试失败。');
+        }
+      } else {
+        setOmniTestingStatus('error');
+        setOmniTestingError(result.error || '后台诊断失败，请检查 Gateway 状态。');
+      }
+    } catch (err: any) {
+      setOmniTestingStatus('error');
+      setOmniTestingError(err.message || '无法向网关端点发起测试请求。');
+    }
+    setTimeout(() => {
+      setOmniTestingStatus('idle');
+    }, 4000);
+  };
+
+  if (apiKeys.OCT_USE_EXTERNAL_OMNIROUTE) {
+    const extStatus = statusData?.externalGateway || null;
+    const isUnconfigured = !apiKeys.OMNIROUTE_BASE_URL?.trim() || !apiKeys.OMNIROUTE_API_KEY?.trim();
+    const chatAlias = formatLiveOmniRouteAlias(extStatus, 'oct-chat');
+    const planAlias = formatLiveOmniRouteAlias(extStatus, 'oct-plan');
+    const toolAlias = formatLiveOmniRouteAlias(extStatus, 'oct-tool-safe');
+
+    return (
+      <div className="settings-tab-content">
+        <div className="settings-guide-card">
+          <h4>推荐配置：外部 OmniRoute 模式</h4>
+          <p className="settings-desc">
+            此模式下，OCT 的底层能力模型完全收敛至外部统一智能网关，由外部统一分配、切换和自愈。
+          </p>
+        </div>
+
+        {/* Mode selector header */}
+        <div className="omniroute-mode-container">
+          <button
+            type="button"
+            className="omniroute-mode-btn active"
+            onClick={() => {
+              setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
+            }}
+          >
+            ◈ 外部 OmniRoute 模式 (推荐)
+          </button>
+          <button
+            type="button"
+            className="omniroute-mode-btn"
+            onClick={() => {
+              setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: false }));
+            }}
+          >
+            ◈ 本地兼容模式 (旧配置)
+          </button>
+        </div>
+
+        <section className="settings-section">
+          <h3>OmniRoute 连接配置</h3>
+          
+          <div className="settings-field">
+            <label>OmniRoute Base URL</label>
+            <input
+              type="text"
+              value={apiKeys.OMNIROUTE_BASE_URL || ''}
+              onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_BASE_URL: e.target.value }))}
+              placeholder="https://api.omniroute.example/v1"
+              className="settings-input settings-input-focusable"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="settings-field">
+            <label>OmniRoute API Key</label>
+            <div className="settings-input-row">
+              <input
+                type={showOmniKey ? 'text' : 'password'}
+                value={apiKeys.OMNIROUTE_API_KEY || ''}
+                onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_API_KEY: e.target.value }))}
+                placeholder="sk-..."
+                className="settings-input settings-input-focusable"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="settings-eye-btn"
+                onClick={() => setShowOmniKey(!showOmniKey)}
+              >
+                {showOmniKey ? '🙈' : '👁'}
+              </button>
+            </div>
+          </div>
+
+          <details className="settings-details">
+            <summary>高级：模型别名映射（Alias Configuration）</summary>
+            <div className="settings-details-content">
+              <div className="settings-field">
+                <label>Chat Model Alias (对话别名)</label>
+                <input
+                  type="text"
+                  value={apiKeys.OMNIROUTE_CHAT_MODEL || ''}
+                  onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_CHAT_MODEL: e.target.value }))}
+                  placeholder="combo/chat"
+                  className="settings-input settings-input-focusable"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label>Plan Model Alias (规划别名)</label>
+                <input
+                  type="text"
+                  value={apiKeys.OMNIROUTE_PLAN_MODEL || ''}
+                  onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_PLAN_MODEL: e.target.value }))}
+                  placeholder="combo/plan"
+                  className="settings-input settings-input-focusable"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label>Tool Model Alias (工具安全通道别名)</label>
+                <input
+                  type="text"
+                  value={apiKeys.OMNIROUTE_TOOL_MODEL || ''}
+                  onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_TOOL_MODEL: e.target.value }))}
+                  placeholder="combo/tool"
+                  className="settings-input settings-input-focusable"
+                />
+              </div>
+            </div>
+          </details>
+
+          <div className="settings-actions-row">
+            <button
+              type="button"
+              className="settings-btn settings-btn-primary"
+              onClick={handleSaveAndTestOmni}
+              disabled={omniTestingStatus === 'testing'}
+            >
+              {omniTestingStatus === 'testing'
+                ? '保存并测试中...'
+                : omniTestingStatus === 'success'
+                  ? '✓ 连接成功'
+                  : '保存并测试连接'}
+            </button>
+          </div>
+          {omniTestingStatus === 'error' && omniTestingError && (
+            <div className="settings-error-inline">{omniTestingError}</div>
+          )}
+        </section>
+
+        {/* Real-time Status Panel */}
+        <section className="omniroute-diagnostic-card">
+          <div className="omniroute-diagnostic-title">
+            <span>◈ 外部 OmniRoute 运行状态诊断</span>
+          </div>
+
+          <div className="omniroute-diagnostic-item">
+            <span className="omniroute-diagnostic-label">链路模式</span>
+            <span className="omniroute-diagnostic-value text-cyan">
+              外部 OmniRoute 模式
+            </span>
+          </div>
+
+          <div className="omniroute-diagnostic-item">
+            <span className="omniroute-diagnostic-label">诊断连通性</span>
+            <span className="omniroute-diagnostic-value">
+              {isUnconfigured ? (
+                <span className="omniroute-text-error">⚠️ 配置不完整 (Unconfigured)</span>
+              ) : statusLoading ? (
+                <span className="omniroute-text-muted">正在检测中...</span>
+              ) : statusError ? (
+                <span className="omniroute-text-error" title={statusError}>✕ 连通未知 (Gateway Offline)</span>
+              ) : extStatus?.connectivity?.ok ? (
+                <span className="omniroute-text-success">
+                  ✓ 连通正常 (Reachable) {extStatus.connectivity.httpStatus ? `(${extStatus.connectivity.httpStatus})` : ''}
+                </span>
+              ) : (
+                <span className="omniroute-text-error" title={extStatus?.connectivity?.error || ''}>
+                  ✕ 连通失败 (Connection Failed)
+                </span>
+              )}
+            </span>
+          </div>
+
+          <div className="omniroute-diagnostic-item">
+            <span className="omniroute-diagnostic-label">Chat 逻辑别名出口</span>
+            <span className="omniroute-diagnostic-value">
+              <code>{chatAlias}</code>
+            </span>
+          </div>
+
+          <div className="omniroute-diagnostic-item">
+            <span className="omniroute-diagnostic-label">Plan 逻辑别名出口</span>
+            <span className="omniroute-diagnostic-value">
+              <code>{planAlias}</code>
+            </span>
+          </div>
+
+          <div className="omniroute-diagnostic-item">
+            <span className="omniroute-diagnostic-label">Tool-safe 逻辑别名出口</span>
+            <span className="omniroute-diagnostic-value">
+              <code>{toolAlias}</code>
+            </span>
+          </div>
+
+          {extStatus?.connectivity?.error && !isUnconfigured && (
+            <div className="settings-note-card settings-note-card-warning mt-2">
+              <strong>诊断报错：</strong> {extStatus.connectivity.error}
+            </div>
+          )}
+          {!isUnconfigured && !statusLoading && !statusError && (
+            <div className="settings-note-card mt-2">
+              诊断面板只显示 Gateway 当前已生效的实际出口映射；未保存草稿不会在这里冒充生效状态。
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
   if (settingsMode === 'beginner') {
     return (
       <ConnectionTabViewBeginner
@@ -279,6 +617,44 @@ export function ConnectionTabView({
 
   return (
     <div className="settings-tab-content">
+      {/* Mode selector header */}
+      <div className="omniroute-mode-container">
+        <button
+          type="button"
+          className="omniroute-mode-btn"
+          onClick={() => {
+            setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
+          }}
+        >
+          ◈ 外部 OmniRoute 模式 (推荐)
+        </button>
+        <button
+          type="button"
+          className="omniroute-mode-btn active"
+          onClick={() => {
+            setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: false }));
+          }}
+        >
+          ◈ 本地兼容模式 (旧配置)
+        </button>
+      </div>
+
+      {/* Warning Banner urging upgrade */}
+      <div className="omniroute-alert-banner">
+        <div className="omniroute-alert-banner-text">
+          💡 <strong>当前处于「本地兼容模式」：</strong>我们强烈建议您启用统一的 <strong>OmniRoute 智能自愈网关</strong>，享受更高速、稳定的多模型自愈与智能路由服务。
+        </div>
+        <button
+          type="button"
+          className="omniroute-alert-banner-btn"
+          onClick={() => {
+            setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
+          }}
+        >
+          一键开启外部 OmniRoute
+        </button>
+      </div>
+
       <div className="settings-guide-card">
         <h4>推荐配置</h4>
         <ol>

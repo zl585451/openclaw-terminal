@@ -90,6 +90,7 @@ const electronAPI = {
   restartGateway: () => ipcRenderer.invoke('gateway-restart'),
   gatewayClearPortAndStart: () => ipcRenderer.invoke('gateway-clear-port-and-start'),
   getGatewayStatus: () => ipcRenderer.invoke('gateway-status'),
+  getOmniRouteStatus: () => ipcRenderer.invoke('omniroute-status'),
   getScreenshotShortcut: () => ipcRenderer.invoke('get-screenshot-shortcut'),
   setScreenshotShortcut: (shortcut: string) => ipcRenderer.invoke('set-screenshot-shortcut', shortcut),
   // 文件上传

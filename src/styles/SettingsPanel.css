@@ -1571,3 +1571,111 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* OmniRoute Phase 4 Mode Selector Styles */
+.omniroute-mode-container {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.omniroute-mode-btn {
+  flex: 1;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.omniroute-mode-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--text-primary);
+}
+
+.omniroute-mode-btn.active {
+  background: rgba(0, 188, 212, 0.1);
+  border-color: #00bcd4;
+  color: #00bcd4;
+}
+
+.omniroute-alert-banner {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.omniroute-alert-banner-text {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.omniroute-alert-banner-btn {
+  background: #ffc107;
+  color: #000;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.omniroute-alert-banner-btn:hover {
+  opacity: 0.9;
+}
+
+.omniroute-diagnostic-card {
+  background: var(--bg-tertiary, #111);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 20px;
+}
+
+.omniroute-diagnostic-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.omniroute-diagnostic-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border-subtle);
+  font-size: var(--text-sm);
+}
+
+.omniroute-diagnostic-item:last-child {
+  border-bottom: none;
+}
+
+.omniroute-diagnostic-label {
+  color: var(--text-secondary);
+}
+
+.omniroute-diagnostic-value {
+  font-weight: 500;
+}
