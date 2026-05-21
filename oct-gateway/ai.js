@@ -1579,17 +1579,70 @@ function resolveStreamErrorType(err) {
   return err.code || 'StreamError';
 }
 
+const PLAN_HINT_RE = /(?:\b(?:summarize|summary|plan|planning|orchestrate|orchestrator|script_adapter|voice_fragment)\b|总结|归纳|提炼|规划|评估|规律)/i;
+
+function hasPlanHintText(value) {
+  return typeof value === 'string' && PLAN_HINT_RE.test(value);
+}
+
+function inferDefaultCapability(messages) {
+  if (!Array.isArray(messages)) {
+    return 'oct-chat';
+  }
+
+  for (const msg of messages) {
+    if (msg?.role === 'user' && hasPlanHintText(msg.content)) {
+      return 'oct-plan';
+    }
+  }
+
+  for (const msg of messages) {
+    if (msg?.role !== 'system' || typeof msg.content !== 'string') {
+      continue;
+    }
+    const text = msg.content.trim();
+    if (!text || text.length > 240) {
+      continue;
+    }
+    if (hasPlanHintText(text)) {
+      return 'oct-plan';
+    }
+  }
+
+  return 'oct-chat';
+}
+
+function sameResolvedRoute(a, b) {
+  if (!a || !b) return false;
+  return String(a.providerId || '') === String(b.providerId || '')
+    && String(a.baseUrl || '').replace(/\/$/, '') === String(b.baseUrl || '').replace(/\/$/, '')
+    && String(a.model || '') === String(b.model || '')
+    && String(a.apiKey || '') === String(b.apiKey || '');
+}
+
+function prependExternalCandidate(activeCandidates, extResolved) {
+  if (!extResolved) {
+    return Array.isArray(activeCandidates) ? activeCandidates : [];
+  }
+  const list = Array.isArray(activeCandidates) ? activeCandidates : [];
+  const deduped = list.filter((candidate) => !sameResolvedRoute(candidate, extResolved));
+  return [extResolved, ...deduped];
+}
+
 async function streamChat(options) {
   let activeCapability = options.capability;
   if (options.preserveToolChain || options.toolRound > 0) {
     activeCapability = 'oct-tool-safe';
+  } else if (!activeCapability) {
+    activeCapability = inferDefaultCapability(options.messages);
   }
 
-  if (options._omniRouteResolved || !activeCapability) {
+  if (options._omniRouteResolved) {
     return streamChatRaw(options);
   }
 
   const omniRoute = require('./runtime/omniRoute');
+  const externalOmniRoute = require('./runtime/externalOmniRoute');
   let origResolved = null;
   const context = {
     originalResolve: () => {
@@ -1598,8 +1651,13 @@ async function streamChat(options) {
     }
   };
 
-  const activeCandidates = omniRoute.resolveAllCandidates(activeCapability, context);
-  if (activeCandidates.length <= 1) {
+  const extResolved = options._disableExternalOmniRoute
+    ? null
+    : externalOmniRoute.resolveCapabilityTarget(activeCapability);
+  let activeCandidates = omniRoute.resolveAllCandidates(activeCapability, context);
+  activeCandidates = prependExternalCandidate(activeCandidates, extResolved);
+
+  if (activeCandidates.length <= 1 && (!activeCandidates[0] || activeCandidates[0].providerId !== 'external_omniroute')) {
     return streamChatRaw(options);
   }
 
@@ -1691,6 +1749,7 @@ async function streamChatRaw({
   turnId = null,
   capability = null,
   _omniRouteResolved = null,
+  _disableExternalOmniRoute = false,
 }) {
   const hasMultimodalParts = (msgs) => Array.isArray(msgs) && msgs.some((m) =>
     Array.isArray(m?.content) && m.content.some((part) =>
@@ -1703,6 +1762,8 @@ async function streamChatRaw({
     let activeCapability = capability;
     if (preserveToolChain || toolRound > 0) {
       activeCapability = 'oct-tool-safe';
+    } else if (!activeCapability) {
+      activeCapability = inferDefaultCapability(messages);
     }
 
     if (activeCapability) {
@@ -1746,6 +1807,9 @@ async function streamChatRaw({
 
   // 上下文截断优化：防止消息过长
   const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages, model);
+  const reentryCapability = preserveToolChain || toolRound > 0
+    ? 'oct-tool-safe'
+    : (capability || inferDefaultCapability(truncatedMessages));
   let effectiveMessages = provider.id === 'google'
     ? injectGoogleDiagramGuard(truncatedMessages)
     : truncatedMessages;
@@ -2446,7 +2510,15 @@ async function streamChatRaw({
       config.DASHSCOPE_MODEL = fallbackModel;
       try {
         log.debug('streamChat fallback re-enter', { originalModel, fallbackModel });
-        await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
+        await streamChat({
+          messages: truncatedMessages,
+          onDelta,
+          onDone,
+          onError,
+          onToolEvent,
+          capability: reentryCapability,
+          _disableExternalOmniRoute: true,
+        });
       } finally {
         config.currentProvider = prevProvider;
         config.DASHSCOPE_MODEL = prevModel;
@@ -2466,7 +2538,15 @@ async function streamChatRaw({
       config.DASHSCOPE_MODEL = fallbackModel;
       try {
         log.debug('streamChat fallback re-enter', { originalModel, fallbackModel });
-        await streamChat({ messages: truncatedMessages, onDelta, onDone, onError, onToolEvent });
+        await streamChat({
+          messages: truncatedMessages,
+          onDelta,
+          onDone,
+          onError,
+          onToolEvent,
+          capability: reentryCapability,
+          _disableExternalOmniRoute: true,
+        });
       } finally {
         config.currentProvider = prevProvider;
         config.DASHSCOPE_MODEL = prevModel;

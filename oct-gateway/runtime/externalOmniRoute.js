@@ -39,6 +39,9 @@ function getCapabilityAlias(capability, snapshot = getExternalGatewayConfig()) {
 }
 
 function resolveCapabilityTarget(capability) {
+  if (capability !== 'oct-chat' && capability !== 'oct-plan') {
+    return null;
+  }
   const snapshot = getExternalGatewayConfig();
   const model = getCapabilityAlias(capability, snapshot);
   if (!snapshot.enabled || !snapshot.baseUrl || !snapshot.apiKey || !model) {

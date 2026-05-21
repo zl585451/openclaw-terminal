@@ -17,6 +17,23 @@ class LlmClientHttpError extends Error {
   }
 }
 
+function sameResolvedRoute(a, b) {
+  if (!a || !b) return false;
+  return String(a.providerId || '') === String(b.providerId || '')
+    && String(a.baseUrl || '').replace(/\/$/, '') === String(b.baseUrl || '').replace(/\/$/, '')
+    && String(a.model || '') === String(b.model || '')
+    && String(a.apiKey || '') === String(b.apiKey || '');
+}
+
+function prependExternalCandidate(activeCandidates, extResolved) {
+  if (!extResolved) {
+    return Array.isArray(activeCandidates) ? activeCandidates : [];
+  }
+  const list = Array.isArray(activeCandidates) ? activeCandidates : [];
+  const deduped = list.filter((candidate) => !sameResolvedRoute(candidate, extResolved));
+  return [extResolved, ...deduped];
+}
+
 /**
  * 非流式 chat completion 调用，OpenAI 兼容协议。
  * @param {object} options
@@ -35,14 +52,18 @@ async function chatCompletion(options) {
   }
 
   const omniRoute = require('../runtime/omniRoute');
+  const externalOmniRoute = require('../runtime/externalOmniRoute');
   const context = {
     originalResolve: () => {
       return provider;
     }
   };
 
-  const activeCandidates = omniRoute.resolveAllCandidates(provider.capability, context);
-  if (activeCandidates.length <= 1) {
+  const extResolved = externalOmniRoute.resolveCapabilityTarget(provider.capability);
+  let activeCandidates = omniRoute.resolveAllCandidates(provider.capability, context);
+  activeCandidates = prependExternalCandidate(activeCandidates, extResolved);
+
+  if (activeCandidates.length <= 1 && (!activeCandidates[0] || activeCandidates[0].providerId !== 'external_omniroute')) {
     return chatCompletionRaw(options);
   }
 
@@ -165,6 +186,23 @@ function buildHeaders(baseUrl, apiKey) {
  */
 function resolveProviderFor(purpose = 'general', capability = null) {
   if (capability) {
+    try {
+      const externalOmniRoute = require('../runtime/externalOmniRoute');
+      const extResolved = externalOmniRoute.resolveCapabilityTarget(capability);
+      if (extResolved) {
+        return {
+          baseUrl: extResolved.baseUrl,
+          apiKey: extResolved.apiKey,
+          model: extResolved.model,
+          source: extResolved.source,
+          providerId: extResolved.providerId,
+          capability: extResolved.capability,
+        };
+      }
+    } catch (err) {
+      // ignore
+    }
+
     let resolveCapability;
     try {
       const omniRoute = require('../runtime/omniRoute');
