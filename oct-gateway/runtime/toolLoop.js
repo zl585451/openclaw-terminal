@@ -94,6 +94,36 @@ class ToolLoop {
       }
       this.log.info('tool call', { name: toolCall.function.name, args, turnId: turnId || null });
       const toolName = toolCall.function.name;
+
+      const KNOWN_TOOL_NAMES = new Set(
+        (this.toolLoader.getDefinitions?.() || [])
+          .map((def) => String(def?.function?.name || '').trim())
+          .filter(Boolean)
+      );
+
+      if (!KNOWN_TOOL_NAMES.has(toolName)) {
+        this.log.error('tool execution intercepted: tool is not registered', { toolName, turnId: turnId || null });
+        const result = `ERROR: Tool "${toolName}" is not registered or allowed.`;
+        toolResults.push({
+          tool_call_id: toolCall.id,
+          role: 'tool',
+          name: toolName,
+          content: result,
+        });
+        if (onToolEvent) {
+          try {
+            onToolEvent({
+              type: 'tool_result',
+              tool: toolName,
+              callId: toolCall.id,
+              state: 'error',
+              resultPreview: result,
+            });
+          } catch {}
+        }
+        continue;
+      }
+
       const toolTimeoutMs = this.toolLoader.getToolMeta?.(toolName)?.timeoutMs || 30000;
 
       if (onToolEvent) {

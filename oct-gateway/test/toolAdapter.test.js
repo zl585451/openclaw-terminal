@@ -176,4 +176,154 @@ describe('ToolAdapter format governance and safe parsing', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('12. extractAllPseudoToolCalls filters unregistered tool names and keeps registered ones', () => {
+    const ai = require('../ai');
+    const extract = ai._internals.extractAllPseudoToolCalls;
+
+    // XML-like pseudo tool call
+    const textWithMix = 
+      '<tool_call><function=read_file><parameter-file_path>test.txt</parameter></tool_call>\n' +
+      '<tool_call><function=unregistered_fake_tool><parameter-foo>bar</parameter></tool_call>';
+
+    const calls = extract(textWithMix);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].function.name).toBe('read_file');
+  });
+
+  it('13. extractAllPseudoToolCalls filters faked tool calls with invalid JSON arguments', () => {
+    const ai = require('../ai');
+    const extract = ai._internals.extractAllPseudoToolCalls;
+
+    // Bracket-style tool call with malformed/invalid JSON parameter
+    const textWithMalformed = 
+      '[read_file] <tool_code>\n' +
+      '{ "file_path": "invalid_json_missing_quotes \n' +
+      '</tool_code>';
+
+    const calls = extract(textWithMalformed);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('14. ToolLoop handleToolCalls intercepts unregistered tool execution and returns clean error block', async () => {
+    const ToolLoop = require('../runtime/toolLoop');
+    let executeToolCalled = false;
+    let streamChatOpts = null;
+
+    const mockStreamChat = async (opts) => {
+      streamChatOpts = opts;
+      opts.onDone('reply', {}, 'model');
+    };
+
+    const loop = new ToolLoop({
+      toolLoader: {
+        getDefinitions: () => [
+          { type: 'function', function: { name: 'canvas', description: 'canvas tool' } }
+        ],
+        executeTool: async () => {
+          executeToolCalled = true;
+          return 'tool result';
+        }
+      },
+      log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+      streamChat: mockStreamChat,
+      buildToolSignature: () => 'test_sig',
+    });
+
+    await loop.handleToolCalls({
+      toolCalls: [
+        { id: 'tc_1', function: { name: 'canvas', arguments: '{"action":"create"}' } },
+        { id: 'tc_2', function: { name: 'unregistered_fake_tool', arguments: '{"foo":"bar"}' } }
+      ],
+      toolRound: 0,
+      toolSignatures: [],
+      truncatedMessages: [],
+      onDelta: () => {},
+      onDone: () => {},
+      onError: () => {},
+    });
+
+    // Assert executeTool was called (for canvas) but not for unregistered_fake_tool
+    expect(executeToolCalled).toBe(true);
+
+    // Assert the faked/unregistered tool results contain clean local interception message
+    expect(streamChatOpts).toBeDefined();
+    const toolResults = streamChatOpts.messages.filter(m => m.role === 'tool');
+    expect(toolResults).toHaveLength(2);
+
+    const fakeToolRes = toolResults.find(m => m.tool_name === 'unregistered_fake_tool' || m.name === 'unregistered_fake_tool');
+    expect(fakeToolRes).toBeDefined();
+    expect(fakeToolRes.content).toContain('not registered or allowed');
+  });
+
+  it('15. extractAllPseudoToolCalls rejects fake mcp-prefixed tool names when not actually registered', () => {
+    const ai = require('../ai');
+    const extract = ai._internals.extractAllPseudoToolCalls;
+
+    const fakeMcpText =
+      '<tool_call><function=mcp_fake_server_read_file><parameter-file_path>secret.txt</parameter></tool_call>';
+
+    const calls = extract(fakeMcpText);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('16. stripPseudoToolResidue removes blocked pseudo tool markup from final reply text', () => {
+    const ai = require('../ai');
+    const strip = ai._internals.stripPseudoToolResidue;
+    const hasResidue = ai._internals.hasPseudoToolResidue;
+
+    const source =
+      '先看一下结果。\n\n<tool_call><function=unregistered_fake_tool><parameter-foo>bar</parameter></tool_call>\n\n继续正文。';
+
+    expect(hasResidue(source)).toBe(true);
+    const stripped = strip(source);
+    expect(stripped).toContain('先看一下结果。');
+    expect(stripped).toContain('继续正文。');
+    expect(stripped).not.toContain('<tool_call>');
+    expect(stripped).not.toContain('unregistered_fake_tool');
+  });
+
+  it('17. ToolLoop also intercepts fake mcp-prefixed tool names that are not in registered definitions', async () => {
+    const ToolLoop = require('../runtime/toolLoop');
+    let executeToolCalled = false;
+    let streamChatOpts = null;
+
+    const mockStreamChat = async (opts) => {
+      streamChatOpts = opts;
+      opts.onDone('reply', {}, 'model');
+    };
+
+    const loop = new ToolLoop({
+      toolLoader: {
+        getDefinitions: () => [
+          { type: 'function', function: { name: 'mcp_realserver_read_file', description: 'real mcp tool' } }
+        ],
+        executeTool: async () => {
+          executeToolCalled = true;
+          return 'tool result';
+        }
+      },
+      log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+      streamChat: mockStreamChat,
+      buildToolSignature: () => 'test_sig',
+    });
+
+    await loop.handleToolCalls({
+      toolCalls: [
+        { id: 'tc_1', function: { name: 'mcp_fake_server_read_file', arguments: '{"path":"secret.txt"}' } }
+      ],
+      toolRound: 0,
+      toolSignatures: [],
+      truncatedMessages: [],
+      onDelta: () => {},
+      onDone: () => {},
+      onError: () => {},
+    });
+
+    expect(executeToolCalled).toBe(false);
+    const toolResults = streamChatOpts.messages.filter(m => m.role === 'tool');
+    expect(toolResults).toHaveLength(1);
+    expect(toolResults[0].name).toBe('mcp_fake_server_read_file');
+    expect(toolResults[0].content).toContain('not registered or allowed');
+  });
 });

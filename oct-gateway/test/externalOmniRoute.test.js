@@ -82,7 +82,7 @@ describe('external OmniRoute baseline adapter', () => {
     expect(result.httpStatus).toBe(200);
   });
 
-  it('4. strictly prevents oct-tool-safe from switching to external OmniRoute', () => {
+  it('4. allows oct-tool-safe to switch to external OmniRoute', () => {
     values = {
       OCT_USE_EXTERNAL_OMNIROUTE: 'true',
       OMNIROUTE_BASE_URL: 'https://omni.example/v1/',
@@ -97,7 +97,8 @@ describe('external OmniRoute baseline adapter', () => {
     expect(resolvedChat.model).toBe('combo/chat');
 
     const resolvedTool = externalOmniRoute.resolveCapabilityTarget('oct-tool-safe');
-    expect(resolvedTool).toBeNull();
+    expect(resolvedTool).not.toBeNull();
+    expect(resolvedTool.model).toBe('combo/tool');
   });
 
   it('5. fallback when external OmniRoute config is incomplete or disabled', () => {

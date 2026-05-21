@@ -1097,18 +1097,13 @@ function extractBracketToolCodePseudoToolCalls(text) {
   if (!source || !/<tool_code>/i.test(source)) {
     return [];
   }
-  const KNOWN_TOOL_NAMES = new Set(
-    (toolLoader.getDefinitions?.() || [])
-      .map((def) => String(def?.function?.name || '').trim())
-      .filter(Boolean)
-  );
   const calls = [];
   const callRe = /\[([a-zA-Z0-9_.-]+)\]\s*<tool_code>\s*([\s\S]*?)\s*<\/tool_code>/gi;
   let match;
   while ((match = callRe.exec(source)) !== null) {
     const toolName = String(match[1] || '').trim();
     if (!toolName) continue;
-    if (!KNOWN_TOOL_NAMES.has(toolName) && !toolName.startsWith('mcp_')) continue;
+    if (!isRegisteredToolName(toolName)) continue;
 
     const block = String(match[2] || '').trim();
     const jsonHit = findBalancedJsonObjectSlice(block, 0);
@@ -1141,6 +1136,20 @@ function extractPseudoToolCalls(text) {
   const kimi = extractKimiStylePseudoToolCalls(text);
   if (kimi.length > 0) return kimi;
   return extractXmlPseudoToolCalls(text);
+}
+
+function getKnownToolNames() {
+  return new Set(
+    (toolLoader.getDefinitions?.() || [])
+      .map((def) => String(def?.function?.name || '').trim())
+      .filter(Boolean)
+  );
+}
+
+function isRegisteredToolName(toolName) {
+  const normalized = String(toolName || '').trim();
+  if (!normalized) return false;
+  return getKnownToolNames().has(normalized);
 }
 
 function tryParseJsonWithSingleQuotes(raw) {
@@ -1272,8 +1281,64 @@ function extractFunctionStyleToolCalls(text) {
 
 function extractAllPseudoToolCalls(text) {
   const legacy = extractPseudoToolCalls(text);
-  if (legacy.length > 0) return legacy;
-  return extractFunctionStyleToolCalls(text);
+  const rawCalls = legacy.length > 0 ? legacy : extractFunctionStyleToolCalls(text);
+
+  const validCalls = [];
+  for (const call of rawCalls) {
+    const toolName = String(call?.function?.name || '').trim();
+    if (!toolName) {
+      log.warn('Pseudo tool call intercepted: empty tool name');
+      continue;
+    }
+
+    if (!isRegisteredToolName(toolName)) {
+      log.warn('Pseudo tool call intercepted: tool is not registered or allowed', { toolName });
+      continue;
+    }
+
+    // Validate argument JSON structure
+    try {
+      const argsStr = call?.function?.arguments;
+      if (typeof argsStr === 'string') {
+        JSON.parse(argsStr);
+      } else {
+        throw new Error('arguments is not a string');
+      }
+    } catch (e) {
+      log.warn('Pseudo tool call intercepted: invalid parameter structure', { toolName, error: e.message });
+      continue;
+    }
+
+    validCalls.push(call);
+  }
+
+  return validCalls;
+}
+
+function hasPseudoToolResidue(text) {
+  const source = String(text || '');
+  if (!source.trim()) return false;
+  return (
+    /<tool_call>/i.test(source) ||
+    /<tool_code>/i.test(source) ||
+    /<function=\w+>/i.test(source) ||
+    /tool_calls_section_begin/i.test(source) ||
+    /\[[a-zA-Z0-9_.-]+\]\s*<tool_code>/i.test(source)
+  );
+}
+
+function stripPseudoToolResidue(text) {
+  const source = String(text || '');
+  if (!source.trim()) return source;
+
+  return source
+    .replace(/<\|[^|]*tool_calls_section_begin[^|]*\|>[\s\S]*?<\|[^|]*tool_calls_section_end[^|]*\|>/gi, '')
+    .replace(/\[[a-zA-Z0-9_.-]+\]\s*<tool_code>[\s\S]*?<\/tool_code>/gi, '')
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
+    .replace(/<function=\w+>[\s\S]*?(?=(?:<function=\w+>|$))/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function buildChatHeaders(baseUrl, apiKey) {
@@ -2381,17 +2446,16 @@ async function streamChatRaw({
     }
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
+    const textToCheck = fullText || assistantResponseContent || '';
+    const pseudoResidueDetected = effectiveSupportsTools && hasPseudoToolResidue(textToCheck);
     const shouldDetectPseudo = effectiveSupportsTools && caps.toolReliability === 'loose';
-    let pseudoToolCalls = shouldDetectPseudo ? extractAllPseudoToolCalls(fullText || assistantResponseContent) : [];
+    let pseudoToolCalls = shouldDetectPseudo ? extractAllPseudoToolCalls(textToCheck) : [];
 
     // strict 模型安全网：若正文出现明显伪工具调用残留，降级走伪调用解析
     // 正常情况下 strict 模型应走标准 tool_calls 通道
     if (pseudoToolCalls.length === 0 && effectiveSupportsTools && caps.toolReliability === 'strict') {
-      const textToCheck = fullText || assistantResponseContent || '';
       const hasToolCallResidue =
-        /<tool_call>/i.test(textToCheck)
-        || /<tool_code>/i.test(textToCheck)
-        || /<function=\w+>/i.test(textToCheck)
+        pseudoResidueDetected
         || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
         || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
       if (hasToolCallResidue) {
@@ -2433,10 +2497,22 @@ async function streamChatRaw({
       });
       return;
     }
+    let replyText = textToCheck;
+    if (pseudoResidueDetected) {
+      replyText = stripPseudoToolResidue(textToCheck);
+      if (!replyText) {
+        replyText = '检测到无效工具调用格式，已忽略该调用并继续。';
+      }
+      log.warn('pseudo tool residue stripped from final reply', {
+        model: responseModel || model,
+        originalLen: textToCheck.length,
+        strippedLen: replyText.length,
+      });
+    }
     // 关闭 MiniMax CoT 块并释放暂存正文（非 MiniMax 模型此函数直接跳过）
     if (_thinkTagMode) _flushThinkState();
     const safeReply = enforceExecutionContract({
-      text: fullText,
+      text: replyText,
       supportsTools: !!effectiveSupportsTools,
       hasToolEvidence,
     });
@@ -2586,5 +2662,8 @@ module.exports = {
     isProtocolOrRateLimitError,
     shouldForceFinalFromToolResults,
     buildToolResultFallbackReply,
+    extractAllPseudoToolCalls,
+    hasPseudoToolResidue,
+    stripPseudoToolResidue,
   },
 };
