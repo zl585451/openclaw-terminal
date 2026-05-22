@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   OMNIROUTE_LIVE_ALIAS_UNKNOWN,
   formatLiveOmniRouteAlias,
+  getOmniRouteModelOptions,
   requestOmniRouteStatus,
 } from '../../ui/settings/tabs/ConnectionTabView';
 
@@ -12,8 +13,9 @@ describe('OmniRoute settings diagnostics', () => {
       configured: true,
       baseUrl: 'http://localhost:20128/v1',
       hasApiKey: true,
+      model: 'combo/chat-live',
       models: {
-        'oct-chat': 'combo/chat-live',
+        default: 'combo/chat-live',
       },
       connectivity: {
         ok: true,
@@ -24,7 +26,7 @@ describe('OmniRoute settings diagnostics', () => {
       },
     };
 
-    expect(formatLiveOmniRouteAlias(externalGateway, 'oct-chat')).toBe('combo/chat-live');
+    expect(formatLiveOmniRouteAlias(externalGateway)).toBe('combo/chat-live');
   });
 
   it('does not treat missing live alias values as if draft/default values were active', () => {
@@ -43,7 +45,34 @@ describe('OmniRoute settings diagnostics', () => {
       },
     };
 
-    expect(formatLiveOmniRouteAlias(externalGateway, 'oct-plan')).toBe(OMNIROUTE_LIVE_ALIAS_UNKNOWN);
+    expect(formatLiveOmniRouteAlias(externalGateway)).toBe(OMNIROUTE_LIVE_ALIAS_UNKNOWN);
+  });
+
+  it('builds selectable OmniRoute models from draft, live outlet, and /models data', () => {
+    const externalGateway = {
+      enabled: true,
+      configured: true,
+      baseUrl: 'http://localhost:20128/v1',
+      hasApiKey: true,
+      model: 'combo/chat-live',
+      models: {
+        default: 'combo/chat-live',
+      },
+      availableModels: ['combo/free', 'combo/chat-live'],
+      connectivity: {
+        ok: true,
+        status: 'ok',
+        httpStatus: 200,
+        checkedUrl: 'http://127.0.0.1:18790/omniroute/status',
+        error: null,
+      },
+    };
+
+    expect(getOmniRouteModelOptions(externalGateway, 'gemini')).toEqual([
+      'gemini',
+      'combo/chat-live',
+      'combo/free',
+    ]);
   });
 
   it('reads OmniRoute diagnostics through the Electron bridge instead of a direct hardcoded fetch', async () => {
@@ -55,10 +84,9 @@ describe('OmniRoute settings diagnostics', () => {
           configured: true,
           baseUrl: 'http://localhost:20128/v1',
           hasApiKey: true,
+          model: 'combo/chat-live',
           models: {
-            'oct-chat': 'combo/chat-live',
-            'oct-plan': 'combo/plan-live',
-            'oct-tool-safe': 'combo/tool-live',
+            default: 'combo/chat-live',
           },
           connectivity: {
             ok: true,
@@ -75,7 +103,7 @@ describe('OmniRoute settings diagnostics', () => {
 
     expect(getOmniRouteStatus).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
-    expect(result.data?.externalGateway?.models?.['oct-tool-safe']).toBe('combo/tool-live');
+    expect(result.data?.externalGateway?.model).toBe('combo/chat-live');
   });
 
   it('fails clearly when the Electron status bridge is unavailable', async () => {

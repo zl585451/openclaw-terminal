@@ -36,7 +36,7 @@ async function runQuoteAttributionAgent(ctx) {
   const quotes = Array.isArray(ctx?.quotes) ? ctx.quotes : [];
   if (quotes.length === 0) throw new Error('QUOTE_ATTRIBUTION_NO_QUOTES');
 
-  const provider = resolveProviderFor('script_adapter', 'oct-plan');
+  const provider = resolveProviderFor('script_adapter');
   const result = await chatCompletion({
     provider,
     messages: [

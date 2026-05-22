@@ -44,6 +44,7 @@ class ProviderRouter {
       ? 'provider_model_def'
       : (registryCaps.capabilitySource || 'fallback_unknown');
     let resolvedToolsSupport = toolsSupport;
+    const hasExplicitToolBlock = modelDef?.toolReliability === 'none';
     const googleToolsMode = String(this.config.GOOGLE_TOOLS_MODE || 'auto').toLowerCase();
     if (provider.id === 'google') {
       if (googleToolsMode === 'on') {
@@ -58,7 +59,15 @@ class ProviderRouter {
         capabilitySource = 'google_tools_mode_auto_probe';
       }
     }
-    if (!modelDef && resolvedToolsSupport === 'unknown' && this.config.getProbeCacheEntry) {
+    if (resolvedToolsSupport === 'unsupported' && googleToolsMode !== 'off' && !hasExplicitToolBlock) {
+      // 做减法：静态表里的“不支持工具”先不再作为硬封禁。
+      // 统一降级为 unknown，让运行时 tool_calls 和探测结果来证明能力。
+      resolvedToolsSupport = 'unknown';
+      capabilitySource = provider.id === 'google'
+        ? 'google_tools_mode_auto_probe'
+        : 'static_tools_decl_softened';
+    }
+    if (resolvedToolsSupport === 'unknown' && this.config.getProbeCacheEntry) {
       const probe = this.config.getProbeCacheEntry({
         providerId: provider.id,
         baseUrl,
@@ -74,7 +83,9 @@ class ProviderRouter {
         return 'loose';
       }
       if (modelDef?.toolReliability) return modelDef.toolReliability;
-      if (registryCaps?.toolReliability) return registryCaps.toolReliability;
+      if (registryCaps?.toolReliability && !(registryCaps.toolReliability === 'none' && resolvedToolsSupport !== 'unsupported')) {
+        return registryCaps.toolReliability;
+      }
       if (resolvedToolsSupport === 'unsupported') return 'none';
       return 'loose';
     })();

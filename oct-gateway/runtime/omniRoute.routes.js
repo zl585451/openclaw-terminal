@@ -1,20 +1,10 @@
 'use strict';
 
 const OMNI_ROUTE_CAPABILITIES = {
-  'oct-chat': {
-    description: 'Low-latency conversational chat and instant response.',
-    tools: false,
-    candidates: [{ provider: 'external_omniroute', model: 'combo/chat' }],
-  },
-  'oct-plan': {
-    description: 'Structured planning, summarization, and heavy extraction.',
-    tools: false,
-    candidates: [{ provider: 'external_omniroute', model: 'combo/plan' }],
-  },
-  'oct-tool-safe': {
-    description: 'Strict, verified function calling and tool loop execution.',
+  default: {
+    description: 'Single OmniRoute model outlet for chat, planning, and tool loops.',
     tools: true,
-    candidates: [{ provider: 'external_omniroute', model: 'combo/tool' }],
+    candidates: [{ provider: 'external_omniroute', model: 'combo/chat' }],
   },
 };
 

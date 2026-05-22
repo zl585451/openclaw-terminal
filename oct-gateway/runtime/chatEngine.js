@@ -41,12 +41,19 @@ class ChatEngine {
         let sanitizedReply = this.sanitizeAssistantReply(finalizedReply);
         sanitizedReply = this.normalizeAssistantMarkdown(sanitizedReply);
         if (!sanitizedReply || !String(sanitizedReply).trim()) {
-          sanitizedReply = '⚠️ 本轮未产出可用内容（可能是模型状态异常）。请重试，或切换模型后再继续。';
-          this.log.warn('empty assistant reply coerced to fallback text', {
-            turnId: request.turnId || null,
-          });
+          if (finalizedReply && String(finalizedReply).trim()) {
+            sanitizedReply = '';
+            this.log.info('assistant reply suppressed after protocol normalization', {
+              turnId: request.turnId || null,
+            });
+          } else {
+            sanitizedReply = '⚠️ 本轮未产出可用内容（可能是模型状态异常）。请重试，或切换模型后再继续。';
+            this.log.warn('empty assistant reply coerced to fallback text', {
+              turnId: request.turnId || null,
+            });
+          }
         }
-        if (sanitizedReply) {
+        if (sanitizedReply && String(sanitizedReply).trim()) {
           this.session.addMessage(request.sessionKey, 'assistant', sanitizedReply);
           this.postProcessor.process({
             userMessage: request.userMessage,

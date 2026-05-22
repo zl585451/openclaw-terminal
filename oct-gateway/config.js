@@ -484,7 +484,7 @@ function normalizeToolReliability(raw, { toolsSupport, provider } = {}) {
   if (value === 'strict' || value === 'loose' || value === 'none') {
     return value;
   }
-  if (toolsSupport !== 'supported') {
+  if (toolsSupport === 'unsupported') {
     return 'none';
   }
   const strictProviders = new Set(['bailian', 'deepseek', 'minimax']);

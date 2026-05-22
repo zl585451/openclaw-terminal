@@ -85,7 +85,9 @@ interface ExternalGatewayStatus {
   configured: boolean;
   baseUrl: string;
   hasApiKey: boolean;
+  model?: string;
   models: Record<string, string>;
+  availableModels?: string[];
   connectivity: ExternalGatewayConnectivity;
 }
 
@@ -114,6 +116,12 @@ export const OmniRouteTabView: React.FC = () => {
   };
 
   const externalStatus = data?.externalGateway || null;
+  const externalModelOptions = Array.from(new Set([
+    apiKeys.OMNIROUTE_MODEL,
+    externalStatus?.model,
+    externalStatus?.models?.default,
+    ...(externalStatus?.availableModels || []),
+  ].map((item) => String(item || '').trim()).filter(Boolean)));
 
   const renderConfigTab = () => {
     return (
@@ -150,29 +158,23 @@ export const OmniRouteTabView: React.FC = () => {
         </div>
 
         <div className="settings-field-group">
-          <label>Chat Model Alias</label>
+          <label>OmniRoute Model / Combo</label>
+          {externalModelOptions.length > 0 && (
+            <select
+              value={apiKeys.OMNIROUTE_MODEL || ''}
+              onChange={(e) => handleInputChange('OMNIROUTE_MODEL', e.target.value)}
+            >
+              <option value="">默认 combo/chat</option>
+              {externalModelOptions.map((modelId) => (
+                <option key={modelId} value={modelId}>{modelId}</option>
+              ))}
+            </select>
+          )}
           <input
             type="text"
-            value={apiKeys.OMNIROUTE_CHAT_MODEL}
-            onChange={(e) => handleInputChange('OMNIROUTE_CHAT_MODEL', e.target.value)}
-          />
-        </div>
-
-        <div className="settings-field-group">
-          <label>Plan Model Alias</label>
-          <input
-            type="text"
-            value={apiKeys.OMNIROUTE_PLAN_MODEL}
-            onChange={(e) => handleInputChange('OMNIROUTE_PLAN_MODEL', e.target.value)}
-          />
-        </div>
-
-        <div className="settings-field-group">
-          <label>Tool Model Alias</label>
-          <input
-            type="text"
-            value={apiKeys.OMNIROUTE_TOOL_MODEL}
-            onChange={(e) => handleInputChange('OMNIROUTE_TOOL_MODEL', e.target.value)}
+            value={apiKeys.OMNIROUTE_MODEL}
+            onChange={(e) => handleInputChange('OMNIROUTE_MODEL', e.target.value)}
+            placeholder={externalModelOptions.length > 0 ? '手动覆盖模型 / Combo' : 'combo/chat 或 gemini'}
           />
         </div>
 
@@ -210,13 +212,10 @@ export const OmniRouteTabView: React.FC = () => {
               地址：{externalStatus.baseUrl || '—'}
             </p>
             <p className="settings-status-line-muted">
-              Chat：{externalStatus.models?.['oct-chat'] || '—'}
+              模型出口：{externalStatus.model || externalStatus.models?.default || '—'}
             </p>
             <p className="settings-status-line-muted">
-              Plan：{externalStatus.models?.['oct-plan'] || '—'}
-            </p>
-            <p className="settings-status-line-muted">
-              Tool：{externalStatus.models?.['oct-tool-safe'] || '—'}
+              可用模型：{externalModelOptions.length > 0 ? `${externalModelOptions.length} 个` : '未读取到'}
             </p>
             {externalStatus.connectivity.error && (
               <p className="settings-status-line-muted">

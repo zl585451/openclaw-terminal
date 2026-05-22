@@ -4,6 +4,42 @@ const {
 } = require('./toolResultArchive');
 const { summarizeToolResult } = require('./toolResultSummarizer');
 
+function isStructuredToolResult(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function shouldPauseForUserReply(result) {
+  return isStructuredToolResult(result) && result.status === 'waiting_user_reply';
+}
+
+function shouldFinalizeWithMessage(result) {
+  return isStructuredToolResult(result)
+    && result.status === 'completed'
+    && typeof result.message === 'string'
+    && result.message.trim().length > 0;
+}
+
+function serializeToolResultForModel(result) {
+  if (typeof result === 'string') return result;
+  if (!isStructuredToolResult(result)) return JSON.stringify(result);
+
+  const preferredParts = [];
+  if (typeof result.message === 'string' && result.message.trim()) {
+    preferredParts.push(result.message.trim());
+  }
+  if (typeof result.error === 'string' && result.error.trim()) {
+    preferredParts.push(`错误: ${result.error.trim()}`);
+  }
+  if (typeof result.hint === 'string' && result.hint.trim()) {
+    preferredParts.push(`提示: ${result.hint.trim()}`);
+  }
+  if (preferredParts.length > 0) {
+    return preferredParts.join('\n');
+  }
+
+  return JSON.stringify(result);
+}
+
 class ToolLoop {
   constructor({
     toolLoader,
@@ -36,6 +72,8 @@ class ToolLoop {
     onToolEvent,
     flushThinkAtEnd,
     turnId,
+    _omniRouteResolved,
+    _disableExternalOmniRoute,
   }) {
     const normalizedToolCalls = toolCalls.filter(Boolean);
     const toolSignature = this.buildToolSignature(normalizedToolCalls);
@@ -65,6 +103,8 @@ class ToolLoop {
 
     this.log.info('tool_calls', { count: normalizedToolCalls.length, toolRound: toolRound + 1, turnId: turnId || null });
     const toolResults = [];
+    let shouldStopAfterToolRound = false;
+    const finalizedToolMessages = [];
     for (const toolCall of normalizedToolCalls) {
       let args = {};
       try {
@@ -211,6 +251,16 @@ class ToolLoop {
         this.log.warn('archiveToolResult 失败', { error: e?.message });
       }
 
+      if (shouldPauseForUserReply(result)) {
+        shouldStopAfterToolRound = true;
+        continue;
+      }
+
+      if (shouldFinalizeWithMessage(result)) {
+        finalizedToolMessages.push(result.message.trim());
+        continue;
+      }
+
       // 2. 截断后再放进 messages
       const { truncated, value: truncatedResult, originalSize } = truncateToolResult(
         toolName,
@@ -227,9 +277,7 @@ class ToolLoop {
         });
       }
 
-      const contentForModel = typeof truncatedResult === 'string'
-        ? truncatedResult
-        : JSON.stringify(truncatedResult);
+      const contentForModel = serializeToolResultForModel(truncatedResult);
       const summarized = await summarizeToolResult(toolName, contentForModel);
 
       if (summarized.mode === 'noop') {
@@ -266,6 +314,19 @@ class ToolLoop {
             }
           : {}),
       });
+
+    }
+
+    if (shouldStopAfterToolRound) {
+      flushThinkAtEnd();
+      onDone('', totalUsage, responseModel);
+      return true;
+    }
+
+    if (finalizedToolMessages.length > 0) {
+      flushThinkAtEnd();
+      onDone(finalizedToolMessages.join('\n\n'), totalUsage, responseModel);
+      return true;
     }
 
     const assistantToolMessage = assistantResponseMessage && typeof assistantResponseMessage === 'object'
@@ -302,7 +363,9 @@ class ToolLoop {
       toolRound: toolRound + 1,
       toolSignatures: [...toolSignatures, toolSignature].slice(-8),
       turnId,
-      capability: 'oct-tool-safe',
+      capability: 'default',
+      _omniRouteResolved,
+      _disableExternalOmniRoute,
     });
     return true;
   }

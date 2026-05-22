@@ -44,7 +44,7 @@ async function runClassificationSplitterAgent(ctx) {
   const sourceText = String(ctx?.sourceText || '').trim();
   if (!sourceText) throw new Error('CLASSIFICATION_SPLITTER_NO_INPUT');
 
-  const provider = resolveProviderFor('script_adapter', 'oct-plan');
+  const provider = resolveProviderFor('script_adapter');
   const { paragraphs } = preprocessParagraphs(sourceText);
 
   const result = await chatCompletion({

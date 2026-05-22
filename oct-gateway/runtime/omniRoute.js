@@ -12,28 +12,25 @@
 const externalOmniRoute = require('./externalOmniRoute');
 
 const OMNI_ROUTE_CAPABILITIES = {
-  'oct-chat': {
-    description: 'Low-latency conversational chat and instant response.',
-    tools: false,
+  default: {
+    description: 'Single OmniRoute model outlet for chat, planning, and tool loops.',
+    tools: true,
     candidates: [{ provider: 'external_omniroute', model: 'combo/chat' }],
   },
-  'oct-plan': {
-    description: 'Structured planning, summarization, and heavy extraction.',
-    tools: false,
-    candidates: [{ provider: 'external_omniroute', model: 'combo/plan' }],
-  },
-  'oct-tool-safe': {
-    description: 'Strict, verified function calling and tool loop execution.',
-    tools: true,
-    candidates: [{ provider: 'external_omniroute', model: 'combo/tool' }],
-  },
 };
+
+const LEGACY_CAPABILITY_ALIASES = new Set(['oct-chat', 'oct-plan', 'oct-tool-safe']);
+
+function normalizeCapability(capability) {
+  return LEGACY_CAPABILITY_ALIASES.has(capability) ? 'default' : capability;
+}
 
 /**
  * 判断是否为有效的逻辑能力别名
  */
 function isCapabilityAlias(name) {
-  return Object.prototype.hasOwnProperty.call(OMNI_ROUTE_CAPABILITIES, name);
+  return Object.prototype.hasOwnProperty.call(OMNI_ROUTE_CAPABILITIES, name)
+    || LEGACY_CAPABILITY_ALIASES.has(name);
 }
 
 /**
@@ -50,7 +47,7 @@ function resolveCapability(capability, context = {}) {
   if (!isCapabilityAlias(capability)) {
     return null;
   }
-  return externalOmniRoute.resolveCapabilityTarget(capability);
+  return externalOmniRoute.resolveCapabilityTarget(normalizeCapability(capability));
 }
 
 /**
@@ -62,7 +59,9 @@ function inspectCapability(capability, context = {}) {
   }
   const snapshot = externalOmniRoute.getExternalGatewayConfig();
   const resolved = resolveCapability(capability, context);
-  const model = snapshot.models[capability] || OMNI_ROUTE_CAPABILITIES[capability].candidates[0].model;
+  const normalizedCapability = normalizeCapability(capability);
+  const definition = OMNI_ROUTE_CAPABILITIES[normalizedCapability] || OMNI_ROUTE_CAPABILITIES.default;
+  const model = snapshot.model || snapshot.models?.default || definition.candidates[0].model;
 
   const candidate = {
     provider: 'external_omniroute',
@@ -75,9 +74,9 @@ function inspectCapability(capability, context = {}) {
   };
 
   return {
-    capability,
-    description: OMNI_ROUTE_CAPABILITIES[capability].description,
-    tools: OMNI_ROUTE_CAPABILITIES[capability].tools,
+    capability: normalizedCapability,
+    description: definition.description,
+    tools: definition.tools,
     status: resolved ? 'healthy' : 'unavailable',
     candidates: [candidate],
   };

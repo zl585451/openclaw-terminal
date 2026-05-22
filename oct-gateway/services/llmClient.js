@@ -27,7 +27,7 @@ async function chatCompletion(options) {
   }
 
   const externalOmniRoute = require('../runtime/externalOmniRoute');
-  const extResolved = externalOmniRoute.resolveCapabilityTarget(provider.capability);
+  const extResolved = externalOmniRoute.resolveCapabilityTarget();
 
   if (!extResolved) {
     throw new Error('LLM_NOT_CONFIGURED: 外部 OmniRoute 未配置或配置不完整。请在设置面板中配置 Base URL 和 API Key。');
@@ -135,10 +135,9 @@ function buildHeaders(baseUrl, apiKey) {
  * 解析 script_adapter 等场景的 provider 配置。(Phase 5: 优先外部 OmniRoute，支持开发者环境变量回退)
  */
 function resolveProviderFor(purpose = 'general', capability = null) {
-  const activeCapability = capability || (purpose === 'script_adapter' ? 'oct-plan' : 'oct-chat');
   try {
     const externalOmniRoute = require('../runtime/externalOmniRoute');
-    const extResolved = externalOmniRoute.resolveCapabilityTarget(activeCapability);
+    const extResolved = externalOmniRoute.resolveCapabilityTarget();
     if (extResolved) {
       return {
         baseUrl: extResolved.baseUrl,
@@ -146,7 +145,7 @@ function resolveProviderFor(purpose = 'general', capability = null) {
         model: extResolved.model,
         source: extResolved.source,
         providerId: extResolved.providerId,
-        capability: extResolved.capability,
+        capability: 'default',
       };
     }
   } catch (err) {

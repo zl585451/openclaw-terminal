@@ -433,7 +433,7 @@ describe('ToolAdapter format governance and safe parsing', () => {
     }
   });
 
-  it('21. inferDefaultCapability keeps search-first requests on oct-chat even when they mention 总结', () => {
+  it('21. inferDefaultCapability returns the single default outlet for search-first requests', () => {
     const ai = require('../ai');
     const infer = ai._internals.inferDefaultCapability;
 
@@ -441,10 +441,10 @@ describe('ToolAdapter format governance and safe parsing', () => {
       { role: 'user', content: '搜索 DeepSeek 最新模型，如果价格低于 $10/M 就写总结' },
     ]);
 
-    expect(capability).toBe('oct-chat');
+    expect(capability).toBe('default');
   });
 
-  it('22. inferDefaultCapability still routes pure summarization requests to oct-plan', () => {
+  it('22. inferDefaultCapability returns the single default outlet for summarization requests', () => {
     const ai = require('../ai');
     const infer = ai._internals.inferDefaultCapability;
 
@@ -452,6 +452,109 @@ describe('ToolAdapter format governance and safe parsing', () => {
       { role: 'user', content: '把上面的内容总结成 5 条要点' },
     ]);
 
-    expect(capability).toBe('oct-plan');
+    expect(capability).toBe('default');
+  });
+
+  it('23. ToolLoop stops after request_clarify waiting_user_reply instead of continuing generation', async () => {
+    const ToolLoop = require('../runtime/toolLoop');
+    let streamChatCalled = false;
+    let donePayload = null;
+
+    const loop = new ToolLoop({
+      toolLoader: {
+        getDefinitions: () => [
+          { type: 'function', function: { name: 'request_clarify', description: 'clarify tool' } }
+        ],
+        getToolMeta: () => ({ timeoutMs: 1000 }),
+        executeTool: async () => ({
+          status: 'waiting_user_reply',
+          message: '澄清询问器已展示给用户。请停止继续生成。',
+        }),
+      },
+      log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+      streamChat: async () => {
+        streamChatCalled = true;
+      },
+      buildToolSignature: () => 'clarify_sig',
+      maxToolRounds: 8,
+      maxIdenticalToolSignatures: 2,
+    });
+
+    await loop.handleToolCalls({
+      toolCalls: [{ id: 'tc_clarify', function: { name: 'request_clarify', arguments: '{"fields":[]}' } }],
+      toolRound: 0,
+      toolSignatures: [],
+      fullText: '',
+      totalUsage: { input_tokens: 1, output_tokens: 1 },
+      responseModel: 'test-model',
+      truncatedMessages: [{ role: 'user', content: '帮我先问几个问题' }],
+      onDelta: () => {},
+      onDone: (text, usage, model) => {
+        donePayload = { text, usage, model };
+      },
+      onError: () => {},
+      onToolEvent: () => {},
+      flushThinkAtEnd: () => {},
+      turnId: 'turn-clarify',
+    });
+
+    expect(streamChatCalled).toBe(false);
+    expect(donePayload).toEqual({
+      text: '',
+      usage: { input_tokens: 1, output_tokens: 1 },
+      model: 'test-model',
+    });
+  });
+
+  it('24. ToolLoop finalizes completed workflow results directly instead of feeding raw status objects back into continuation', async () => {
+    const ToolLoop = require('../runtime/toolLoop');
+    let streamChatCalled = false;
+    let donePayload = null;
+
+    const loop = new ToolLoop({
+      toolLoader: {
+        getDefinitions: () => [
+          { type: 'function', function: { name: 'video_plan', description: 'video plan tool' } }
+        ],
+        getToolMeta: () => ({ timeoutMs: 1000 }),
+        executeTool: async () => ({
+          status: 'completed',
+          message: '短视频创作方案已生成。请根据下方脚本与分镜表进行制作。',
+          extra: { shouldNotLeak: true },
+        }),
+      },
+      log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+      streamChat: async () => {
+        streamChatCalled = true;
+      },
+      buildToolSignature: () => 'video_sig',
+      maxToolRounds: 8,
+      maxIdenticalToolSignatures: 2,
+    });
+
+    await loop.handleToolCalls({
+      toolCalls: [{ id: 'tc_video', function: { name: 'video_plan', arguments: '{}' } }],
+      toolRound: 0,
+      toolSignatures: [],
+      fullText: '',
+      totalUsage: null,
+      responseModel: 'test-model',
+      truncatedMessages: [{ role: 'user', content: '给我一个短视频方案' }],
+      onDelta: () => {},
+      onDone: (text, usage, model) => {
+        donePayload = { text, usage, model };
+      },
+      onError: () => {},
+      onToolEvent: () => {},
+      flushThinkAtEnd: () => {},
+      turnId: 'turn-video',
+    });
+
+    expect(streamChatCalled).toBe(false);
+    expect(donePayload).toEqual({
+      text: '短视频创作方案已生成。请根据下方脚本与分镜表进行制作。',
+      usage: null,
+      model: 'test-model',
+    });
   });
 });

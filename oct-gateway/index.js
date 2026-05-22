@@ -63,7 +63,7 @@ const memory = require('./memory');
 const memoryHistory = require('./memory_history');
 const memoryFeedback = require('./memory_feedback');
 const memorySearch = require('./memory_search');
-const { sanitizeAssistantReply, sanitizeMemoryNodeContent, stripCotText } = require('./cot_sanitize');
+const { sanitizeAssistantReply, sanitizeMemoryNodeContent, stripCotText, toUserVisibleAssistantText } = require('./cot_sanitize');
 const memoryGovernor = require('./memory_governor');
 const memoryManagementAgent = require('./memory_management_agent');
 const reviewQueueMaintenance = require('./review_queue_maintenance');
@@ -253,6 +253,11 @@ function getGatewayCapabilities(modelId = config.DASHSCOPE_MODEL) {
   };
 }
 
+function normalizeFinalAssistantText(raw) {
+  const visible = sanitizeAssistantReply(toUserVisibleAssistantText(raw));
+  return typeof visible === 'string' ? visible.trim() : '';
+}
+
 scheduleMemoryHealthCheck({
   memory,
   logger: log,
@@ -348,7 +353,7 @@ async function handleChatRequest(request, connection) {
 
   // ── Agent 短路：专职 Agent 执行完成，直接发结果给用户，跳过 AMY streamChat ──
   if (orchResult.agentResult && orchResult.agentResult.result) {
-    const agentReply = orchResult.agentResult.result;
+    const agentReply = normalizeFinalAssistantText(orchResult.agentResult.result);
     const agentName = orchResult.agent || 'Agent';
     log.info('agent_result_shortcut', {
       agent: agentName,
@@ -359,7 +364,9 @@ async function handleChatRequest(request, connection) {
 
     // 把结果存入 session history（让后续对话能感知到）
     try { session.addMessage(sessionKey, 'user', userMessage); } catch {}
-    try { session.addMessage(sessionKey, 'assistant', agentReply); } catch {}
+    if (agentReply) {
+      try { session.addMessage(sessionKey, 'assistant', agentReply); } catch {}
+    }
 
     // 通知前端：agent 阶段结束
     connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
@@ -457,7 +464,8 @@ async function handleChatRequest(request, connection) {
     onDone: ({ reply, usage, model: responseModel, turnId: doneTurnId }) => {
       stopKeepalive();
       if (cancelled || !connection.isOpen()) return;
-      const donePayload = { text: reply, state: 'done', done: true, turnId: doneTurnId || turnId };
+      const normalizedReply = normalizeFinalAssistantText(reply);
+      const donePayload = { text: normalizedReply, state: 'done', done: true, turnId: doneTurnId || turnId };
       if (usage) donePayload.usage = usage;
       if (responseModel) donePayload.model = responseModel;
       connection.send({ type: 'event', event: 'chat', payload: donePayload });

@@ -52,9 +52,7 @@ export interface ApiKeysState {
   VISION_MODEL: string;
   OMNIROUTE_BASE_URL: string;
   OMNIROUTE_API_KEY: string;
-  OMNIROUTE_CHAT_MODEL: string;
-  OMNIROUTE_PLAN_MODEL: string;
-  OMNIROUTE_TOOL_MODEL: string;
+  OMNIROUTE_MODEL: string;
   OCT_USE_EXTERNAL_OMNIROUTE: boolean;
 }
 
@@ -228,9 +226,7 @@ type GatewayConfigPayload = {
   VISION_MODEL: string;
   OMNIROUTE_BASE_URL: string;
   OMNIROUTE_API_KEY: string;
-  OMNIROUTE_CHAT_MODEL: string;
-  OMNIROUTE_PLAN_MODEL: string;
-  OMNIROUTE_TOOL_MODEL: string;
+  OMNIROUTE_MODEL: string;
   OCT_USE_EXTERNAL_OMNIROUTE: boolean;
   /** 与 DASHSCOPE_API_KEY 同步写入，供网关 oct-gateway 读取 SILICONFLOW_API_KEY */
   SILICONFLOW_API_KEY: string;
@@ -287,6 +283,11 @@ function normalizeLoadedApiKeys(
   fallbackApiKeys: ApiKeysState,
 ): ApiKeysState {
   const nextApiKeys = { ...fallbackApiKeys, ...data };
+  nextApiKeys.OMNIROUTE_MODEL = String(
+    (data as Record<string, unknown>).OMNIROUTE_MODEL
+    || (data as Record<string, unknown>).OMNIROUTE_CHAT_MODEL
+    || ''
+  ).trim();
   const externalOmniRouteRaw = (data as Record<string, unknown>).OCT_USE_EXTERNAL_OMNIROUTE;
   nextApiKeys.OCT_USE_EXTERNAL_OMNIROUTE =
     externalOmniRouteRaw === true
@@ -412,9 +413,7 @@ function buildGatewayPayload(
     VISION_MODEL: apiKeys.VISION_MODEL || '',
     OMNIROUTE_BASE_URL: apiKeys.OMNIROUTE_BASE_URL || '',
     OMNIROUTE_API_KEY: apiKeys.OMNIROUTE_API_KEY || '',
-    OMNIROUTE_CHAT_MODEL: apiKeys.OMNIROUTE_CHAT_MODEL || '',
-    OMNIROUTE_PLAN_MODEL: apiKeys.OMNIROUTE_PLAN_MODEL || '',
-    OMNIROUTE_TOOL_MODEL: apiKeys.OMNIROUTE_TOOL_MODEL || '',
+    OMNIROUTE_MODEL: apiKeys.OMNIROUTE_MODEL || '',
     OCT_USE_EXTERNAL_OMNIROUTE: !!apiKeys.OCT_USE_EXTERNAL_OMNIROUTE,
     SILICONFLOW_API_KEY:
       currentProviderId === 'siliconflow' ? (apiKeys.DASHSCOPE_API_KEY || '') : '',
@@ -469,9 +468,7 @@ export function useApiKeys() {
     VISION_MODEL: '',
     OMNIROUTE_BASE_URL: '',
     OMNIROUTE_API_KEY: '',
-    OMNIROUTE_CHAT_MODEL: '',
-    OMNIROUTE_PLAN_MODEL: '',
-    OMNIROUTE_TOOL_MODEL: '',
+    OMNIROUTE_MODEL: '',
     OCT_USE_EXTERNAL_OMNIROUTE: false,
   });
 

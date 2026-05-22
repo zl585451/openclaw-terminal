@@ -11,7 +11,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
 
   it('1. registers and aggregates successful requests correctly across capabilities, providers, and models', () => {
     metrics.recordRequest({
-      capability: 'oct-chat',
+      capability: 'default',
       providerId: 'deepseek',
       model: 'deepseek-v4-flash',
       latencyMs: 150,
@@ -21,7 +21,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
     });
 
     metrics.recordRequest({
-      capability: 'oct-chat',
+      capability: 'default',
       providerId: 'deepseek',
       model: 'deepseek-v4-flash',
       latencyMs: 250,
@@ -36,10 +36,10 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
     expect(data.failedRequests).toBe(0);
 
     // Capability aggregation
-    expect(data.capabilities['oct-chat']).toBeDefined();
-    expect(data.capabilities['oct-chat'].totalRequests).toBe(2);
-    expect(data.capabilities['oct-chat'].successRequests).toBe(2);
-    expect(data.capabilities['oct-chat'].avgLatencyMs).toBe(200);
+    expect(data.capabilities.default).toBeDefined();
+    expect(data.capabilities.default.totalRequests).toBe(2);
+    expect(data.capabilities.default.successRequests).toBe(2);
+    expect(data.capabilities.default.avgLatencyMs).toBe(200);
 
     // Provider aggregation
     expect(data.providers['deepseek']).toBeDefined();
@@ -56,7 +56,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
 
   it('2. registers and tracks failed requests and categorizes error types', () => {
     metrics.recordRequest({
-      capability: 'oct-plan',
+      capability: 'default',
       providerId: 'bailian-coding',
       model: 'qwen3.5-plus',
       latencyMs: 500,
@@ -66,7 +66,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
     });
 
     metrics.recordRequest({
-      capability: 'oct-plan',
+      capability: 'default',
       providerId: 'bailian-coding',
       model: 'qwen3.5-plus',
       latencyMs: 30000,
@@ -80,9 +80,9 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
     expect(data.successfulRequests).toBe(0);
     expect(data.failedRequests).toBe(2);
 
-    expect(data.capabilities['oct-plan'].errorCount).toBe(2);
-    expect(data.capabilities['oct-plan'].errorTypes['LlmClientHttpError']).toBe(1);
-    expect(data.capabilities['oct-plan'].errorTypes['LlmClientTimeoutError']).toBe(1);
+    expect(data.capabilities.default.errorCount).toBe(2);
+    expect(data.capabilities.default.errorTypes.LlmClientHttpError).toBe(1);
+    expect(data.capabilities.default.errorTypes.LlmClientTimeoutError).toBe(1);
 
     expect(data.providers['bailian-coding'].errorCount).toBe(2);
     expect(data.providers['bailian-coding'].errorTypes['LlmClientHttpError']).toBe(1);
@@ -90,7 +90,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
 
   it('3. rolling recent requests window is desensitized and strictly protects user content', () => {
     metrics.recordRequest({
-      capability: 'oct-tool-safe',
+      capability: 'default',
       providerId: 'openai',
       model: 'gpt-4o',
       latencyMs: 800,
@@ -104,7 +104,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
 
     const entry = data.recentRequests[0];
     // Must contain desensitized metadata
-    expect(entry.capability).toBe('oct-tool-safe');
+    expect(entry.capability).toBe('default');
     expect(entry.providerId).toBe('openai');
     expect(entry.model).toBe('gpt-4o');
     expect(entry.latencyMs).toBe(800);
@@ -120,7 +120,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
 
   it('4. behaves correctly on reset metrics', () => {
     metrics.recordRequest({
-      capability: 'oct-chat',
+      capability: 'default',
       providerId: 'google',
       model: 'gemini-2.0-flash',
       latencyMs: 120,
@@ -166,7 +166,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
         apiKey: 'sk-mock-key',
         model: 'deepseek-v4-flash',
         source: 'external_omniroute_config',
-        capability: 'oct-chat'
+        capability: 'default'
       };
     };
 
@@ -184,7 +184,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
       let errorTriggered = false;
       await streamChat({
         messages: [{ role: 'user', content: 'test-stream-metrics-fail' }],
-        capability: 'oct-chat',
+        capability: 'default',
         onDelta: () => {},
         onDone: () => {},
         onError: (err) => {

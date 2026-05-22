@@ -90,7 +90,7 @@ function pickAdaptedScript(artifacts = {}) {
 }
 
 function resolveVoiceClassifierProvider() {
-  const baseProvider = resolveProviderFor('script_adapter', 'oct-plan');
+  const baseProvider = resolveProviderFor('script_adapter');
   if (baseProvider.source === 'script_adapter' || isDashScopeBaseUrl(baseProvider.baseUrl)) {
     return { ...baseProvider, model: VOICE_CLASSIFIER_MODEL };
   }

@@ -9,12 +9,12 @@ const ai = require('../ai');
 
 describe('OmniRoute Governance Core (Phase 5)', () => {
   const originalEnv = {};
+  const originalGetEnvOrConfig = config.getEnvOrConfig;
   const envVars = [
+    'OMNIROUTE_MODEL',
     'OMNIROUTE_BASE_URL',
     'OMNIROUTE_API_KEY',
     'OMNIROUTE_CHAT_MODEL',
-    'OMNIROUTE_PLAN_MODEL',
-    'OMNIROUTE_TOOL_MODEL',
     'OCT_USE_EXTERNAL_OMNIROUTE',
     'SUMMARIZER_BASE_URL',
     'SUMMARIZER_API_KEY',
@@ -28,6 +28,7 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
     envVars.forEach((k) => {
       delete process.env[k];
     });
+    config.getEnvOrConfig = (key) => process.env[key] || '';
   });
 
   afterEach(() => {
@@ -38,6 +39,7 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
         process.env[k] = originalEnv[k];
       }
     });
+    config.getEnvOrConfig = originalGetEnvOrConfig;
   });
 
   it('1. returns null for unknown capability', () => {
@@ -45,22 +47,21 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
     expect(res).toBeNull();
   });
 
-  it('2. listCapabilities and isCapabilityAlias returns correctly', () => {
+  it('2. listCapabilities exposes one runtime outlet while legacy aliases remain compatible', () => {
     expect(omniRoute.isCapabilityAlias('oct-chat')).toBe(true);
     expect(omniRoute.isCapabilityAlias('oct-plan')).toBe(true);
     expect(omniRoute.isCapabilityAlias('oct-tool-safe')).toBe(true);
     expect(omniRoute.isCapabilityAlias('unknown')).toBe(false);
 
     const list = omniRoute.listCapabilities();
-    expect(list).toContain('oct-chat');
-    expect(list).toContain('oct-plan');
-    expect(list).toContain('oct-tool-safe');
+    expect(list).toEqual(['default']);
   });
 
   it('3. resolves capability strictly using external OmniRoute target', () => {
+    process.env.OCT_USE_EXTERNAL_OMNIROUTE = 'true';
     process.env.OMNIROUTE_BASE_URL = 'https://omni-test.api/v1';
     process.env.OMNIROUTE_API_KEY = 'sk-omni-secret';
-    process.env.OMNIROUTE_CHAT_MODEL = 'my-chat-combo';
+    process.env.OMNIROUTE_MODEL = 'my-chat-combo';
 
     const res = omniRoute.resolveCapability('oct-chat');
     expect(res).toBeDefined();
@@ -78,6 +79,7 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
   it('5. resolveAllCandidates returns single OmniRoute list or empty', () => {
     expect(omniRoute.resolveAllCandidates('oct-chat')).toEqual([]);
 
+    process.env.OCT_USE_EXTERNAL_OMNIROUTE = 'true';
     process.env.OMNIROUTE_BASE_URL = 'https://omni-test.api/v1';
     process.env.OMNIROUTE_API_KEY = 'sk-omni-secret';
 
@@ -87,12 +89,13 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
   });
 
   it('6. inspectCapability and listCapabilityStatus return correct non-leaking status', () => {
+    process.env.OCT_USE_EXTERNAL_OMNIROUTE = 'true';
     process.env.OMNIROUTE_BASE_URL = 'https://omni-test.api/v1';
     process.env.OMNIROUTE_API_KEY = 'sk-omni-secret';
 
     const status = omniRoute.inspectCapability('oct-chat');
     expect(status).toBeDefined();
-    expect(status.capability).toBe('oct-chat');
+    expect(status.capability).toBe('default');
     expect(status.status).toBe('healthy');
     expect(status.candidates[0].hasApiKey).toBe(true);
     expect(status.candidates[0].apiKey).toBeUndefined(); // strictly no leak
@@ -118,11 +121,11 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
     })).rejects.toThrow('LLM_NOT_CONFIGURED');
   });
 
-  it('9. streamChat overrides capability in tool loop', async () => {
+  it('9. streamChat keeps the same model outlet during tool loop', async () => {
+    process.env.OCT_USE_EXTERNAL_OMNIROUTE = 'true';
     process.env.OMNIROUTE_BASE_URL = 'https://omni-test.api/v1';
     process.env.OMNIROUTE_API_KEY = 'sk-omni-secret';
-    process.env.OMNIROUTE_CHAT_MODEL = 'combo-chat';
-    process.env.OMNIROUTE_TOOL_MODEL = 'combo-tool';
+    process.env.OMNIROUTE_MODEL = 'combo-chat';
 
     const originalFetch = globalThis.fetch;
     let requestModel = null;
@@ -160,7 +163,7 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
         onDone: () => {},
         onError: () => {},
       });
-      expect(requestModel).toBe('combo-tool');
+      expect(requestModel).toBe('combo-chat');
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -175,5 +178,56 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
     expect(resolved.baseUrl).toBe('https://summarizer.api/v1');
     expect(resolved.apiKey).toBe('sk-sum-secret');
     expect(resolved.model).toBe('sum-model-dev');
+  });
+
+  it('11. streamChat uses the local provider when external OmniRoute mode is disabled', async () => {
+    process.env.OCT_USE_EXTERNAL_OMNIROUTE = 'false';
+    const originalFetch = globalThis.fetch;
+    const originalGetProviderConfig = config.getProviderConfig;
+    const originalModel = config.DASHSCOPE_MODEL;
+    let fetchedUrl = null;
+    let requestModel = null;
+
+    config.DASHSCOPE_MODEL = 'local-test-model';
+    config.getProviderConfig = () => ({
+      id: 'bailian-coding',
+      name: 'Local Provider',
+      baseUrl: 'https://local-provider.test/v1',
+      apiKey: 'sk-local-secret',
+      models: [{ id: 'local-test-model', tools: false, thinking: false }],
+      supportsStreamOptions: false,
+    });
+    globalThis.fetch = async (url, options) => {
+      fetchedUrl = url;
+      requestModel = JSON.parse(options.body || '{}').model;
+      const stream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'local' } }] })}\n\ndata: [DONE]\n\n`));
+          controller.close();
+        }
+      });
+      return {
+        ok: true,
+        body: stream,
+        headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+      };
+    };
+
+    try {
+      await ai.streamChat({
+        messages: [{ role: 'user', content: 'hi' }],
+        onDelta: () => {},
+        onDone: () => {},
+        onError: () => {},
+      });
+
+      expect(fetchedUrl).toBe('https://local-provider.test/v1/chat/completions');
+      expect(requestModel).toBe('local-test-model');
+    } finally {
+      globalThis.fetch = originalFetch;
+      config.getProviderConfig = originalGetProviderConfig;
+      config.DASHSCOPE_MODEL = originalModel;
+    }
   });
 });

@@ -6,6 +6,7 @@ const { _internals } = require('../ai');
 
 async function main() {
   let continuedMessages = null;
+  let continuedOptions = null;
   const loop = new ToolLoop({
     toolLoader: {
       getToolMeta: () => ({ timeoutMs: 1000 }),
@@ -17,8 +18,9 @@ async function main() {
       error: () => {},
       debug: () => {},
     },
-    streamChat: async ({ messages }) => {
-      continuedMessages = messages;
+    streamChat: async (options) => {
+      continuedOptions = options;
+      continuedMessages = options.messages;
     },
     buildToolSignature: () => 'search:{}',
     maxToolRounds: 8,
@@ -59,8 +61,19 @@ async function main() {
     onToolEvent: () => {},
     flushThinkAtEnd: () => {},
     turnId: 'test-turn',
+    _omniRouteResolved: {
+      provider: { id: 'external_omniroute', name: 'OmniRoute' },
+      baseUrl: 'https://omni.example/v1',
+      apiKey: 'sk-test',
+      model: 'kimi-k2.6',
+      caps: { toolsSupport: 'supported', supportsTools: true },
+      fallback: { canFallbackToDeepseek: false, canFallbackToBailian: false },
+    },
+    _disableExternalOmniRoute: false,
   });
 
+  assert.equal(continuedOptions._omniRouteResolved.model, 'kimi-k2.6');
+  assert.equal(continuedOptions._disableExternalOmniRoute, false);
   assert.ok(Array.isArray(continuedMessages), 'continued messages should be passed to streamChat');
   const assistantToolMessage = continuedMessages.find((message) => message.role === 'assistant');
   assert.equal(assistantToolMessage.reasoning_content, 'model private thinking transcript');

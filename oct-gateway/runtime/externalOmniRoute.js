@@ -12,12 +12,38 @@ function readBool(raw) {
   return /^(1|true|yes|on)$/i.test(String(raw).trim());
 }
 
+function parseModelListPayload(payload) {
+  const source = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload?.models)
+        ? payload.models
+        : [];
+
+  const seen = new Set();
+  const models = [];
+  for (const item of source) {
+    const id = String(
+      typeof item === 'string'
+        ? item
+        : (item?.id || item?.model || item?.name || '')
+    ).trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    models.push(id);
+  }
+  return models;
+}
+
 function getExternalGatewayConfig() {
   const baseUrl = normalizeBaseUrl(config.getEnvOrConfig('OMNIROUTE_BASE_URL'));
   const apiKey = String(config.getEnvOrConfig('OMNIROUTE_API_KEY') || '').trim();
-  const chatModel = String(config.getEnvOrConfig('OMNIROUTE_CHAT_MODEL') || '').trim() || 'combo/chat';
-  const planModel = String(config.getEnvOrConfig('OMNIROUTE_PLAN_MODEL') || '').trim() || 'combo/plan';
-  const toolModel = String(config.getEnvOrConfig('OMNIROUTE_TOOL_MODEL') || '').trim() || 'combo/tool';
+  const model = String(
+    config.getEnvOrConfig('OMNIROUTE_MODEL')
+    || config.getEnvOrConfig('OMNIROUTE_CHAT_MODEL')
+    || ''
+  ).trim() || 'combo/chat';
   const rawEnabled = config.getEnvOrConfig('OCT_USE_EXTERNAL_OMNIROUTE');
   const enabled = readBool(rawEnabled);
 
@@ -27,22 +53,18 @@ function getExternalGatewayConfig() {
     baseUrl,
     hasApiKey: !!apiKey,
     apiKey,
+    model,
     models: {
-      'oct-chat': chatModel,
-      'oct-plan': planModel,
-      'oct-tool-safe': toolModel,
+      default: model,
     },
   };
 }
 
 function getCapabilityAlias(capability, snapshot = getExternalGatewayConfig()) {
-  return String(snapshot?.models?.[capability] || '').trim();
+  return String(snapshot?.model || snapshot?.models?.default || '').trim();
 }
 
-function resolveCapabilityTarget(capability) {
-  if (capability !== 'oct-chat' && capability !== 'oct-plan' && capability !== 'oct-tool-safe') {
-    return null;
-  }
+function resolveCapabilityTarget(capability = 'default') {
   const snapshot = getExternalGatewayConfig();
   const model = getCapabilityAlias(capability, snapshot);
   if (!snapshot.enabled || !snapshot.baseUrl || !snapshot.apiKey || !model) {
@@ -54,7 +76,7 @@ function resolveCapabilityTarget(capability) {
     apiKey: snapshot.apiKey,
     model,
     source: 'external_omniroute_config',
-    capability,
+    capability: 'default',
   };
 }
 
@@ -114,12 +136,21 @@ async function checkConnectivity(options = {}) {
     });
 
     if (res.ok) {
+      let availableModels = [];
+      if (typeof res.json === 'function') {
+        try {
+          availableModels = parseModelListPayload(await res.json());
+        } catch (_) {
+          availableModels = [];
+        }
+      }
       return {
         ok: true,
         status: 'reachable',
         httpStatus: res.status,
         checkedUrl,
         error: null,
+        availableModels,
       };
     }
 
@@ -130,6 +161,7 @@ async function checkConnectivity(options = {}) {
       httpStatus: res.status,
       checkedUrl,
       error: String(errText || `HTTP ${res.status}`).slice(0, 200),
+      availableModels: [],
     };
   } catch (err) {
     const aborted = err && typeof err === 'object' && err.name === 'AbortError';
@@ -139,6 +171,7 @@ async function checkConnectivity(options = {}) {
       httpStatus: null,
       checkedUrl,
       error: err?.message || String(err),
+      availableModels: [],
     };
   } finally {
     clearTimeout(timer);
@@ -153,7 +186,9 @@ async function inspectExternalGateway(options = {}) {
     configured: snapshot.configured,
     baseUrl: snapshot.baseUrl,
     hasApiKey: snapshot.hasApiKey,
+    model: snapshot.model,
     models: snapshot.models,
+    availableModels: connectivity.availableModels || [],
     connectivity,
   };
 }
@@ -162,6 +197,7 @@ module.exports = {
   getExternalGatewayConfig,
   getCapabilityAlias,
   resolveCapabilityTarget,
+  parseModelListPayload,
   checkConnectivity,
   inspectExternalGateway,
 };

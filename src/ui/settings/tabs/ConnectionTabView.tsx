@@ -83,7 +83,9 @@ interface ExternalGatewayStatus {
   configured: boolean;
   baseUrl: string;
   hasApiKey: boolean;
+  model?: string;
   models: Record<string, string>;
+  availableModels?: string[];
   connectivity: ExternalGatewayConnectivity;
 }
 
@@ -103,9 +105,9 @@ export const OMNIROUTE_LIVE_ALIAS_UNKNOWN = '未读取到已生效配置';
 
 export function getLiveOmniRouteAlias(
   externalGateway: ExternalGatewayStatus | null | undefined,
-  capability: 'oct-chat' | 'oct-plan' | 'oct-tool-safe',
+  capability: string = 'default',
 ): string | null {
-  const raw = externalGateway?.models?.[capability];
+  const raw = externalGateway?.model || externalGateway?.models?.default || externalGateway?.models?.[capability];
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   return trimmed || null;
@@ -113,9 +115,29 @@ export function getLiveOmniRouteAlias(
 
 export function formatLiveOmniRouteAlias(
   externalGateway: ExternalGatewayStatus | null | undefined,
-  capability: 'oct-chat' | 'oct-plan' | 'oct-tool-safe',
+  capability: string = 'default',
 ): string {
   return getLiveOmniRouteAlias(externalGateway, capability) || OMNIROUTE_LIVE_ALIAS_UNKNOWN;
+}
+
+export function getOmniRouteModelOptions(
+  externalGateway: ExternalGatewayStatus | null | undefined,
+  draftModel = '',
+): string[] {
+  const seen = new Set<string>();
+  const options: string[] = [];
+  for (const raw of [
+    draftModel,
+    externalGateway?.model,
+    externalGateway?.models?.default,
+    ...(externalGateway?.availableModels || []),
+  ]) {
+    const id = String(raw || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    options.push(id);
+  }
+  return options;
 }
 
 export async function requestOmniRouteStatus(
@@ -397,9 +419,8 @@ export function ConnectionTabView({
   if (apiKeys.OCT_USE_EXTERNAL_OMNIROUTE) {
     const extStatus = statusData?.externalGateway || null;
     const isUnconfigured = !apiKeys.OMNIROUTE_BASE_URL?.trim() || !apiKeys.OMNIROUTE_API_KEY?.trim();
-    const chatAlias = formatLiveOmniRouteAlias(extStatus, 'oct-chat');
-    const planAlias = formatLiveOmniRouteAlias(extStatus, 'oct-plan');
-    const toolAlias = formatLiveOmniRouteAlias(extStatus, 'oct-tool-safe');
+    const omniRouteModel = formatLiveOmniRouteAlias(extStatus);
+    const omniRouteModelOptions = getOmniRouteModelOptions(extStatus, apiKeys.OMNIROUTE_MODEL || '');
 
     return (
       <div className="settings-tab-content">
@@ -410,29 +431,26 @@ export function ConnectionTabView({
           </p>
         </div>
 
-        {/* Mode selector header */}
-        {settingsMode !== 'beginner' && (
-          <div className="omniroute-mode-container">
-            <button
-              type="button"
-              className="omniroute-mode-btn active"
-              onClick={() => {
-                setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
-              }}
-            >
-              ◈ 外部 OmniRoute 模式 (推荐)
-            </button>
-            <button
-              type="button"
-              className="omniroute-mode-btn"
-              onClick={() => {
-                setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: false }));
-              }}
-            >
-              ◈ 本地兼容模式 (旧配置)
-            </button>
-          </div>
-        )}
+        <div className="omniroute-mode-container">
+          <button
+            type="button"
+            className="omniroute-mode-btn active"
+            onClick={() => {
+              setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: true }));
+            }}
+          >
+            ◈ 外部 OmniRoute 模式 (推荐)
+          </button>
+          <button
+            type="button"
+            className="omniroute-mode-btn"
+            onClick={() => {
+              setApiKeys((prev) => ({ ...prev, OCT_USE_EXTERNAL_OMNIROUTE: false }));
+            }}
+          >
+            ◈ 本地兼容模式 (旧配置)
+          </button>
+        </div>
 
         <section className="settings-section">
           <h3>OmniRoute 连接配置</h3>
@@ -471,39 +489,34 @@ export function ConnectionTabView({
           </div>
 
           <details className="settings-details">
-            <summary>高级：模型别名映射（Alias Configuration）</summary>
+            <summary>模型出口（Model / Combo）</summary>
             <div className="settings-details-content">
               <div className="settings-field">
-                <label>Chat Model Alias (对话别名)</label>
+                <label>OmniRoute Model / Combo</label>
+                {omniRouteModelOptions.length > 0 ? (
+                  <select
+                    value={apiKeys.OMNIROUTE_MODEL || ''}
+                    onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_MODEL: e.target.value }))}
+                    className="settings-input settings-input-focusable"
+                  >
+                    <option value="">默认 combo/chat</option>
+                    {omniRouteModelOptions.map((modelId) => (
+                      <option key={modelId} value={modelId}>{modelId}</option>
+                    ))}
+                  </select>
+                ) : null}
                 <input
                   type="text"
-                  value={apiKeys.OMNIROUTE_CHAT_MODEL || ''}
-                  onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_CHAT_MODEL: e.target.value }))}
-                  placeholder="combo/chat"
+                  value={apiKeys.OMNIROUTE_MODEL || ''}
+                  onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_MODEL: e.target.value }))}
+                  placeholder={omniRouteModelOptions.length > 0 ? '手动覆盖模型 / Combo' : 'combo/chat 或 gemini'}
                   className="settings-input settings-input-focusable"
                 />
-              </div>
-
-              <div className="settings-field">
-                <label>Plan Model Alias (规划别名)</label>
-                <input
-                  type="text"
-                  value={apiKeys.OMNIROUTE_PLAN_MODEL || ''}
-                  onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_PLAN_MODEL: e.target.value }))}
-                  placeholder="combo/plan"
-                  className="settings-input settings-input-focusable"
-                />
-              </div>
-
-              <div className="settings-field">
-                <label>Tool Model Alias (工具安全通道别名)</label>
-                <input
-                  type="text"
-                  value={apiKeys.OMNIROUTE_TOOL_MODEL || ''}
-                  onChange={(e) => setApiKeys((prev) => ({ ...prev, OMNIROUTE_TOOL_MODEL: e.target.value }))}
-                  placeholder="combo/tool"
-                  className="settings-input settings-input-focusable"
-                />
+                {omniRouteModelOptions.length > 0 && (
+                  <p className="settings-desc settings-desc-compact">
+                    已从外部 OmniRoute /models 读取到 {omniRouteModelOptions.length} 个可选模型。
+                  </p>
+                )}
               </div>
             </div>
           </details>
@@ -562,23 +575,16 @@ export function ConnectionTabView({
           </div>
 
           <div className="omniroute-diagnostic-item">
-            <span className="omniroute-diagnostic-label">Chat 逻辑别名出口</span>
+            <span className="omniroute-diagnostic-label">模型出口</span>
             <span className="omniroute-diagnostic-value">
-              <code>{chatAlias}</code>
+              <code>{omniRouteModel}</code>
             </span>
           </div>
 
           <div className="omniroute-diagnostic-item">
-            <span className="omniroute-diagnostic-label">Plan 逻辑别名出口</span>
+            <span className="omniroute-diagnostic-label">可用模型列表</span>
             <span className="omniroute-diagnostic-value">
-              <code>{planAlias}</code>
-            </span>
-          </div>
-
-          <div className="omniroute-diagnostic-item">
-            <span className="omniroute-diagnostic-label">Tool-safe 逻辑别名出口</span>
-            <span className="omniroute-diagnostic-value">
-              <code>{toolAlias}</code>
+              {omniRouteModelOptions.length > 0 ? `${omniRouteModelOptions.length} 个` : '未读取到'}
             </span>
           </div>
 

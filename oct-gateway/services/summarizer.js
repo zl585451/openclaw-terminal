@@ -176,7 +176,7 @@ function resolveSummarizerProvider(options = {}) {
 
   try {
     const { resolveProviderFor } = require('./llmClient');
-    const resolved = resolveProviderFor('general', 'oct-plan');
+    const resolved = resolveProviderFor('general');
     if (resolved) {
       if (resolved.source === 'current_provider') {
         const providerConfig = config.getProviderConfig?.() || {};

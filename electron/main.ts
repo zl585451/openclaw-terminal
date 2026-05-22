@@ -3462,9 +3462,9 @@ ipcMain.handle('get-api-keys', async () => {
     keys.VISION_MODEL = pick('VISION_MODEL', cfg.VISION_MODEL);
     keys.OMNIROUTE_BASE_URL = pick('OMNIROUTE_BASE_URL', cfg.OMNIROUTE_BASE_URL);
     keys.OMNIROUTE_API_KEY = pick('OMNIROUTE_API_KEY', cfg.OMNIROUTE_API_KEY);
-    keys.OMNIROUTE_CHAT_MODEL = pick('OMNIROUTE_CHAT_MODEL', cfg.OMNIROUTE_CHAT_MODEL);
-    keys.OMNIROUTE_PLAN_MODEL = pick('OMNIROUTE_PLAN_MODEL', cfg.OMNIROUTE_PLAN_MODEL);
-    keys.OMNIROUTE_TOOL_MODEL = pick('OMNIROUTE_TOOL_MODEL', cfg.OMNIROUTE_TOOL_MODEL);
+    keys.OMNIROUTE_MODEL =
+      pick('OMNIROUTE_MODEL', cfg.OMNIROUTE_MODEL)
+      || pick('OMNIROUTE_CHAT_MODEL', cfg.OMNIROUTE_CHAT_MODEL);
     keys.OCT_USE_EXTERNAL_OMNIROUTE = parseBooleanConfigValue(
       cfg.OCT_USE_EXTERNAL_OMNIROUTE ?? envObj.OCT_USE_EXTERNAL_OMNIROUTE
     );
@@ -3517,9 +3517,7 @@ ipcMain.handle('get-api-keys', async () => {
         VISION_MODEL: keys.VISION_MODEL || '',
         OMNIROUTE_BASE_URL: keys.OMNIROUTE_BASE_URL || '',
         OMNIROUTE_API_KEY: keys.OMNIROUTE_API_KEY || '',
-        OMNIROUTE_CHAT_MODEL: keys.OMNIROUTE_CHAT_MODEL || '',
-        OMNIROUTE_PLAN_MODEL: keys.OMNIROUTE_PLAN_MODEL || '',
-        OMNIROUTE_TOOL_MODEL: keys.OMNIROUTE_TOOL_MODEL || '',
+        OMNIROUTE_MODEL: keys.OMNIROUTE_MODEL || '',
         OCT_USE_EXTERNAL_OMNIROUTE: !!keys.OCT_USE_EXTERNAL_OMNIROUTE,
       }
     };
@@ -3569,9 +3567,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     VISION_MODEL?: string;
     OMNIROUTE_BASE_URL?: string;
     OMNIROUTE_API_KEY?: string;
-    OMNIROUTE_CHAT_MODEL?: string;
-    OMNIROUTE_PLAN_MODEL?: string;
-    OMNIROUTE_TOOL_MODEL?: string;
+    OMNIROUTE_MODEL?: string;
     OCT_USE_EXTERNAL_OMNIROUTE?: boolean | string;
     CUSTOM_BASE_URL?: string;
     GOOGLE_AI_API_KEY?: string;
@@ -3641,9 +3637,10 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.VISION_MODEL !== undefined) cfg.VISION_MODEL = keys.VISION_MODEL || '';
     if (keys.OMNIROUTE_BASE_URL !== undefined) cfg.OMNIROUTE_BASE_URL = keys.OMNIROUTE_BASE_URL || '';
     if (keys.OMNIROUTE_API_KEY !== undefined) cfg.OMNIROUTE_API_KEY = keys.OMNIROUTE_API_KEY || '';
-    if (keys.OMNIROUTE_CHAT_MODEL !== undefined) cfg.OMNIROUTE_CHAT_MODEL = keys.OMNIROUTE_CHAT_MODEL || '';
-    if (keys.OMNIROUTE_PLAN_MODEL !== undefined) cfg.OMNIROUTE_PLAN_MODEL = keys.OMNIROUTE_PLAN_MODEL || '';
-    if (keys.OMNIROUTE_TOOL_MODEL !== undefined) cfg.OMNIROUTE_TOOL_MODEL = keys.OMNIROUTE_TOOL_MODEL || '';
+    if (keys.OMNIROUTE_MODEL !== undefined) cfg.OMNIROUTE_MODEL = keys.OMNIROUTE_MODEL || '';
+    if (keys.OMNIROUTE_MODEL !== undefined) cfg.OMNIROUTE_CHAT_MODEL = '';
+    if (keys.OMNIROUTE_MODEL !== undefined) cfg.OMNIROUTE_PLAN_MODEL = '';
+    if (keys.OMNIROUTE_MODEL !== undefined) cfg.OMNIROUTE_TOOL_MODEL = '';
     if (keys.OCT_USE_EXTERNAL_OMNIROUTE !== undefined) {
       cfg.OCT_USE_EXTERNAL_OMNIROUTE = parseBooleanConfigValue(keys.OCT_USE_EXTERNAL_OMNIROUTE) ? 'true' : 'false';
     }
@@ -3704,9 +3701,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
       || keys.SILICONFLOW_API_KEY !== undefined
       || keys.OMNIROUTE_BASE_URL !== undefined
       || keys.OMNIROUTE_API_KEY !== undefined
-      || keys.OMNIROUTE_CHAT_MODEL !== undefined
-      || keys.OMNIROUTE_PLAN_MODEL !== undefined
-      || keys.OMNIROUTE_TOOL_MODEL !== undefined
+      || keys.OMNIROUTE_MODEL !== undefined
       || keys.OCT_USE_EXTERNAL_OMNIROUTE !== undefined;
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
       expectOctGatewayProcessExit = true;

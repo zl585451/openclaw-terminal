@@ -40,7 +40,7 @@ function resolveProviderConfig(modelId, allowedTools = []) {
   if (Array.isArray(allowedTools) && allowedTools.length > 0) {
     try {
       const omniRoute = require('../runtime/omniRoute');
-      const resolved = omniRoute.resolveCapability('oct-tool-safe', {
+      const resolved = omniRoute.resolveCapability('default', {
         originalResolve: () => {
           const pc = config.getProviderConfig();
           const baseUrl = pc.baseUrl || config.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1';

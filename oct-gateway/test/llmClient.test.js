@@ -19,11 +19,9 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     'SCRIPT_ADAPTER_MODEL',
     'NEWAPI_API_KEY',
     'NEWAPI_BASE_URL',
+    'OMNIROUTE_MODEL',
     'OMNIROUTE_BASE_URL',
     'OMNIROUTE_API_KEY',
-    'OMNIROUTE_CHAT_MODEL',
-    'OMNIROUTE_PLAN_MODEL',
-    'OMNIROUTE_TOOL_MODEL',
     'OCT_USE_EXTERNAL_OMNIROUTE',
   ];
 
@@ -101,7 +99,7 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     expect(provider.model).toBe('sa-model-original');
   });
 
-  it('2. fallback to original logic when capability=oct-plan but all candidates are unconfigured', () => {
+  it('2. falls back to original logic when a legacy capability alias is passed but OmniRoute is unavailable', () => {
     // Nothing is configured in candidate providers: bailian-coding, deepseek, newapi.
     // Configure only original script adapter.
     process.env.SCRIPT_ADAPTER_BASE_URL = 'https://original-sa.api/v1';
@@ -115,17 +113,17 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     expect(provider.model).toBe('sa-model-original');
   });
 
-  it('3. resolves successfully to external OmniRoute when configured', () => {
+  it('3. resolves successfully to the single external OmniRoute outlet when configured', () => {
     process.env.OCT_USE_EXTERNAL_OMNIROUTE = 'true';
     process.env.OMNIROUTE_BASE_URL = 'https://omni-test.api/v1';
     process.env.OMNIROUTE_API_KEY = 'sk-omni-secret';
-    process.env.OMNIROUTE_PLAN_MODEL = 'combo-plan';
+    process.env.OMNIROUTE_MODEL = 'combo-chat';
 
     const provider = resolveProviderFor('script_adapter', 'oct-plan');
     expect(provider).toBeDefined();
     expect(provider.baseUrl).toBe('https://omni-test.api/v1');
     expect(provider.apiKey).toBe('sk-omni-secret');
-    expect(provider.model).toBe('combo-plan');
+    expect(provider.model).toBe('combo-chat');
   });
 
   it('4. honors SCRIPT_ADAPTER override when OmniRoute is not configured', () => {
@@ -155,7 +153,7 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     expect(provider.apiKey).toBe('sa-key-original');
   });
 
-  it('6. proves that script_adapter agents call resolveProviderFor with capability="oct-plan"', async () => {
+  it('6. proves that script_adapter agents no longer request a plan-specific capability', async () => {
     const llmClient = require('../services/llmClient');
     let calledWithCapability = null;
     let calledWithPurpose = null;
@@ -174,13 +172,13 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
       await runClassificationSplitterAgent({ sourceText: '测试' }).catch(() => {});
       
       expect(calledWithPurpose).toBe('script_adapter');
-      expect(calledWithCapability).toBe('oct-plan');
+      expect(calledWithCapability).toBeUndefined();
     } finally {
       llmClient.resolveProviderFor = originalResolveProviderFor;
     }
   });
 
-  it('7. proves that services/summarizer calls resolveProviderFor with capability="oct-plan" when SUMMARIZER_* not configured', async () => {
+  it('7. proves that services/summarizer no longer requests a plan-specific capability when SUMMARIZER_* not configured', async () => {
     const llmClient = require('../services/llmClient');
     let calledWithCapability = null;
     let calledWithPurpose = null;
@@ -197,7 +195,7 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
       await summarizer.summarize('test-text').catch(() => {});
       
       expect(calledWithPurpose).toBe('general');
-      expect(calledWithCapability).toBe('oct-plan');
+      expect(calledWithCapability).toBeUndefined();
     } finally {
       llmClient.resolveProviderFor = originalResolveProviderFor;
     }

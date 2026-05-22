@@ -9,7 +9,24 @@ const { createLogger } = require('./logger');
 const log = createLogger('ai');
 const ProviderRouter = require('./runtime/providerRouter');
 const ToolLoop = require('./runtime/toolLoop');
-const { ProxyAgent } = require('undici');
+const {
+  validateAndFixMessages,
+  truncateHistory,
+  getContextUsageRatio,
+} = require('./runtime/messagePolicy');
+const {
+  fetchWithRetry,
+  buildChatHeaders,
+  classifyProbeFailure,
+} = require('./runtime/llmTransport');
+const { createPseudoToolCompat } = require('./runtime/pseudoToolCompat');
+const {
+  probeModelToolsSupport,
+  enforceExecutionContract,
+  injectClarifyCapabilityMessage,
+  canAttemptTools,
+  normalizeMessagesForProvider,
+} = require('./runtime/toolCapabilityPolicy');
 const {
   isGoogleNativeMode,
   generateNativeChat,
@@ -18,10 +35,19 @@ const {
 // ═══════════════════════════════════════════════════════════════
 // AI 上下文截断优化
 // ═══════════════════════════════════════════════════════════════
-const MAX_HISTORY_ROUNDS = 12; // 最多保留最近 12 轮对话
 const MAX_TOOL_ROUNDS = 8;
 const MAX_IDENTICAL_TOOL_SIGNATURES = 2;
 const providerRouter = new ProviderRouter({ config });
+const pseudoToolCompat = createPseudoToolCompat({
+  toolLoader,
+  logger: log,
+});
+const {
+  buildToolSignature,
+  extractAllPseudoToolCalls,
+  hasPseudoToolResidue,
+  stripPseudoToolResidue,
+} = pseudoToolCompat;
 const toolLoop = new ToolLoop({
   toolLoader,
   log,
@@ -30,8 +56,6 @@ const toolLoop = new ToolLoop({
   maxToolRounds: MAX_TOOL_ROUNDS,
   maxIdenticalToolSignatures: MAX_IDENTICAL_TOOL_SIGNATURES,
 });
-const googleProxyAgentCache = new Map();
-
 function injectGoogleDiagramGuard(messages) {
   const list = Array.isArray(messages) ? [...messages] : [];
   if (list.length === 0) return list;
@@ -138,222 +162,6 @@ async function loadSummariesForBoot() {
     ...lines,
   ].join('\n');
   return text.length > 8000 ? `${text.slice(0, 8000)}\n\n---\n> 历史回忆已截断到 8000 字符` : text;
-}
-
-function createGoogleScopedDispatcher(url) {
-  try {
-    const proxyUrl = String(config.GOOGLE_HTTPS_PROXY || '').trim();
-    if (!proxyUrl) return null;
-    const host = String(new URL(url).hostname || '').toLowerCase();
-    const isGoogleHost = host.includes('aiplatform.googleapis.com') || host.includes('generativelanguage.googleapis.com');
-    if (!isGoogleHost) return null;
-    if (!googleProxyAgentCache.has(proxyUrl)) {
-      googleProxyAgentCache.set(proxyUrl, new ProxyAgent(proxyUrl));
-      log.info('google scoped proxy enabled', {
-        proxy: proxyUrl.includes('@') ? proxyUrl.replace(/:\/\/[^@]+@/, '://*****@') : proxyUrl,
-      });
-    }
-    return googleProxyAgentCache.get(proxyUrl);
-  } catch {
-    return null;
-  }
-}
-
-function estimateContentChars(content) {
-  if (typeof content === 'string') return content.length;
-  if (!Array.isArray(content)) return 0;
-
-  let total = 0;
-  for (const part of content) {
-    if (!part || typeof part !== 'object') continue;
-
-    if (part.type === 'text') {
-      total += String(part.text || '').length;
-      continue;
-    }
-
-    if (part.type === 'image_url') {
-      // 多模态图片粗略折算：按 1500 字符估算
-      total += 1500;
-      continue;
-    }
-  }
-  return total;
-}
-
-function estimateMessageChars(message) {
-  if (!message || typeof message !== 'object') return 0;
-  return estimateContentChars(message.content);
-}
-
-/**
- * 防御性消息验证：移除孤立的 tool 消息和不完整的 assistant.tool_calls 组。
- *
- * 规则：
- * - 每个 role='tool' 消息必须属于前面最近一个 assistant.tool_calls 组
- * - 每个 assistant 消息如果带 tool_calls，则后面必须跟齐所有对应 tool_call_id 的 tool 消息
- * - 不完整组直接丢弃，避免远端 API 因消息链不合法而报 400
- *
- * @param {Array} messages
- * @returns {Array}
- */
-function validateAndFixMessages(messages) {
-  if (!Array.isArray(messages) || messages.length === 0) return messages;
-
-  const result = [];
-  let i = 0;
-
-  while (i < messages.length) {
-    const msg = messages[i];
-
-    if (!msg || typeof msg !== 'object') {
-      i++;
-      continue;
-    }
-
-    // 孤立 tool：只允许作为 assistant.tool_calls 组的尾随响应存在
-    if (msg.role === 'tool') {
-      log.debug('validateAndFixMessages drop orphan tool message', {
-        tool_call_id: msg.tool_call_id || null,
-      });
-      i++;
-      continue;
-    }
-
-    // assistant + tool_calls：必须和紧随其后的 tool 消息组成完整组
-    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-      const expectedIds = Array.from(new Set(
-        msg.tool_calls
-          .map((tc) => tc && tc.id)
-          .filter(Boolean)
-      ));
-      const expectedIdSet = new Set(expectedIds);
-
-      const trailing = [];
-      let j = i + 1;
-
-      while (j < messages.length) {
-        const next = messages[j];
-        if (!next || typeof next !== 'object' || next.role !== 'tool') break;
-        trailing.push(next);
-        j++;
-      }
-
-      const matched = [];
-      const seenIds = new Set();
-      const droppedTrailingToolIds = [];
-
-      for (const toolMsg of trailing) {
-        const toolCallId = toolMsg.tool_call_id;
-        if (expectedIdSet.has(toolCallId) && !seenIds.has(toolCallId)) {
-          matched.push(toolMsg);
-          seenIds.add(toolCallId);
-        } else {
-          droppedTrailingToolIds.push(toolCallId || null);
-        }
-      }
-
-      const missingIds = expectedIds.filter((id) => !seenIds.has(id));
-      if (missingIds.length === 0) {
-        result.push(msg);
-        result.push(...matched);
-        if (droppedTrailingToolIds.length > 0) {
-          log.debug('validateAndFixMessages drop unexpected trailing tool messages', {
-            droppedToolCallIds: droppedTrailingToolIds,
-            expectedIds,
-          });
-        }
-      } else {
-        log.debug('validateAndFixMessages drop incomplete tool_call group', {
-          expectedIds,
-          missingIds,
-          trailingToolCallIds: trailing.map((toolMsg) => toolMsg.tool_call_id || null),
-        });
-      }
-
-      i = j;
-      continue;
-    }
-
-    result.push(msg);
-    i++;
-  }
-
-  return result;
-}
-
-function truncateHistory(messages, modelId) {
-  if (!messages || messages.length === 0) return messages;
-  const maxContextChars = getMaxContextCharsForModel(modelId);
-
-  // 分离系统消息和对话消息
-  const systemMsgs = messages.filter(m => m.role === 'system');
-  const chatMsgs = messages.filter(m => m.role !== 'system');
-
-  // 只保留最近 N 轮
-  const recentChat = chatMsgs.slice(-MAX_HISTORY_ROUNDS * 2);
-
-  // 检查总字符数，超限时从最早的开始裁剪
-  let combined = [...systemMsgs, ...recentChat];
-  let totalChars = combined.reduce((sum, m) => sum + estimateMessageChars(m), 0);
-
-  while (totalChars > maxContextChars && recentChat.length > 2) {
-    const removed = recentChat.shift();
-    totalChars -= estimateMessageChars(removed);
-    combined = [...systemMsgs, ...recentChat];
-  }
-
-  return combined;
-}
-
-function getContextUsageRatio(messages, modelId) {
-  const limit = getModelContextLimit(modelId);
-  // 粗估 token 数 ≈ 字符数 / 2（中文）或 / 4（英文）
-  const totalChars = messages.reduce((sum, m) => sum + estimateMessageChars(m), 0);
-  const estimatedTokens = totalChars / 2; // 偏保守（中文为主）
-  const ratio = estimatedTokens / limit;
-
-  if (ratio > 0.8) {
-    log.warn(`上下文使用率 ${(ratio * 100).toFixed(0)}%，建议截断`, { modelId });
-  }
-  return ratio;
-}
-
-function getModelContextLimit(modelId) {
-  const MODEL_CONTEXT_LIMITS = {
-    'qwen-plus': 128000,
-    'qwen3.5-plus': 128000,
-    'qwen3-max-2026-01-23': 262144,
-    'qwen3-coder-next': 262144,
-    'qwen3-coder-plus': 1000000,
-    'qwen-vl-max': 32768,
-    'qwen2-vl-7b': 32768,
-    'kimi-k2.6': 262144,
-    'kimi-k2.5': 262144,
-    'minimax-m2.5': 196608,
-    'glm-5': 202752,
-    'glm-4.7': 202752,
-    'deepseek-v4-flash': 128000,
-    'deepseek-v4-pro': 128000,
-    'deepseek-chat': 64000,
-    'deepseek-reasoner': 64000,
-  };
-  if (!modelId || typeof modelId !== 'string') return 128000;
-  const id = modelId.toLowerCase().replace(/\s/g, '');
-  if (id.startsWith('gemini-')) return 1000000;
-  return MODEL_CONTEXT_LIMITS[id] || MODEL_CONTEXT_LIMITS[modelId.split('/').pop()] || 128000;
-}
-
-function getMaxContextCharsForModel(modelId) {
-  let limit = 0;
-  try {
-    limit = Number(getModelContextLimit(modelId));
-  } catch {}
-  if (!Number.isFinite(limit) || limit <= 0) {
-    // 兼容保守兜底：适配 MiniMax-M2.7 等大窗口模型
-    limit = 200000;
-  }
-  return Math.floor(limit * 0.4);
 }
 
 function getMiniMaxTemperature() {
@@ -490,65 +298,6 @@ ${bootMemory}
     }
   }
   return buildSystemPrompt(parts.join('\n\n---\n\n'), 'local', promptsDir);
-}
-
-async function fetchWithRetry(url, options, maxRetries = 2) {
-  // 从 url 中提取 baseUrl，用于判断是否为 MiniMax API
-  const isMiniMax = url.includes('minimaxi.com');
-  const timeoutMs = isMiniMax ? 180000 : 120000;
-
-  let lastError;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      log.info(`第 ${attempt} 次重试请求...`);
-      await new Promise(r => setTimeout(r, 1000 * attempt));
-    }
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-        log.warn(`请求超时（${timeoutMs / 1000}秒），触发 abort`);
-      }, timeoutMs);
-
-      const resp = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        dispatcher: options?.dispatcher || createGoogleScopedDispatcher(url) || undefined,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
-        const error = new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
-        error.status = resp.status;
-        error.responseText = errText;
-        throw error;
-      }
-      return resp;
-    } catch (e) {
-      lastError = e;
-      if (Number(e?.status) >= 400 && Number(e?.status) < 500) {
-        log.warn('客户端/配额类错误不重试', {
-          status: e.status,
-          url: url.replace(/\/v1.*/, '/v1/...'),
-        });
-        break;
-      }
-      if (e.name === 'AbortError') {
-        log.error('请求被中止（超时）', { url: url.replace(/\/v1.*/, '/v1/...') });
-        break;
-      }
-      if (attempt < maxRetries) {
-        log.warn(`请求失败，将重试: ${e.message}`, { 
-          url: url.replace(/\/v1.*/, '/v1/...'),
-          errorName: e.name,
-          errorCode: e.code 
-        });
-      }
-    }
-  }
-  throw lastError;
 }
 
 function readTextIfExists(p) {
@@ -796,819 +545,6 @@ AI · Cursor · Claude 三角协作：
   return prompt;
 }
 
-function buildToolSignature(toolCalls) {
-  return JSON.stringify(
-    (toolCalls || [])
-      .filter(Boolean)
-      .map((tc) => ({
-        name: tc.function?.name || '',
-        arguments: tc.function?.arguments || '',
-      }))
-  );
-}
-
-function decodePseudoToolValue(raw) {
-  const value = String(raw || '').trim();
-  if (!value) return '';
-  if (value.startsWith('"') && value.endsWith('"')) {
-    try { return JSON.parse(value); } catch { return value.slice(1, -1); }
-  }
-  if (value.startsWith("'") && value.endsWith("'")) {
-    return value.slice(1, -1).replace(/\\'/g, '\'').replace(/\\"/g, '"');
-  }
-  return value;
-}
-
-function parsePseudoToolArgs(blockText) {
-  const args = {};
-  const text = String(blockText || '');
-  const flagRe = /--([a-zA-Z][\w-]*)\s+/g;
-  let match;
-  while ((match = flagRe.exec(text)) !== null) {
-    const key = match[1];
-    const valueStart = flagRe.lastIndex;
-    const nextMatch = flagRe.exec(text);
-    const valueEnd = nextMatch ? nextMatch.index : text.length;
-    const rawValue = text.slice(valueStart, valueEnd).trim();
-    args[key] = decodePseudoToolValue(rawValue);
-    if (nextMatch) {
-      flagRe.lastIndex = nextMatch.index;
-    }
-  }
-  return args;
-}
-
-function extractRubyPseudoToolCalls(text) {
-  const source = String(text || '');
-  if (!source || !/tool\s*=>/i.test(source) || !/args\s*=>/i.test(source)) {
-    return [];
-  }
-
-  const blocks = [];
-  const headerRe = /\{tool\s*=>\s*(?:"([^"]+)"|'([^']+)'|([a-zA-Z_][\w-]*))\s*,\s*args\s*=>\s*\{/gi;
-  let header;
-
-  while ((header = headerRe.exec(source)) !== null) {
-    const toolName = header[1] || header[2] || header[3] || '';
-    const argsOpenBracePos = source.indexOf('{', header.index + header[0].lastIndexOf('args'));
-    if (argsOpenBracePos < 0) continue;
-
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    let quoteChar = '"';
-    let i = argsOpenBracePos;
-    let argsClosePos = -1;
-
-    for (; i < source.length; i++) {
-      const ch = source[i];
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-          continue;
-        }
-        if (ch === '\\') {
-          escaped = true;
-          continue;
-        }
-        if (ch === quoteChar) {
-          inString = false;
-        }
-        continue;
-      }
-
-      if (ch === '"' || ch === "'") {
-        inString = true;
-        quoteChar = ch;
-        continue;
-      }
-      if (ch === '{') {
-        depth += 1;
-        continue;
-      }
-      if (ch === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          argsClosePos = i;
-          break;
-        }
-      }
-    }
-
-    if (argsClosePos < 0) continue;
-
-    const argsBlock = source.slice(argsOpenBracePos + 1, argsClosePos);
-    const parsedArgs = parsePseudoToolArgs(argsBlock);
-    if (!parsedArgs.action) continue;
-
-    blocks.push({
-      id: `pseudo-${Date.now()}-${blocks.length}`,
-      type: 'function',
-      function: {
-        name: toolName,
-        arguments: JSON.stringify(parsedArgs),
-      },
-    });
-  }
-
-  return blocks;
-}
-
-/** Kimi 等模型把 function call 以 `<|…tool_calls_section…|>` 形式写进正文 */
-function findBalancedJsonObjectSlice(s, fromIndex) {
-  const start = s.indexOf('{', fromIndex);
-  if (start < 0) return null;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  let quoteChar = '"';
-  for (let i = start; i < s.length; i++) {
-    const ch = s[i];
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (ch === quoteChar) {
-        inString = false;
-      }
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inString = true;
-      quoteChar = ch;
-      continue;
-    }
-    if (ch === '{') depth += 1;
-    if (ch === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        return { start, end: i + 1, jsonStr: s.slice(start, i + 1) };
-      }
-    }
-  }
-  return null;
-}
-
-function extractKimiStylePseudoToolCalls(text) {
-  const source = String(text || '');
-  if (!source || !/tool_calls_section_begin/i.test(source)) {
-    return [];
-  }
-  const sectionRe = /<\|[^|]*tool_calls_section_begin[^|]*\|>([\s\S]*?)<\|[^|]*tool_calls_section_end[^|]*\|>/gi;
-  const calls = [];
-  let sec;
-  while ((sec = sectionRe.exec(source)) !== null) {
-    const inner = sec[1];
-    const argSep = /<\|[^|]*tool_call_argument_begin[^|]*\|>/i;
-    const am = inner.match(argSep);
-    if (!am || am.index === undefined) continue;
-    const jsonFrom = inner.slice(am.index + am[0].length);
-    const hit = findBalancedJsonObjectSlice(jsonFrom, 0);
-    if (!hit) continue;
-    let obj;
-    try {
-      obj = JSON.parse(hit.jsonStr);
-    } catch {
-      continue;
-    }
-    const toolName = obj.name || (obj.function && obj.function.name);
-    const args = obj.arguments !== undefined ? obj.arguments : (obj.args !== undefined ? obj.args : undefined);
-    if (!toolName) continue;
-    const argString = typeof args === 'string' ? args : JSON.stringify(args || {});
-    calls.push({
-      id: `pseudo-kimi-${Date.now()}-${calls.length}`,
-      type: 'function',
-      function: {
-        name: toolName,
-        arguments: argString,
-      },
-    });
-  }
-  return calls;
-}
-
-/**
- * 部分模型会把工具调用以 XML-like 文本吐在正文里，例如：
- * <tool_call>
- *   <function=canvas>
- *   <parameter-action>create</parameter>
- *   <parameter-content>...</parameter>
- * </function>
- * </tool_call>
- */
-function extractXmlPseudoToolCalls(text) {
-  const source = String(text || '');
-  if (!source || !/<tool_call>/i.test(source)) {
-    return [];
-  }
-  const KNOWN_TOOL_NAMES = new Set(
-    (toolLoader.getDefinitions?.() || [])
-      .map((def) => String(def?.function?.name || '').trim())
-      .filter(Boolean)
-  );
-
-  const callRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
-  const calls = [];
-  let match;
-  while ((match = callRe.exec(source)) !== null) {
-    const block = String(match[1] || '').trim();
-
-    // 分支 A：原有 <function=xxx><parameter-yyy> 格式
-    const fnMatch = block.match(/<function=([a-zA-Z0-9_.-]+)>/i);
-    if (fnMatch?.[1]) {
-      const toolName = String(fnMatch[1]).trim();
-      const args = {};
-      const paramRe = /<parameter-([a-zA-Z0-9_-]+)>\s*([\s\S]*?)\s*<\/parameter>/gi;
-      let pm;
-      while ((pm = paramRe.exec(block)) !== null) {
-        const key = String(pm[1] || '').trim();
-        const rawVal = String(pm[2] || '').trim();
-        if (!key) continue;
-        args[key] = rawVal;
-      }
-
-      if (args.type && !args.artifactType) {
-        args.artifactType = args.type;
-        delete args.type;
-      }
-      if (
-        toolName === 'canvas' &&
-        String(args.action || '').toLowerCase() === 'update' &&
-        !args.documentId
-      ) {
-        args.action = 'create';
-      }
-
-      calls.push({
-        id: `pseudo-xml-${Date.now()}-${calls.length}`,
-        type: 'function',
-        function: {
-          name: toolName,
-          arguments: JSON.stringify(args),
-        },
-      });
-      continue;
-    }
-
-    // 分支 B：JSON-in-tag
-    // <tool_call> {"name":"web_search","arguments":{"query":"..."}} </tool_call>
-    const jsonHit = findBalancedJsonObjectSlice(block, 0);
-    if (jsonHit) {
-      let obj;
-      try { obj = JSON.parse(jsonHit.jsonStr); } catch { continue; }
-      const toolName = obj.name || obj.function?.name;
-      if (!toolName || !KNOWN_TOOL_NAMES.has(String(toolName))) continue;
-
-      let args = obj.arguments ?? obj.args ?? obj.parameters ?? {};
-      if (typeof args === 'string') {
-        try { args = JSON.parse(args); } catch {}
-      }
-
-      if (
-        toolName === 'canvas' &&
-        typeof args === 'object' && args !== null &&
-        String(args.action || '').toLowerCase() === 'update' &&
-        !args.documentId
-      ) {
-        args.action = 'create';
-      }
-
-      calls.push({
-        id: `pseudo-xml-json-${Date.now()}-${calls.length}`,
-        type: 'function',
-        function: {
-          name: String(toolName),
-          arguments: typeof args === 'string' ? args : JSON.stringify(args || {}),
-        },
-      });
-    }
-  }
-
-  return calls;
-}
-
-function extractBracketToolCodePseudoToolCalls(text) {
-  const source = String(text || '');
-  if (!source || !/<tool_code>/i.test(source)) {
-    return [];
-  }
-  const calls = [];
-  const callRe = /\[([a-zA-Z0-9_.-]+)\]\s*<tool_code>\s*([\s\S]*?)\s*<\/tool_code>/gi;
-  let match;
-  while ((match = callRe.exec(source)) !== null) {
-    const toolName = String(match[1] || '').trim();
-    if (!toolName) continue;
-    if (!isRegisteredToolName(toolName)) continue;
-
-    const block = String(match[2] || '').trim();
-    const jsonHit = findBalancedJsonObjectSlice(block, 0);
-    if (!jsonHit) continue;
-
-    let args;
-    try {
-      args = JSON.parse(jsonHit.jsonStr);
-    } catch {
-      continue;
-    }
-
-    calls.push({
-      id: `pseudo-bracket-tool-code-${Date.now()}-${calls.length}`,
-      type: 'function',
-      function: {
-        name: toolName,
-        arguments: JSON.stringify(args || {}),
-      },
-    });
-  }
-  return calls;
-}
-
-function extractPseudoToolCalls(text) {
-  const bracketToolCode = extractBracketToolCodePseudoToolCalls(text);
-  if (bracketToolCode.length > 0) return bracketToolCode;
-  const ruby = extractRubyPseudoToolCalls(text);
-  if (ruby.length > 0) return ruby;
-  const kimi = extractKimiStylePseudoToolCalls(text);
-  if (kimi.length > 0) return kimi;
-  return extractXmlPseudoToolCalls(text);
-}
-
-function getKnownToolNames() {
-  return new Set(
-    (toolLoader.getDefinitions?.() || [])
-      .map((def) => String(def?.function?.name || '').trim())
-      .filter(Boolean)
-  );
-}
-
-function isRegisteredToolName(toolName) {
-  const normalized = String(toolName || '').trim();
-  if (!normalized) return false;
-  return getKnownToolNames().has(normalized);
-}
-
-function tryParseJsonWithSingleQuotes(raw) {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    try {
-      return JSON.parse(String(raw).replace(/'/g, '"'));
-    } catch {
-      return null;
-    }
-  }
-}
-
-/**
- * 检测函数调用风格的伪工具调用：
- * - canvas("create", "title", "diagram", {...})
- * - read_file({"path":"..."})
- */
-function extractFunctionStyleToolCalls(text) {
-  const source = String(text || '');
-  if (!source) return [];
-
-  const knownTools = [
-    'canvas',
-    'read_file',
-    'read_document',
-    'write_file',
-    'web_search',
-    'web_fetch',
-    'memory_write',
-    'memory_search',
-    'memory_read',
-    'memory_vector_search',
-    'exec_command',
-  ];
-  const toolPattern = new RegExp(`(?:^|\\n|\\s)(${knownTools.join('|')})\\s*\\(`, 'g');
-  const calls = [];
-  let match;
-
-  while ((match = toolPattern.exec(source)) !== null) {
-    const toolName = match[1];
-    const openParenPos = source.indexOf('(', match.index + toolName.length);
-    if (openParenPos < 0) continue;
-
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    let quoteChar = '"';
-    let closeParenPos = -1;
-    for (let i = openParenPos; i < source.length; i++) {
-      const ch = source[i];
-      if (inString) {
-        if (escaped) { escaped = false; continue; }
-        if (ch === '\\') { escaped = true; continue; }
-        if (ch === quoteChar) inString = false;
-        continue;
-      }
-      if (ch === '"' || ch === "'") { inString = true; quoteChar = ch; continue; }
-      if (ch === '(') { depth += 1; continue; }
-      if (ch === ')') {
-        depth -= 1;
-        if (depth === 0) {
-          closeParenPos = i;
-          break;
-        }
-      }
-    }
-    if (closeParenPos < 0) continue;
-
-    const argsStr = source.slice(openParenPos + 1, closeParenPos).trim();
-    const lastBraceStart = argsStr.lastIndexOf('{');
-    if (lastBraceStart < 0) continue;
-
-    let braceDepth = 0;
-    let inObjString = false;
-    let escapedObj = false;
-    let objQuoteChar = '"';
-    let braceEnd = -1;
-    for (let i = lastBraceStart; i < argsStr.length; i++) {
-      const ch = argsStr[i];
-      if (inObjString) {
-        if (escapedObj) { escapedObj = false; continue; }
-        if (ch === '\\') { escapedObj = true; continue; }
-        if (ch === objQuoteChar) inObjString = false;
-        continue;
-      }
-      if (ch === '"' || ch === "'") { inObjString = true; objQuoteChar = ch; continue; }
-      if (ch === '{') { braceDepth += 1; continue; }
-      if (ch === '}') {
-        braceDepth -= 1;
-        if (braceDepth === 0) {
-          braceEnd = i;
-          break;
-        }
-      }
-    }
-    if (braceEnd < 0) continue;
-
-    const jsonStr = argsStr.slice(lastBraceStart, braceEnd + 1);
-    const parsedArgs = tryParseJsonWithSingleQuotes(jsonStr);
-    if (!parsedArgs || typeof parsedArgs !== 'object') continue;
-
-    const prefix = argsStr.slice(0, lastBraceStart);
-    const positionalArgs = prefix
-      .split(',')
-      .map((s) => String(s || '').trim().replace(/^["']|["']$/g, ''))
-      .filter((s) => s.length > 0);
-
-    if (toolName === 'canvas' && positionalArgs.length > 0) {
-      if (!parsedArgs.action && positionalArgs[0]) parsedArgs.action = positionalArgs[0];
-      if (!parsedArgs.title && positionalArgs[1]) parsedArgs.title = positionalArgs[1];
-      if (!parsedArgs.artifactType && positionalArgs[2]) parsedArgs.artifactType = positionalArgs[2];
-    }
-
-    calls.push({
-      id: `pseudo-fn-${Date.now()}-${calls.length}`,
-      type: 'function',
-      function: {
-        name: toolName,
-        arguments: JSON.stringify(parsedArgs),
-      },
-    });
-  }
-
-  return calls;
-}
-
-function extractBracketTagPseudoToolCalls(text) {
-  const source = String(text || '');
-  if (!source) return [];
-
-  const callRe = /\[([a-zA-Z0-9_.-]+)\]([\s\S]*?)\[\/\1\]/gi;
-  const calls = [];
-  let match;
-
-  while ((match = callRe.exec(source)) !== null) {
-    const toolName = String(match[1] || '').trim();
-    if (!toolName || !isRegisteredToolName(toolName)) continue;
-
-    const rawBody = String(match[2] || '').trim();
-    if (!rawBody) continue;
-
-    const args = {};
-    const lines = rawBody
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    for (const line of lines) {
-      const kv = line.match(/^([a-zA-Z0-9_.-]+)\s*:\s*([\s\S]+)$/);
-      if (!kv) continue;
-      const key = String(kv[1] || '').trim();
-      const value = String(kv[2] || '').trim();
-      if (!key || !value) continue;
-      args[key] = value;
-    }
-
-    // 兼容单行短标签：
-    // [web_search] query: xxx [/web_search]
-    // [web_search] xxx [/web_search]
-    if (Object.keys(args).length === 0) {
-      if (toolName === 'web_search' || toolName === 'memory_search' || toolName === 'memory_vector_search') {
-        args.query = rawBody.replace(/^query\s*:\s*/i, '').trim();
-      } else if (toolName === 'web_fetch') {
-        args.url = rawBody.replace(/^url\s*:\s*/i, '').trim();
-      } else if (toolName === 'read_file' || toolName === 'read_document') {
-        args.path = rawBody.replace(/^(path|file_path)\s*:\s*/i, '').trim();
-      } else if (toolName === 'write_file') {
-        args.path = rawBody.replace(/^(path|file_path)\s*:\s*/i, '').trim();
-      }
-    }
-
-    if (Object.keys(args).length === 0 || Object.values(args).some((value) => !String(value || '').trim())) {
-      continue;
-    }
-
-    calls.push({
-      id: `pseudo-bracket-tag-${Date.now()}-${calls.length}`,
-      type: 'function',
-      function: {
-        name: toolName,
-        arguments: JSON.stringify(args),
-      },
-    });
-  }
-
-  return calls;
-}
-
-function extractAllPseudoToolCalls(text) {
-  const legacy = extractPseudoToolCalls(text);
-  const rawCalls = legacy.length > 0
-    ? legacy
-    : (() => {
-        const bracketTagCalls = extractBracketTagPseudoToolCalls(text);
-        if (bracketTagCalls.length > 0) return bracketTagCalls;
-        return extractFunctionStyleToolCalls(text);
-      })();
-
-  const validCalls = [];
-  for (const call of rawCalls) {
-    const toolName = String(call?.function?.name || '').trim();
-    if (!toolName) {
-      log.warn('Pseudo tool call intercepted: empty tool name');
-      continue;
-    }
-
-    if (!isRegisteredToolName(toolName)) {
-      log.warn('Pseudo tool call intercepted: tool is not registered or allowed', { toolName });
-      continue;
-    }
-
-    // Validate argument JSON structure
-    try {
-      const argsStr = call?.function?.arguments;
-      if (typeof argsStr === 'string') {
-        JSON.parse(argsStr);
-      } else {
-        throw new Error('arguments is not a string');
-      }
-    } catch (e) {
-      log.warn('Pseudo tool call intercepted: invalid parameter structure', { toolName, error: e.message });
-      continue;
-    }
-
-    validCalls.push(call);
-  }
-
-  return validCalls;
-}
-
-function hasPseudoToolResidue(text) {
-  const source = String(text || '');
-  if (!source.trim()) return false;
-  return (
-    /<tool_call>/i.test(source) ||
-    /<tool_code>/i.test(source) ||
-    /<function=\w+>/i.test(source) ||
-    /tool_calls_section_begin/i.test(source) ||
-    /\[[a-zA-Z0-9_.-]+\]\s*<tool_code>/i.test(source) ||
-    /\[[a-zA-Z0-9_.-]+\][\s\S]*?\[\/[a-zA-Z0-9_.-]+\]/i.test(source)
-  );
-}
-
-function stripPseudoToolResidue(text) {
-  const source = String(text || '');
-  if (!source.trim()) return source;
-
-  return source
-    .replace(/<\|[^|]*tool_calls_section_begin[^|]*\|>[\s\S]*?<\|[^|]*tool_calls_section_end[^|]*\|>/gi, '')
-    .replace(/\[[a-zA-Z0-9_.-]+\]\s*<tool_code>[\s\S]*?<\/tool_code>/gi, '')
-    .replace(/\[[a-zA-Z0-9_.-]+\][\s\S]*?\[\/[a-zA-Z0-9_.-]+\]/gi, '')
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-    .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
-    .replace(/<function=\w+>[\s\S]*?(?=(?:<function=\w+>|$))/gi, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-function buildChatHeaders(baseUrl, apiKey) {
-  const _baseForAuth = String(baseUrl || '');
-  const isVertexAIEndpoint = _baseForAuth.includes('aiplatform.googleapis.com');
-  return isVertexAIEndpoint
-    ? {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      }
-    : {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      };
-}
-
-function classifyProbeFailure(message) {
-  const m = String(message || '').toLowerCase();
-  const unsupportedHints = [
-    'tool',
-    'function calling',
-    'function_call',
-    'tool_calls',
-    'tool_choice',
-    'unrecognized request argument',
-    'unknown field',
-    'does not support',
-    'not supported',
-    'invalid parameter',
-  ];
-  const hasToolHint = unsupportedHints.some((token) => m.includes(token));
-  if (hasToolHint) return 'unsupported';
-  return 'unknown';
-}
-
-async function probeModelToolsSupport({ provider, baseUrl, apiKey, model }) {
-  const cached = config.getProbeCacheEntry?.({
-    providerId: provider.id,
-    baseUrl,
-    modelId: model,
-  });
-  if (cached?.toolsSupport) return cached;
-
-  const probeToolName = 'oct_capability_probe_noop';
-  const probeBody = {
-    model,
-    stream: false,
-    max_tokens: 1,
-    messages: [
-      { role: 'system', content: 'You are running a capability probe.' },
-      { role: 'user', content: 'Call the probe function now.' },
-    ],
-    tools: [
-      {
-        type: 'function',
-        function: {
-          name: probeToolName,
-          description: 'Capability probe noop tool.',
-          parameters: { type: 'object', properties: {} },
-        },
-      },
-    ],
-    tool_choice: {
-      type: 'function',
-      function: { name: probeToolName },
-    },
-  };
-
-  const endpoint = `${String(baseUrl || '').replace(/\/$/, '')}/chat/completions`;
-  try {
-    const res = await fetchWithRetry(endpoint, {
-      method: 'POST',
-      headers: buildChatHeaders(baseUrl, apiKey),
-      body: JSON.stringify(probeBody),
-    }, 0);
-    const json = await res.json().catch(() => ({}));
-    const choice = json?.choices?.[0] || {};
-    const finishReason = choice?.finish_reason || '';
-    const toolCalls = choice?.message?.tool_calls || [];
-    const toolsSupport = (Array.isArray(toolCalls) && toolCalls.length > 0) || finishReason === 'tool_calls'
-      ? 'supported'
-      : 'unknown';
-    return config.setProbeCacheEntry?.({
-      providerId: provider.id,
-      baseUrl,
-      modelId: model,
-      toolsSupport,
-      capabilitySource: 'runtime_probe',
-    }) || { toolsSupport, capabilitySource: 'runtime_probe' };
-  } catch (e) {
-    const toolsSupport = classifyProbeFailure(e?.message || String(e));
-    return config.setProbeCacheEntry?.({
-      providerId: provider.id,
-      baseUrl,
-      modelId: model,
-      toolsSupport,
-      capabilitySource: 'runtime_probe',
-    }) || { toolsSupport, capabilitySource: 'runtime_probe' };
-  }
-}
-
-function hasUnverifiedExecutionNarrative(text) {
-  const source = String(text || '');
-  if (!source.trim()) return false;
-  const alreadyHonest = /无法(直接)?(调用|使用)工具|不支持工具|不能(联网|调用工具)|未触发工具调用/.test(source);
-  if (alreadyHonest) return false;
-
-  const patterns = [
-    /我(去|来)?查(一下|下)?/i,
-    /我(将|会|正在|先)?调用(工具|搜索|查询|检索|web_search|read_file|memory_search|memory_vector_search)/i,
-    /正在(调用工具|搜索|查询|检索|联网查)/i,
-    /已(调用|执行)(了)?(工具|搜索|查询|检索)/i,
-    /\b(let me|i('| wi)?ll|i am)\s+(search|look up|call|use)\b/i,
-  ];
-  return patterns.some((re) => re.test(source));
-}
-
-function enforceExecutionContract({ text, supportsTools, hasToolEvidence }) {
-  const source = String(text || '');
-  if (!source.trim()) return source;
-  if (hasToolEvidence) return source;
-  if (!hasUnverifiedExecutionNarrative(source)) return source;
-
-  if (!supportsTools) {
-    return `当前模型不支持工具执行，我会基于现有上下文直接回答。\n\n${source}`;
-  }
-  return `本轮未触发可验证的工具调用，先基于现有信息继续回答。\n\n${source}`;
-}
-
-function buildClarifyCapabilityRule(toolsSupport) {
-  if (toolsSupport === 'supported') {
-    return `## 澄清询问器（工具路径）
-
-当你需要一次性收集用户多个维度的结构化信息时，优先调用 \`request_clarify\` 工具，不要输出 [clarify_card] 文本标签。
-
-调用规则：
-- 字段最多 4 个，field.label 必须是完整问句
-- 工具返回 waiting_user_reply 后立即停止输出，等待下一轮用户消息（通常以 [澄清回执] 开头）
-- 一次对话只调用一次该工具，不要连续追问
-- 收到 [澄清回执] 后继续执行任务；用户跳过字段可用合理默认值并在开头说明假设`;
-  }
-
-  return `## 澄清询问器（文本路径）
-
-当你需要一次性收集用户多个维度的结构化信息时，用 [clarify_card]...[/clarify_card] 输出 JSON。
-
-格式规则：
-- 字段最多 4 个，field.label 必须是完整问句
-- 结构：{ "fields": [{ "id", "label", "type", "options?", "allow_custom?", "placeholder?" }] }
-- type 仅可用：single / multi / text / confirm
-- 一次对话只输出一张卡片，不连续追问
-- 收到 [澄清回执] 后继续执行任务；用户跳过字段可用合理默认值并在开头说明假设`;
-}
-
-function injectClarifyCapabilityMessage(messages, toolsSupport) {
-  const list = Array.isArray(messages) ? messages : [];
-  const exists = list.some((msg) => {
-    if (!msg || msg.role !== 'system' || typeof msg.content !== 'string') return false;
-    return msg.content.includes('## 澄清询问器（工具路径）') || msg.content.includes('## 澄清询问器（文本路径）');
-  });
-  if (exists) return list;
-  return [
-    ...list,
-    { role: 'system', content: buildClarifyCapabilityRule(toolsSupport) },
-  ];
-}
-
-function normalizeMessagesForProvider(messages, providerId) {
-  const list = Array.isArray(messages) ? messages : [];
-  if (providerId !== 'minimax') return list;
-
-  const systemText = list
-    .filter((msg) => msg?.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
-    .map((msg) => msg.content.trim())
-    .join('\n\n');
-  if (!systemText) return list;
-
-  const nonSystemMessages = list.filter((msg) => msg?.role !== 'system');
-  const firstUserIndex = nonSystemMessages.findIndex((msg) => msg?.role === 'user');
-  const prefix = `【系统指令】\n${systemText}\n\n【用户消息】\n`;
-
-  if (firstUserIndex < 0) {
-    return [{ role: 'user', content: prefix.trim() }, ...nonSystemMessages];
-  }
-
-  return nonSystemMessages.map((msg, index) => {
-    if (index !== firstUserIndex) return msg;
-    if (typeof msg.content === 'string') {
-      return { ...msg, content: `${prefix}${msg.content}` };
-    }
-    if (Array.isArray(msg.content)) {
-      return {
-        ...msg,
-        content: [{ type: 'text', text: prefix.trim() }, ...msg.content],
-      };
-    }
-    return { ...msg, content: `${prefix}${String(msg.content || '')}` };
-  });
-}
-
 function mergePlainObject(target, source) {
   if (!source || typeof source !== 'object' || Array.isArray(source)) return target;
   const out = target && typeof target === 'object' && !Array.isArray(target) ? { ...target } : {};
@@ -1714,48 +650,8 @@ function resolveStreamErrorType(err) {
   return err.code || 'StreamError';
 }
 
-const PLAN_HINT_RE = /(?:\b(?:summarize|summary|plan|planning|orchestrate|orchestrator|script_adapter|voice_fragment)\b|总结|归纳|提炼|规划|评估|规律)/i;
-const TOOL_INTENT_RE = /(?:\b(?:search|web_search|browse|fetch|lookup|look up|google|price|pricing|source|sources|quote|quotes)\b|搜索|搜一下|查一下|查一查|联网|网页|网搜|抓取|打开链接|打开网页|价格|定价|报价|来源|原文|官网)/i;
-
-function hasPlanHintText(value) {
-  return typeof value === 'string' && PLAN_HINT_RE.test(value);
-}
-
-function hasToolIntentText(value) {
-  return typeof value === 'string' && TOOL_INTENT_RE.test(value);
-}
-
 function inferDefaultCapability(messages) {
-  if (!Array.isArray(messages)) {
-    return 'oct-chat';
-  }
-
-  for (const msg of messages) {
-    if (msg?.role === 'user' && hasToolIntentText(msg.content)) {
-      return 'oct-chat';
-    }
-  }
-
-  for (const msg of messages) {
-    if (msg?.role === 'user' && hasPlanHintText(msg.content)) {
-      return 'oct-plan';
-    }
-  }
-
-  for (const msg of messages) {
-    if (msg?.role !== 'system' || typeof msg.content !== 'string') {
-      continue;
-    }
-    const text = msg.content.trim();
-    if (!text || text.length > 240) {
-      continue;
-    }
-    if (hasPlanHintText(text)) {
-      return 'oct-plan';
-    }
-  }
-
-  return 'oct-chat';
+  return 'default';
 }
 
 function sameResolvedRoute(a, b) {
@@ -1775,34 +671,10 @@ function prependExternalCandidate(activeCandidates, extResolved) {
   return [extResolved, ...deduped];
 }
 
-async function streamChat(options) {
-  let activeCapability = options.capability;
-  if (options.preserveToolChain || options.toolRound > 0) {
-    activeCapability = 'oct-tool-safe';
-  } else if (!activeCapability) {
-    activeCapability = inferDefaultCapability(options.messages);
-  }
-
-  if (options._omniRouteResolved) {
-    return streamChatRaw(options);
-  }
-
-  const externalOmniRoute = require('./runtime/externalOmniRoute');
-  const extResolved = options._disableExternalOmniRoute
-    ? null
-    : externalOmniRoute.resolveCapabilityTarget(activeCapability);
-
-  if (!extResolved) {
-    const finalError = new Error('LLM_NOT_CONFIGURED: 外部 OmniRoute 未配置或配置不完整。请在设置面板中配置 Base URL 和 API Key。');
-    if (typeof options.onError === 'function') {
-      options.onError(finalError);
-    }
-    return;
-  }
-
-  const preset = { id: 'external_omniroute', name: 'OmniRoute' };
-  const candidateResolved = {
-    provider: preset,
+function buildExternalResolvedCandidate(extResolved) {
+  if (!extResolved) return null;
+  return {
+    provider: { id: extResolved.providerId, name: 'OmniRoute' },
     apiKey: extResolved.apiKey,
     baseUrl: extResolved.baseUrl,
     model: extResolved.model,
@@ -1812,11 +684,54 @@ async function streamChat(options) {
       canFallbackToBailian: false,
     },
   };
+}
+
+function resolveLocalProviderCandidate() {
+  try {
+    const resolved = providerRouter.resolve();
+    if (!resolved || !resolved.baseUrl || !resolved.apiKey || !resolved.model) {
+      return null;
+    }
+    return resolved;
+  } catch (err) {
+    log.warn('local provider resolve error', { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+function buildNotConfiguredError(externalEnabled) {
+  return new Error(
+    externalEnabled
+      ? 'LLM_NOT_CONFIGURED: 外部 OmniRoute 已启用，但 Base URL / API Key / Model 配置不完整。请在设置面板补齐，或切回本地兼容模式。'
+      : 'LLM_NOT_CONFIGURED: 本地兼容模式未配置完整。请在设置面板选择服务商、模型并填写 API Key。'
+  );
+}
+
+async function streamChat(options) {
+  if (options._omniRouteResolved) {
+    return streamChatRaw(options);
+  }
+
+  const externalOmniRoute = require('./runtime/externalOmniRoute');
+  const externalSnapshot = externalOmniRoute.getExternalGatewayConfig();
+  const extResolved = options._disableExternalOmniRoute
+    ? null
+    : externalOmniRoute.resolveCapabilityTarget();
+  const resolved = buildExternalResolvedCandidate(extResolved)
+    || (!externalSnapshot.enabled || options._disableExternalOmniRoute ? resolveLocalProviderCandidate() : null);
+
+  if (!resolved) {
+    const finalError = buildNotConfiguredError(externalSnapshot.enabled && !options._disableExternalOmniRoute);
+    if (typeof options.onError === 'function') {
+      options.onError(finalError);
+    }
+    return;
+  }
 
   return new Promise((resolve) => {
     streamChatRaw({
       ...options,
-      _omniRouteResolved: candidateResolved,
+      _omniRouteResolved: resolved,
       onDone: (...args) => {
         if (typeof options.onDone === 'function') {
           options.onDone(...args);
@@ -1862,46 +777,33 @@ async function streamChatRaw({
 
   let resolved = _omniRouteResolved;
   if (!resolved) {
-    let activeCapability = capability;
-    if (preserveToolChain || toolRound > 0) {
-      activeCapability = 'oct-tool-safe';
-    } else if (!activeCapability) {
-      activeCapability = inferDefaultCapability(messages);
-    }
-
-    if (activeCapability) {
-      try {
-        const externalOmniRoute = require('./runtime/externalOmniRoute');
-        const routeRes = externalOmniRoute.resolveCapabilityTarget(activeCapability);
-        if (routeRes) {
-          resolved = {
-            provider: { id: routeRes.providerId, name: 'OmniRoute' },
-            apiKey: routeRes.apiKey,
-            baseUrl: routeRes.baseUrl,
-            model: routeRes.model,
-            caps: config.getModelCaps(routeRes.model),
-            fallback: {
-              canFallbackToDeepseek: false,
-              canFallbackToBailian: false,
-            },
-          };
-        }
-      } catch (err) {
-        log.warn('OmniRoute resolve capability error', { capability: activeCapability, error: err.message });
+    try {
+      const externalOmniRoute = require('./runtime/externalOmniRoute');
+      const routeRes = _disableExternalOmniRoute ? null : externalOmniRoute.resolveCapabilityTarget();
+      if (routeRes) {
+        resolved = buildExternalResolvedCandidate(routeRes);
       }
+    } catch (err) {
+      log.warn('OmniRoute resolve error', { error: err.message });
     }
+  }
+  if (!resolved) {
+    resolved = resolveLocalProviderCandidate();
+  }
+  if (!resolved) {
+    throw buildNotConfiguredError(false);
   }
   const { provider, apiKey, baseUrl, model, caps, fallback } = resolved;
 
   // 上下文截断优化：防止消息过长
-  const truncatedMessages = preserveToolChain ? messages : truncateHistory(messages, model);
-  const reentryCapability = preserveToolChain || toolRound > 0
-    ? 'oct-tool-safe'
-    : (capability || inferDefaultCapability(truncatedMessages));
+  const truncatedMessages = preserveToolChain
+    ? messages
+    : truncateHistory(messages, model);
+  const reentryCapability = 'default';
   let effectiveMessages = provider.id === 'google'
     ? injectGoogleDiagramGuard(truncatedMessages)
     : truncatedMessages;
-  getContextUsageRatio(effectiveMessages, model);
+  getContextUsageRatio(effectiveMessages, model, { logger: log });
 
   // 保留 DeepSeek 作为 fallback（百炼失败时切换）
   const canFallbackToDeepseek = fallback.canFallbackToDeepseek;
@@ -1941,10 +843,10 @@ async function streamChatRaw({
       if (!caps.toolReliability || caps.toolReliability === 'none') {
         caps.toolReliability = 'loose';
       }
-      const effectiveSupportsTools = caps.supportsTools && caps.toolReliability !== 'none';
+      const effectiveSupportsTools = canAttemptTools(caps);
       effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveSupportsTools ? 'supported' : 'unsupported');
       effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
-      const validatedMessages = validateAndFixMessages(effectiveMessages);
+      const validatedMessages = validateAndFixMessages(effectiveMessages, { logger: log });
       const droppedCount = effectiveMessages.length - validatedMessages.length;
       if (droppedCount > 0) {
         log.info('validateAndFixMessages 丢弃孤立消息', {
@@ -2002,6 +904,8 @@ async function streamChatRaw({
           onToolEvent,
           flushThinkAtEnd: () => {},
           turnId,
+          _omniRouteResolved: resolved,
+          _disableExternalOmniRoute,
         });
         return;
       }
@@ -2057,20 +961,31 @@ async function streamChatRaw({
 
   try {
     if (caps.toolsSupport === 'unknown') {
-      const probeResult = await probeModelToolsSupport({ provider, baseUrl, apiKey, model });
+      const probeResult = await probeModelToolsSupport({
+        provider,
+        baseUrl,
+        apiKey,
+        model,
+        config,
+        fetchWithRetry,
+        buildChatHeaders,
+        classifyProbeFailure,
+        googleHttpsProxy: config.GOOGLE_HTTPS_PROXY,
+        logger: log,
+      });
       if (probeResult?.toolsSupport) {
         caps.toolsSupport = probeResult.toolsSupport;
         caps.supportsTools = probeResult.toolsSupport === 'supported';
         caps.capabilitySource = probeResult.capabilitySource || 'runtime_probe';
       }
     }
-    if (!caps.toolReliability) {
-      caps.toolReliability = caps.supportsTools ? 'loose' : 'none';
+    if (!caps.toolReliability || (caps.toolReliability === 'none' && caps.toolsSupport !== 'unsupported')) {
+      caps.toolReliability = caps.toolsSupport === 'unsupported' ? 'none' : 'loose';
     }
     const effectiveToolsSupport = caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown');
     effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveToolsSupport);
     effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
-    const validatedMessages = validateAndFixMessages(effectiveMessages);
+    const validatedMessages = validateAndFixMessages(effectiveMessages, { logger: log });
     const droppedCount = effectiveMessages.length - validatedMessages.length;
     if (droppedCount > 0) {
       log.info('validateAndFixMessages 丢弃孤立消息', {
@@ -2299,7 +1214,7 @@ async function streamChatRaw({
     if (provider.supportsStreamOptions) {
       requestBody.stream_options = { include_usage: true };
     }
-    const effectiveSupportsTools = caps.supportsTools && caps.toolReliability !== 'none';
+    const effectiveSupportsTools = canAttemptTools(caps);
     const forceFinalFromToolResults = shouldForceFinalFromToolResults(provider.id, preserveToolChain, toolRound);
     const shouldInjectTools = effectiveSupportsTools && !hasImage;
     if (shouldInjectTools) {
@@ -2327,6 +1242,9 @@ async function streamChatRaw({
       method: 'POST',
       headers: chatHeaders,
       body: JSON.stringify(requestBody),
+    }, {
+      logger: log,
+      googleHttpsProxy: config.GOOGLE_HTTPS_PROXY,
     });
 
     log.info('response', { status: res.status });
@@ -2421,10 +1339,12 @@ async function streamChatRaw({
             onDelta,
             onDone,
             onError,
-          onToolEvent,
-          flushThinkAtEnd,
-          turnId,
-        });
+            onToolEvent,
+            flushThinkAtEnd,
+            turnId,
+            _omniRouteResolved: resolved,
+            _disableExternalOmniRoute,
+          });
         return;
       }
         if (finishReason === 'tool_calls' && toolCalls.filter(Boolean).length === 0) {
@@ -2542,6 +1462,8 @@ async function streamChatRaw({
         onToolEvent,
         flushThinkAtEnd,
         turnId,
+        _omniRouteResolved: resolved,
+        _disableExternalOmniRoute,
       });
       return;
     }
@@ -2686,7 +1608,7 @@ async function streamChatRaw({
       try {
         const metrics = require('./runtime/omniRoute.metrics');
         metrics.recordRequest({
-          capability: capability || (preserveToolChain || toolRound > 0 ? 'oct-tool-safe' : null),
+          capability: 'default',
           providerId: provider.id || null,
           model: model || null,
           latencyMs: elapsed,

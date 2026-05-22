@@ -839,7 +839,8 @@ export function useMessages({
   ) => {
     if (!text.trim() && !imageDataUrl && !files?.length) return;
 
-    let contentToSend = text;
+    const displayText = text.trim();
+    let gatewayPayloadText = text;
     let fileRefs = '';
 
     if (files && files.length > 0) {
@@ -851,12 +852,8 @@ export function useMessages({
       }).join('');
     }
 
-    if (imageDataUrl) {
-      contentToSend = (text ? `${text}\n` : '') + '[用户发送了一张图片，请根据上下文回复]';
-    }
-
-    const fullContentForAMY = contentToSend + fileRefs;
-    const displayContent = contentToSend + (files && files.length > 0 ? '\n\n📎 ' + files.map((f) => f.name).join(', ') : '');
+    const fullContentForAMY = gatewayPayloadText + fileRefs;
+    const displayContent = displayText + (files && files.length > 0 ? `${displayText ? '\n\n' : ''}📎 ` + files.map((f) => f.name).join(', ') : '');
 
     const permCheck = checkPermission(fullContentForAMY, permissions);
     if (!permCheck.allowed) {

@@ -36,7 +36,7 @@ async function runLightNarrationRewriterAgent(ctx) {
     return { rewritten: new Map(), failed: [], warnings: [] };
   }
 
-  const provider = resolveProviderFor('script_adapter', 'oct-plan');
+  const provider = resolveProviderFor('script_adapter');
 
   const inputText = narrationItems
     .map((item) => `S${item.paraId}: ${item.text}`)

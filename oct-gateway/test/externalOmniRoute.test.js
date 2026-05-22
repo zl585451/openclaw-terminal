@@ -19,23 +19,20 @@ describe('external OmniRoute baseline adapter (Phase 5)', () => {
     config.getEnvOrConfig = originalGetEnvOrConfig;
   });
 
-  it('reads external OmniRoute config and resolves capability aliases', () => {
+  it('reads external OmniRoute config as a single model outlet', () => {
     values = {
       OCT_USE_EXTERNAL_OMNIROUTE: 'true',
       OMNIROUTE_BASE_URL: 'https://omni.example/v1/',
       OMNIROUTE_API_KEY: 'sk-omni-test',
-      OMNIROUTE_CHAT_MODEL: 'combo/chat',
-      OMNIROUTE_PLAN_MODEL: 'combo/plan',
-      OMNIROUTE_TOOL_MODEL: 'combo/tool',
+      OMNIROUTE_MODEL: 'combo/chat',
     };
 
     const snapshot = externalOmniRoute.getExternalGatewayConfig();
     expect(snapshot.enabled).toBe(true);
     expect(snapshot.baseUrl).toBe('https://omni.example/v1');
     expect(snapshot.configured).toBe(true);
-    expect(snapshot.models['oct-chat']).toBe('combo/chat');
-    expect(snapshot.models['oct-plan']).toBe('combo/plan');
-    expect(snapshot.models['oct-tool-safe']).toBe('combo/tool');
+    expect(snapshot.model).toBe('combo/chat');
+    expect(snapshot.models.default).toBe('combo/chat');
   });
 
   it('returns disabled status without probing when external mode is off', async () => {
@@ -70,18 +67,73 @@ describe('external OmniRoute baseline adapter (Phase 5)', () => {
     });
   });
 
-  it('resolves capability targets to external OmniRoute when configured', () => {
+  it('parses OpenAI-compatible /models results for settings model selection', async () => {
     values = {
       OCT_USE_EXTERNAL_OMNIROUTE: 'true',
       OMNIROUTE_BASE_URL: 'https://omni.example/v1',
       OMNIROUTE_API_KEY: 'sk-omni-live',
     };
 
-    const target = externalOmniRoute.resolveCapabilityTarget('oct-chat');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { id: 'combo/chat' },
+          { id: 'deepseek/deepseek-v4-flash' },
+          { id: 'combo/chat' },
+        ],
+      }),
+    });
+
+    const result = await externalOmniRoute.checkConnectivity({ fetchImpl: fetchMock });
+    expect(result.availableModels).toEqual(['combo/chat', 'deepseek/deepseek-v4-flash']);
+
+    const status = await externalOmniRoute.inspectExternalGateway({ fetchImpl: fetchMock });
+    expect(status.availableModels).toEqual(['combo/chat', 'deepseek/deepseek-v4-flash']);
+  });
+
+  it('resolves all legacy capability targets to the same external OmniRoute outlet when configured', () => {
+    values = {
+      OCT_USE_EXTERNAL_OMNIROUTE: 'true',
+      OMNIROUTE_BASE_URL: 'https://omni.example/v1',
+      OMNIROUTE_API_KEY: 'sk-omni-live',
+    };
+
+    const target = externalOmniRoute.resolveCapabilityTarget('oct-tool-safe');
     expect(target).toBeDefined();
     expect(target.providerId).toBe('external_omniroute');
     expect(target.baseUrl).toBe('https://omni.example/v1');
     expect(target.apiKey).toBe('sk-omni-live');
     expect(target.model).toBe('combo/chat'); // default alias
+    expect(target.capability).toBe('default');
+  });
+
+  it('ignores legacy plan/tool overrides and keeps one configured outlet', () => {
+    values = {
+      OCT_USE_EXTERNAL_OMNIROUTE: 'true',
+      OMNIROUTE_BASE_URL: 'https://omni.example/v1',
+      OMNIROUTE_API_KEY: 'sk-omni-live',
+      OMNIROUTE_MODEL: 'free',
+      OMNIROUTE_PLAN_MODEL: 'plan-should-not-apply',
+      OMNIROUTE_TOOL_MODEL: 'tool-should-not-apply',
+    };
+
+    const snapshot = externalOmniRoute.getExternalGatewayConfig();
+    expect(snapshot.model).toBe('free');
+    expect(snapshot.models.default).toBe('free');
+  });
+
+  it('supports legacy OMNIROUTE_CHAT_MODEL as a read-only fallback during migration', () => {
+    values = {
+      OCT_USE_EXTERNAL_OMNIROUTE: 'true',
+      OMNIROUTE_BASE_URL: 'https://omni.example/v1',
+      OMNIROUTE_API_KEY: 'sk-omni-live',
+      OMNIROUTE_CHAT_MODEL: 'legacy-chat',
+    };
+
+    const snapshot = externalOmniRoute.getExternalGatewayConfig();
+    expect(snapshot.model).toBe('legacy-chat');
+    expect(snapshot.models.default).toBe('legacy-chat');
   });
 });

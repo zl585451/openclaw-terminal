@@ -118,8 +118,73 @@ function normalizeBareDiagramJsonReply(input) {
   return `\`\`\`json\n${trimmed}\n\`\`\``;
 }
 
+function tryParseJsonObjectCandidate(input) {
+  const text = String(input || '').trim();
+  if (!text) return null;
+
+  const candidates = [];
+  if (text.startsWith('{') && text.endsWith('}')) {
+    candidates.push(text);
+  }
+
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace > 0 && lastBrace > firstBrace) {
+    const prefix = text.slice(0, firstBrace).trim();
+    if (/^[\p{Script=Han}\s，。、“”"'':：,.-]{0,8}$/u.test(prefix)) {
+      candidates.push(text.slice(firstBrace, lastBrace + 1));
+    }
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+function toUserVisibleAssistantText(input) {
+  const text = String(input || '').trim();
+  if (!text) return '';
+
+  const parsed = tryParseJsonObjectCandidate(text);
+  if (!parsed) return text;
+
+  if (
+    parsed.role === 'assistant'
+    && typeof parsed.content === 'string'
+    && parsed.content.trim()
+  ) {
+    return parsed.content.trim();
+  }
+
+  if (
+    parsed.status === 'waiting_user_reply'
+    && typeof parsed.message === 'string'
+  ) {
+    return '';
+  }
+
+  if (typeof parsed.message === 'string' && parsed.message.trim()) {
+    return parsed.message.trim();
+  }
+
+  if (typeof parsed.error === 'string' && parsed.error.trim()) {
+    return parsed.error.trim();
+  }
+
+  return text;
+}
+
 function sanitizeAssistantReply(reply) {
-  return normalizeBareDiagramJsonReply(stripCotText(stripTextToolAnnotations(reply)));
+  return normalizeBareDiagramJsonReply(
+    toUserVisibleAssistantText(stripCotText(stripTextToolAnnotations(reply)))
+  );
 }
 
 function sanitizeMemoryNodeContent(raw) {
@@ -158,6 +223,7 @@ function sanitizeMemoryNodeContent(raw) {
 module.exports = {
   stripTextToolAnnotations,
   stripCotText,
+  toUserVisibleAssistantText,
   sanitizeAssistantReply,
   sanitizeMemoryNodeContent,
 };

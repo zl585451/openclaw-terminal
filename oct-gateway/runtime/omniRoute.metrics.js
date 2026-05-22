@@ -25,7 +25,7 @@ const MAX_RECENT_REQUESTS = 100;
 /**
  * 记录一次 AI 请求的观测数据 (无任何 Prompt / 内容泄露)
  * @param {object} param
- * @param {string} param.capability - 逻辑能力别名 (如 'oct-chat', 'oct-plan', 'oct-tool-safe')
+ * @param {string} param.capability - 逻辑出口标识，当前单路模式通常为 'default'
  * @param {string} param.providerId - 实际选中的物理提供商
  * @param {string} param.model - 实际请求物理模型
  * @param {number} param.latencyMs - 请求耗时 (毫秒)

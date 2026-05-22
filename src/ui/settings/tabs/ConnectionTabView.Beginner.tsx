@@ -78,6 +78,10 @@ export function ConnectionTabViewBeginner({
   const selectedProvider = (providers[selectedProviderId] || currentProvider) as ProviderEntry | undefined;
   const recommendedModels = useMemo(() => getRecommendedModels(selectedProviderId), [selectedProviderId]);
   const recommendedModel = recommendedModels[recommendedIndex] || selectedProvider?.defaultModel || '';
+  const selectedRecommendedModel =
+    apiKeys.OCT_MODEL && recommendedModels.includes(apiKeys.OCT_MODEL)
+      ? apiKeys.OCT_MODEL
+      : recommendedModel;
   const keyFieldVisible = isChatProviderKeyVisible(showApiKey, selectedProviderId);
   const currentKey = getChatProviderApiKeyValue(apiKeys, selectedProviderId);
 
@@ -130,7 +134,7 @@ export function ConnectionTabViewBeginner({
       setTestConnectionError('请先粘贴 API Key。');
       return;
     }
-    setApiKeys((prev) => ({ ...buildProviderPatch(prev, selectedProviderId, currentKey, recommendedModel), OCT_SETTINGS_MODE: 'beginner' }));
+    setApiKeys((prev) => ({ ...buildProviderPatch(prev, selectedProviderId, currentKey, selectedRecommendedModel), OCT_SETTINGS_MODE: 'beginner' }));
     const ok = await saveGatewayAndReconnect();
     if (!ok) {
       setTestConnectionStatus('error');
@@ -146,7 +150,7 @@ export function ConnectionTabViewBeginner({
     const provider = providers[selectedProviderId];
     const result = await api.testAIConnection({
       OCT_PROVIDER: selectedProviderId,
-      OCT_MODEL: recommendedModel || provider?.defaultModel || '',
+      OCT_MODEL: selectedRecommendedModel || provider?.defaultModel || '',
       DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
       DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
       MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
@@ -166,7 +170,7 @@ export function ConnectionTabViewBeginner({
       try {
         window.localStorage.setItem(
           'OCT_LAST_GOOD_CONFIG',
-          JSON.stringify({ ...apiKeys, OCT_PROVIDER: selectedProviderId, OCT_MODEL: recommendedModel, OCT_SETTINGS_MODE: 'beginner' }),
+          JSON.stringify({ ...apiKeys, OCT_PROVIDER: selectedProviderId, OCT_MODEL: selectedRecommendedModel, OCT_SETTINGS_MODE: 'beginner' }),
         );
         setRollbackAvailable(true);
       } catch {}
@@ -311,11 +315,28 @@ export function ConnectionTabViewBeginner({
             </div>
 
             <div className="settings-field">
-              <label>推荐模型</label>
+              <label>模型</label>
               <div className="settings-inline-row-between settings-model-inline">
-                <div className="settings-note-card settings-note-card-inline">
-                  {recommendedModel || selectedProvider?.defaultModel || '未提供推荐模型'}
-                </div>
+                {recommendedModels.length > 0 ? (
+                  <select
+                    className="settings-input settings-input-focusable"
+                    value={selectedRecommendedModel}
+                    onChange={(e) => {
+                      const nextModel = e.target.value;
+                      const nextIndex = recommendedModels.indexOf(nextModel);
+                      setRecommendedIndex(nextIndex >= 0 ? nextIndex : 0);
+                      setApiKeys((prev) => ({ ...prev, OCT_MODEL: nextModel }));
+                    }}
+                  >
+                    {recommendedModels.map((modelId) => (
+                      <option key={modelId} value={modelId}>{modelId}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="settings-note-card settings-note-card-inline">
+                    {selectedProvider?.defaultModel || '未提供推荐模型'}
+                  </div>
+                )}
                 {recommendedModels.length > 1 && (
                   <button
                     type="button"
