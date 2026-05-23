@@ -24,6 +24,9 @@ export interface ApiKeysState {
   IMAGE_OPENAI_API_KEY: string;
   IMAGE_OPENAI_BASE_URL: string;
   IMAGE_OPENAI_MODEL: string;
+  IMAGE_GOOGLE_API_KEY: string;
+  IMAGE_GOOGLE_BASE_URL: string;
+  IMAGE_GOOGLE_MODEL: string;
   IMAGE_SIZE: string;
   TTS_MINIMAX_VOICE_ID: string;
   CUSTOM_API_KEY: string;
@@ -202,6 +205,9 @@ type GatewayConfigPayload = {
   IMAGE_OPENAI_API_KEY: string;
   IMAGE_OPENAI_BASE_URL: string;
   IMAGE_OPENAI_MODEL: string;
+  IMAGE_GOOGLE_API_KEY: string;
+  IMAGE_GOOGLE_BASE_URL: string;
+  IMAGE_GOOGLE_MODEL: string;
   IMAGE_SIZE: string;
   TTS_MINIMAX_VOICE_ID: string;
   CUSTOM_API_KEY: string;
@@ -385,6 +391,9 @@ function buildGatewayPayload(
     IMAGE_OPENAI_API_KEY: apiKeys.IMAGE_OPENAI_API_KEY || '',
     IMAGE_OPENAI_BASE_URL: apiKeys.IMAGE_OPENAI_BASE_URL || '',
     IMAGE_OPENAI_MODEL: apiKeys.IMAGE_OPENAI_MODEL || '',
+    IMAGE_GOOGLE_API_KEY: apiKeys.IMAGE_GOOGLE_API_KEY || '',
+    IMAGE_GOOGLE_BASE_URL: apiKeys.IMAGE_GOOGLE_BASE_URL || '',
+    IMAGE_GOOGLE_MODEL: apiKeys.IMAGE_GOOGLE_MODEL || '',
     IMAGE_SIZE: apiKeys.IMAGE_SIZE || '1024x1024',
     TTS_MINIMAX_VOICE_ID: apiKeys.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse',
     CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
@@ -441,6 +450,9 @@ export function useApiKeys() {
     IMAGE_OPENAI_API_KEY: '',
     IMAGE_OPENAI_BASE_URL: '',
     IMAGE_OPENAI_MODEL: '',
+    IMAGE_GOOGLE_API_KEY: '',
+    IMAGE_GOOGLE_BASE_URL: '',
+    IMAGE_GOOGLE_MODEL: '',
     IMAGE_SIZE: '1024x1024',
     TTS_MINIMAX_VOICE_ID: 'male-qn-qingse',
     CUSTOM_API_KEY: '',

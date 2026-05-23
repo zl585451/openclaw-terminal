@@ -366,7 +366,7 @@ function resolveImageRuntimeConfig(rawConfig) {
     minimax: 'image-01',
     siliconflow: 'Kwai-Kolors/Kolors',
     openai: 'dall-e-3',
-    google: 'gemini-2.5-flash-image',
+    google: 'gemini-3.1-flash-image-preview',
   };
 
   return {
@@ -377,7 +377,7 @@ function resolveImageRuntimeConfig(rawConfig) {
     IMAGE_MODEL: scopedModel || legacyModel || modelDefaults[provider],
     resolvedApiKey:
       provider === 'google'
-        ? (scopedApiKey || fallbackChatKey)
+        ? (scopedApiKey || legacyApiKey || String(rawConfig.GOOGLE_AI_API_KEY || rawConfig.GOOGLE_API_KEY || rawConfig.GEMINI_API_KEY || '').trim() || fallbackChatKey)
         : (scopedApiKey || legacyApiKey || fallbackChatKey),
   };
 }
@@ -448,7 +448,7 @@ async function handleImageGenerate(payload, rawConfig, sendToClient) {
           model: requestConfig.IMAGE_MODEL || payload?.model,
           negativePrompt: payload?.negativePrompt || payload?.negative_prompt || '',
         },
-        fallbackModel: requestConfig.IMAGE_MODEL || 'gemini-2.5-flash-image',
+        fallbackModel: requestConfig.IMAGE_MODEL || 'gemini-3.1-flash-image-preview',
         aspectRatio: resolveRequestedAspectRatio(payload, requestConfig),
       });
       imageUrls = result.images.map((item) => item.dataUrl || item.gcsUri).filter(Boolean);

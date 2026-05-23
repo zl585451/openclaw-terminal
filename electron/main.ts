@@ -3427,8 +3427,17 @@ ipcMain.handle('get-api-keys', async () => {
     keys.IMAGE_OPENAI_API_KEY = pick('IMAGE_OPENAI_API_KEY', cfg.IMAGE_OPENAI_API_KEY);
     keys.IMAGE_OPENAI_BASE_URL = pick('IMAGE_OPENAI_BASE_URL', cfg.IMAGE_OPENAI_BASE_URL);
     keys.IMAGE_OPENAI_MODEL = pick('IMAGE_OPENAI_MODEL', cfg.IMAGE_OPENAI_MODEL);
+    keys.IMAGE_GOOGLE_API_KEY = pick('IMAGE_GOOGLE_API_KEY', cfg.IMAGE_GOOGLE_API_KEY);
+    keys.IMAGE_GOOGLE_BASE_URL = pick('IMAGE_GOOGLE_BASE_URL', cfg.IMAGE_GOOGLE_BASE_URL);
+    keys.IMAGE_GOOGLE_MODEL = pick('IMAGE_GOOGLE_MODEL', cfg.IMAGE_GOOGLE_MODEL);
     const imgProvider = (keys.IMAGE_PROVIDER || 'minimax').toLowerCase();
-    const providerPrefix = imgProvider === 'siliconflow' ? 'SILICONFLOW' : imgProvider === 'openai' ? 'OPENAI' : 'MINIMAX';
+    const providerPrefix = imgProvider === 'siliconflow'
+      ? 'SILICONFLOW'
+      : imgProvider === 'openai'
+        ? 'OPENAI'
+        : imgProvider === 'google'
+          ? 'GOOGLE'
+          : 'MINIMAX';
     keys.IMAGE_API_KEY = (
       keys[`IMAGE_${providerPrefix}_API_KEY`]
       || pick('IMAGE_API_KEY', cfg.IMAGE_API_KEY)
@@ -3490,6 +3499,9 @@ ipcMain.handle('get-api-keys', async () => {
         IMAGE_OPENAI_API_KEY: keys.IMAGE_OPENAI_API_KEY || '',
         IMAGE_OPENAI_BASE_URL: keys.IMAGE_OPENAI_BASE_URL || '',
         IMAGE_OPENAI_MODEL: keys.IMAGE_OPENAI_MODEL || '',
+        IMAGE_GOOGLE_API_KEY: keys.IMAGE_GOOGLE_API_KEY || '',
+        IMAGE_GOOGLE_BASE_URL: keys.IMAGE_GOOGLE_BASE_URL || '',
+        IMAGE_GOOGLE_MODEL: keys.IMAGE_GOOGLE_MODEL || '',
         IMAGE_SIZE: keys.IMAGE_SIZE || '1024x1024',
         TTS_MINIMAX_VOICE_ID: keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
         CUSTOM_API_KEY: keys.CUSTOM_API_KEY || '',
@@ -3547,6 +3559,9 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     IMAGE_OPENAI_API_KEY?: string;
     IMAGE_OPENAI_BASE_URL?: string;
     IMAGE_OPENAI_MODEL?: string;
+    IMAGE_GOOGLE_API_KEY?: string;
+    IMAGE_GOOGLE_BASE_URL?: string;
+    IMAGE_GOOGLE_MODEL?: string;
     IMAGE_SIZE?: string;
     TTS_MINIMAX_VOICE_ID?: string;
     CUSTOM_API_KEY?: string;
@@ -3587,6 +3602,7 @@ ipcMain.handle('save-api-keys', async (_, keys: {
         cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
       } catch {}
     }
+    const previousCfg: Record<string, string> = { ...cfg };
     if (keys.OPENCLAW_WS_URL !== undefined) cfg.OPENCLAW_WS_URL = keys.OPENCLAW_WS_URL || '';
     if (keys.OPENCLAW_TOKEN !== undefined) cfg.OPENCLAW_TOKEN = keys.OPENCLAW_TOKEN || '';
     if (keys.OCT_SETTINGS_MODE !== undefined) cfg.OCT_SETTINGS_MODE = keys.OCT_SETTINGS_MODE || '';
@@ -3612,6 +3628,9 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     if (keys.IMAGE_OPENAI_API_KEY !== undefined) cfg.IMAGE_OPENAI_API_KEY = keys.IMAGE_OPENAI_API_KEY || '';
     if (keys.IMAGE_OPENAI_BASE_URL !== undefined) cfg.IMAGE_OPENAI_BASE_URL = keys.IMAGE_OPENAI_BASE_URL || '';
     if (keys.IMAGE_OPENAI_MODEL !== undefined) cfg.IMAGE_OPENAI_MODEL = keys.IMAGE_OPENAI_MODEL || '';
+    if (keys.IMAGE_GOOGLE_API_KEY !== undefined) cfg.IMAGE_GOOGLE_API_KEY = keys.IMAGE_GOOGLE_API_KEY || '';
+    if (keys.IMAGE_GOOGLE_BASE_URL !== undefined) cfg.IMAGE_GOOGLE_BASE_URL = keys.IMAGE_GOOGLE_BASE_URL || '';
+    if (keys.IMAGE_GOOGLE_MODEL !== undefined) cfg.IMAGE_GOOGLE_MODEL = keys.IMAGE_GOOGLE_MODEL || '';
     if (keys.IMAGE_SIZE !== undefined) cfg.IMAGE_SIZE = keys.IMAGE_SIZE || '1024x1024';
     if (keys.TTS_MINIMAX_VOICE_ID !== undefined) cfg.TTS_MINIMAX_VOICE_ID = keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID;
     if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
@@ -3666,43 +3685,36 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     }
 
     loadOpenClawConfig();
-    suppressAutoReconnect = true;
-    clearReconnectTimer();
-    if (openclawWs) {
-      openclawWs.close();
-      openclawWs = null;
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
     // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
-    const aiConfigChanged = keys.OCT_PROVIDER !== undefined || keys.OCT_MODEL !== undefined
-      || keys.SCRIPT_ADAPTER_REAL_AGENTS !== undefined
-      || keys.OPENCLAW_TOKEN !== undefined
-      || keys.CUSTOM_MODEL !== undefined
-      || keys.DASHSCOPE_BASE_URL !== undefined || keys.DEEPSEEK_BASE_URL !== undefined
-      || keys.MINIMAX_BASE_URL !== undefined
-      || keys.IMAGE_PROVIDER !== undefined || keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY !== undefined
-      || keys.IMAGE_API_KEY !== undefined || keys.IMAGE_BASE_URL !== undefined || keys.IMAGE_MODEL !== undefined
-      || keys.IMAGE_MINIMAX_API_KEY !== undefined || keys.IMAGE_MINIMAX_BASE_URL !== undefined || keys.IMAGE_MINIMAX_MODEL !== undefined
-      || keys.IMAGE_SILICONFLOW_API_KEY !== undefined || keys.IMAGE_SILICONFLOW_BASE_URL !== undefined || keys.IMAGE_SILICONFLOW_MODEL !== undefined
-      || keys.IMAGE_OPENAI_API_KEY !== undefined || keys.IMAGE_OPENAI_BASE_URL !== undefined || keys.IMAGE_OPENAI_MODEL !== undefined
-      || keys.IMAGE_SIZE !== undefined
-      || keys.CUSTOM_BASE_URL !== undefined
-      || keys.DASHSCOPE_API_KEY !== undefined || keys.DEEPSEEK_API_KEY !== undefined
-      || keys.MINIMAX_API_KEY !== undefined
-      || keys.NEWAPI_API_KEY !== undefined || keys.NEWAPI_BASE_URL !== undefined
-      || keys.CUSTOM_API_KEY !== undefined
-      || keys.GOOGLE_AI_API_KEY !== undefined || keys.GOOGLE_AI_BASE_URL !== undefined
-      || keys.HTTPS_PROXY !== undefined || keys.HTTP_PROXY !== undefined
-      || keys.BRAVE_SEARCH_API_KEY !== undefined || keys.TAVILY_API_KEY !== undefined
-      || keys.VISION_API_KEY !== undefined
-      || keys.VISION_BASE_URL !== undefined
-      || keys.VISION_MODEL !== undefined
-      || keys.SILICONFLOW_API_KEY !== undefined
-      || keys.OMNIROUTE_BASE_URL !== undefined
-      || keys.OMNIROUTE_API_KEY !== undefined
-      || keys.OMNIROUTE_MODEL !== undefined
-      || keys.OCT_USE_EXTERNAL_OMNIROUTE !== undefined;
+    const changed = (key: string) => String(previousCfg[key] ?? '') !== String(cfg[key] ?? '');
+    const restartKeys = [
+      'OCT_PROVIDER', 'OCT_MODEL', 'SCRIPT_ADAPTER_REAL_AGENTS', 'OPENCLAW_TOKEN', 'CUSTOM_MODEL',
+      'DASHSCOPE_BASE_URL', 'DEEPSEEK_BASE_URL', 'MINIMAX_BASE_URL', 'CUSTOM_BASE_URL',
+      'DASHSCOPE_API_KEY', 'DEEPSEEK_API_KEY', 'MINIMAX_API_KEY', 'NEWAPI_API_KEY', 'NEWAPI_BASE_URL',
+      'CUSTOM_API_KEY', 'GOOGLE_AI_API_KEY', 'GOOGLE_AI_BASE_URL', 'HTTPS_PROXY', 'HTTP_PROXY',
+      'BRAVE_SEARCH_API_KEY', 'TAVILY_API_KEY', 'VISION_API_KEY', 'VISION_BASE_URL', 'VISION_MODEL',
+      'SILICONFLOW_API_KEY', 'OMNIROUTE_BASE_URL', 'OMNIROUTE_API_KEY', 'OMNIROUTE_MODEL',
+      'OMNIROUTE_CHAT_MODEL', 'OMNIROUTE_PLAN_MODEL', 'OMNIROUTE_TOOL_MODEL',
+      'OCT_USE_EXTERNAL_OMNIROUTE',
+      'IMAGE_PROVIDER', 'IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY', 'IMAGE_API_KEY', 'IMAGE_BASE_URL', 'IMAGE_MODEL',
+      'IMAGE_MINIMAX_API_KEY', 'IMAGE_MINIMAX_BASE_URL', 'IMAGE_MINIMAX_MODEL',
+      'IMAGE_SILICONFLOW_API_KEY', 'IMAGE_SILICONFLOW_BASE_URL', 'IMAGE_SILICONFLOW_MODEL',
+      'IMAGE_OPENAI_API_KEY', 'IMAGE_OPENAI_BASE_URL', 'IMAGE_OPENAI_MODEL',
+      'IMAGE_GOOGLE_API_KEY', 'IMAGE_GOOGLE_BASE_URL', 'IMAGE_GOOGLE_MODEL',
+      'IMAGE_SIZE',
+    ];
+    const aiConfigChanged = restartKeys.some((key) => changed(key));
+    const connectionChanged = changed('OPENCLAW_WS_URL') || changed('OPENCLAW_TOKEN') || aiConfigChanged;
+    if (connectionChanged) {
+      suppressAutoReconnect = true;
+      clearReconnectTimer();
+      if (openclawWs) {
+        openclawWs.close();
+        openclawWs = null;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
     if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
       expectOctGatewayProcessExit = true;
       octGatewayProcess.kill();
@@ -3730,9 +3742,11 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     } else {
       mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 端口 18789 已占用，直接连接']);
     }
-    suppressAutoReconnect = false;
-    reconnectRetryCount = 0;
-    connectOpenClaw();
+    if (connectionChanged) {
+      suppressAutoReconnect = false;
+      reconnectRetryCount = 0;
+      connectOpenClaw();
+    }
     
     return { success: true };
   } catch (e: any) {

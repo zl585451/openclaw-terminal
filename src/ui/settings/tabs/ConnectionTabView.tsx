@@ -38,12 +38,43 @@ const SILICONFLOW_MODEL_EXAMPLES = [
   'Pro/Qwen/Qwen2.5-7B-Instruct',
 ];
 
-type ImageProviderId = 'minimax' | 'siliconflow' | 'openai';
+const GOOGLE_IMAGE_MODEL_OPTIONS = [
+  {
+    id: 'gemini-3.1-flash-image-preview',
+    label: 'Nano Banana 2（Gemini 3.1 Flash Image Preview）',
+  },
+  {
+    id: 'gemini-3-pro-image-preview',
+    label: 'Nano Banana Pro（Gemini 3 Pro Image Preview）',
+  },
+  {
+    id: 'gemini-2.5-flash-image',
+    label: 'Nano Banana（Gemini 2.5 Flash Image）',
+  },
+  {
+    id: 'imagen-4.0-generate-001',
+    label: 'Imagen 4 Standard（高质量）',
+  },
+  {
+    id: 'imagen-4.0-fast-generate-001',
+    label: 'Imagen 4 Fast（低延迟）',
+  },
+  {
+    id: 'imagen-4.0-ultra-generate-001',
+    label: 'Imagen 4 Ultra（最高质量）',
+  },
+];
+
+const GOOGLE_IMAGE_MODEL_IDS = new Set(GOOGLE_IMAGE_MODEL_OPTIONS.map((model) => model.id));
+const DEFAULT_GOOGLE_IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
+
+type ImageProviderId = 'minimax' | 'siliconflow' | 'openai' | 'google';
 
 function normalizeImageProvider(raw: string): ImageProviderId {
   const provider = String(raw || '').trim().toLowerCase();
   if (provider === 'siliconflow') return 'siliconflow';
   if (provider === 'openai') return 'openai';
+  if (provider === 'google') return 'google';
   return 'minimax';
 }
 
@@ -63,10 +94,29 @@ function readScopedImageValues(state: SettingsApiKeysState, providerRaw: string)
       model: state.IMAGE_OPENAI_MODEL || '',
     };
   }
+  if (provider === 'google') {
+    return {
+      apiKey: state.IMAGE_GOOGLE_API_KEY || state.GOOGLE_AI_API_KEY || '',
+      baseUrl: state.IMAGE_GOOGLE_BASE_URL || state.GOOGLE_AI_BASE_URL || '',
+      model: state.IMAGE_GOOGLE_MODEL || DEFAULT_GOOGLE_IMAGE_MODEL,
+    };
+  }
   return {
     apiKey: state.IMAGE_MINIMAX_API_KEY || '',
     baseUrl: state.IMAGE_MINIMAX_BASE_URL || '',
     model: state.IMAGE_MINIMAX_MODEL || '',
+  };
+}
+
+function writeScopedImageModel(state: SettingsApiKeysState, value: string): SettingsApiKeysState {
+  const provider = normalizeImageProvider(state.IMAGE_PROVIDER);
+  return {
+    ...state,
+    IMAGE_MODEL: value,
+    IMAGE_MINIMAX_MODEL: provider === 'minimax' ? value : state.IMAGE_MINIMAX_MODEL,
+    IMAGE_SILICONFLOW_MODEL: provider === 'siliconflow' ? value : state.IMAGE_SILICONFLOW_MODEL,
+    IMAGE_OPENAI_MODEL: provider === 'openai' ? value : state.IMAGE_OPENAI_MODEL,
+    IMAGE_GOOGLE_MODEL: provider === 'google' ? value : state.IMAGE_GOOGLE_MODEL,
   };
 }
 
@@ -1176,6 +1226,7 @@ export function ConnectionTabView({
                 className="settings-input settings-input-focusable"
               >
                 <option value="minimax">MiniMax image-01（推荐）</option>
+                <option value="google">Google Cloud Vertex AI / Gemini 生图</option>
                 <option value="openai">OpenAI / 其他 OpenAI 兼容（含手动填硅基 URL）</option>
                 <option value="siliconflow">硅基流动 SiliconFlow（推荐硅基生图）</option>
               </select>
@@ -1197,6 +1248,7 @@ export function ConnectionTabView({
                         IMAGE_MINIMAX_API_KEY: provider === 'minimax' ? value : k.IMAGE_MINIMAX_API_KEY,
                         IMAGE_SILICONFLOW_API_KEY: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_API_KEY,
                         IMAGE_OPENAI_API_KEY: provider === 'openai' ? value : k.IMAGE_OPENAI_API_KEY,
+                        IMAGE_GOOGLE_API_KEY: provider === 'google' ? value : k.IMAGE_GOOGLE_API_KEY,
                       };
                     });
                   }}
@@ -1232,12 +1284,15 @@ export function ConnectionTabView({
                       IMAGE_MINIMAX_BASE_URL: provider === 'minimax' ? value : k.IMAGE_MINIMAX_BASE_URL,
                       IMAGE_SILICONFLOW_BASE_URL: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_BASE_URL,
                       IMAGE_OPENAI_BASE_URL: provider === 'openai' ? value : k.IMAGE_OPENAI_BASE_URL,
+                      IMAGE_GOOGLE_BASE_URL: provider === 'google' ? value : k.IMAGE_GOOGLE_BASE_URL,
                     };
                   });
                 }}
                 placeholder={
                   apiKeys.IMAGE_PROVIDER === 'openai'
                     ? 'https://api.openai.com'
+                    : apiKeys.IMAGE_PROVIDER === 'google'
+                      ? '可留空，或填 Vertex OpenAPI URL'
                     : apiKeys.IMAGE_PROVIDER === 'siliconflow'
                       ? 'https://api.siliconflow.cn/v1'
                       : 'https://api.minimax.chat'
@@ -1249,32 +1304,56 @@ export function ConnectionTabView({
 
             <div className="settings-field">
               <label>生图模型</label>
-              <input
-                type="text"
-                value={apiKeys.IMAGE_MODEL || ''}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setApiKeys((k) => {
-                    const provider = normalizeImageProvider(k.IMAGE_PROVIDER);
-                    return {
-                      ...k,
-                      IMAGE_MODEL: value,
-                      IMAGE_MINIMAX_MODEL: provider === 'minimax' ? value : k.IMAGE_MINIMAX_MODEL,
-                      IMAGE_SILICONFLOW_MODEL: provider === 'siliconflow' ? value : k.IMAGE_SILICONFLOW_MODEL,
-                      IMAGE_OPENAI_MODEL: provider === 'openai' ? value : k.IMAGE_OPENAI_MODEL,
-                    };
-                  });
-                }}
-                placeholder={
-                  apiKeys.IMAGE_PROVIDER === 'openai'
-                    ? 'dall-e-3'
-                    : apiKeys.IMAGE_PROVIDER === 'siliconflow'
-                      ? 'Kwai-Kolors/Kolors'
-                      : 'image-01'
-                }
-                className="settings-input settings-input-focusable"
-                autoComplete="off"
-              />
+              {normalizeImageProvider(apiKeys.IMAGE_PROVIDER) === 'google' ? (
+                <>
+                  <select
+                    value={GOOGLE_IMAGE_MODEL_IDS.has(apiKeys.IMAGE_MODEL || '') ? apiKeys.IMAGE_MODEL : '__custom__'}
+                    onChange={(e) => {
+                      const currentModel = apiKeys.IMAGE_MODEL || '';
+                      if (e.target.value === '__custom__') {
+                        const customValue = GOOGLE_IMAGE_MODEL_IDS.has(currentModel) ? '' : currentModel;
+                        setApiKeys((k) => writeScopedImageModel(k, customValue));
+                        return;
+                      }
+                      setApiKeys((k) => writeScopedImageModel(k, e.target.value || DEFAULT_GOOGLE_IMAGE_MODEL));
+                    }}
+                    className="settings-input settings-input-focusable"
+                  >
+                    {GOOGLE_IMAGE_MODEL_OPTIONS.map((model) => (
+                      <option key={model.id} value={model.id}>{model.label}</option>
+                    ))}
+                    <option value="__custom__">自定义 Google 生图模型 ID</option>
+                  </select>
+                  {!GOOGLE_IMAGE_MODEL_IDS.has(apiKeys.IMAGE_MODEL || '') && (
+                    <input
+                      type="text"
+                      value={apiKeys.IMAGE_MODEL || ''}
+                      onChange={(e) => setApiKeys((k) => writeScopedImageModel(k, e.target.value))}
+                      placeholder="例如：gemini-3.1-flash-image-preview"
+                      className="settings-input settings-input-focusable settings-input-spaced"
+                      autoComplete="off"
+                    />
+                  )}
+                  <p className="settings-desc settings-desc-compact">
+                    Nano Banana 系列走 Gemini 图像模型；Imagen 4 系列走 Imagen 图片接口。
+                  </p>
+                </>
+              ) : (
+                <input
+                  type="text"
+                  value={apiKeys.IMAGE_MODEL || ''}
+                  onChange={(e) => setApiKeys((k) => writeScopedImageModel(k, e.target.value))}
+                  placeholder={
+                    apiKeys.IMAGE_PROVIDER === 'openai'
+                      ? 'dall-e-3'
+                      : apiKeys.IMAGE_PROVIDER === 'siliconflow'
+                        ? 'Kwai-Kolors/Kolors'
+                        : 'image-01'
+                  }
+                  className="settings-input settings-input-focusable"
+                  autoComplete="off"
+                />
+              )}
             </div>
 
             <div className="settings-field">

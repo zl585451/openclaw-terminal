@@ -134,6 +134,9 @@ const electronAPI = {
         IMAGE_OPENAI_API_KEY?: string;
         IMAGE_OPENAI_BASE_URL?: string;
         IMAGE_OPENAI_MODEL?: string;
+        IMAGE_GOOGLE_API_KEY?: string;
+        IMAGE_GOOGLE_BASE_URL?: string;
+        IMAGE_GOOGLE_MODEL?: string;
         IMAGE_SIZE?: string;
         TTS_MINIMAX_VOICE_ID?: string;
         CUSTOM_API_KEY?: string;

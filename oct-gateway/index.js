@@ -702,6 +702,7 @@ async function handleTransportMessage(msg, connection) {
     if (!imageBaseUrl) {
       if (imgProvider === 'openai') imageBaseUrl = 'https://api.openai.com';
       else if (imgProvider === 'siliconflow') imageBaseUrl = 'https://api.siliconflow.cn/v1';
+      else if (imgProvider === 'google') imageBaseUrl = config.getEnvOrConfig('GOOGLE_AI_BASE_URL') || '';
       else imageBaseUrl = 'https://api.minimax.chat';
     }
     const imageConfig = {
@@ -712,6 +713,7 @@ async function handleTransportMessage(msg, connection) {
       IMAGE_MODEL: config.getEnvOrConfig('IMAGE_MODEL') || (
         imgProvider === 'siliconflow' ? 'Kwai-Kolors/Kolors'
           : imgProvider === 'openai' ? 'dall-e-3'
+            : imgProvider === 'google' ? 'gemini-3.1-flash-image-preview'
             : 'image-01'
       ),
       IMAGE_MINIMAX_API_KEY: config.getEnvOrConfig('IMAGE_MINIMAX_API_KEY') || '',
@@ -723,11 +725,22 @@ async function handleTransportMessage(msg, connection) {
       IMAGE_OPENAI_API_KEY: config.getEnvOrConfig('IMAGE_OPENAI_API_KEY') || '',
       IMAGE_OPENAI_BASE_URL: config.getEnvOrConfig('IMAGE_OPENAI_BASE_URL') || '',
       IMAGE_OPENAI_MODEL: config.getEnvOrConfig('IMAGE_OPENAI_MODEL') || '',
+      IMAGE_GOOGLE_API_KEY: config.getEnvOrConfig('IMAGE_GOOGLE_API_KEY') || '',
+      IMAGE_GOOGLE_BASE_URL: config.getEnvOrConfig('IMAGE_GOOGLE_BASE_URL') || '',
+      IMAGE_GOOGLE_MODEL: config.getEnvOrConfig('IMAGE_GOOGLE_MODEL') || '',
       IMAGE_SIZE: config.getEnvOrConfig('IMAGE_SIZE') || '1024x1024',
       DASHSCOPE_API_KEY: config.getEnvOrConfig('DASHSCOPE_API_KEY') || '',
       DEEPSEEK_API_KEY: config.getEnvOrConfig('DEEPSEEK_API_KEY') || '',
       MINIMAX_API_KEY: config.getEnvOrConfig('MINIMAX_API_KEY') || '',
       CUSTOM_API_KEY: config.getEnvOrConfig('CUSTOM_API_KEY') || '',
+      GOOGLE_AI_API_KEY: config.getEnvOrConfig('GOOGLE_AI_API_KEY') || '',
+      GOOGLE_API_KEY: config.getEnvOrConfig('GOOGLE_API_KEY') || '',
+      GEMINI_API_KEY: config.getEnvOrConfig('GEMINI_API_KEY') || '',
+      GOOGLE_AI_BASE_URL: config.getEnvOrConfig('GOOGLE_AI_BASE_URL') || '',
+      GOOGLE_API_MODE: config.getEnvOrConfig('GOOGLE_API_MODE') || 'native',
+      GOOGLE_CLOUD_PROJECT: config.getEnvOrConfig('GOOGLE_CLOUD_PROJECT') || '',
+      GOOGLE_CLOUD_LOCATION: config.getEnvOrConfig('GOOGLE_CLOUD_LOCATION') || '',
+      GOOGLE_GENAI_API_VERSION: config.getEnvOrConfig('GOOGLE_GENAI_API_VERSION') || '',
     };
     await handleImageGenerate(msg.params || {}, imageConfig, (responseMsg) => {
       if (!connection?.isOpen?.()) return;
