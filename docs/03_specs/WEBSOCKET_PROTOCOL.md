@@ -104,8 +104,10 @@
 - `aspectRatio` 是跨供应商主面板里的通用画幅语义
 - `width/height` 作为高级尺寸能力按需传入，不保证所有供应商都支持
 - Gateway 以 `type: "res"` 回传状态和最终图片 URL
-- 生图鉴权默认走“服务商独立 Key”（`IMAGE_MINIMAX_* / IMAGE_SILICONFLOW_* / IMAGE_OPENAI_*`）；仅在 `IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY=true` 时才允许回退聊天 Key
+- 生图鉴权默认走“服务商独立 Key”（`IMAGE_MINIMAX_* / IMAGE_SILICONFLOW_* / IMAGE_OPENAI_* / IMAGE_GOOGLE_*`）；仅在 `IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY=true` 时才允许回退聊天 Key
 - **硅基流动**：设置中 `IMAGE_PROVIDER=siliconflow`（或 `openai` 且 `IMAGE_BASE_URL` 指向 `api.siliconflow.cn`）时，Gateway 使用硅基文档中的 `/v1/images/generations` 请求体（`image_size`、`batch_size` 等），**不是** OpenAI DALL·E 的 `size`/`response_format` 格式。
+- **Google Cloud**：设置中 `IMAGE_PROVIDER=google` 时，Gateway 走 Google 原生服务层；`imagen-*` 模型使用 Imagen 图片接口，`gemini-*image*` 模型使用 Gemini 图像模型。Key 优先读取 `IMAGE_GOOGLE_API_KEY`，再兼容 `IMAGE_API_KEY` / `GOOGLE_AI_API_KEY`。
+- Google 下拉内置模型：`gemini-3.1-flash-image-preview`（Nano Banana 2）、`gemini-3-pro-image-preview`（Nano Banana Pro）、`gemini-2.5-flash-image`（Nano Banana）、`imagen-4.0-generate-001`、`imagen-4.0-fast-generate-001`、`imagen-4.0-ultra-generate-001`；仍保留自定义模型 ID。
 - **生图 HTTP 超时**：默认 180s，可通过环境变量 `OCT_IMAGE_HTTP_TIMEOUT_MS` 调整（旧版固定 60s 易导致慢模型报 `Request timeout`）。
 
 ---

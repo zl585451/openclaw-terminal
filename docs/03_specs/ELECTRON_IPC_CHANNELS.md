@@ -75,9 +75,10 @@
 
 生图配置字段说明（`get-api-keys` / `save-api-keys`）：
 - 基础字段：`IMAGE_PROVIDER`、`IMAGE_API_KEY`、`IMAGE_BASE_URL`、`IMAGE_MODEL`、`IMAGE_SIZE`
-- 强隔离字段：`IMAGE_MINIMAX_*`、`IMAGE_SILICONFLOW_*`、`IMAGE_OPENAI_*`
+- 强隔离字段：`IMAGE_MINIMAX_*`、`IMAGE_SILICONFLOW_*`、`IMAGE_OPENAI_*`、`IMAGE_GOOGLE_*`
 - 回退开关：`IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY`（布尔，默认 `false`）
 - 兼容策略：仍保留 `IMAGE_API_KEY/BASE_URL/MODEL` 作为旧配置兼容与 UI 当前值镜像
+- Google 生图：`IMAGE_PROVIDER=google` 时使用 `IMAGE_GOOGLE_API_KEY/BASE_URL/MODEL`，可复用 Google Cloud Vertex AI API Key；默认模型为 `gemini-3.1-flash-image-preview`（Nano Banana 2）
 
 ---
 

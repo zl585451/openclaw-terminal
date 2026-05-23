@@ -95,6 +95,6 @@
 | 文件 | `electron/main.ts`、`electron/preload.ts`、`src/ui/image/ImageStudio.tsx`、`src/ui/chat/ChatTab.v2.tsx` |
 | 调用链 | Renderer `image-generate` IPC → Electron WebSocket → Gateway `image.generate` → Electron `image-result` 事件 → ChatTab 注入图片消息 |
 | 关键原则 | 不复用 `openclaw-send` / `chat.send`，避免污染聊天上下文与历史 |
-| 配置 | 通过设置页新增 `IMAGE_PROVIDER`、`IMAGE_API_KEY`、`IMAGE_BASE_URL`、`IMAGE_MODEL`、`IMAGE_SIZE` |
+| 配置 | 通过设置页新增 `IMAGE_PROVIDER`、`IMAGE_API_KEY`、`IMAGE_BASE_URL`、`IMAGE_MODEL`、`IMAGE_SIZE`；并按服务商隔离保存 `IMAGE_MINIMAX_*` / `IMAGE_SILICONFLOW_*` / `IMAGE_OPENAI_*` / `IMAGE_GOOGLE_*` |
 | 交互 | 工作台主面板只暴露通用语义：画幅、风格倾向、质量、seed、自动优化、水印；并提供下载、打开原图、复制链接 |
 | 状态 | ✅ 初版已接入 |

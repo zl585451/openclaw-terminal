@@ -117,6 +117,13 @@ flowchart TD
 
 > 本地 BLIP 已于 2026-04-13 移除。推荐在设置面板配置「图片理解 API」（硅基流动免费 VL 模型）。
 
+### Image Studio 生图
+
+- 生图不走 `chat.send`，由 Electron 发送独立 `image.generate` 请求到 Gateway。
+- 设置页 `IMAGE_PROVIDER=google` 时，生图配置读取 `IMAGE_GOOGLE_API_KEY`、`IMAGE_GOOGLE_BASE_URL`、`IMAGE_GOOGLE_MODEL`，并可兼容 `GOOGLE_AI_API_KEY`。
+- Google 生图由 `oct-gateway/services/googleNative.js` 承接；`imagen-*` 走 Imagen 图片接口，`gemini-*image*` 走 Gemini 图像模型。
+- Google 生图默认模型为 `gemini-3.1-flash-image-preview`（Nano Banana 2），设置页同时内置 Nano Banana Pro、Nano Banana 和 Imagen 4 系列下拉选项。
+
 ### hypothesis
 - 图片消息默认不再触发 hypothesis 支线请求
 - 目的是降低竞态和空流 done 风险
