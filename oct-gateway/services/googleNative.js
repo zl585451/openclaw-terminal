@@ -532,17 +532,26 @@ async function generateNativeImage({
     return { model, images };
   }
 
-  const interaction = await clientConfig.client.interactions.create({
+  const response = await clientConfig.client.models.generateContent({
     model,
-    input: prompt,
-    response_modalities: ['image'],
+    contents: [prompt],
+    config: {
+      responseModalities: ['TEXT', 'IMAGE'],
+    },
   });
-  const images = (Array.isArray(interaction?.outputs) ? interaction.outputs : [])
-    .filter((output) => output?.type === 'image')
-    .map((output) => ({
-      mimeType: output.mime_type || 'image/png',
-      data: output.data || '',
-      dataUrl: toDataUrl(output.data || '', output.mime_type || 'image/png'),
+  const directParts = Array.isArray(response?.parts) ? response.parts : [];
+  const candidateParts = Array.isArray(response?.candidates)
+    ? response.candidates.flatMap((candidate) => (
+      Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []
+    ))
+    : [];
+  const images = [...directParts, ...candidateParts]
+    .map((part) => part?.inlineData || part?.inline_data || null)
+    .filter(Boolean)
+    .map((inlineData) => ({
+      mimeType: inlineData.mimeType || inlineData.mime_type || 'image/png',
+      data: inlineData.data || '',
+      dataUrl: toDataUrl(inlineData.data || '', inlineData.mimeType || inlineData.mime_type || 'image/png'),
     }))
     .filter((item) => item.dataUrl);
   if (images.length === 0) {
