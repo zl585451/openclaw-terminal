@@ -257,3 +257,30 @@
 
 - `npx vitest run electron/config/memorySummarizer.test.ts electron/config/vectorRecall.test.ts electron/config/providers.test.ts electron/config/apiKeys.test.ts`
 - `npx tsc -p tsconfig.electron.json --noEmit`
+
+## Phase D-4 前端连接测试投影收口
+
+新增/调整：
+
+- `src/hooks/settings/useApiKeys.ts`
+  - 新增 `buildAiConnectionTestPayload()`，将高级设置页和新手设置页的 `testAIConnection` provider/baseUrl/apiKey/model 投影收口到同一个纯 helper。
+  - `buildGatewayPayload()` 与连接测试 payload 复用相同的聊天 provider baseUrl/model 解析规则，避免保存配置和测试连接各自维护一套分支矩阵。
+
+- `src/ui/settings/tabs/ConnectionTabView.tsx`
+  - 高级设置页不再内联 `testAIConnection` 的 provider/model/baseUrl 分支。
+
+- `src/ui/settings/tabs/ConnectionTabView.Beginner.tsx`
+  - 新手设置页不再内联三家 provider 的测试 payload 拼装；测试时复用当前选择的 provider、key 和模型快照。
+
+- `src/hooks/__tests__/settingsPayload.test.ts`
+  - 增加高级连接测试的 Google 自定义模型投影覆盖。
+  - 增加新手连接测试的模型覆盖与 provider-scoped baseUrl/key 覆盖。
+
+影响：
+
+- 前端设置页仍是“展示/提交/触发测试”的 UI 投影层，不提升为 provider registry 权威。
+- 连接测试与保存 payload 的 provider 字段规则更接近同源，后续继续收敛 `FALLBACK_PROVIDERS` 或消费 gateway provider metadata 时，只需改 helper 和测试，不需要在两个 UI 组件里重复改分支。
+
+验证：
+
+- `npx vitest run src/hooks/__tests__/settingsPayload.test.ts`

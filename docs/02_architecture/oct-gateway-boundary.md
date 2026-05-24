@@ -21,6 +21,7 @@ OCT 核心主线收敛为外部 OmniRoute 客户端；本地多 provider 仅保�
    - Phase D-1 后，Electron 侧 provider fallback 列表和 `test-ai-connection` 的 provider/baseUrl/apiKey/model 投影已收口到 `electron/config/providers.ts`；`electron/main.ts` 只保留 IPC 编排、Google native 特例调用和真实 fetch 副作用。
    - Phase D-2 后，Memory 向量召回的 provider 推断、embedding preset、threshold/topK 边界已收口到 `electron/config/vectorRecall.ts`；`electron/main.ts` 只保留配置文件写入和 Gateway 重启副作用。
    - Phase D-3 后，Memory 摘要模型的 enabled/baseUrl/apiKey/model 投影与嵌套写入已收口到 `electron/config/memorySummarizer.ts`；`electron/main.ts` 继续只保留 IPC、写文件和 Gateway 重启副作用。
+   - Phase D-4 后，高级/新手设置页的连接测试 payload 不再各自内联 provider/baseUrl/apiKey/model 分支，统一通过 `buildAiConnectionTestPayload()` 生成；前端仍只负责投影和触发，不参与 gateway 运行时 provider 解析。
 
 ## OCT 与 OmniRoute 职责边界
 

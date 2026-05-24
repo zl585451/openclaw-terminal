@@ -8,7 +8,7 @@ import {
   isBeginnerProviderId,
 } from '../../../hooks/settings/recommendedModels';
 import type { BeginnerProviderId } from '../../../hooks/settings/recommendedModels';
-import type { SettingsMode } from '../../../hooks/settings/useApiKeys';
+import { buildAiConnectionTestPayload, type SettingsMode } from '../../../hooks/settings/useApiKeys';
 import { humanizeAiConnectionError } from '../../../utils/aiConnectionErrors';
 import { detectProviderFromKey } from '../../../utils/providerUtils';
 import type { ProviderEntry, SettingsApiKeysState } from './ConnectionTabView';
@@ -134,6 +134,10 @@ export function ConnectionTabViewBeginner({
       setTestConnectionError('请先粘贴 API Key。');
       return;
     }
+    const nextApiKeys = {
+      ...buildProviderPatch(apiKeys, selectedProviderId, currentKey, selectedRecommendedModel),
+      OCT_SETTINGS_MODE: 'beginner' as const,
+    };
     setApiKeys((prev) => ({ ...buildProviderPatch(prev, selectedProviderId, currentKey, selectedRecommendedModel), OCT_SETTINGS_MODE: 'beginner' }));
     const ok = await saveGatewayAndReconnect();
     if (!ok) {
@@ -148,22 +152,9 @@ export function ConnectionTabViewBeginner({
     setTestConnectionError('');
 
     const provider = providers[selectedProviderId];
-    const result = await api.testAIConnection({
-      OCT_PROVIDER: selectedProviderId,
-      OCT_MODEL: selectedRecommendedModel || provider?.defaultModel || '',
-      DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
-      DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
-      MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
-      MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY,
-      CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
-      GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY,
-      DASHSCOPE_BASE_URL: selectedProviderId === 'bailian-coding' ? (apiKeys.DASHSCOPE_BASE_URL || provider?.baseUrl || '') : '',
-      DEEPSEEK_BASE_URL: selectedProviderId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || provider?.baseUrl || '') : '',
-      MINIMAX_BASE_URL: selectedProviderId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || provider?.baseUrl || '') : '',
-      MOONSHOT_BASE_URL: '',
-      CUSTOM_BASE_URL: '',
-      GOOGLE_AI_BASE_URL: '',
-    });
+    const result = await api.testAIConnection(
+      buildAiConnectionTestPayload(nextApiKeys, selectedProviderId, provider, selectedRecommendedModel || provider?.defaultModel || ''),
+    );
 
     if (result?.success) {
       setTestConnectionStatus('success');

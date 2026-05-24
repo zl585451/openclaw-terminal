@@ -238,6 +238,36 @@ type GatewayConfigPayload = {
   SILICONFLOW_API_KEY: string;
 };
 
+type AiConnectionTestPayload = {
+  OCT_PROVIDER: string;
+  OCT_MODEL: string;
+  DASHSCOPE_API_KEY: string;
+  DEEPSEEK_API_KEY: string;
+  MINIMAX_API_KEY: string;
+  MOONSHOT_API_KEY: string;
+  CUSTOM_API_KEY: string;
+  NEWAPI_API_KEY: string;
+  GOOGLE_AI_API_KEY: string;
+  DASHSCOPE_BASE_URL: string;
+  DEEPSEEK_BASE_URL: string;
+  MINIMAX_BASE_URL: string;
+  MOONSHOT_BASE_URL: string;
+  NEWAPI_BASE_URL: string;
+  CUSTOM_BASE_URL: string;
+  GOOGLE_AI_BASE_URL: string;
+};
+
+type ChatProviderBaseUrlPayload = Pick<
+  AiConnectionTestPayload,
+  | 'DASHSCOPE_BASE_URL'
+  | 'DEEPSEEK_BASE_URL'
+  | 'MINIMAX_BASE_URL'
+  | 'MOONSHOT_BASE_URL'
+  | 'NEWAPI_BASE_URL'
+  | 'CUSTOM_BASE_URL'
+  | 'GOOGLE_AI_BASE_URL'
+>;
+
 function resolveProviderId(data: Partial<ApiKeysState>): string {
   if (data.OCT_PROVIDER && String(data.OCT_PROVIDER).trim()) {
     return String(data.OCT_PROVIDER).trim();
@@ -335,38 +365,9 @@ export function buildGatewayPayload(
   currentProvider: ProviderEntry | undefined,
   searchKeys: { BRAVE_SEARCH_API_KEY: string; TAVILY_API_KEY: string },
 ): GatewayConfigPayload {
-  let baseUrl = '';
-  if (currentProviderId === 'deepseek') {
-    baseUrl = apiKeys.DEEPSEEK_BASE_URL;
-  } else if (currentProviderId === 'minimax') {
-    baseUrl = apiKeys.MINIMAX_BASE_URL;
-  } else if (currentProviderId === 'moonshot') {
-    baseUrl = apiKeys.MOONSHOT_BASE_URL;
-  } else if (currentProviderId === 'newapi') {
-    baseUrl = apiKeys.NEWAPI_BASE_URL;
-  } else if (currentProviderId === 'custom') {
-    baseUrl = apiKeys.CUSTOM_BASE_URL;
-  } else if (currentProviderId === 'google') {
-    baseUrl = apiKeys.GOOGLE_AI_BASE_URL;
-  } else if (currentProviderId === 'siliconflow') {
-    const u = (apiKeys.DASHSCOPE_BASE_URL || '').toLowerCase();
-    baseUrl = u.includes('siliconflow')
-      ? apiKeys.DASHSCOPE_BASE_URL
-      : (currentProvider?.baseUrl || 'https://api.siliconflow.cn/v1');
-  } else {
-    baseUrl = apiKeys.DASHSCOPE_BASE_URL;
-  }
-
-  let effectiveModel = apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus';
-  if (currentProviderId === 'custom' && apiKeys.CUSTOM_MODEL) {
-    effectiveModel = apiKeys.CUSTOM_MODEL;
-  }
-  if (currentProviderId === 'newapi' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
-    effectiveModel = apiKeys.CUSTOM_MODEL;
-  }
-  if (currentProviderId === 'google' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
-    effectiveModel = apiKeys.CUSTOM_MODEL;
-  }
+  const baseUrl = resolveChatProviderBaseUrl(apiKeys, currentProviderId, currentProvider);
+  const effectiveModel = resolveChatProviderModel(apiKeys, currentProviderId, currentProvider);
+  const providerBaseUrls = buildChatProviderBaseUrlPayload(currentProviderId, baseUrl, currentProvider);
 
   return {
     OPENCLAW_WS_URL: apiKeys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
@@ -401,17 +402,7 @@ export function buildGatewayPayload(
     OCT_MODEL: effectiveModel,
     SCRIPT_ADAPTER_REAL_AGENTS: apiKeys.SCRIPT_ADAPTER_REAL_AGENTS || '',
     CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
-    DASHSCOPE_BASE_URL:
-      currentProviderId === 'deepseek' || currentProviderId === 'custom' || currentProviderId === 'minimax'
-      || currentProviderId === 'google' || currentProviderId === 'moonshot' || currentProviderId === 'newapi'
-        ? ''
-        : (baseUrl || currentProvider?.baseUrl || ''),
-    DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? (baseUrl || currentProvider?.baseUrl || '') : '',
-    MINIMAX_BASE_URL: currentProviderId === 'minimax' ? (baseUrl || currentProvider?.baseUrl || '') : '',
-    MOONSHOT_BASE_URL: currentProviderId === 'moonshot' ? (baseUrl || currentProvider?.baseUrl || '') : '',
-    NEWAPI_BASE_URL: currentProviderId === 'newapi' ? (baseUrl || currentProvider?.baseUrl || '') : '',
-    CUSTOM_BASE_URL: currentProviderId === 'custom' ? (baseUrl || currentProvider?.baseUrl || '') : '',
-    GOOGLE_AI_BASE_URL: currentProviderId === 'google' ? (baseUrl || currentProvider?.baseUrl || '') : '',
+    ...providerBaseUrls,
     GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY || '',
     HTTPS_PROXY: apiKeys.HTTPS_PROXY || '',
     HTTP_PROXY: apiKeys.HTTP_PROXY || '',
@@ -426,6 +417,102 @@ export function buildGatewayPayload(
     OCT_USE_EXTERNAL_OMNIROUTE: !!apiKeys.OCT_USE_EXTERNAL_OMNIROUTE,
     SILICONFLOW_API_KEY:
       currentProviderId === 'siliconflow' ? (apiKeys.DASHSCOPE_API_KEY || '') : '',
+  };
+}
+
+function buildChatProviderBaseUrlPayload(
+  currentProviderId: string,
+  baseUrl: string,
+  currentProvider: ProviderEntry | undefined,
+): ChatProviderBaseUrlPayload {
+  const resolvedBaseUrl = baseUrl || currentProvider?.baseUrl || '';
+  const isDashScopeScopedProvider =
+    currentProviderId !== 'deepseek'
+    && currentProviderId !== 'custom'
+    && currentProviderId !== 'minimax'
+    && currentProviderId !== 'google'
+    && currentProviderId !== 'moonshot'
+    && currentProviderId !== 'newapi';
+
+  return {
+    DASHSCOPE_BASE_URL: isDashScopeScopedProvider ? resolvedBaseUrl : '',
+    DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? resolvedBaseUrl : '',
+    MINIMAX_BASE_URL: currentProviderId === 'minimax' ? resolvedBaseUrl : '',
+    MOONSHOT_BASE_URL: currentProviderId === 'moonshot' ? resolvedBaseUrl : '',
+    NEWAPI_BASE_URL: currentProviderId === 'newapi' ? resolvedBaseUrl : '',
+    CUSTOM_BASE_URL: currentProviderId === 'custom' ? resolvedBaseUrl : '',
+    GOOGLE_AI_BASE_URL: currentProviderId === 'google' ? resolvedBaseUrl : '',
+  };
+}
+
+function resolveChatProviderBaseUrl(
+  apiKeys: ApiKeysState,
+  currentProviderId: string,
+  currentProvider: ProviderEntry | undefined,
+): string {
+  let baseUrl = '';
+  if (currentProviderId === 'deepseek') {
+    baseUrl = apiKeys.DEEPSEEK_BASE_URL;
+  } else if (currentProviderId === 'minimax') {
+    baseUrl = apiKeys.MINIMAX_BASE_URL;
+  } else if (currentProviderId === 'moonshot') {
+    baseUrl = apiKeys.MOONSHOT_BASE_URL;
+  } else if (currentProviderId === 'newapi') {
+    baseUrl = apiKeys.NEWAPI_BASE_URL;
+  } else if (currentProviderId === 'custom') {
+    baseUrl = apiKeys.CUSTOM_BASE_URL;
+  } else if (currentProviderId === 'google') {
+    baseUrl = apiKeys.GOOGLE_AI_BASE_URL;
+  } else if (currentProviderId === 'siliconflow') {
+    const u = (apiKeys.DASHSCOPE_BASE_URL || '').toLowerCase();
+    baseUrl = u.includes('siliconflow')
+      ? apiKeys.DASHSCOPE_BASE_URL
+      : (currentProvider?.baseUrl || 'https://api.siliconflow.cn/v1');
+  } else {
+    baseUrl = apiKeys.DASHSCOPE_BASE_URL;
+  }
+  return baseUrl || '';
+}
+
+function resolveChatProviderModel(
+  apiKeys: ApiKeysState,
+  currentProviderId: string,
+  currentProvider: ProviderEntry | undefined,
+): string {
+  let effectiveModel = apiKeys.OCT_MODEL || currentProvider?.defaultModel || 'qwen3.5-plus';
+  if (currentProviderId === 'custom' && apiKeys.CUSTOM_MODEL) {
+    effectiveModel = apiKeys.CUSTOM_MODEL;
+  }
+  if (currentProviderId === 'newapi' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
+    effectiveModel = apiKeys.CUSTOM_MODEL;
+  }
+  if (currentProviderId === 'google' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
+    effectiveModel = apiKeys.CUSTOM_MODEL;
+  }
+  return effectiveModel;
+}
+
+export function buildAiConnectionTestPayload(
+  apiKeys: ApiKeysState,
+  currentProviderId: string,
+  currentProvider: ProviderEntry | undefined,
+  modelOverride?: string,
+): AiConnectionTestPayload {
+  const baseUrl = resolveChatProviderBaseUrl(apiKeys, currentProviderId, currentProvider);
+  const effectiveModel = modelOverride
+    || resolveChatProviderModel(apiKeys, currentProviderId, currentProvider);
+  const providerBaseUrls = buildChatProviderBaseUrlPayload(currentProviderId, baseUrl, currentProvider);
+  return {
+    OCT_PROVIDER: currentProviderId || 'bailian-coding',
+    OCT_MODEL: effectiveModel,
+    DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY || '',
+    DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
+    MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY || '',
+    MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY || '',
+    NEWAPI_API_KEY: apiKeys.NEWAPI_API_KEY || '',
+    CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
+    ...providerBaseUrls,
+    GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY || '',
   };
 }
 

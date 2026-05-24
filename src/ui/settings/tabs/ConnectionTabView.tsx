@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { ConnectionTabViewBeginner } from './ConnectionTabView.Beginner';
 
-import type { ApiKeysState, SettingsMode } from '../../../hooks/settings/useApiKeys';
+import { buildAiConnectionTestPayload, type ApiKeysState, type SettingsMode } from '../../../hooks/settings/useApiKeys';
 import type { ProviderEntry } from '../providerTypes';
 import {
   getChatProviderApiKeyField,
@@ -1103,36 +1103,9 @@ export function ConnectionTabView({
                   if (!api?.testAIConnection) return;
                   setTestConnectionStatus('testing');
                   setTestConnectionError('');
-                  const providerId = currentProviderId;
-                  const p = providers[providerId];
-                  let testModel = apiKeys.OCT_MODEL || p?.defaultModel || 'qwen3.5-plus';
-                  if (providerId === 'custom' && apiKeys.CUSTOM_MODEL) {
-                    testModel = apiKeys.CUSTOM_MODEL;
-                  }
-                  if (providerId === 'newapi' && testModel === '__custom__' && apiKeys.CUSTOM_MODEL) {
-                    testModel = apiKeys.CUSTOM_MODEL;
-                  }
-                  if (providerId === 'google' && testModel === '__custom__' && apiKeys.CUSTOM_MODEL) {
-                    testModel = apiKeys.CUSTOM_MODEL;
-                  }
-                    const result = await api.testAIConnection({
-                      OCT_PROVIDER: providerId,
-                      OCT_MODEL: testModel,
-                      DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY,
-                      DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY,
-                      MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY,
-                      MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY,
-                      CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY,
-                      NEWAPI_API_KEY: apiKeys.NEWAPI_API_KEY,
-                      GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY,
-                      DASHSCOPE_BASE_URL: providerId === 'deepseek' || providerId === 'minimax' || providerId === 'custom' || providerId === 'google' || providerId === 'moonshot' || providerId === 'newapi' ? '' : (apiKeys.DASHSCOPE_BASE_URL || p?.baseUrl || ''),
-                      DEEPSEEK_BASE_URL: providerId === 'deepseek' ? (apiKeys.DEEPSEEK_BASE_URL || p?.baseUrl || '') : '',
-                      MINIMAX_BASE_URL: providerId === 'minimax' ? (apiKeys.MINIMAX_BASE_URL || p?.baseUrl || '') : '',
-                      MOONSHOT_BASE_URL: providerId === 'moonshot' ? (apiKeys.MOONSHOT_BASE_URL || p?.baseUrl || '') : '',
-                      NEWAPI_BASE_URL: providerId === 'newapi' ? (apiKeys.NEWAPI_BASE_URL || p?.baseUrl || '') : '',
-                      CUSTOM_BASE_URL: providerId === 'custom' ? (apiKeys.CUSTOM_BASE_URL || p?.baseUrl || '') : '',
-                      GOOGLE_AI_BASE_URL: providerId === 'google' ? (apiKeys.GOOGLE_AI_BASE_URL || p?.baseUrl || '') : '',
-                    });
+                  const result = await api.testAIConnection(
+                    buildAiConnectionTestPayload(apiKeys, currentProviderId, providers[currentProviderId]),
+                  );
                   setTestConnectionStatus(result.success ? 'success' : 'error');
                   if (!result.success) setTestConnectionError(result.error || '');
                   setTimeout(() => setTestConnectionStatus('idle'), 3000);

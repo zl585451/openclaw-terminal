@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGatewayPayload, type ApiKeysState } from '../settings/useApiKeys';
+import { buildAiConnectionTestPayload, buildGatewayPayload, type ApiKeysState } from '../settings/useApiKeys';
 import type { ProviderEntry } from '../../ui/settings/providerTypes';
 
 function baseApiKeys(overrides: Partial<ApiKeysState> = {}): ApiKeysState {
@@ -126,5 +126,68 @@ describe('settings gateway payload boundary', () => {
     expect(payload.DASHSCOPE_BASE_URL).toBe('');
     expect(payload.BRAVE_SEARCH_API_KEY).toBe('brave');
     expect(payload.TAVILY_API_KEY).toBe('tavily');
+  });
+
+  it('reuses the same chat provider projection for advanced connection tests', () => {
+    const provider: ProviderEntry = {
+      id: 'google',
+      name: 'Google',
+      baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/test/locations/us-central1/endpoints/openapi',
+      keyLink: '',
+      keyPlaceholder: '',
+      defaultModel: 'google/gemini-2.5-flash',
+      models: [],
+    };
+
+    const payload = buildAiConnectionTestPayload(
+      baseApiKeys({
+        GOOGLE_AI_API_KEY: 'AQ.test',
+        GOOGLE_AI_BASE_URL: provider.baseUrl,
+        OCT_MODEL: '__custom__',
+        CUSTOM_MODEL: 'google/gemini-custom',
+        DASHSCOPE_BASE_URL: 'https://should-not-leak.example/v1',
+      }),
+      'google',
+      provider,
+    );
+
+    expect(payload).toMatchObject({
+      OCT_PROVIDER: 'google',
+      OCT_MODEL: 'google/gemini-custom',
+      GOOGLE_AI_API_KEY: 'AQ.test',
+      GOOGLE_AI_BASE_URL: provider.baseUrl,
+      DASHSCOPE_BASE_URL: '',
+    });
+  });
+
+  it('lets beginner connection tests override the selected model while preserving provider-scoped key and URL', () => {
+    const provider: ProviderEntry = {
+      id: 'deepseek',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      keyLink: '',
+      keyPlaceholder: '',
+      defaultModel: 'deepseek-v4-flash',
+      models: [],
+    };
+
+    const payload = buildAiConnectionTestPayload(
+      baseApiKeys({
+        DEEPSEEK_API_KEY: 'sk-deepseek',
+        DEEPSEEK_BASE_URL: '',
+        OCT_MODEL: 'deepseek-v4-pro',
+      }),
+      'deepseek',
+      provider,
+      'deepseek-v4-flash',
+    );
+
+    expect(payload).toMatchObject({
+      OCT_PROVIDER: 'deepseek',
+      OCT_MODEL: 'deepseek-v4-flash',
+      DEEPSEEK_API_KEY: 'sk-deepseek',
+      DEEPSEEK_BASE_URL: provider.baseUrl,
+      DASHSCOPE_BASE_URL: '',
+    });
   });
 });
