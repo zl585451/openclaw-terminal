@@ -258,6 +258,34 @@
 - `npx vitest run electron/config/memorySummarizer.test.ts electron/config/vectorRecall.test.ts electron/config/providers.test.ts electron/config/apiKeys.test.ts`
 - `npx tsc -p tsconfig.electron.json --noEmit`
 
+## Phase C-4 Provider Router 注入收口
+
+调整：
+
+- `oct-gateway/index.js`
+  - 将 `ProviderRouter` 提前作为 gateway 启动期依赖创建。
+  - 同一个实例同时注入 `SlashHandler` 和 `createGatewayCapabilitiesProvider()`。
+
+- `oct-gateway/gateway/slash.js`
+  - 支持接收外部注入的 `providerRouter`。
+  - 未注入时仍保留默认实例化，避免破坏独立测试或未来复用场景。
+
+- `oct-gateway/test/slashHandlerRegression.test.js`
+  - 增加 fake `providerRouter` 注入。
+  - 断言 `/model <id>` 和 `/status` 都通过注入 router 解析模型能力。
+
+影响：
+
+- `/status` / `/model` 不再由 slash handler 私自创建第二个 provider router。
+- gateway provider 能力解析边界从“多个入口各自实例化”收敛为“入口统一装配、下游消费”。
+- 仍不删除本地 `providerRouter` 与本地 fallback；这些仍属于 Phase C 后续高风险降级/删除项，需要传统 provider 兼容路径测试完全锁定后再处理。
+
+验证：
+
+- `node oct-gateway/test/slashHandlerRegression.test.js`
+- `node oct-gateway/test/gatewayCapabilities.test.js`
+- `node oct-gateway/test/gatewaySmoke.test.js`
+
 ## Phase D-4 前端连接测试投影收口
 
 新增/调整：

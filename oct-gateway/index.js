@@ -111,6 +111,7 @@ const systemPromptReady = (async () => {
 })();
 
 const imageService = new ImageService({ imageAnalyzer, logger: log });
+const providerRouter = new ProviderRouter({ config });
 const postProcessor = new PostProcessor({
   memoryModule: memory,
   sessionModule: session,
@@ -130,6 +131,7 @@ const slashHandler = new SlashHandler({
   aiLibrary,
   tools: toolLoader,
   systemPromptReady,
+  providerRouter,
   logger: log,
 });
 const chatEngine = new ChatEngine({
@@ -165,7 +167,6 @@ const contextBuilder = new ContextBuilder({
     getCompletedTasksContext: (sessionKey) => orchestrator.getCompletedTasksContext(sessionKey),
   },
 });
-const providerRouter = new ProviderRouter({ config });
 const handleScriptAdapterMessage = createScriptAdapterMessageHandler({
   startIntake: startScriptAdapterIntake,
   startAnalysis: startScriptAdapterAnalysis,

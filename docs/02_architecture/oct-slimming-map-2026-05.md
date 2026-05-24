@@ -14,7 +14,7 @@
 
 | 区域 | 文件/目录 | 当前职责 | 冗余/遗留点 | 分类 | 删除/重构前需测试 |
 |---|---|---|---|---|---|
-| Gateway 入口 | `oct-gateway/index.js` | 组装 config、router、runtime、tool loader、orchestrator、少量 IPC/HTTP 入口等启动胶水 | Phase C-1/C-3 已抽出 environment、memory jobs、transport、lifecycle、capability snapshot、image config、script-adapter 分支；入口仍承担依赖装配职责 | Keep（需继续重构） | gateway 启动、WS connect、`chat.send`、slash、tool event 回归 |
+| Gateway 入口 | `oct-gateway/index.js` | 组装 config、router、runtime、tool loader、orchestrator、少量 IPC/HTTP 入口等启动胶水 | Phase C-1/C-3 已抽出 environment、memory jobs、transport、lifecycle、capability snapshot、image config、script-adapter 分支；Phase C-4 将 slash 与 capability snapshot 共用的 `ProviderRouter` 收口为入口统一注入；入口仍承担依赖装配职责 | Keep（需继续重构） | gateway 启动、WS connect、`chat.send`、slash、tool event 回归 |
 | Transport Bootstrap | `oct-gateway/bootstrap/transports.js` | Phase C-1 新增的 transport 启动胶水，集中创建 WS/HTTP transport 并提供统一 close | 从 `index.js` 抽出的低风险启动职责；不包含业务路由 | Keep（新边界） | `oct-gateway/test/bootstrapTransports.test.js`、`gatewaySmoke.test.js` |
 | Lifecycle Bootstrap | `oct-gateway/bootstrap/lifecycle.js` | Phase C-1 新增的 shutdown signal 与 task-board broadcast 注册胶水 | 从 `index.js` 抽出的启动/关闭副作用；不包含业务处理 | Keep（新边界） | `oct-gateway/test/bootstrapLifecycle.test.js`、`gatewaySmoke.test.js` |
 | Environment Bootstrap | `oct-gateway/bootstrap/environment.js` | Phase C-3 新增的 Node/Electron 运行时兼容层，负责 `File` shim 与 fetch proxy 启用 | 从 `index.js` 顶部抽出的启动前置副作用；必须保持在 `config` 加载前后原有顺序 | Keep（新边界） | `oct-gateway/test/bootstrapEnvironment.test.js`、`gatewaySmoke.test.js` |
@@ -26,7 +26,7 @@
 | Image Config Projection | `oct-gateway/runtime/imageGenerationConfig.js` | Phase C-1 新增图片生成配置投影 helper，封装 image provider/baseUrl/model 默认值与 key 透传 | 从 `image.generate` 分支抽出的配置拼装；不执行图片生成 | Keep（新边界） | `oct-gateway/test/imageGenerationConfig.test.js` |
 | OmniRoute 边界层 | `oct-gateway/runtime/omniRoute.js` | 逻辑能力别名、legacy alias 兼容、能力状态检查 | 与 `externalOmniRoute.js` 不是直接重复；它是能力边界层，是否可继续缩小需通过调用链确认 | 需优化 | `oct-gateway/test/omniRoute.test.js`、`externalOmniRoute.test.js` |
 | OmniRoute 外部适配 | `oct-gateway/runtime/externalOmniRoute.js` | 读取外部 OmniRoute baseUrl/key/model，探测 `/models`，解析可选模型 | 是外部网关适配层，不应定性为重复实现 | Keep（运行时适配权威） | `oct-gateway/test/externalOmniRoute.test.js` |
-| 本地 Provider Router | `oct-gateway/runtime/providerRouter.js` | 本地 provider/model 能力解析、Google 特例、fallback 信息 | 与“外部 OmniRoute 负责物理路由/fallback”的目标存在职责重叠；但本地兼容模式仍可能依赖它 | 测试后删/降级 | provider 能力、`/status`、`/model`、传统 provider 配置回归 |
+| 本地 Provider Router | `oct-gateway/runtime/providerRouter.js` | 本地 provider/model 能力解析、Google 特例、fallback 信息 | 与“外部 OmniRoute 负责物理路由/fallback”的目标存在职责重叠；但本地兼容模式仍可能依赖它；Phase C-4 已移除 slash 内部重复实例化，改由 gateway 入口注入共享实例 | 测试后删/降级 | provider 能力、`/status`、`/model`、传统 provider 配置回归 |
 | 运行时配置解析 | `oct-gateway/config.js` / `getProviderConfig()` | 合并 config file、env、legacy config，解析运行时 provider/API key/baseUrl/model | 是运行时解析权威，不能被前端硬编码替代 | Keep（权威） | provider config 单元测试、OmniRoute 开关测试 |
 | 用户设置持久化 | `electron/main.ts` 的 `get-api-keys` / `save-api-keys`、`electron/config/apiKeys.ts` | 读取/写入 Electron userData config，并触发 gateway 相关状态更新 | Phase C-1 已将 `get-api-keys` 读取投影与 `save-api-keys` 字段写入、OmniRoute 旧模型清理、重启/重连判断抽到可测试 helper；`main.ts` 保留 IPC 与副作用编排 | Keep（需继续拆小） | `electron/config/apiKeys.test.ts`、设置保存、回读、重连 |
 | Electron Provider Metadata | `electron/config/providers.ts`、`oct-gateway/providers.js` | Settings UI provider 列表 fallback、provider/baseUrl/apiKey/model 投影、`test-ai-connection` 的连接参数解析 | Phase D-1 已将 Electron 内联 fallback provider registry 和连接测试配置投影抽到可测试 helper；前端仍消费 Electron IPC 返回的 provider metadata | Keep（新边界，后续向 gateway metadata 收敛） | `electron/config/providers.test.ts`、`test-ai-connection`、`get-provider-list` |
@@ -47,6 +47,7 @@
   - 覆盖 WS challenge、未认证拒绝、错误 token 拒绝、认证成功 hello-ok、认证后消息派发、连接关闭回调。
 - `oct-gateway/test/slashHandlerRegression.test.js`
   - 覆盖 `/help`、未知命令、`/status`、`/model` 列表/切换、`/provider` 列表/切换、`/think high`、`/cot` 状态查询，锁定系统命令输出不应进入普通业务重构。
+  - Phase C-4 增加共享 provider router 注入断言，锁定 `/model` 切换和 `/status` 使用入口注入的同一能力解析边界。
 - `oct-gateway/test/gatewaySmoke.test.js`
   - 启动真实 `oct-gateway/index.js` 子进程，使用临时配置和临时 localhost 端口验证 WS challenge、connect、`sessions.list`、`/help`。
 - `oct-gateway/test/bootstrapTransports.test.js`

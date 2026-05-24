@@ -45,3 +45,4 @@ OCT 核心主线收敛为外部 OmniRoute 客户端；本地多 provider 仅保�
 - `oct-gateway/index.js` 应逐步收敛为启动与依赖注入，不继续承载业务分流细节。
 - Phase C-2 后，普通 `chat.send` 生命周期已收口到 `oct-gateway/runtime/chatRequestHandler.js`；入口层只负责注入 orchestrator、contextBuilder、chatEngine、session 与 transport helper。
 - Phase C-3 后，运行时环境兼容层收口到 `oct-gateway/bootstrap/environment.js`，memory/scheduler 启动注册收口到 `oct-gateway/bootstrap/memoryJobs.js`；入口层不再内联这些启动副作用细节。
+- Phase C-4 后，`/status` / `/model` 使用的 `SlashHandler` 不再自行创建第二个 provider router；`oct-gateway/index.js` 统一注入同一个 `ProviderRouter` 给 slash 和 gateway capability snapshot，入口仍只做依赖装配。

@@ -20,6 +20,7 @@ class SlashHandler {
     aiLibrary,
     tools,
     systemPromptReady,
+    providerRouter,
     logger,
   }) {
     this.session = session;
@@ -30,7 +31,7 @@ class SlashHandler {
     this.tools = tools;
     this.systemPromptReady = systemPromptReady;
     this.log = logger;
-    this.providerRouter = new ProviderRouter({ config: this.config });
+    this.providerRouter = providerRouter || new ProviderRouter({ config: this.config });
   }
 
   collectSessionTurnsForFlush(sessionKey) {

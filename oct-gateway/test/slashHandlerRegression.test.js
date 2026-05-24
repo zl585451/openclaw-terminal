@@ -15,6 +15,7 @@ function createConnection() {
 
 function createHandler() {
   const thinkModes = new Map();
+  const resolvedModels = [];
   const history = [
     { role: 'user', content: 'hello' },
     { role: 'assistant', content: 'world' },
@@ -56,7 +57,7 @@ function createHandler() {
       supportsThinking: model === 'mock-think',
     }),
   };
-  return new SlashHandler({
+  const handler = new SlashHandler({
     session: {
       getHistory: () => history,
       listSessions: () => ['main'],
@@ -71,8 +72,19 @@ function createHandler() {
     aiLibrary: { checkHealth: async () => false },
     tools: {},
     systemPromptReady: Promise.resolve('system prompt'),
+    providerRouter: {
+      resolve(model) {
+        resolvedModels.push(model);
+        return {
+          provider: providers[config.currentProvider],
+          caps: config.getModelCaps(model),
+        };
+      },
+    },
     logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
   });
+  handler.__resolvedModels = resolvedModels;
+  return handler;
 }
 
 async function main() {
@@ -109,6 +121,7 @@ async function main() {
     const connection = createConnection();
     await handler.handle('/model mock-think', { params: { sessionKey: 'main' } }, connection);
     assert.equal(handler.config.DASHSCOPE_MODEL, 'mock-think');
+    assert.ok(handler.__resolvedModels.includes('mock-think'));
     assert.match(connection.sent[0].payload.text, /已切换为：`mock-think`/);
     assert.match(connection.sent[0].payload.text, /不支持工具调用/);
   }
@@ -132,6 +145,7 @@ async function main() {
     const connection = createConnection();
     await handler.handle('/status', { params: { sessionKey: 'main' } }, connection);
     assert.equal(connection.sent.length, 1);
+    assert.ok(handler.__resolvedModels.includes('other-default'));
     assert.equal(connection.sent[0].payload.isSystemReply, undefined);
     assert.match(connection.sent[0].payload.text, /OCT Gateway/);
     assert.match(connection.sent[0].payload.text, /Model: `other-default`/);
