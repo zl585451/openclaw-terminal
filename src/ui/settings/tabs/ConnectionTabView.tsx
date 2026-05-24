@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { ConnectionTabViewBeginner } from './ConnectionTabView.Beginner';
 
-import { buildAiConnectionTestPayload, type ApiKeysState, type SettingsMode } from '../../../hooks/settings/useApiKeys';
+import {
+  applyChatProviderSelection,
+  buildAiConnectionTestPayload,
+  readChatProviderBaseUrl,
+  type ApiKeysState,
+  type SettingsMode,
+  writeChatProviderBaseUrl,
+} from '../../../hooks/settings/useApiKeys';
 import type { ProviderEntry } from '../providerTypes';
 import {
   getChatProviderApiKeyField,
@@ -808,18 +815,7 @@ export function ConnectionTabView({
                 onChange={(e) => {
                   const id = e.target.value;
                   const p = providers[id];
-                  setApiKeys((k) => ({
-                    ...k,
-                    OCT_PROVIDER: id,
-                    OCT_MODEL: p?.defaultModel || k.OCT_MODEL,
-                    DASHSCOPE_BASE_URL: id === 'deepseek' || id === 'minimax' || id === 'custom' || id === 'google' || id === 'newapi' ? k.DASHSCOPE_BASE_URL : (p?.baseUrl || ''),
-                    DEEPSEEK_BASE_URL: id === 'deepseek' ? (p?.baseUrl || '') : k.DEEPSEEK_BASE_URL,
-                    MINIMAX_BASE_URL: id === 'minimax' ? (p?.baseUrl || '') : k.MINIMAX_BASE_URL,
-                    MOONSHOT_BASE_URL: id === 'moonshot' ? (p?.baseUrl || '') : k.MOONSHOT_BASE_URL,
-                    NEWAPI_BASE_URL: id === 'newapi' ? (p?.baseUrl || '') : k.NEWAPI_BASE_URL,
-                    CUSTOM_BASE_URL: id === 'custom' ? (p?.baseUrl || '') : k.CUSTOM_BASE_URL,
-                    GOOGLE_AI_BASE_URL: id === 'google' ? (p?.baseUrl || '') : k.GOOGLE_AI_BASE_URL,
-                  }));
+                  setApiKeys((k) => applyChatProviderSelection(k, id, p));
                 }}
                 className="settings-input settings-input-focusable settings-input-full"
               >
@@ -1061,25 +1057,9 @@ export function ConnectionTabView({
                   <label>Base URL（通常自动填充，自定义时可修改）</label>
                   <input
                     type="text"
-                    value={
-                      currentProviderId === 'deepseek' ? apiKeys.DEEPSEEK_BASE_URL : 
-                      currentProviderId === 'minimax' ? apiKeys.MINIMAX_BASE_URL :
-                      currentProviderId === 'moonshot' ? apiKeys.MOONSHOT_BASE_URL :
-                      currentProviderId === 'custom' ? apiKeys.CUSTOM_BASE_URL :
-                      currentProviderId === 'google' ? apiKeys.GOOGLE_AI_BASE_URL :
-                      currentProviderId === 'newapi' ? apiKeys.NEWAPI_BASE_URL :
-                      apiKeys.DASHSCOPE_BASE_URL
-                    }
+                    value={readChatProviderBaseUrl(apiKeys, currentProviderId)}
                     onChange={(e) => {
-                      let key: keyof SettingsApiKeysState;
-                      if (currentProviderId === 'deepseek') key = 'DEEPSEEK_BASE_URL';
-                      else if (currentProviderId === 'minimax') key = 'MINIMAX_BASE_URL';
-                      else if (currentProviderId === 'moonshot') key = 'MOONSHOT_BASE_URL';
-                      else if (currentProviderId === 'newapi') key = 'NEWAPI_BASE_URL';
-                      else if (currentProviderId === 'custom') key = 'CUSTOM_BASE_URL';
-                      else if (currentProviderId === 'google') key = 'GOOGLE_AI_BASE_URL';
-                      else key = 'DASHSCOPE_BASE_URL';
-                      setApiKeys((k) => ({ ...k, [key]: e.target.value }));
+                      setApiKeys((k) => writeChatProviderBaseUrl(k, currentProviderId, e.target.value));
                     }}
                     placeholder={currentProviderId === 'custom' ? 'https://your-api.com/v1' : 'https://...'}
                     className="settings-input settings-input-focusable"

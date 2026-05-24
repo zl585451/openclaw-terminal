@@ -194,6 +194,8 @@ type ChatProviderBaseUrlPayload = Pick<
   | 'GOOGLE_AI_BASE_URL'
 >;
 
+type ChatProviderBaseUrlField = keyof ChatProviderBaseUrlPayload;
+
 function resolveProviderId(data: Partial<ApiKeysState>): string {
   if (data.OCT_PROVIDER && String(data.OCT_PROVIDER).trim()) {
     return String(data.OCT_PROVIDER).trim();
@@ -369,6 +371,45 @@ function buildChatProviderBaseUrlPayload(
     CUSTOM_BASE_URL: currentProviderId === 'custom' ? resolvedBaseUrl : '',
     GOOGLE_AI_BASE_URL: currentProviderId === 'google' ? resolvedBaseUrl : '',
   };
+}
+
+function getChatProviderBaseUrlField(providerId: string): ChatProviderBaseUrlField {
+  if (providerId === 'deepseek') return 'DEEPSEEK_BASE_URL';
+  if (providerId === 'minimax') return 'MINIMAX_BASE_URL';
+  if (providerId === 'moonshot') return 'MOONSHOT_BASE_URL';
+  if (providerId === 'newapi') return 'NEWAPI_BASE_URL';
+  if (providerId === 'custom') return 'CUSTOM_BASE_URL';
+  if (providerId === 'google') return 'GOOGLE_AI_BASE_URL';
+  return 'DASHSCOPE_BASE_URL';
+}
+
+export function readChatProviderBaseUrl(apiKeys: ApiKeysState, providerId: string): string {
+  return String(apiKeys[getChatProviderBaseUrlField(providerId)] || '');
+}
+
+export function writeChatProviderBaseUrl(
+  apiKeys: ApiKeysState,
+  providerId: string,
+  baseUrl: string,
+): ApiKeysState {
+  return {
+    ...apiKeys,
+    [getChatProviderBaseUrlField(providerId)]: baseUrl,
+  };
+}
+
+export function applyChatProviderSelection(
+  apiKeys: ApiKeysState,
+  providerId: string,
+  provider: ProviderEntry | undefined,
+): ApiKeysState {
+  const next = {
+    ...apiKeys,
+    OCT_PROVIDER: providerId,
+    OCT_MODEL: provider?.defaultModel || apiKeys.OCT_MODEL,
+  };
+  if (!provider?.baseUrl) return next;
+  return writeChatProviderBaseUrl(next, providerId, provider.baseUrl);
 }
 
 function resolveChatProviderBaseUrl(

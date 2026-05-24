@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildAiConnectionTestPayload, buildGatewayPayload, type ApiKeysState } from '../settings/useApiKeys';
+import {
+  applyChatProviderSelection,
+  buildAiConnectionTestPayload,
+  buildGatewayPayload,
+  readChatProviderBaseUrl,
+  type ApiKeysState,
+  writeChatProviderBaseUrl,
+} from '../settings/useApiKeys';
 import type { ProviderEntry } from '../../ui/settings/providerTypes';
 
 function baseApiKeys(overrides: Partial<ApiKeysState> = {}): ApiKeysState {
@@ -189,5 +196,35 @@ describe('settings gateway payload boundary', () => {
       DEEPSEEK_BASE_URL: provider.baseUrl,
       DASHSCOPE_BASE_URL: '',
     });
+  });
+
+  it('uses shared helpers for provider selection and editable base URL fields', () => {
+    const provider: ProviderEntry = {
+      id: 'moonshot',
+      name: 'Moonshot',
+      baseUrl: 'https://api.moonshot.cn/v1',
+      keyLink: '',
+      keyPlaceholder: '',
+      defaultModel: 'kimi-k2.6',
+      models: [],
+    };
+
+    const selected = applyChatProviderSelection(
+      baseApiKeys({
+        DASHSCOPE_BASE_URL: 'https://coding.dashscope.aliyuncs.com/v1',
+        MOONSHOT_BASE_URL: '',
+      }),
+      'moonshot',
+      provider,
+    );
+
+    expect(selected.OCT_PROVIDER).toBe('moonshot');
+    expect(selected.OCT_MODEL).toBe('kimi-k2.6');
+    expect(readChatProviderBaseUrl(selected, 'moonshot')).toBe(provider.baseUrl);
+    expect(selected.DASHSCOPE_BASE_URL).toBe('https://coding.dashscope.aliyuncs.com/v1');
+
+    const edited = writeChatProviderBaseUrl(selected, 'moonshot', 'https://moonshot.example/v1');
+    expect(edited.MOONSHOT_BASE_URL).toBe('https://moonshot.example/v1');
+    expect(edited.DASHSCOPE_BASE_URL).toBe('https://coding.dashscope.aliyuncs.com/v1');
   });
 });

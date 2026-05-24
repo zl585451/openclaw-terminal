@@ -303,3 +303,28 @@
 
 - `npx vitest run src/hooks/__tests__/settingsPayload.test.ts src/hooks/__tests__/settings.test.ts`
 - `npx tsc --noEmit`
+
+## Phase D-6 前端 Base URL 投影收口
+
+新增/调整：
+
+- `src/hooks/settings/useApiKeys.ts`
+  - 新增 `applyChatProviderSelection()`，统一高级设置页切换 provider 时的 `OCT_PROVIDER` / `OCT_MODEL` / scoped Base URL 写入规则。
+  - 新增 `readChatProviderBaseUrl()` / `writeChatProviderBaseUrl()`，统一高级设置页 Base URL 输入框的读取与写入字段选择。
+
+- `src/ui/settings/tabs/ConnectionTabView.tsx`
+  - 高级设置页不再内联 provider 切换时的 `DASHSCOPE_BASE_URL` / `DEEPSEEK_BASE_URL` / `MINIMAX_BASE_URL` / `MOONSHOT_BASE_URL` / `NEWAPI_BASE_URL` / `CUSTOM_BASE_URL` / `GOOGLE_AI_BASE_URL` 分支矩阵。
+  - 高级 Base URL 输入框不再内联读写字段判断。
+
+- `src/hooks/__tests__/settingsPayload.test.ts`
+  - 增加 provider selection 与 editable Base URL helper 覆盖，锁定切换 Moonshot 不污染 DashScope Base URL 的行为。
+
+影响：
+
+- Phase D 前端设置投影继续向“单 helper + 测试保护”收敛；UI 组件只负责表单展示和事件触发。
+- 后续如果继续调整 provider 字段映射，可以优先修改 helper 和测试，而不是在高级设置 JSX 中重复维护分支。
+
+验证：
+
+- `npx vitest run src/hooks/__tests__/settingsPayload.test.ts src/hooks/__tests__/settings.test.ts`
+- `npx tsc --noEmit`

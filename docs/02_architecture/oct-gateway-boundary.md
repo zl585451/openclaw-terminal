@@ -23,6 +23,7 @@ OCT 核心主线收敛为外部 OmniRoute 客户端；本地多 provider 仅保�
    - Phase D-3 后，Memory 摘要模型的 enabled/baseUrl/apiKey/model 投影与嵌套写入已收口到 `electron/config/memorySummarizer.ts`；`electron/main.ts` 继续只保留 IPC、写文件和 Gateway 重启副作用。
    - Phase D-4 后，高级/新手设置页的连接测试 payload 不再各自内联 provider/baseUrl/apiKey/model 分支，统一通过 `buildAiConnectionTestPayload()` 生成；前端仍只负责投影和触发，不参与 gateway 运行时 provider 解析。
    - Phase D-5 后，前端只保留最小 `EMERGENCY_FALLBACK_PROVIDERS` 作为 Electron bridge / provider list 不可用时的 UI 兜底；完整 provider/model metadata 不再在前端 fallback 中复制。
+   - Phase D-6 后，高级设置页 provider 切换和 Base URL 输入框读写统一通过 `applyChatProviderSelection()` / `readChatProviderBaseUrl()` / `writeChatProviderBaseUrl()`；JSX 不再维护 provider Base URL 字段矩阵。
 
 ## OCT 与 OmniRoute 职责边界
 
