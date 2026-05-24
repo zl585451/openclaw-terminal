@@ -1,22 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useRef } from 'react';
-import { useSettings } from '../contexts/SettingsContext';
-import { usePermissions } from '../contexts/PermissionsContext';
-import { useTheme } from '../themes/ThemeProvider';
-import '../styles/SettingsPanel.css';
+import { useSettings } from '../../contexts/SettingsContext';
+import { usePermissions } from '../../contexts/PermissionsContext';
+import { useTheme } from '../../themes/ThemeProvider';
+import '../../styles/SettingsPanel.css';
 
-import type { SettingsPanelProps, TabId } from '../ui/settings/types';
-import { AdvancedTabView } from '../ui/settings/tabs/AdvancedTabView';
-import { ConnectionTabView } from '../ui/settings/tabs/ConnectionTabView';
-import { InterfaceTabView } from '../ui/settings/tabs/InterfaceTabView';
-import { MemoryTabView } from '../ui/settings/tabs/MemoryTabView';
-import { McpTabView, type McpServerInfo } from '../ui/settings/tabs/McpTabView';
-import { OmniRouteTabView } from '../ui/settings/tabs/OmniRouteTabView';
-import { useAiLibrary } from '../hooks/settings/useAiLibrary';
-import { useApiKeys } from '../hooks/settings/useApiKeys';
-import { useScreenshotShortcut } from '../hooks/settings/useScreenshotShortcut';
-import { useAdvancedSettings } from '../hooks/settings/useAdvancedSettings';
-import type { ApiResult, IpcRendererLike } from '../types/electronAPI';
+import type { SettingsPanelProps, TabId } from './types';
+import { AdvancedTabView } from './tabs/AdvancedTabView';
+import { ConnectionTabView } from './tabs/ConnectionTabView';
+import { InterfaceTabView } from './tabs/InterfaceTabView';
+import { MemoryTabView } from './tabs/MemoryTabView';
+import { McpTabView, type McpServerInfo } from './tabs/McpTabView';
+import { OmniRouteTabView } from './tabs/OmniRouteTabView';
+import { useAiLibrary } from '../../hooks/settings/useAiLibrary';
+import { useApiKeys } from '../../hooks/settings/useApiKeys';
+import { useScreenshotShortcut } from '../../hooks/settings/useScreenshotShortcut';
+import { useAdvancedSettings } from '../../hooks/settings/useAdvancedSettings';
+import type { ApiResult, IpcRendererLike } from '../../types/electronAPI';
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

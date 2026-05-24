@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useCapabilities } from '../../hooks/useCapabilities';
-import { DEFAULT_CARDS, CardDef } from '../../ui/onboarding/CapabilityCards';
-import type { CapabilityId, CapabilityStatus } from '../../core/capabilities/types';
+import { useCapabilities } from '../../../hooks/useCapabilities';
+import { DEFAULT_CARDS, CardDef } from '../CapabilityCards';
+import type { CapabilityId, CapabilityStatus } from '../../../core/capabilities/types';
 import { CapabilityBoundarySheet } from './CapabilityBoundarySheet';
 import './CapabilityBar.css';
 

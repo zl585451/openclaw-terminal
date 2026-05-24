@@ -11,7 +11,7 @@ import './styles/App.css';
 const ChatTab = lazy(() => import('./ui/chat/ChatTab.v2'));
 const SoundTab = lazy(() => import('./components/SoundTab'));
 const ReaperTab = lazy(() => import('./components/ReaperTab'));
-const SettingsPanel = lazy(() => import('./components/SettingsPanel'));
+const SettingsPanel = lazy(() => import('./ui/settings/SettingsPanel'));
 
 const ScriptAdapterApp = lazy(() =>
   import('./modules/script-adapter').then((module) => ({ default: module.ScriptAdapterApp }))
