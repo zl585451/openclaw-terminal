@@ -14,29 +14,13 @@ import ActivityPanel from '../../components/ActivityPanel';
 import AmyAvatar from '../../components/AmyAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown, stabilizeStreamingMarkdown } from '../../utils/markdownPreprocess';
+import { formatTime, formatFullTime } from '../../utils/formatTime';
 import type { ChatMessage } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
 import StreamingMarkdownContent from './StreamingMarkdownContent';
 import { useMsgParse } from '../../hooks/useMsgParse';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
-
-const formatTime = (timestamp: string | number | undefined): string => {
-  if (timestamp === undefined || timestamp === null) return '';
-  const d = new Date(timestamp);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-};
-
-const formatFullTime = (timestamp: string | number | undefined): string => {
-  if (timestamp === undefined || timestamp === null) return '';
-  const d = new Date(timestamp);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
-};
 
 function buildFinalizedTimeline(
   msg: ChatMessage,

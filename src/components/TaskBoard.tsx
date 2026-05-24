@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import '../styles/TaskBoard.css';
+import { formatDateDisplay } from '../utils/formatTime';
 
 const ipcRenderer =
   typeof window !== 'undefined' && typeof (window as any).require === 'function'
@@ -92,16 +93,6 @@ function dedupeTasks(taskList: TaskItem[]): TaskItem[] {
 
 function getTodayStr(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function formatDateDisplay(dateStr: string): string {
-  const d = new Date(dateStr);
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const wd = weekdays[d.getDay()];
-  return `${y}-${m}-${day} ${wd}`;
 }
 
 const TaskBoardComponent: React.FC<TaskBoardProps> = ({ visible = true, onClose, compact = false }) => {

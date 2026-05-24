@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApiKeys } from '../../../hooks/settings/useApiKeys';
+import { formatTimestamp } from '../../../utils/formatTime';
 
 interface Candidate {
   provider: string;
@@ -253,11 +254,6 @@ export const OmniRouteTabView: React.FC = () => {
     if (status === 'healthy') return 'status-badge-success';
     if (status === 'degraded') return 'status-badge-warning';
     return 'status-badge-error';
-  };
-
-  const formatTimestamp = (ts: number) => {
-    const d = new Date(ts);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
   };
 
   const renderRoutingTab = () => {

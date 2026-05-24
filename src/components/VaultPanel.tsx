@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, RefObject } from 'react';
 import { createPortal } from 'react-dom';
+import { formatTime } from '../utils/formatTime';
 
 interface VaultItem {
   refName: string;
@@ -283,12 +284,6 @@ export default function VaultPanel({ vaultOpen, setVaultOpen, onStatusChange, co
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [vaultOpen, setVaultOpen, containerRef]);
-
-  const formatTime = (ts: number | null) => {
-    if (!ts) return '从未使用';
-    const d = new Date(ts);
-    return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  };
 
   const drawerContent = (
     <div
