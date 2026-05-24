@@ -1,8 +1,8 @@
 # Render Blocks Schema v3.0
 
-> Status: PLANNED  
-> Date: 2026-05-19  
-> Scope: Schema and protocol definition only. Runtime support is implemented in later phases.
+> Status: ACTIVE  
+> Date: 2026-05-24  
+> Scope: Gateway final replies normalize `render_blocks` / legacy render tags into validated `renderBlocks`; frontend treats `renderBlocks` as the canonical render source when present, with legacy text parsing retained as fallback.
 
 ## 1. Purpose
 
@@ -48,7 +48,7 @@ Rules:
 - `version` must be `"3.0"`.
 - `blocks` must be a non-empty array.
 - Block order is render order.
-- A message may contain Markdown text outside the fenced block during migration, but the Gateway should prefer validated `blocks` when present.
+- A message may contain Markdown text outside the fenced block during migration, but the Gateway must prefer validated `blocks` when present and send them on the final `chat.done` payload as `renderBlocks`.
 - Invalid JSON must degrade to safe Markdown, not crash the chat.
 
 ## 3. Shared Fields
@@ -258,6 +258,37 @@ Gateway and frontend implementations should degrade safely:
 | Invalid JSON | Treat the original fenced block as Markdown text |
 | Unknown block type | Convert that block to `markdown` with a visible safe summary |
 | Missing required field | Drop the invalid block or convert it to `markdown` |
+
+## 6. Transport Contract
+
+Final assistant replies may include structured render metadata:
+
+```json
+{
+  "type": "event",
+  "event": "chat",
+  "payload": {
+    "text": "original assistant text",
+    "state": "done",
+    "done": true,
+    "turnId": "turn_x",
+    "renderBlocks": [
+      { "type": "markdown", "content": "下面是结果。" }
+    ],
+    "renderProtocol": {
+      "version": "3.0",
+      "source": "render_blocks",
+      "errors": []
+    }
+  }
+}
+```
+
+Rules:
+
+- `renderBlocks` is emitted only when gateway normalization returns non-markdown structured blocks with no validation errors.
+- `text` remains available for transcript, copy, storage, and fallback display.
+- Frontend rendering priority is `message.renderBlocks` first, then legacy text parser, then plain Markdown.
 | Unsafe `value` | Replace `value` with `label` or drop the item |
 | Too many items | Truncate to the block maximum and preserve order |
 | Multiple `clarify_card` blocks | Keep the first valid one, degrade the rest to Markdown |

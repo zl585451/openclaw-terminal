@@ -11,6 +11,7 @@ import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTypes';
+import type { RenderBlock } from '../types/renderProtocol';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
 import { stripThinkModeMarker } from '../utils/socraticTemplates';
@@ -418,7 +419,7 @@ export function useMessages({
       }
     },
 
-    onChatDone: (content, systemReplyHint, turnId) => {
+    onChatDone: (content, systemReplyHint, turnId, renderBlocks?: RenderBlock[]) => {
       const currentRequestId = lastSentRequestId.current;
       if (turnId && currentRequestId && turnId !== currentRequestId) return;
       clearRoundTimeout();
@@ -517,7 +518,7 @@ export function useMessages({
         if (last?.role === 'assistant' && last?.isStreaming) {
           return cleanedPrev.map((msg, idx) =>
             idx === cleanedPrev.length - 1
-              ? { ...msg, content: finalStreamContent, isStreaming: false }
+              ? { ...msg, content: finalStreamContent, isStreaming: false, renderBlocks }
               : msg
           );
         }
@@ -536,6 +537,7 @@ export function useMessages({
                 isStreaming: false,
                 isSystemReply: systemReply,
                 timestamp: Date.now(),
+                renderBlocks,
               },
           ];
         }

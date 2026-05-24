@@ -5,6 +5,7 @@
 > **2026-04-20**：澄清“单一格式 vs 多标签”历史口径冲突，明确三种模式；补充 `[clarify_card]` 协议口径。
 > **2026-05-19 / v3 Phase 1**：新增 Render Blocks Schema 作为后续结构化渲染正式路径；本文档中的标签协议继续作为 legacy fallback。
 > **2026-05-19 / v3 Phase 6**：自动检测降级为 legacy fallback；新输出应优先使用 `render_blocks` 或成对标签，裸符号仅保留兼容。
+> **2026-05-24 / Phase E**：Gateway final reply 会把验证通过的 `render_blocks` / legacy 标签规范化为 `payload.renderBlocks`；前端优先消费 `message.renderBlocks`，本文标签协议保留为 fallback。
 
 ---
 
@@ -12,7 +13,7 @@
 
 OCT 前端支持 **6 种成对标签**，AMY 可在一条消息中使用多个标签，每个标签内的内容会被解析为独立的交互组件，标签外的内容作为正文保留。
 
-Render Protocol v3 的正式结构化路径见：`docs/03_specs/RENDER_BLOCKS_SCHEMA.md`。在 v3 迁移期间，优先让 Gateway 产生或校验 `render_blocks`；当前 `[pills]`、`[tasklist]`、`[question]`、`[clarify_card]` 等标签仍作为兼容兜底继续生效。
+Render Protocol v3 的正式结构化路径见：`docs/03_specs/RENDER_BLOCKS_SCHEMA.md`。Gateway final reply 会产生 `payload.renderBlocks` 作为前端渲染优先来源；当前 `[pills]`、`[tasklist]`、`[question]`、`[clarify_card]` 等标签仍作为兼容兜底继续生效。
 
 > **模式区分**：
 > - 成对标签模式下支持多段标签混排（本文档描述的协议）

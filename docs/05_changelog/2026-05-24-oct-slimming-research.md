@@ -403,4 +403,40 @@
 验证：
 
 - `npx vitest run src/hooks/__tests__/recommendedModels.test.ts src/hooks/__tests__/settings.test.ts src/hooks/__tests__/settingsPayload.test.ts`
+
+## Phase E-1 Render Blocks 传输协议收口
+
+新增/调整：
+
+- `src/types/renderProtocol.ts`
+  - 新增前端共享 Render Protocol 类型源。
+  - `src/ui/chat/chatTypes.ts` 改为复用并 re-export `RenderBlock` / `RenderBlockItem`，避免 chat UI 独占协议类型定义。
+
+- `src/types/gateway.ts`
+  - `GatewayMessagePayload` 显式声明 `renderBlocks` 与 `renderProtocol`。
+  - Gateway event 类型现在能表达 final chat payload 的结构化渲染结果。
+
+- `oct-gateway/runtime/chatRequestHandler.js`
+  - 在最终 `chat.done` payload 发送前调用 `renderBlocksNormalizer`。
+  - 当 gateway 解析到无错误的 `render_blocks` 或 legacy render tags 时，随 final payload 发送 `renderBlocks` / `renderProtocol`。
+  - 原 `text` 保留，用于 transcript、复制、存储与 fallback。
+
+- `src/hooks/useWebSocket.ts` / `src/hooks/useMessages.ts`
+  - `useWebSocket` 从 final chat payload 提取 `renderBlocks`。
+  - `useMessages` 将 `renderBlocks` 挂到最终 assistant message；`MessageList` 已有逻辑会优先用 `msg.renderBlocks` 渲染，legacy text parser 退为 fallback。
+
+- `docs/03_specs/RENDER_BLOCKS_SCHEMA.md` / `docs/03_specs/RENDER_PROTOCOL.md`
+  - 将 Render Blocks 从 planned schema 更新为 active transport contract。
+
+影响：
+
+- Render Protocol v3 不再只停留在 golden test / docs；gateway final payload 到 frontend message 已有一条结构化主路径。
+- Phase E 仍保留 legacy tags 和自动检测作为兼容 fallback，没有删除旧解析器。
+
+验证：
+
+- `node oct-gateway/test/chatRequestHandler.test.js`
+- `node oct-gateway/test/renderBlocksNormalizer.test.js`
+- `npx vitest run src/ui/chat/renderProtocolV3Golden.test.ts src/ui/chat/renderBlocksAdapter.test.ts`
+- `npx tsc --noEmit`
 - `npx tsc --noEmit`

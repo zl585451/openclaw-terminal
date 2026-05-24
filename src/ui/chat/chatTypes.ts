@@ -1,6 +1,9 @@
 // ChatTab 相关核心类型（单一来源）
 
 import type React from 'react';
+import type { RenderBlock } from '../../types/renderProtocol';
+
+export type { RenderBlock, RenderBlockItem } from '../../types/renderProtocol';
 
 export interface ToolEventItem {
   callId: string;
@@ -24,23 +27,6 @@ export interface UploadedFile {
   /** 文件绝对路径，AMY 可用 read_file 读取；无 path 时（如拖入的非本地文件）不可用 */
   path?: string;
 }
-
-export interface RenderBlockItem {
-  id?: string;
-  label: string;
-  value?: string;
-}
-
-export type RenderBlock =
-  | { type: 'markdown'; id?: string; content: string }
-  | { type: 'code'; id?: string; language?: string; content: string }
-  | { type: 'table'; id?: string; columns: string[]; rows: string[][] }
-  | { type: 'tasklist'; id?: string; title?: string; prompt?: string; items: RenderBlockItem[] }
-  | { type: 'pills'; id?: string; title?: string; prompt?: string; items: RenderBlockItem[] }
-  | { type: 'checkbox'; id?: string; title?: string; prompt?: string; items: RenderBlockItem[] }
-  | { type: 'question'; id?: string; title?: string; prompt?: string; items: RenderBlockItem[] }
-  | { type: 'clarify_card'; id?: string; title?: string; fields: unknown[] }
-  | { type: 'notice'; id?: string; variant?: 'info' | 'success' | 'warning' | 'error'; content: string };
 
 export interface ChatMessage {
   id: number;

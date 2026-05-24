@@ -12,6 +12,7 @@ import type {
   GatewayToolPayload,
   GatewayUsagePayload,
 } from '../types/gateway';
+import type { RenderBlock } from '../types/renderProtocol';
 
 const noopIpcRenderer: IpcRendererLike = {
   invoke: <T = unknown>() => Promise.resolve(null as T),
@@ -26,7 +27,7 @@ const ipcRenderer: IpcRendererLike = typeof window !== 'undefined' && typeof win
 
 interface UseWebSocketOptions {
   onChatDelta: (content: string, isDelta: boolean, isSystemReply: boolean, turnId?: string) => void;
-  onChatDone: (content: string, isSystemReply: boolean, turnId?: string) => void;
+  onChatDone: (content: string, isSystemReply: boolean, turnId?: string, renderBlocks?: RenderBlock[]) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: GatewayToolPayload) => void;
   onClarifyOpen?: (spec: ClarifyCardSpec) => void;
@@ -97,6 +98,12 @@ function extractEmbeddedUsage(data: GatewayEvent): GatewayUsagePayload | null {
   const dataUsage = nestedRecord(data, 'data')?.usage;
   const usage = payloadUsage ?? dataUsage ?? data.usage ?? null;
   return isRecord(usage) ? usage as GatewayUsagePayload : null;
+}
+
+function extractRenderBlocks(data: GatewayEvent): RenderBlock[] | undefined {
+  const payload = nestedRecord(data, 'payload') || nestedRecord(data, 'data') || data;
+  const blocks = isRecord(payload) ? payload.renderBlocks : undefined;
+  return Array.isArray(blocks) && blocks.length > 0 ? blocks as RenderBlock[] : undefined;
 }
 
 export function useWebSocket(options: UseWebSocketOptions) {
@@ -227,7 +234,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
         data.isSystemReply === true;
 
       if (done) {
-        opt.onChatDone(content, isSystemReply, turnId);
+        opt.onChatDone(content, isSystemReply, turnId, extractRenderBlocks(data));
       } else {
         opt.onChatDelta(content, isDelta, isSystemReply, turnId);
       }

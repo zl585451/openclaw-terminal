@@ -1,6 +1,7 @@
 import type { WorkbenchRoundtripContext } from '../workbench/types';
 import type { UploadedFile } from '../ui/chat/chatTypes';
 import type { ActiveProject } from '../contexts/ProjectContext';
+import type { RenderBlock } from './renderProtocol';
 
 export interface GatewayCapabilities {
   model?: string;
@@ -59,6 +60,12 @@ export interface GatewayMessagePayload {
   elapsedMs?: number;
   turnId?: string;
   isSystemReply?: boolean;
+  renderBlocks?: RenderBlock[];
+  renderProtocol?: {
+    version?: string;
+    source?: 'render_blocks' | 'legacy' | 'markdown' | string;
+    errors?: string[];
+  };
   capabilities?: GatewayCapabilities;
   model?: string;
   toolName?: string | null;

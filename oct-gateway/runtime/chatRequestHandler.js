@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeRenderBlocks } = require('../services/renderBlocksNormalizer');
+
 function createChatRequestHandler({
   orchestrator,
   contextBuilder,
@@ -194,6 +196,21 @@ function createChatRequestHandler({
         if (cancelled || !connection.isOpen()) return;
         const normalizedReply = normalizeReply(reply);
         const donePayload = { text: normalizedReply, state: 'done', done: true, turnId: doneTurnId || turnId };
+        const renderProtocol = normalizeRenderBlocks(normalizedReply);
+        if (
+          renderProtocol
+          && renderProtocol.source !== 'markdown'
+          && Array.isArray(renderProtocol.blocks)
+          && renderProtocol.blocks.length > 0
+          && (!Array.isArray(renderProtocol.errors) || renderProtocol.errors.length === 0)
+        ) {
+          donePayload.renderBlocks = renderProtocol.blocks;
+          donePayload.renderProtocol = {
+            version: renderProtocol.version,
+            source: renderProtocol.source,
+            errors: renderProtocol.errors || [],
+          };
+        }
         if (usage) donePayload.usage = usage;
         if (responseModel) donePayload.model = responseModel;
         connection.send({ type: 'event', event: 'chat', payload: donePayload });

@@ -70,7 +70,11 @@ async function testNormalChatLifecycle() {
         handlers.onToolEvent({ type: 'workbench', action: 'open', payload: { id: 'canvas-1' } });
         handlers.onBeforeDone();
         handlers.onDone({
-          reply: '  final reply  ',
+          reply: [
+            '```render_blocks',
+            '{"version":"3.0","blocks":[{"type":"markdown","content":"final reply"},{"type":"pills","items":[{"label":"继续","value":"继续"},{"label":"停止","value":"停止"}]}]}',
+            '```',
+          ].join('\n'),
           usage: { total_tokens: 7 },
           model: 'test-model',
           turnId: 'done-turn',
@@ -131,10 +135,25 @@ async function testNormalChatLifecycle() {
   });
   const done = connection.sent.find((item) => item.event === 'chat' && item.payload.done === true);
   assert.deepEqual(done.payload, {
-    text: 'final reply',
+    text: '```render_blocks\n{"version":"3.0","blocks":[{"type":"markdown","content":"final reply"},{"type":"pills","items":[{"label":"继续","value":"继续"},{"label":"停止","value":"停止"}]}]}\n```',
     state: 'done',
     done: true,
     turnId: 'done-turn',
+    renderBlocks: [
+      { type: 'markdown', content: 'final reply' },
+      {
+        type: 'pills',
+        items: [
+          { label: '继续' },
+          { label: '停止' },
+        ],
+      },
+    ],
+    renderProtocol: {
+      version: '3.0',
+      source: 'render_blocks',
+      errors: [],
+    },
     usage: { total_tokens: 7 },
     model: 'test-model',
   });
