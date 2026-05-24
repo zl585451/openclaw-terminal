@@ -485,11 +485,13 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   useEffect(() => {
     if (!isStreamingMsg && bubbleRef.current) {
       const el = bubbleRef.current;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          el.style.minHeight = '';
+      let raf1: number, raf2: number;
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          if (el.isConnected) el.style.minHeight = '';
         });
       });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
     }
   }, [isStreamingMsg]);
 
@@ -713,7 +715,16 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
       {isStreamingMsg && <TypewriterCursor show />}
     </div>
   );
-});
+}, (prev, next) =>
+    prev.msg.id === next.msg.id &&
+    prev.msg.isStreaming === next.msg.isStreaming &&
+    prev.textToShow === next.textToShow &&
+    prev.isStreamingMsg === next.isStreamingMsg &&
+    prev.isLastAssistant === next.isLastAssistant &&
+    prev.markdownComponents === next.markdownComponents &&
+    prev.segments === next.segments &&
+    prev.optionsToShow === next.optionsToShow
+);
 
 /** 单行消息外壳（不设 memo：子树由 ChatMessageItem 控制） */
 function MessageRow({
