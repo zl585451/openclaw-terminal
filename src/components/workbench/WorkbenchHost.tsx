@@ -1,6 +1,5 @@
 import WorkbenchPanel from './WorkbenchPanel';
 import { useWorkbench } from '../../workbench/WorkbenchContext';
-import '../canvas/CanvasHost.css';
 
 interface WorkbenchHostProps {
   enabled?: boolean;
