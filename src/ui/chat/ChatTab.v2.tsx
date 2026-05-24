@@ -36,6 +36,8 @@ import { useTtsPlayback } from '../../hooks/useTtsPlayback';
 import { useImageStudio } from '../../hooks/useImageStudio';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useCapabilityActions } from '../../hooks/useCapabilityActions';
+import { useDesktopNotification } from '../../hooks/useDesktopNotification';
+import { useLogPathInit } from '../../hooks/useLogPathInit';
 import { parseClarifyCard } from '../../core/clarifyCard/parser';
 import type { ClarifyCardSpec } from '../../core/clarifyCard/types';
 import { CapabilityBar } from '../../components/capabilityBar/CapabilityBar';
@@ -46,6 +48,7 @@ import { ScrollToBottomButton } from './ScrollToBottomButton';
 /** ChatTab.v2：打字机逻辑已迁移到 useTypewriter hook */
 // const OCT_V2_DISABLE_TYPEWRITER = false; // 已不再需要
 
+// @ts-ignore 保留因未来或其他模块可能调用
 const ipcRenderer =
   typeof window !== 'undefined' && typeof (window as any).require === 'function'
     ? (window as any).require('electron').ipcRenderer
@@ -146,7 +149,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   // ── UI-only state (消息状态已迁移到 useMessages) ────────────────────────
   const [showSettings, setShowSettings] = useState(false);
-  const [, setLogPath] = useState('');
   const [injectInputText, setInjectInputText] = useState<string | null>(null);
   const [capBarSetupTarget, setCapBarSetupTarget] = useState<CapabilityId | null>(null);
 
@@ -332,42 +334,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     }
   }, [messages.length, inquiry.reset]);
 
-
-  useEffect(() => {
-    ipcRenderer.invoke('get-env', 'OPENCLAW_LOG_PATH').then((p: string) => {
-        if (p) setLogPath(p);
-        // 自动启动日志监控
-        ipcRenderer.invoke('start-log-watch', p || '');
-      });
-  }, []);
-
-
-
-
-  const prevStreamingRef = useRef(false);
-  const lastAssistantMsgIdRef = useRef(0);
-
-  useEffect(() => {
-    const last = messages[messages.length - 1];
-    if (last?.role === 'assistant' && last.id !== lastAssistantMsgIdRef.current) {
-      lastAssistantMsgIdRef.current = last.id;
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    if (prevStreamingRef.current && !msgs.isStreaming) {
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg?.role === 'assistant' && lastMsg.content) {
-        if (!windowFocused) {
-          const preview = lastMsg.content.slice(0, 30).replace(/\s+/g, ' ') + (lastMsg.content.length > 30 ? '...' : '');
-          ipcRenderer.invoke('show-notification', { title: `${settings.aiName || 'OpenClaw'} 回复`, body: preview });
-        }
-        playTTSForMessage(lastMsg);
-      }
-    }
-    prevStreamingRef.current = msgs.isStreaming;
-  }, [msgs.isStreaming, messages, windowFocused, playTTSForMessage]);
-
+  useLogPathInit();
+  useDesktopNotification({
+    isStreaming: msgs.isStreaming,
+    messages,
+    windowFocused,
+    aiName: settings.aiName,
+    playTTSForMessage
+  });
 
   const handleClearHistory = useCallback(() => {
     if (!window.confirm('确认清空所有聊天记录？')) return;
