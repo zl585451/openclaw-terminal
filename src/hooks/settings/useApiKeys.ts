@@ -59,127 +59,53 @@ export interface ApiKeysState {
   OCT_USE_EXTERNAL_OMNIROUTE: boolean;
 }
 
-const FALLBACK_PROVIDERS: ProvidersState = {
-  'bailian-coding': {
-    id: 'bailian-coding',
-    name: '阿里云百炼 Coding Plan',
-    baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
-    keyLink: 'https://bailian.console.aliyun.com/',
-    keyPlaceholder: 'sk-sp-xxxxxxxxxxxxxxxx',
-    defaultModel: 'qwen3.5-plus',
-    models: [
-      { id: 'qwen3.5-plus', label: 'Qwen 3.5 Plus（推荐）', tools: true, thinking: true },
-      { id: 'qwen3-coder-next', label: 'Qwen 3 Coder Next（代码）', tools: true, thinking: false },
-      { id: 'kimi-k2.5', label: 'Kimi K2.5（月之暗面）', tools: true, thinking: false },
-      { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', tools: true, thinking: false },
-    ],
-  },
-  deepseek: {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com/v1',
-    keyLink: 'https://platform.deepseek.com/',
-    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
-    defaultModel: 'deepseek-v4-flash',
-    models: [
-      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash（通用，推荐）', tools: true, thinking: false },
-      { id: 'deepseek-v4-pro',   label: 'DeepSeek V4 Pro（深度推理）',    tools: false, thinking: true },
-      { id: 'deepseek-chat',     label: 'DeepSeek Chat（旧版）',          tools: true, thinking: false },
-      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner（旧版）',      tools: false, thinking: true },
-    ],
-  },
-  minimax: {
-    id: 'minimax',
-    name: 'MiniMax',
-    baseUrl: 'https://api.minimaxi.com/v1',
-    keyLink: 'https://platform.minimaxi.com/docs/token-plan/intro',
-    keyPlaceholder: 'sk-cp-xxxxxxxxxxxxxxxx',
-    defaultModel: 'MiniMax-M2.7',
-    models: [
-      { id: 'MiniMax-M2.7', label: 'MiniMax M2.7（最新，自我迭代）', tools: true, thinking: false },
-      { id: 'MiniMax-M2.5', label: 'MiniMax M2.5（顶尖性能）', tools: true, thinking: false },
-      { id: 'MiniMax-M2.5-highspeed', label: 'MiniMax M2.5 极速版（100tps）', tools: true, thinking: false },
-    ],
-  },
-  siliconflow: {
-    id: 'siliconflow',
-    name: '硅基流动 SiliconFlow',
-    baseUrl: 'https://api.siliconflow.cn/v1',
-    keyLink: 'https://cloud.siliconflow.cn/',
-    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
-    defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
-    models: [
-      { id: 'Qwen/Qwen2.5-72B-Instruct', label: 'Qwen 2.5 72B（免费）', tools: true, thinking: false },
-      { id: 'deepseek-ai/DeepSeek-V3', label: 'DeepSeek V3', tools: false, thinking: false },
-      { id: 'deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1（推理）', tools: false, thinking: true },
-    ],
-  },
-  moonshot: {
-    id: 'moonshot',
-    name: 'Kimi 开放平台',
-    baseUrl: 'https://api.moonshot.cn/v1',
-    keyLink: 'https://platform.kimi.com/',
-    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
-    defaultModel: 'kimi-k2.6',
-    models: [
-      { id: 'kimi-k2.6', label: 'Kimi K2.6（官方最新）', tools: true, thinking: false },
-      { id: 'kimi-k2.5', label: 'Kimi K2.5（稳定）', tools: true, thinking: false },
-      { id: 'kimi-k2-turbo-preview', label: 'Kimi K2 Turbo（高速）', tools: true, thinking: false },
-      { id: 'moonshot-v1-128k', label: 'Moonshot V1 128K（兼容）', tools: true, thinking: false },
-    ],
-  },
-  newapi: {
-    id: 'newapi',
-    name: 'New API 外部分发网关',
-    baseUrl: 'http://127.0.0.1:3000/v1',
-    keyLink: 'https://docs.newapi.ai/',
-    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
-    defaultModel: '__custom__',
-    models: [
-      { id: '__custom__', label: '✏️ New API 模型 ID（后台渠道模型名）', tools: true, thinking: false, custom: true },
-      { id: 'qwen-plus', label: 'qwen-plus（百炼｜稳定通用）', tools: true, thinking: false },
-      { id: 'qwen-turbo', label: 'qwen-turbo（百炼｜低延迟）', tools: true, thinking: false },
-      { id: 'qwen-max', label: 'qwen-max（百炼｜高质量）', tools: true, thinking: false },
-      { id: 'qwen3.5-plus', label: 'qwen3.5-plus（百炼｜新一代通用）', tools: true, thinking: false },
-      { id: 'qwen3.6-flash-2026-04-16', label: 'qwen3.6-flash-2026-04-16（百炼｜高速）', tools: true, thinking: false },
-      { id: 'qwen3.6-plus-2026-04-02', label: 'qwen3.6-plus-2026-04-02（百炼｜通用增强）', tools: true, thinking: false },
-      { id: 'qwen3-coder-plus-2025-09-23', label: 'qwen3-coder-plus-2025-09-23（百炼｜代码）', tools: true, thinking: false },
-      { id: 'deepseek-v4-flash', label: 'deepseek-v4-flash（百炼｜快速）', tools: true, thinking: false },
-      { id: 'deepseek-v4-pro', label: 'deepseek-v4-pro（百炼｜高质量）', tools: true, thinking: false },
-      { id: 'doubao-seed-2-0-lite-260215', label: 'doubao-seed-2-0-lite-260215（火山｜高速）', tools: true, thinking: false },
-      { id: 'doubao-seed-2-0-pro-260215', label: 'doubao-seed-2-0-pro-260215（火山｜高质量）', tools: true, thinking: false },
-      { id: 'doubao-1-5-lite-32k-250115', label: 'doubao-1-5-lite-32k-250115（火山｜稳定）', tools: true, thinking: false },
-      { id: 'doubao-1-5-pro-32k-250115', label: 'doubao-1-5-pro-32k-250115（火山｜稳定增强）', tools: true, thinking: false },
-    ],
-    allowCustomModel: true,
-  },
-  google: {
-    id: 'google',
-    name: 'Google Gemini（Vertex AI 原生）',
-    baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/YOUR_PROJECT_ID/locations/us-central1/endpoints/openapi',
-    keyLink: 'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
-    keyPlaceholder: 'AQ.xxxxx 或绑定 Vertex 的 API Key',
-    defaultModel: 'google/gemini-2.5-flash',
-    models: [
-      { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash（推荐）', tools: true, thinking: true },
-      { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite（低延迟）', tools: true, thinking: true },
-      { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro（深度推理）', tools: true, thinking: true },
-      { id: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash（预览）', tools: true, thinking: true },
-      { id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash-Lite（预览）', tools: true, thinking: true },
-      { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: true, thinking: true },
-      { id: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash（兼容）', tools: true, thinking: false },
-      { id: 'google/gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite（低成本）', tools: true, thinking: false },
-    ],
-  },
-  custom: {
-    id: 'custom',
-    name: '自定义 OpenAI 兼容服务',
-    baseUrl: '',
-    keyLink: '',
-    keyPlaceholder: 'your-api-key',
-    defaultModel: '__custom__',
-    models: [{ id: '__custom__', label: '✏️ 自定义模型（手动输入）', tools: true, thinking: false }],
-  },
+function emergencyProvider(
+  id: string,
+  name: string,
+  baseUrl: string,
+  keyPlaceholder: string,
+  keyLink: string,
+  defaultModel: string,
+  allowCustomModel = false,
+): ProviderEntry {
+  return {
+    id,
+    name,
+    baseUrl,
+    keyLink,
+    keyPlaceholder,
+    defaultModel,
+    models: defaultModel
+      ? [{ id: defaultModel, label: defaultModel, tools: true, thinking: false }]
+      : [],
+    allowCustomModel,
+  };
+}
+
+const EMERGENCY_FALLBACK_PROVIDERS: ProvidersState = {
+  'bailian-coding': emergencyProvider(
+    'bailian-coding',
+    '阿里云百炼 Coding Plan',
+    'https://coding.dashscope.aliyuncs.com/v1',
+    'sk-sp-xxxxxxxxxxxxxxxx',
+    'https://bailian.console.aliyun.com/',
+    'qwen3.5-plus',
+  ),
+  deepseek: emergencyProvider('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://platform.deepseek.com/', 'deepseek-v4-flash'),
+  minimax: emergencyProvider('minimax', 'MiniMax', 'https://api.minimaxi.com/v1', 'sk-cp-xxxxxxxxxxxxxxxx', 'https://platform.minimaxi.com/docs/token-plan/intro', 'MiniMax-M2.7'),
+  siliconflow: emergencyProvider('siliconflow', '硅基流动 SiliconFlow', 'https://api.siliconflow.cn/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://cloud.siliconflow.cn/', 'Qwen/Qwen2.5-72B-Instruct'),
+  moonshot: emergencyProvider('moonshot', 'Kimi 开放平台', 'https://api.moonshot.cn/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://platform.kimi.com/', 'kimi-k2.6'),
+  newapi: emergencyProvider('newapi', 'New API 外部分发网关', 'http://127.0.0.1:3000/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://docs.newapi.ai/', '__custom__', true),
+  google: emergencyProvider(
+    'google',
+    'Google Gemini（Vertex AI 原生）',
+    'https://aiplatform.googleapis.com/v1beta1/projects/YOUR_PROJECT_ID/locations/us-central1/endpoints/openapi',
+    'AQ.xxxxx 或绑定 Vertex 的 API Key',
+    'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
+    'google/gemini-2.5-flash',
+    true,
+  ),
+  custom: emergencyProvider('custom', '自定义 OpenAI 兼容服务', '', 'your-api-key', '', '__custom__', true),
 };
 
 type GatewayConfigPayload = {
@@ -356,7 +282,7 @@ function providerSnapshotForBaseline(
   providerId: string,
   providers: ProvidersState,
 ): ProviderEntry | undefined {
-  return providers[providerId] || FALLBACK_PROVIDERS[providerId];
+  return providers[providerId] || EMERGENCY_FALLBACK_PROVIDERS[providerId];
 }
 
 export function buildGatewayPayload(
@@ -625,14 +551,14 @@ export function useApiKeys() {
           if (result.success && result.data && Object.keys(result.data).length > 0) {
             setProviders(result.data || {});
           } else {
-            setProviders(FALLBACK_PROVIDERS);
+            setProviders(EMERGENCY_FALLBACK_PROVIDERS);
           }
         })
         .catch(() => {
-          setProviders(FALLBACK_PROVIDERS);
+          setProviders(EMERGENCY_FALLBACK_PROVIDERS);
         });
     } else {
-      setProviders(FALLBACK_PROVIDERS);
+      setProviders(EMERGENCY_FALLBACK_PROVIDERS);
     }
   }, []);
 

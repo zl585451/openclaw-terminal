@@ -284,3 +284,22 @@
 验证：
 
 - `npx vitest run src/hooks/__tests__/settingsPayload.test.ts`
+
+## Phase D-5 前端 Provider fallback 瘦身
+
+调整：
+
+- `src/hooks/settings/useApiKeys.ts`
+  - 将原前端 `FALLBACK_PROVIDERS` 从完整模型目录降级为 `EMERGENCY_FALLBACK_PROVIDERS`。
+  - emergency fallback 只保留 Settings UI 在 Electron bridge / `getProviderList()` 不可用时所需的最小字段：`id/name/baseUrl/keyLink/keyPlaceholder/defaultModel/allowCustomModel`，不再复制 gateway 的完整模型列表。
+  - 正常桌面运行仍以 Electron `getProviderList()` 返回的 gateway provider metadata 为展示权威。
+
+影响：
+
+- 前端不再携带一份大体量、易过期的完整 provider/model registry。
+- 浏览器无 Electron bridge 或 provider list 读取失败时仍有最低限度 UI 兜底，但推荐模型/完整模型目录不再由前端 emergency fallback 维护。
+
+验证：
+
+- `npx vitest run src/hooks/__tests__/settingsPayload.test.ts src/hooks/__tests__/settings.test.ts`
+- `npx tsc --noEmit`
