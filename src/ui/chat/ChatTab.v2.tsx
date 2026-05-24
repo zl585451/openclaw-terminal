@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 // xterm 已完全移除以修复闪退问题
 import '../../styles/ChatTab.css';
-import '../../components/ResponseTray.css';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { useGateway } from '../../hooks/useGateway';
 import { useMessages } from '../../hooks/useMessages';
