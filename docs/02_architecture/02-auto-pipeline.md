@@ -18,30 +18,30 @@
 
 ---
 
-## 2.2 自我评估评分
+## 2.2 自我评估评分（已删除）
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | 用 AI 对 AMY 的回复打 1-5 分，记录优缺点 |
-| 文件 | `oct-gateway/self_eval.js` → `evaluateReply()` |
-| 调用链 | onDone → evaluateReply(userMsg, fullReply) → AI 打分 → memory.writeMemory() |
-| 写到哪 | `core://agent/self_eval/YYYY-MM-DD/HH-MM-SS` |
-| 额外消耗 | 每条回复额外调一次 AI API（评估用） |
-| 验证 | 终端看到 `[SelfEval] 评分：X/5` |
-| 状态 | 🔇 已停用（2026-03-20，评分不准确） |
+| 做什么 | 历史上用 AI 对 AMY 的回复打 1-5 分，记录优缺点 |
+| 文件 | 已删除（2026-05-25 瘦身：移除 `oct-gateway/self_eval.js`） |
+| 调用链 | 已删除；不再从 onDone 触发 |
+| 写到哪 | 历史数据可能仍存在于 `core://agent/self_eval/YYYY-MM-DD/HH-MM-SS`，但不再新写入 |
+| 额外消耗 | 无 |
+| 验证 | 不应再出现 `[SelfEval]` 新评分日志 |
+| 状态 | ❌ 已删除（2026-05-25，评分不准确且长期停用） |
 
 ---
 
-## 2.3 模式提炼（规则学习）
+## 2.3 模式提炼（规则学习，已删除）
 
 | 项目 | 内容 |
 |------|------|
-| 做什么 | 每积累约 20 条评估，用 AI 提炼改进规则，写入 SOUL.md |
-| 文件 | `oct-gateway/self_eval.js` → `maybeDistill()` + `distillPatterns()` + `updateLearnedRulesInSoul()` |
-| 调用链 | 该链路已停用；当前不再自动蒸馏长期规则到记忆层 |
+| 做什么 | 历史上每积累约 20 条评估，用 AI 提炼改进规则，写入 SOUL.md |
+| 文件 | 已删除（随 `oct-gateway/self_eval.js` 移除） |
+| 调用链 | 已删除；当前不再自动蒸馏长期规则到记忆层 |
 | 写到哪 | 无 |
-| 验证 | 终端看到 `[SelfEval] 触发模式提炼` 和 `[SelfEval] SOUL.md 已更新学习规则` |
-| 状态 | 🔇 已停用（2026-03-20，依赖自评） |
+| 验证 | 不应再出现 `[SelfEval] 触发模式提炼` 或写回 SOUL.md 的日志 |
+| 状态 | ❌ 已删除（2026-05-25，依赖已删除的自评链路） |
 
 ---
 

@@ -289,7 +289,7 @@ Agent 之间不直接通信，都通过 Orchestrator 中转。消息格式：
 | `session.js` | Session 管理，不变 | 无需修改 |
 | `memory.js` | 记忆访问，不变 | 无需修改 |
 | `hypothesis.js` | AMY 的前置思考 | 保留，作为 Orchestrator 的一部分 |
-| `self_eval.js` | AMY 的自我评估 | 保留，未来也给 Agent 用 |
+| `self_eval.js` | AMY 的自我评估 | 已删除（2026-05-25 瘦身；长期停用且评分不准确） |
 
 **新增文件（阶段 3）**：
 - `agents/base_agent.js` — BaseAgent 抽象基类

@@ -88,18 +88,6 @@ const DEFAULT_CONFIG = {
   OCT_AI_LIBRARY_PORT: 8001,
 };
 
-type LocalVisionDownloadState = {
-  status: 'ready' | 'not_downloaded' | 'downloading' | 'error';
-  lastError: string;
-  lastMessage: string;
-};
-
-let localVisionDownloadState: LocalVisionDownloadState = {
-  status: 'not_downloaded',
-  lastError: '',
-  lastMessage: '',
-};
-
 function guessImageExtension(url: string): string {
   const cleanUrl = String(url || '').split('?')[0].toLowerCase();
   if (cleanUrl.endsWith('.png')) return 'png';
@@ -304,68 +292,6 @@ function getGoogleBaseUrlHelper(): GoogleBaseUrlHelperModule {
     )) as GoogleBaseUrlHelperModule;
   }
   return _googleBaseUrlHelper;
-}
-
-function getLocalVisionConfig() {
-  const cfg = readAppConfig();
-  const imageAnalysis = (cfg.image_analysis && typeof cfg.image_analysis === 'object') ? cfg.image_analysis : {};
-  const local = (imageAnalysis.local && typeof imageAnalysis.local === 'object') ? imageAnalysis.local : {};
-  return {
-    enabled: local.enabled !== false,
-    modelCachePath: String(local.model_cache_path || './models/blip'),
-    mirrorHost: String(local.mirror_host || ''),
-    modelId: 'Xenova/blip-image-captioning-base',
-  };
-}
-
-function getLocalVisionCacheDir(): string {
-  const gatewayDir = getGatewayDirForHelpers();
-  const localCfg = getLocalVisionConfig();
-  return path.resolve(path.join(gatewayDir, localCfg.modelCachePath));
-}
-
-function countFilesRecursive(dirPath: string): number {
-  if (!fs.existsSync(dirPath)) return 0;
-  let count = 0;
-  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-    const entryPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory()) {
-      count += countFilesRecursive(entryPath);
-    } else {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function getLocalVisionStatusPayload() {
-  const localCfg = getLocalVisionConfig();
-  const cacheDir = getLocalVisionCacheDir();
-  const fileCount = countFilesRecursive(cacheDir);
-  const downloaded = fileCount > 0;
-  let status: LocalVisionDownloadState['status'] = downloaded ? 'ready' : 'not_downloaded';
-  if (localVisionDownloadState.status === 'downloading') status = 'downloading';
-  if (localVisionDownloadState.status === 'error') status = 'error';
-  const lastError = localVisionDownloadState.lastError || '';
-  const lastMessage = localVisionDownloadState.lastMessage || '';
-  return {
-    status,
-    enabled: localCfg.enabled,
-    downloaded,
-    modelId: localCfg.modelId,
-    mirrorHost: localCfg.mirrorHost,
-    cacheDir,
-    fileCount,
-    lastError,
-    message: lastMessage
-      || (status === 'ready'
-        ? `本地视觉模型已就绪，可作为离线兜底。${localCfg.mirrorHost ? ' 当前优先使用自定义镜像，失败时会回退官方源。' : ''}`
-        : status === 'downloading'
-          ? `正在下载本地视觉模型，请保持网络畅通。${localCfg.mirrorHost ? ' 当前优先使用自定义镜像，失败时会自动回退官方源。' : ''}`
-          : status === 'error'
-            ? `下载失败：${lastError || '未知错误'}`
-            : `未下载本地视觉模型。推荐优先使用 MCP 图片理解；若需要离线兜底，可手动下载。${localCfg.mirrorHost ? ' 当前已配置自定义镜像，失败时会自动回退官方源。' : ''}`),
-  };
 }
 
 function getMiniMaxEndpoints(config: Record<string, any>) {
@@ -3305,11 +3231,6 @@ ipcMain.handle('save-persona-settings', async (_, payload: {
     return { success: false, error: e?.message || String(e) };
   }
 });
-
-// 本地视觉模型（BLIP）已移除，以下 IPC 保留空壳以兼容旧版前端调用
-ipcMain.handle('get-local-vision-status', async () => ({ success: true, status: 'not_downloaded', enabled: false, downloaded: false, message: '本地视觉功能已移除，请使用「图片理解 API」配置。' }));
-ipcMain.handle('save-local-vision-settings', async () => ({ success: true }));
-ipcMain.handle('download-local-vision-model', async () => ({ success: false, status: 'error', downloaded: false, message: '本地视觉功能已移除，请使用「图片理解 API」配置。', error: '功能已移除' }));
 
 // Provider 列表（供 Settings UI 服务商选择器使用）
 ipcMain.handle('get-provider-list', async () => {

@@ -66,7 +66,7 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 
 - **系统命令与正文隔离**：`/status`、`/help`、`/think off` 等系统回复不再和普通 assistant 流式正文共用缓冲，避免消息串流/跑进系统气泡。
 - **思考模式展示修复**：`think off` 时前端不再继续渲染 CoT 面板；系统提示与展示行为保持一致。
-- **图片链路增强**：图片 analyzer 云端失败时会更积极尝试本地降级；失败提示更明确，不再表现成“AI 没收到图”。
+- **图片链路增强**：图片 analyzer 云端失败时会给出明确失败提示，不再表现成“AI 没收到图”。
 - **任务看板修复**：右侧任务面板增加重复任务拦截；鼠标悬停可查看完整任务文本。
 - **右栏用量显示**：`TOK / CTX` 已支持更多 provider 的 usage 字段；当厂商不返回显式上下文占用时，会按模型窗口给出近似 `CTX` 显示。
 - **右栏字体优化**：状态区和任务看板切回 `font-sans`，只保留数字/日志区的等宽字体。
@@ -75,8 +75,8 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 
 ### ✅ 图片分析增强
 - **云端优先**: 阿里云百炼 qwen-vl-max（高精度，识别红框/箭头/标注）
-- **本地降级**: BLIP 模型自动下载（~100MB），云端失败时无感切换
-- **双重保障**: 都失败时友好提示「请少爷描述图片内容」
+- **API 兜底**: 可配置图片理解 API，为不支持视觉的主对话模型生成图片描述
+- **失败提示**: 分析失败时友好提示「请少爷描述图片内容」
 
 ### ✅ 流式输出优化
 - **打字机效果**: requestAnimationFrame 节流，每帧 10 字符
@@ -94,13 +94,11 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 - **路径遍历防护**: read_file 白名单校验
 - **Session 持久化**: process.on('exit') 强制 flush
 
-## 图片分析（云端 + 本地降级）
+## 图片分析（云端 / 图片理解 API）
 
 - **首选**：阿里云百炼 qwen-vl-max（精度高，能识别红框/箭头/标注）
-- **备选**：本地 BLIP（`@xenova/transformers`），云端失败时自动切换，无感
+- **备选**：设置页“图片理解 API（视觉助手）”，为 MiniMax、DeepSeek 等非视觉主模型生成图片描述
 - **都失败**：返回「图片分析失败，请少爷描述图片内容」
-
-**首次使用本地模型**：首次触发本地分析时会自动下载 BLIP 模型（约 ~100MB），控制台会提示「首次使用本地图片分析，正在下载模型（~100MB）…」，请保持网络畅通。
 
 配置（可选，在 `config.json` 或环境对应配置中）：
 
@@ -110,25 +108,18 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
     "enabled": true,
     "provider": "aliyun_vl",
     "timeout_seconds": 30,
-    "vision_model": "qwen-vl-max",
-    "local": {
-      "enabled": true,
-      "model_cache_path": "./models/blip",
-      "timeout_seconds": 30
-    }
+    "vision_model": "qwen-vl-max"
   }
 }
 ```
 
-- `provider`: `aliyun_vl` 仅云端，`local_blip` 仅本地，`auto` 云端优先 + 本地降级
-- 关闭本地降级：`local.enabled: false`
+- 本地 BLIP 降级已在 2026-05-25 瘦身中删除；不要再配置 `local_blip` 或 `image_analysis.local`。
 
 ### 测试方法
 
-1. **云端 + 本地都可用**：少爷发一张截图 → AMY 应收到带「[图片分析] …」的上下文并正常回复（优先为云端描述）。
-2. **仅测本地降级**：在 config 中临时去掉 `DASHSCOPE_API_KEY` 或设错 Key → 再发图 → 应无感切换到本地 BLIP，AMY 仍能拿到基础描述。
-3. **都失败**：关闭 `image_analysis.enabled` 或断网且本地未装模型 → 发图后应得到「图片分析失败，请少爷描述图片内容」。
-4. **首次本地**：确保未下载过 BLIP 时，第一次发图且云端失败 → 控制台出现「首次使用本地图片分析，正在下载模型（~100MB）…」，下载完成后返回本地分析结果。
+1. **云端可用**：少爷发一张截图 → AMY 应收到带「[图片分析] …」的上下文并正常回复。
+2. **图片理解 API 可用**：配置设置页图片理解 API → 非视觉主模型发图时仍可收到图片描述上下文。
+3. **都失败**：关闭 `image_analysis.enabled` 或配置无效 Key → 发图后应得到「图片分析失败，请少爷描述图片内容」。
 
 ## 与 Electron 集成
 

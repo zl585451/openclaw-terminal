@@ -222,9 +222,6 @@ const electronAPI = {
   }) => ipcRenderer.invoke('lyrics-generate', payload),
   getProviderList: () => ipcRenderer.invoke('get-provider-list'),
   testAIConnection: (formConfig?: Record<string, string>) => ipcRenderer.invoke('test-ai-connection', formConfig),
-  getLocalVisionStatus: () => ipcRenderer.invoke('get-local-vision-status'),
-  downloadLocalVisionModel: () => ipcRenderer.invoke('download-local-vision-model'),
-  saveLocalVisionSettings: (payload: { enabled?: boolean; mirrorHost?: string }) => ipcRenderer.invoke('save-local-vision-settings', payload),
   getAiLibraryPlugin: () => ipcRenderer.invoke('get-ai-library-plugin'),
   saveAiLibraryPlugin: (payload: {
     OCT_AI_LIBRARY_AUTO_START?: boolean;

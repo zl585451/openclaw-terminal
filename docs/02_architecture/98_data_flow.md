@@ -54,8 +54,8 @@ Gateway 启动
 | 类型 | URI 格式 | 示例 |
 |------|---------|------|
 | 对话历史 | `core://my_user/history/YYYY-MM-DD/HH-MM-SS` | `core://my_user/history/2026-03-20/14-30-00` |
-| 自我评估 | `core://agent/self_eval/YYYY-MM-DD/HH-MM-SS` | 🔇 已停用（历史数据仍存在） |
-| 模式提炼 | `core://agent/learned_patterns/YYYY-MM-DD` | 🔇 已停用（依赖自评） |
+| 自我评估 | `core://agent/self_eval/YYYY-MM-DD/HH-MM-SS` | ❌ 已删除（2026-05-25；历史数据可能仍存在） |
+| 模式提炼 | `core://agent/learned_patterns/YYYY-MM-DD` | ❌ 已删除（2026-05-25；依赖已删除的自评链路） |
 | 纠正规则 | `core://agent/corrections/YYYY-MM-DD/HH-MM-SS` | `core://agent/corrections/2026-03-20/14-30-15` |
 | 停车场 | `core://my_user/daily/YYYY-MM-DD/parking_lot/HH-MM` | `core://my_user/daily/2026-03-20/parking_lot/14-30` |
 | 偏好 | `core://my_user/preferences/{category}` | `core://my_user/preferences/cost_vs_efficiency` |

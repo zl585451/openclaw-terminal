@@ -1,6 +1,7 @@
 # FEATURE_MAP 变更日志
 
 | 日期 | 变更摘要 | 涉及文件 | 备注 |
+| 2026-05-25 | OCT 瘦身删除施工版：删除长期停用的 self_eval 自评链路、本地 BLIP 残留与仓库杂物，计划书从“懒加载优先”切回“删除优先” | `oct-gateway/self_eval.js`, `oct-gateway/image_analyzer_local.js`, `electron/main.ts`, `electron/preload.ts`, `oct-gateway/README.md`, `docs/02_architecture/oct-slimming-map-2026-05.md`, `docs/05_changelog/2026-05-25-oct-slimming-deletion-plan.md` | 首批实质删除，保留 `/memory status` 对历史 self_eval 数据的只读统计 |
 | 2026-05-25 | OCT 瘦身 Phase F-2：前端内容制作工作台改为进入工作台/素材库时 lazy import，普通聊天首屏不再静态加载完整 script-adapter UI | `src/App.tsx`, `src/styles/App.css`, `docs/05_changelog/2026-05-25-oct-slimming-script-adapter-frontend-lazy.md` | 保留入口按钮与返回行为；仅增加 Suspense 加载态 |
 | 2026-05-25 | OCT 瘦身 Phase F-2：ToolLoader 静态工具改为首次读取定义或执行工具时加载，Gateway 启动不再因 require tool_loader 立即加载全部 `tools/*.js` | `oct-gateway/tool_loader.js`, `oct-gateway/test/toolLoaderLazyInit.test.js`, `docs/02_architecture/oct-optional-capabilities.md`, `docs/05_changelog/2026-05-25-oct-slimming-tool-loader-lazy.md` | 保留动态 provider 注册、工具定义和执行契约；显式 `loadTools()` 仍可热重载 |
 | 2026-05-25 | OCT 瘦身 Phase F-2：AI.library knowledge client 改为 lazy proxy，普通聊天默认不加载专业知识检索模块，`search_knowledge` 工具首次执行时再加载 | `oct-gateway/runtime/lazyAiLibrary.js`, `oct-gateway/index.js`, `oct-gateway/runtime/contextBuilder.js`, `oct-gateway/tools/search_knowledge.js`, `oct-gateway/test/lazyAiLibrary.test.js`, `docs/05_changelog/2026-05-25-oct-slimming-ai-library-lazy.md` | 保留项目书库 HTTP bridge 与 search_knowledge 工具契约；knowledge_search_enabled 仍是显式开关 |

@@ -1,6 +1,6 @@
-# OCT 瘦身审计地图 (2026-05-24 加固版)
+# OCT 瘦身审计地图 (2026-05-25 删除施工版)
 
-本地图用于指导 OCT Phase C 之后的瘦身删除决策。当前阶段只允许补测试与收集证据；除非某项已被回归测试覆盖且确认无运行时引用，否则不得删除 legacy 代码。
+本地图用于指导 OCT Phase C 之后的瘦身删除决策。2026-05-25 起，本计划从“可选化/懒加载优先”切回“删除优先”：只有仍在主链、仍有用户入口、或缺少回归证据的模块才允许保留；已停用、无引用、只剩兼容空壳或仓库杂物的目标应进入删除施工清单。
 
 ## 分类标准
 
@@ -9,6 +9,26 @@
 - **暂不删除**：仍有明确职责，或证据不足以证明重复。
 - **需优化**：职责合理但边界不清，需要文档、测试或接口收敛。
 - **可选化/懒加载**：不属于核心聊天主链，适合后续拆包或按需加载。
+
+## 删除施工清单（明确版）
+
+> 原则：先删“已停用/无引用/假兼容”的代码，再删协议兼容层；每一批删除后只跑对应最小回归，不再把“可能删除”当作交付成果。
+
+| 优先级 | 删除目标 | 明确删除范围 | 为什么值得删 | 当前证据 | 删除前/后验证 |
+|---|---|---|---|---|---|
+| P0-1 | 自评估旧链路 | 已删除 `oct-gateway/self_eval.js`；已删除 `oct-gateway/index.js` 中已注释的 `selfEval` require；已把 `docs/02_architecture/02-auto-pipeline.md`、`docs/02_architecture/self-eval.md`、`docs/03_specs/99_known_issues.md` 改为历史归档/已删除说明；保留 `/memory status` 对历史 `core://agent/self_eval` 数据的只读统计，直到后续 memory 命令瘦身批次 | 这是已停用的模型自评估/蒸馏系统，代码 438 行仍留在仓库，继续误导后续维护者以为系统可用 | `rg 'self_eval|evaluateReply|maybeDistill|selfEval'` 显示主链只有 `index.js` 注释引用；活跃代码仅 `slash.js` 读取历史数据，不 require `self_eval.js` | `node oct-gateway/test/slashHandlerRegression.test.js`、`node oct-gateway/test/gatewaySmoke.test.js` |
+| P0-2 | 本地 BLIP 图片理解残留 | 已删除 `oct-gateway/image_analyzer_local.js`；已删除 `electron/main.ts` 的 `LocalVisionDownloadState`、`localVisionDownloadState`、`getLocalVisionConfig()`、`getLocalVisionCacheDir()`、`countFilesRecursive()`、`getLocalVisionStatusPayload()`；已删除 `get-local-vision-status` / `save-local-vision-settings` / `download-local-vision-model` 三个 IPC 空壳；已删除 `electron/preload.ts` 暴露的三项 local vision API；已改写 `oct-gateway/README.md` 里 BLIP 自动下载/本地降级说明 | 本地视觉已在主进程标注“已移除”，但仍保留 149 行 BLIP analyzer、Electron 状态计算与 IPC 假入口，会制造“还能下载本地模型”的假能力 | `rg 'getLocalVisionStatus|downloadLocalVisionModel|saveLocalVisionSettings'` 显示前端无调用，仅 preload/main 自循环；`rg 'image_analyzer_local|Xenova/blip'` 显示 analyzer 无运行时 require | `npx tsc -p tsconfig.electron.json --noEmit`、`node oct-gateway/test/imageService.test.js`、`npm run build` |
+| P0-3 | 仓库杂物文件 | 已删除跟踪文件 `oct-gateway/$null`、`oct-gateway/permission_test.txt`、`oct-gateway/stress_test_report.json`、`oct-gateway/task-board.md`；若需要任务看板说明，统一转入 `docs/` 后再恢复 | 这些不是运行时代码，属于测试残留/临时报表/旧说明，增加仓库噪声且无主链引用 | `git ls-files -- ...` 确认四个文件被跟踪；`rg 'task-board.md|permission_test.txt|stress_test_report.json|$null'` 未发现运行时依赖，只有历史归档引用 `task-board.md` | `git status --short`、`node oct-gateway/test/bootstrapLifecycle.test.js` |
+| P1-1 | Hypothesis sidecar 止血残留 | 若确认不再恢复“前置质疑/假设”能力，删除 `oct-gateway/hypothesis.js`，并从 `oct-gateway/index.js`、`oct-gateway/runtime/contextBuilder.js` 的依赖注入中移除；删除 docs 中“保留作为 Orchestrator 一部分”的过期结论 | `contextBuilder` 已硬编码 `hypothesisResult = null`，当前 `hypothesis` 注入不产生效果 | `rg 'hypothesis'` 显示仍有注入和文档引用，但主逻辑注释为“暂时停用并发 hypothesis sidecar” | 删除前先加/跑 `oct-gateway/test/chatRequestHandler.test.js` 或 contextBuilder 覆盖，防止 system prompt 行为误变 |
+| P1-2 | Render Protocol legacy 文本 fallback | 在 render blocks golden 覆盖足够后，删除前端 legacy 文本块解析入口，只保留 `payload.renderBlocks` 协议；同步删 docs 中“legacy 文本解析继续作为 fallback”的表述 | 这是协议层最大重复面，但直接删会影响旧模型输出和历史消息渲染，必须等 golden 样本锁定 | 当前计划表明确仍是 Phase E 收口中，不能 P0 直接删 | `npx vitest run src/core/*.test.ts`、render protocol golden、`npm run build` |
+| P1-3 | ProviderRouter 本地 fallback 降级 | 在外部 OmniRoute/传统 provider 配置边界固定后，删除 `ProviderRouter` 中只服务旧本地 fallback 的分支，保留 capability snapshot 所需的最小能力解析 | 与“外部 OmniRoute 负责物理路由/fallback”的目标重叠，但现在仍支撑 `/status`、`/model` 和 provider capability | Phase C-4 已共享实例，但未证明可删 | `node oct-gateway/test/gatewayCapabilities.test.js`、`node oct-gateway/test/slashHandlerRegression.test.js`、`node oct-gateway/test/providerRenderCapabilities.test.js` |
+
+### 立即执行顺序
+
+1. **已执行 P0-1 自评估旧链路删除**：收益明确、运行时引用最少，删除 438 行旧代码加若干过期文档。
+2. **已执行 P0-2 本地 BLIP 残留删除**：收益明确，但涉及 Electron 类型和设置 API，需跑 electron typecheck/build。
+3. **已执行 P0-3 仓库杂物删除**：低风险仓库噪声清理。
+4. P1 项不再写“可能删除”；它们必须满足表中验证门槛后才能进入代码删除批次。
 
 ## 审计证据表
 

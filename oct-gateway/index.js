@@ -53,7 +53,6 @@ const {
 } = require('./runtime/contextHelpers');
 const tools = require('./tools');
 const toolLoader = require('./tool_loader');
-// const selfEval = require('./self_eval');  // 自评估系统已停用 2026-03-22
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
 const memoryTaskQueue = require('./memory_task_queue');
