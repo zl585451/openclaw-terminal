@@ -8,6 +8,7 @@ export default defineConfig({
     environment: 'jsdom',
     include: [
       'src/**/*.test.ts',
+      'electron/**/*.test.ts',
       'oct-gateway/test/basicQCChecker.test.js',
       'oct-gateway/test/lineProtocolParser.test.js',
       'oct-gateway/test/classificationParser.test.js',

@@ -15,6 +15,15 @@ import { spawn, spawnSync } from 'child_process';
 import * as pty from 'node-pty';
 import * as crypto from 'crypto';
 import WebSocket from 'ws';
+import {
+  ApiKeyPayload,
+  applyApiKeyUpdates,
+  buildApiKeysData,
+  didApiConfigChange,
+  didConnectionConfigChange,
+  parseEnvContent,
+  parseBooleanConfigValue,
+} from './config/apiKeys';
 
 let mainWindow: BrowserWindow | null = null;
 let floatWindow: BrowserWindow | null = null;
@@ -3361,12 +3370,6 @@ ipcMain.handle('save-agent-permissions', async (_, permissions: {
   }
 });
 
-function parseBooleanConfigValue(raw: unknown): boolean {
-  if (raw === true) return true;
-  if (raw === false || raw === null || raw === undefined) return false;
-  return /^(1|true|yes|on)$/i.test(String(raw).trim());
-}
-
 function syncExternalOmniRouteVault(cfg: Record<string, any>): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -3384,154 +3387,19 @@ function syncExternalOmniRouteVault(cfg: Record<string, any>): void {
 // API Key 配置管理：config.json 优先（与 save-api-keys 写入一致，保证回填）
 ipcMain.handle('get-api-keys', async () => {
   try {
-    const keys: Record<string, any> = {};
-    const envObj: Record<string, string> = {};
     const envFilePath = path.join(__dirname, '..', '.env');
-    if (fs.existsSync(envFilePath)) {
-      const envContent = fs.readFileSync(envFilePath, 'utf-8');
-      for (const line of envContent.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith('#')) {
-          const [k, ...vParts] = trimmed.split('=');
-          if (k) envObj[k.trim()] = vParts.join('=').trim();
-        }
-      }
-    }
-    // config.json 优先（设置面板保存目标），空则用 .env
+    const envObj: Record<string, string> = fs.existsSync(envFilePath)
+      ? parseEnvContent(fs.readFileSync(envFilePath, 'utf-8'))
+      : {};
     const cfg: Record<string, unknown> = fs.existsSync(CONFIG_FILE)
       ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
       : {};
-    const pick = (k: string, cfgVal: unknown, def = '') => {
-      const c = (cfgVal ?? '').toString().trim();
-      return c || (envObj[k] ?? '').toString().trim() || def;
-    };
-    keys.OPENCLAW_WS_URL = pick('OPENCLAW_WS_URL', cfg.OPENCLAW_WS_URL, 'ws://127.0.0.1:18789');
-    keys.OPENCLAW_TOKEN = pick('OPENCLAW_TOKEN', cfg.OPENCLAW_TOKEN);
-    keys.OCT_SETTINGS_MODE = pick('OCT_SETTINGS_MODE', cfg.OCT_SETTINGS_MODE);
-    keys.OCT_PROVIDER = pick('OCT_PROVIDER', cfg.OCT_PROVIDER);
-    keys.OCT_MODEL = pick('OCT_MODEL', cfg.OCT_MODEL);
-    keys.SCRIPT_ADAPTER_REAL_AGENTS = pick('SCRIPT_ADAPTER_REAL_AGENTS', cfg.SCRIPT_ADAPTER_REAL_AGENTS);
-    keys.DASHSCOPE_API_KEY = pick('DASHSCOPE_API_KEY', cfg.DASHSCOPE_API_KEY);
-    keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
-    keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
-    keys.MOONSHOT_API_KEY = pick('MOONSHOT_API_KEY', cfg.MOONSHOT_API_KEY);
-    keys.NEWAPI_API_KEY = pick('NEWAPI_API_KEY', cfg.NEWAPI_API_KEY);
-    keys.IMAGE_PROVIDER = pick('IMAGE_PROVIDER', cfg.IMAGE_PROVIDER, 'minimax');
-    keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY = pick('IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY', cfg.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY, 'false');
-    keys.IMAGE_MINIMAX_API_KEY = pick('IMAGE_MINIMAX_API_KEY', cfg.IMAGE_MINIMAX_API_KEY);
-    keys.IMAGE_MINIMAX_BASE_URL = pick('IMAGE_MINIMAX_BASE_URL', cfg.IMAGE_MINIMAX_BASE_URL);
-    keys.IMAGE_MINIMAX_MODEL = pick('IMAGE_MINIMAX_MODEL', cfg.IMAGE_MINIMAX_MODEL);
-    keys.IMAGE_SILICONFLOW_API_KEY = pick('IMAGE_SILICONFLOW_API_KEY', cfg.IMAGE_SILICONFLOW_API_KEY);
-    keys.IMAGE_SILICONFLOW_BASE_URL = pick('IMAGE_SILICONFLOW_BASE_URL', cfg.IMAGE_SILICONFLOW_BASE_URL);
-    keys.IMAGE_SILICONFLOW_MODEL = pick('IMAGE_SILICONFLOW_MODEL', cfg.IMAGE_SILICONFLOW_MODEL);
-    keys.IMAGE_OPENAI_API_KEY = pick('IMAGE_OPENAI_API_KEY', cfg.IMAGE_OPENAI_API_KEY);
-    keys.IMAGE_OPENAI_BASE_URL = pick('IMAGE_OPENAI_BASE_URL', cfg.IMAGE_OPENAI_BASE_URL);
-    keys.IMAGE_OPENAI_MODEL = pick('IMAGE_OPENAI_MODEL', cfg.IMAGE_OPENAI_MODEL);
-    keys.IMAGE_GOOGLE_API_KEY = pick('IMAGE_GOOGLE_API_KEY', cfg.IMAGE_GOOGLE_API_KEY);
-    keys.IMAGE_GOOGLE_BASE_URL = pick('IMAGE_GOOGLE_BASE_URL', cfg.IMAGE_GOOGLE_BASE_URL);
-    keys.IMAGE_GOOGLE_MODEL = pick('IMAGE_GOOGLE_MODEL', cfg.IMAGE_GOOGLE_MODEL);
-    const imgProvider = (keys.IMAGE_PROVIDER || 'minimax').toLowerCase();
-    const providerPrefix = imgProvider === 'siliconflow'
-      ? 'SILICONFLOW'
-      : imgProvider === 'openai'
-        ? 'OPENAI'
-        : imgProvider === 'google'
-          ? 'GOOGLE'
-          : 'MINIMAX';
-    keys.IMAGE_API_KEY = (
-      keys[`IMAGE_${providerPrefix}_API_KEY`]
-      || pick('IMAGE_API_KEY', cfg.IMAGE_API_KEY)
-    );
-    keys.IMAGE_BASE_URL = (
-      keys[`IMAGE_${providerPrefix}_BASE_URL`]
-      || pick('IMAGE_BASE_URL', cfg.IMAGE_BASE_URL)
-    );
-    keys.IMAGE_MODEL = (
-      keys[`IMAGE_${providerPrefix}_MODEL`]
-      || pick('IMAGE_MODEL', cfg.IMAGE_MODEL)
-    );
-    keys.IMAGE_SIZE = pick('IMAGE_SIZE', cfg.IMAGE_SIZE, '1024x1024');
-    keys.TTS_MINIMAX_VOICE_ID = pick('TTS_MINIMAX_VOICE_ID', cfg.TTS_MINIMAX_VOICE_ID, DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID);
-    keys.CUSTOM_API_KEY = pick('CUSTOM_API_KEY', cfg.CUSTOM_API_KEY);
-    keys.DASHSCOPE_BASE_URL = pick('DASHSCOPE_BASE_URL', cfg.DASHSCOPE_BASE_URL);
-    keys.DEEPSEEK_BASE_URL = pick('DEEPSEEK_BASE_URL', cfg.DEEPSEEK_BASE_URL);
-    keys.MINIMAX_BASE_URL = pick('MINIMAX_BASE_URL', cfg.MINIMAX_BASE_URL);
-    keys.MOONSHOT_BASE_URL = pick('MOONSHOT_BASE_URL', cfg.MOONSHOT_BASE_URL);
-    keys.NEWAPI_BASE_URL = pick('NEWAPI_BASE_URL', cfg.NEWAPI_BASE_URL);
-    keys.CUSTOM_BASE_URL = pick('CUSTOM_BASE_URL', cfg.CUSTOM_BASE_URL);
-    keys.GOOGLE_AI_API_KEY = pick('GOOGLE_AI_API_KEY', cfg.GOOGLE_AI_API_KEY);
-    keys.GOOGLE_AI_BASE_URL = pick('GOOGLE_AI_BASE_URL', cfg.GOOGLE_AI_BASE_URL);
-    keys.HTTPS_PROXY = pick('HTTPS_PROXY', cfg.HTTPS_PROXY);
-    keys.HTTP_PROXY = pick('HTTP_PROXY', cfg.HTTP_PROXY);
-    keys.BRAVE_SEARCH_API_KEY = pick('BRAVE_SEARCH_API_KEY', cfg.BRAVE_SEARCH_API_KEY);
-    keys.TAVILY_API_KEY = pick('TAVILY_API_KEY', cfg.TAVILY_API_KEY);
-    keys.SILICONFLOW_API_KEY = pick('SILICONFLOW_API_KEY', cfg.SILICONFLOW_API_KEY);
-    keys.VISION_API_KEY = pick('VISION_API_KEY', cfg.VISION_API_KEY);
-    keys.VISION_BASE_URL = pick('VISION_BASE_URL', cfg.VISION_BASE_URL);
-    keys.VISION_MODEL = pick('VISION_MODEL', cfg.VISION_MODEL);
-    keys.OMNIROUTE_BASE_URL = pick('OMNIROUTE_BASE_URL', cfg.OMNIROUTE_BASE_URL);
-    keys.OMNIROUTE_API_KEY = pick('OMNIROUTE_API_KEY', cfg.OMNIROUTE_API_KEY);
-    keys.OMNIROUTE_MODEL =
-      pick('OMNIROUTE_MODEL', cfg.OMNIROUTE_MODEL)
-      || pick('OMNIROUTE_CHAT_MODEL', cfg.OMNIROUTE_CHAT_MODEL);
-    keys.OCT_USE_EXTERNAL_OMNIROUTE = parseBooleanConfigValue(
-      cfg.OCT_USE_EXTERNAL_OMNIROUTE ?? envObj.OCT_USE_EXTERNAL_OMNIROUTE
-    );
     return {
       success: true,
-      data: {
-        DASHSCOPE_API_KEY: keys.DASHSCOPE_API_KEY || '',
-        DEEPSEEK_API_KEY: keys.DEEPSEEK_API_KEY || '',
-        MINIMAX_API_KEY: keys.MINIMAX_API_KEY || '',
-        MOONSHOT_API_KEY: keys.MOONSHOT_API_KEY || '',
-        NEWAPI_API_KEY: keys.NEWAPI_API_KEY || '',
-        IMAGE_PROVIDER: keys.IMAGE_PROVIDER || 'minimax',
-        IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: (keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY || 'false').toLowerCase() === 'true',
-        IMAGE_API_KEY: keys.IMAGE_API_KEY || '',
-        IMAGE_BASE_URL: keys.IMAGE_BASE_URL || '',
-        IMAGE_MODEL: keys.IMAGE_MODEL || '',
-        IMAGE_MINIMAX_API_KEY: keys.IMAGE_MINIMAX_API_KEY || '',
-        IMAGE_MINIMAX_BASE_URL: keys.IMAGE_MINIMAX_BASE_URL || '',
-        IMAGE_MINIMAX_MODEL: keys.IMAGE_MINIMAX_MODEL || '',
-        IMAGE_SILICONFLOW_API_KEY: keys.IMAGE_SILICONFLOW_API_KEY || '',
-        IMAGE_SILICONFLOW_BASE_URL: keys.IMAGE_SILICONFLOW_BASE_URL || '',
-        IMAGE_SILICONFLOW_MODEL: keys.IMAGE_SILICONFLOW_MODEL || '',
-        IMAGE_OPENAI_API_KEY: keys.IMAGE_OPENAI_API_KEY || '',
-        IMAGE_OPENAI_BASE_URL: keys.IMAGE_OPENAI_BASE_URL || '',
-        IMAGE_OPENAI_MODEL: keys.IMAGE_OPENAI_MODEL || '',
-        IMAGE_GOOGLE_API_KEY: keys.IMAGE_GOOGLE_API_KEY || '',
-        IMAGE_GOOGLE_BASE_URL: keys.IMAGE_GOOGLE_BASE_URL || '',
-        IMAGE_GOOGLE_MODEL: keys.IMAGE_GOOGLE_MODEL || '',
-        IMAGE_SIZE: keys.IMAGE_SIZE || '1024x1024',
-        TTS_MINIMAX_VOICE_ID: keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
-        CUSTOM_API_KEY: keys.CUSTOM_API_KEY || '',
-        OPENCLAW_WS_URL: keys.OPENCLAW_WS_URL || 'ws://127.0.0.1:18789',
-        OPENCLAW_TOKEN: keys.OPENCLAW_TOKEN || '',
-        OCT_SETTINGS_MODE: keys.OCT_SETTINGS_MODE || '',
-        OCT_PROVIDER: keys.OCT_PROVIDER || '',
-        OCT_MODEL: keys.OCT_MODEL || '',
-        SCRIPT_ADAPTER_REAL_AGENTS: keys.SCRIPT_ADAPTER_REAL_AGENTS || '',
-        DASHSCOPE_BASE_URL: keys.DASHSCOPE_BASE_URL || '',
-        DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
-        MINIMAX_BASE_URL: keys.MINIMAX_BASE_URL || '',
-        MOONSHOT_BASE_URL: keys.MOONSHOT_BASE_URL || '',
-        NEWAPI_BASE_URL: keys.NEWAPI_BASE_URL || '',
-        CUSTOM_BASE_URL: keys.CUSTOM_BASE_URL || '',
-        GOOGLE_AI_API_KEY: keys.GOOGLE_AI_API_KEY || '',
-        GOOGLE_AI_BASE_URL: keys.GOOGLE_AI_BASE_URL || '',
-        HTTPS_PROXY: keys.HTTPS_PROXY || '',
-        HTTP_PROXY: keys.HTTP_PROXY || '',
-        BRAVE_SEARCH_API_KEY: keys.BRAVE_SEARCH_API_KEY || '',
-        TAVILY_API_KEY: keys.TAVILY_API_KEY || '',
-        SILICONFLOW_API_KEY: keys.SILICONFLOW_API_KEY || '',
-        VISION_API_KEY: keys.VISION_API_KEY || '',
-        VISION_BASE_URL: keys.VISION_BASE_URL || '',
-        VISION_MODEL: keys.VISION_MODEL || '',
-        OMNIROUTE_BASE_URL: keys.OMNIROUTE_BASE_URL || '',
-        OMNIROUTE_API_KEY: keys.OMNIROUTE_API_KEY || '',
-        OMNIROUTE_MODEL: keys.OMNIROUTE_MODEL || '',
-        OCT_USE_EXTERNAL_OMNIROUTE: !!keys.OCT_USE_EXTERNAL_OMNIROUTE,
-      }
+      data: buildApiKeysData(cfg, envObj, {
+        OPENCLAW_WS_URL: DEFAULT_CONFIG.OPENCLAW_WS_URL,
+        TTS_MINIMAX_VOICE_ID: DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
+      }),
     };
   } catch (e: any) {
     console.error('[API Keys] Failed to read:', e.message);
@@ -3539,133 +3407,19 @@ ipcMain.handle('get-api-keys', async () => {
   }
 });
 
-ipcMain.handle('save-api-keys', async (_, keys: {
-    DASHSCOPE_API_KEY?: string;
-    DEEPSEEK_API_KEY?: string;
-    MINIMAX_API_KEY?: string;
-    MOONSHOT_API_KEY?: string;
-    NEWAPI_API_KEY?: string;
-    IMAGE_PROVIDER?: string;
-    IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY?: boolean | string;
-    IMAGE_API_KEY?: string;
-    IMAGE_BASE_URL?: string;
-    IMAGE_MODEL?: string;
-    IMAGE_MINIMAX_API_KEY?: string;
-    IMAGE_MINIMAX_BASE_URL?: string;
-    IMAGE_MINIMAX_MODEL?: string;
-    IMAGE_SILICONFLOW_API_KEY?: string;
-    IMAGE_SILICONFLOW_BASE_URL?: string;
-    IMAGE_SILICONFLOW_MODEL?: string;
-    IMAGE_OPENAI_API_KEY?: string;
-    IMAGE_OPENAI_BASE_URL?: string;
-    IMAGE_OPENAI_MODEL?: string;
-    IMAGE_GOOGLE_API_KEY?: string;
-    IMAGE_GOOGLE_BASE_URL?: string;
-    IMAGE_GOOGLE_MODEL?: string;
-    IMAGE_SIZE?: string;
-    TTS_MINIMAX_VOICE_ID?: string;
-    CUSTOM_API_KEY?: string;
-    OPENCLAW_WS_URL?: string;
-    OPENCLAW_TOKEN?: string;
-    OCT_SETTINGS_MODE?: string;
-    OCT_PROVIDER?: string;
-    OCT_MODEL?: string;
-    SCRIPT_ADAPTER_REAL_AGENTS?: string;
-    CUSTOM_MODEL?: string;
-    DASHSCOPE_BASE_URL?: string;
-    DEEPSEEK_BASE_URL?: string;
-    MINIMAX_BASE_URL?: string;
-    MOONSHOT_BASE_URL?: string;
-    NEWAPI_BASE_URL?: string;
-    VISION_API_KEY?: string;
-    VISION_BASE_URL?: string;
-    VISION_MODEL?: string;
-    OMNIROUTE_BASE_URL?: string;
-    OMNIROUTE_API_KEY?: string;
-    OMNIROUTE_MODEL?: string;
-    OCT_USE_EXTERNAL_OMNIROUTE?: boolean | string;
-    CUSTOM_BASE_URL?: string;
-    GOOGLE_AI_API_KEY?: string;
-    GOOGLE_AI_BASE_URL?: string;
-    HTTPS_PROXY?: string;
-    HTTP_PROXY?: string;
-    BRAVE_SEARCH_API_KEY?: string;
-    TAVILY_API_KEY?: string;
-    SILICONFLOW_API_KEY?: string;
-  }) => {
+ipcMain.handle('save-api-keys', async (_, keys: ApiKeyPayload) => {
   try {
     // 先写 userData/config.json（主要存储，renderer 读取来源）
     ensureConfigFile();
-    let cfg: Record<string, string> = {};
+    let existingConfig: Record<string, string> = {};
     if (fs.existsSync(CONFIG_FILE)) {
       try {
-        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+        existingConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
       } catch {}
     }
-    const previousCfg: Record<string, string> = { ...cfg };
-    if (keys.OPENCLAW_WS_URL !== undefined) cfg.OPENCLAW_WS_URL = keys.OPENCLAW_WS_URL || '';
-    if (keys.OPENCLAW_TOKEN !== undefined) cfg.OPENCLAW_TOKEN = keys.OPENCLAW_TOKEN || '';
-    if (keys.OCT_SETTINGS_MODE !== undefined) cfg.OCT_SETTINGS_MODE = keys.OCT_SETTINGS_MODE || '';
-    if (keys.DASHSCOPE_API_KEY !== undefined) cfg.DASHSCOPE_API_KEY = keys.DASHSCOPE_API_KEY || '';
-    if (keys.DEEPSEEK_API_KEY !== undefined) cfg.DEEPSEEK_API_KEY = keys.DEEPSEEK_API_KEY || '';
-    if (keys.MINIMAX_API_KEY !== undefined) cfg.MINIMAX_API_KEY = keys.MINIMAX_API_KEY || '';
-    if (keys.MOONSHOT_API_KEY !== undefined) cfg.MOONSHOT_API_KEY = keys.MOONSHOT_API_KEY || '';
-    if (keys.NEWAPI_API_KEY !== undefined) cfg.NEWAPI_API_KEY = keys.NEWAPI_API_KEY || '';
-    if (keys.IMAGE_PROVIDER !== undefined) cfg.IMAGE_PROVIDER = keys.IMAGE_PROVIDER || 'minimax';
-    if (keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY !== undefined) {
-      cfg.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY =
-        String(keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY).toLowerCase() === 'true' ? 'true' : 'false';
-    }
-    if (keys.IMAGE_API_KEY !== undefined) cfg.IMAGE_API_KEY = keys.IMAGE_API_KEY || '';
-    if (keys.IMAGE_BASE_URL !== undefined) cfg.IMAGE_BASE_URL = keys.IMAGE_BASE_URL || '';
-    if (keys.IMAGE_MODEL !== undefined) cfg.IMAGE_MODEL = keys.IMAGE_MODEL || '';
-    if (keys.IMAGE_MINIMAX_API_KEY !== undefined) cfg.IMAGE_MINIMAX_API_KEY = keys.IMAGE_MINIMAX_API_KEY || '';
-    if (keys.IMAGE_MINIMAX_BASE_URL !== undefined) cfg.IMAGE_MINIMAX_BASE_URL = keys.IMAGE_MINIMAX_BASE_URL || '';
-    if (keys.IMAGE_MINIMAX_MODEL !== undefined) cfg.IMAGE_MINIMAX_MODEL = keys.IMAGE_MINIMAX_MODEL || '';
-    if (keys.IMAGE_SILICONFLOW_API_KEY !== undefined) cfg.IMAGE_SILICONFLOW_API_KEY = keys.IMAGE_SILICONFLOW_API_KEY || '';
-    if (keys.IMAGE_SILICONFLOW_BASE_URL !== undefined) cfg.IMAGE_SILICONFLOW_BASE_URL = keys.IMAGE_SILICONFLOW_BASE_URL || '';
-    if (keys.IMAGE_SILICONFLOW_MODEL !== undefined) cfg.IMAGE_SILICONFLOW_MODEL = keys.IMAGE_SILICONFLOW_MODEL || '';
-    if (keys.IMAGE_OPENAI_API_KEY !== undefined) cfg.IMAGE_OPENAI_API_KEY = keys.IMAGE_OPENAI_API_KEY || '';
-    if (keys.IMAGE_OPENAI_BASE_URL !== undefined) cfg.IMAGE_OPENAI_BASE_URL = keys.IMAGE_OPENAI_BASE_URL || '';
-    if (keys.IMAGE_OPENAI_MODEL !== undefined) cfg.IMAGE_OPENAI_MODEL = keys.IMAGE_OPENAI_MODEL || '';
-    if (keys.IMAGE_GOOGLE_API_KEY !== undefined) cfg.IMAGE_GOOGLE_API_KEY = keys.IMAGE_GOOGLE_API_KEY || '';
-    if (keys.IMAGE_GOOGLE_BASE_URL !== undefined) cfg.IMAGE_GOOGLE_BASE_URL = keys.IMAGE_GOOGLE_BASE_URL || '';
-    if (keys.IMAGE_GOOGLE_MODEL !== undefined) cfg.IMAGE_GOOGLE_MODEL = keys.IMAGE_GOOGLE_MODEL || '';
-    if (keys.IMAGE_SIZE !== undefined) cfg.IMAGE_SIZE = keys.IMAGE_SIZE || '1024x1024';
-    if (keys.TTS_MINIMAX_VOICE_ID !== undefined) cfg.TTS_MINIMAX_VOICE_ID = keys.TTS_MINIMAX_VOICE_ID || DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID;
-    if (keys.CUSTOM_API_KEY !== undefined) cfg.CUSTOM_API_KEY = keys.CUSTOM_API_KEY || '';
-    if (keys.OCT_PROVIDER !== undefined) cfg.OCT_PROVIDER = keys.OCT_PROVIDER || '';
-    if (keys.OCT_MODEL !== undefined) cfg.OCT_MODEL = keys.OCT_MODEL || '';
-    if (keys.SCRIPT_ADAPTER_REAL_AGENTS !== undefined) cfg.SCRIPT_ADAPTER_REAL_AGENTS = keys.SCRIPT_ADAPTER_REAL_AGENTS || '';
-    if (keys.CUSTOM_MODEL !== undefined) cfg.CUSTOM_MODEL = keys.CUSTOM_MODEL || '';
-    if (keys.DASHSCOPE_BASE_URL !== undefined) cfg.DASHSCOPE_BASE_URL = keys.DASHSCOPE_BASE_URL || '';
-    if (keys.DEEPSEEK_BASE_URL !== undefined) cfg.DEEPSEEK_BASE_URL = keys.DEEPSEEK_BASE_URL || '';
-    if (keys.MINIMAX_BASE_URL !== undefined) cfg.MINIMAX_BASE_URL = keys.MINIMAX_BASE_URL || '';
-    if (keys.MOONSHOT_BASE_URL !== undefined) cfg.MOONSHOT_BASE_URL = keys.MOONSHOT_BASE_URL || '';
-    if (keys.NEWAPI_BASE_URL !== undefined) cfg.NEWAPI_BASE_URL = keys.NEWAPI_BASE_URL || '';
-    if (keys.CUSTOM_BASE_URL !== undefined) cfg.CUSTOM_BASE_URL = keys.CUSTOM_BASE_URL || '';
-    if (keys.GOOGLE_AI_API_KEY !== undefined) cfg.GOOGLE_AI_API_KEY = keys.GOOGLE_AI_API_KEY || '';
-    if (keys.GOOGLE_AI_BASE_URL !== undefined) cfg.GOOGLE_AI_BASE_URL = keys.GOOGLE_AI_BASE_URL || '';
-    if (keys.HTTPS_PROXY !== undefined) cfg.HTTPS_PROXY = keys.HTTPS_PROXY || '';
-    if (keys.HTTP_PROXY !== undefined) cfg.HTTP_PROXY = keys.HTTP_PROXY || '';
-    if (keys.BRAVE_SEARCH_API_KEY !== undefined) cfg.BRAVE_SEARCH_API_KEY = keys.BRAVE_SEARCH_API_KEY || '';
-    if (keys.TAVILY_API_KEY !== undefined) cfg.TAVILY_API_KEY = keys.TAVILY_API_KEY || '';
-    if (keys.SILICONFLOW_API_KEY !== undefined) cfg.SILICONFLOW_API_KEY = keys.SILICONFLOW_API_KEY || '';
-    if (keys.VISION_API_KEY !== undefined) cfg.VISION_API_KEY = keys.VISION_API_KEY || '';
-    if (keys.VISION_BASE_URL !== undefined) cfg.VISION_BASE_URL = keys.VISION_BASE_URL || '';
-    if (keys.VISION_MODEL !== undefined) cfg.VISION_MODEL = keys.VISION_MODEL || '';
-    if (keys.OMNIROUTE_BASE_URL !== undefined) cfg.OMNIROUTE_BASE_URL = keys.OMNIROUTE_BASE_URL || '';
-    if (keys.OMNIROUTE_API_KEY !== undefined) cfg.OMNIROUTE_API_KEY = keys.OMNIROUTE_API_KEY || '';
-    if (keys.OMNIROUTE_MODEL !== undefined) cfg.OMNIROUTE_MODEL = keys.OMNIROUTE_MODEL || '';
-    if (keys.OMNIROUTE_MODEL !== undefined) cfg.OMNIROUTE_CHAT_MODEL = '';
-    if (keys.OMNIROUTE_MODEL !== undefined) cfg.OMNIROUTE_PLAN_MODEL = '';
-    if (keys.OMNIROUTE_MODEL !== undefined) cfg.OMNIROUTE_TOOL_MODEL = '';
-    if (keys.OCT_USE_EXTERNAL_OMNIROUTE !== undefined) {
-      cfg.OCT_USE_EXTERNAL_OMNIROUTE = parseBooleanConfigValue(keys.OCT_USE_EXTERNAL_OMNIROUTE) ? 'true' : 'false';
-    }
-    Object.assign(cfg, {
-      OPENCLAW_WS_URL: cfg.OPENCLAW_WS_URL ?? DEFAULT_CONFIG.OPENCLAW_WS_URL,
-      OPENCLAW_TOKEN: cfg.OPENCLAW_TOKEN ?? '',
+    const { cfg, previousCfg } = applyApiKeyUpdates(existingConfig, keys, {
+      OPENCLAW_WS_URL: DEFAULT_CONFIG.OPENCLAW_WS_URL,
+      TTS_MINIMAX_VOICE_ID: DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
     });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
     syncExternalOmniRouteVault(cfg);
@@ -3687,25 +3441,8 @@ ipcMain.handle('save-api-keys', async (_, keys: {
     loadOpenClawConfig();
     mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
     // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
-    const changed = (key: string) => String(previousCfg[key] ?? '') !== String(cfg[key] ?? '');
-    const restartKeys = [
-      'OCT_PROVIDER', 'OCT_MODEL', 'SCRIPT_ADAPTER_REAL_AGENTS', 'OPENCLAW_TOKEN', 'CUSTOM_MODEL',
-      'DASHSCOPE_BASE_URL', 'DEEPSEEK_BASE_URL', 'MINIMAX_BASE_URL', 'CUSTOM_BASE_URL',
-      'DASHSCOPE_API_KEY', 'DEEPSEEK_API_KEY', 'MINIMAX_API_KEY', 'NEWAPI_API_KEY', 'NEWAPI_BASE_URL',
-      'CUSTOM_API_KEY', 'GOOGLE_AI_API_KEY', 'GOOGLE_AI_BASE_URL', 'HTTPS_PROXY', 'HTTP_PROXY',
-      'BRAVE_SEARCH_API_KEY', 'TAVILY_API_KEY', 'VISION_API_KEY', 'VISION_BASE_URL', 'VISION_MODEL',
-      'SILICONFLOW_API_KEY', 'OMNIROUTE_BASE_URL', 'OMNIROUTE_API_KEY', 'OMNIROUTE_MODEL',
-      'OMNIROUTE_CHAT_MODEL', 'OMNIROUTE_PLAN_MODEL', 'OMNIROUTE_TOOL_MODEL',
-      'OCT_USE_EXTERNAL_OMNIROUTE',
-      'IMAGE_PROVIDER', 'IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY', 'IMAGE_API_KEY', 'IMAGE_BASE_URL', 'IMAGE_MODEL',
-      'IMAGE_MINIMAX_API_KEY', 'IMAGE_MINIMAX_BASE_URL', 'IMAGE_MINIMAX_MODEL',
-      'IMAGE_SILICONFLOW_API_KEY', 'IMAGE_SILICONFLOW_BASE_URL', 'IMAGE_SILICONFLOW_MODEL',
-      'IMAGE_OPENAI_API_KEY', 'IMAGE_OPENAI_BASE_URL', 'IMAGE_OPENAI_MODEL',
-      'IMAGE_GOOGLE_API_KEY', 'IMAGE_GOOGLE_BASE_URL', 'IMAGE_GOOGLE_MODEL',
-      'IMAGE_SIZE',
-    ];
-    const aiConfigChanged = restartKeys.some((key) => changed(key));
-    const connectionChanged = changed('OPENCLAW_WS_URL') || changed('OPENCLAW_TOKEN') || aiConfigChanged;
+    const aiConfigChanged = didApiConfigChange(previousCfg, cfg);
+    const connectionChanged = didConnectionConfigChange(previousCfg, cfg);
     if (connectionChanged) {
       suppressAutoReconnect = true;
       clearReconnectTimer();

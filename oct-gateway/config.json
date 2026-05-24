@@ -39,11 +39,11 @@
     "textPipeline": "span_attribution"
   },
   "AGENT_PERMISSIONS": {
-    "shellCommands": false,
-    "fileWrite": false,
+    "shellCommands": true,
+    "fileWrite": true,
     "networkRequests": true,
-    "softwareInstall": false,
-    "systemConfig": false
+    "softwareInstall": true,
+    "systemConfig": true
   },
   "AGENT_PERMISSIONS_STRICT_UNKNOWN_MCP_DENY": true,
   "mcpServers": {

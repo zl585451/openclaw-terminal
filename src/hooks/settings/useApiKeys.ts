@@ -329,7 +329,7 @@ function providerSnapshotForBaseline(
   return providers[providerId] || FALLBACK_PROVIDERS[providerId];
 }
 
-function buildGatewayPayload(
+export function buildGatewayPayload(
   apiKeys: ApiKeysState,
   currentProviderId: string,
   currentProvider: ProviderEntry | undefined,
