@@ -180,3 +180,30 @@
 - `node oct-gateway/test/imageGenerationConfig.test.js`
 - `node oct-gateway/test/scriptAdapterMessageHandler.test.js`
 - `node oct-gateway/test/gatewaySmoke.test.js`
+
+## Phase D-1 Electron Provider 配置投影收口
+
+新增：
+
+- `electron/config/providers.ts`
+  - 从 `electron/main.ts` 抽出 Settings UI fallback provider registry。
+  - 抽出 `get-provider-list` 的 provider module 加载与 fallback 逻辑。
+  - 抽出 `test-ai-connection` 中 providerId、baseUrl、apiKey、model 的纯配置投影。
+  - 保留 `electron/main.ts` 中的真实 IPC、Google native SDK 调用和 fetch 副作用。
+
+- `electron/config/providers.test.ts`
+  - 覆盖 fallback provider 列表关键字段。
+  - 覆盖 gateway `providers.js` 可用、缺失、加载失败三种路径。
+  - 覆盖显式 provider、自定义配置、DashScope Coding URL 推断。
+  - 覆盖 New API 自定义模型与 Google 连接参数投影。
+
+影响：
+
+- `electron/main.ts` 不再内联大段 provider fallback registry。
+- `test-ai-connection` 不再内联 provider/baseUrl/apiKey/model 分支矩阵，后续 Phase D 可继续把 provider metadata 权威向 gateway 侧收敛。
+- 本轮仍未改变实际连接测试协议：Google native 分支和 OpenAI-compatible `/chat/completions` 测试请求保持在原 IPC 中。
+
+验证：
+
+- `npx vitest run electron/config/providers.test.ts electron/config/apiKeys.test.ts src/hooks/__tests__/settingsPayload.test.ts`
+- `npx tsc -p tsconfig.electron.json --noEmit`
