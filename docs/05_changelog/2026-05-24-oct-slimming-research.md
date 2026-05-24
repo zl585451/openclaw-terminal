@@ -207,3 +207,29 @@
 
 - `npx vitest run electron/config/providers.test.ts electron/config/apiKeys.test.ts src/hooks/__tests__/settingsPayload.test.ts`
 - `npx tsc -p tsconfig.electron.json --noEmit`
+
+## Phase D-2 Memory Vector Recall 配置收口
+
+新增：
+
+- `electron/config/vectorRecall.ts`
+  - 从 `electron/main.ts` 抽出 Memory 向量召回的 provider 推断。
+  - 抽出 `get-memory-vector-recall-config` 的 UI 数据投影。
+  - 抽出 `save-memory-vector-recall-config` 的嵌套 `memory.vectorRecall.embedding/recall` 写入规则。
+  - 保留 `electron/main.ts` 中的 IPC、配置文件写入、Gateway 重启和重连副作用。
+
+- `electron/config/vectorRecall.test.ts`
+  - 覆盖 DashScope / Volcengine / custom provider 推断。
+  - 覆盖空配置默认投影和已保存配置投影。
+  - 覆盖 Bailian preset、recall threshold/topK 边界、无关 memory 配置保留和 custom 值 trim。
+
+影响：
+
+- `electron/main.ts` 不再内联向量召回 provider preset、provider 推断和嵌套配置更新矩阵。
+- Memory 设置链路仍维持原协议：保存后写入 `config.json`、刷新 `loadOpenClawConfig()`，并在 Gateway 存活时重启。
+- 前端 `MemoryTabView` 仍保留 UI preset，用于交互默认值；后续可单独做前后端 preset 去重。
+
+验证：
+
+- `npx vitest run electron/config/vectorRecall.test.ts electron/config/providers.test.ts electron/config/apiKeys.test.ts`
+- `npx tsc -p tsconfig.electron.json --noEmit`

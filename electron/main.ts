@@ -28,6 +28,11 @@ import {
   loadProviderList,
   resolveAiConnectionSettings,
 } from './config/providers';
+import {
+  applyMemoryVectorRecallConfig,
+  buildMemoryVectorRecallConfigData,
+  MemoryVectorRecallPayload,
+} from './config/vectorRecall';
 
 let mainWindow: BrowserWindow | null = null;
 let floatWindow: BrowserWindow | null = null;
@@ -2759,53 +2764,12 @@ ipcMain.handle(
   }
 );
 
-const VECTOR_PROVIDER_PRESETS = {
-  bailian: {
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    model: 'text-embedding-v4',
-    dimensions: 1024,
-  },
-  volcengine: {
-    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    dimensions: 1024,
-  },
-};
-
-function inferVectorProvider(baseUrl: string, model: string): 'bailian' | 'volcengine' | 'custom' {
-  const u = String(baseUrl || '').toLowerCase();
-  const m = String(model || '').toLowerCase();
-  if (u.includes('dashscope') || m.includes('text-embedding-v3') || m.includes('text-embedding-v4')) return 'bailian';
-  if (u.includes('volces') || u.includes('ark.cn-beijing') || u.includes('doubao')) return 'volcengine';
-  return 'custom';
-}
-
 ipcMain.handle('get-memory-vector-recall-config', async () => {
   try {
     const cfg = readAppConfig();
-    const memoryCfg = cfg.memory && typeof cfg.memory === 'object' ? cfg.memory : {};
-    const vectorRecall = memoryCfg.vectorRecall && typeof memoryCfg.vectorRecall === 'object'
-      ? memoryCfg.vectorRecall
-      : {};
-    const embedding = vectorRecall.embedding && typeof vectorRecall.embedding === 'object'
-      ? vectorRecall.embedding
-      : {};
-    const recall = vectorRecall.recall && typeof vectorRecall.recall === 'object'
-      ? vectorRecall.recall
-      : {};
-    const baseUrl = String(embedding.baseUrl || '');
-    const model = String(embedding.model || '');
     return {
       success: true,
-      data: {
-        enabled: vectorRecall.enabled === true,
-        provider: String(vectorRecall.provider || inferVectorProvider(baseUrl, model)),
-        baseUrl,
-        apiKey: String(embedding.apiKey || ''),
-        model,
-        dimensions: Number(embedding.dimensions || 1024),
-        threshold: Number(recall.threshold || 0.75),
-        topK: Number(recall.topK || 3),
-      },
+      data: buildMemoryVectorRecallConfigData(cfg),
     };
   } catch (e: any) {
     return { success: false, error: e?.message || String(e) };
@@ -2816,63 +2780,11 @@ ipcMain.handle(
   'save-memory-vector-recall-config',
   async (
     _,
-    payload: {
-      enabled?: boolean;
-      provider?: 'bailian' | 'volcengine' | 'custom';
-      baseUrl?: string;
-      apiKey?: string;
-      model?: string;
-      dimensions?: number;
-      threshold?: number;
-      topK?: number;
-    }
+    payload: MemoryVectorRecallPayload
   ) => {
     try {
       ensureConfigFile();
-      const cfg = readAppConfig();
-      const memoryCfg = cfg.memory && typeof cfg.memory === 'object' ? { ...cfg.memory } : {};
-      const vectorRecall = memoryCfg.vectorRecall && typeof memoryCfg.vectorRecall === 'object'
-        ? { ...memoryCfg.vectorRecall }
-        : {};
-      const embedding = vectorRecall.embedding && typeof vectorRecall.embedding === 'object'
-        ? { ...vectorRecall.embedding }
-        : {};
-      const recall = vectorRecall.recall && typeof vectorRecall.recall === 'object'
-        ? { ...vectorRecall.recall }
-        : {};
-
-      if (payload.enabled !== undefined) vectorRecall.enabled = payload.enabled === true;
-      if (payload.provider !== undefined) vectorRecall.provider = payload.provider;
-      if (payload.baseUrl !== undefined) embedding.baseUrl = String(payload.baseUrl || '').trim();
-      if (payload.apiKey !== undefined) embedding.apiKey = String(payload.apiKey || '').trim();
-      if (payload.model !== undefined) embedding.model = String(payload.model || '').trim();
-      if (payload.dimensions !== undefined) {
-        const n = Number(payload.dimensions);
-        embedding.dimensions = Number.isFinite(n) && n > 0 ? Math.round(n) : 1024;
-      }
-      if (payload.provider === 'bailian') {
-        embedding.baseUrl = payload.baseUrl || VECTOR_PROVIDER_PRESETS.bailian.baseUrl;
-        embedding.model = payload.model || VECTOR_PROVIDER_PRESETS.bailian.model;
-        embedding.dimensions = Number(payload.dimensions || VECTOR_PROVIDER_PRESETS.bailian.dimensions);
-      } else if (payload.provider === 'volcengine') {
-        embedding.baseUrl = payload.baseUrl || VECTOR_PROVIDER_PRESETS.volcengine.baseUrl;
-        embedding.dimensions = Number(payload.dimensions || VECTOR_PROVIDER_PRESETS.volcengine.dimensions);
-      }
-      embedding.version = Number(embedding.version || 1);
-      embedding.timeoutMs = Number(embedding.timeoutMs || 30000);
-      if (payload.threshold !== undefined) {
-        const n = Number(payload.threshold);
-        recall.threshold = Number.isFinite(n) ? Math.min(0.99, Math.max(0.1, n)) : 0.75;
-      }
-      if (payload.topK !== undefined) {
-        const n = Number(payload.topK);
-        recall.topK = Number.isFinite(n) ? Math.min(10, Math.max(1, Math.round(n))) : 3;
-      }
-
-      vectorRecall.embedding = embedding;
-      vectorRecall.recall = recall;
-      memoryCfg.vectorRecall = vectorRecall;
-      cfg.memory = memoryCfg;
+      const cfg = applyMemoryVectorRecallConfig(readAppConfig(), payload);
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
       loadOpenClawConfig();
 

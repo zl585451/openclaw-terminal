@@ -19,6 +19,7 @@ OCT 核心主线收敛为外部 OmniRoute 客户端；本地多 provider 仅保�
    - 职责：展示、提交、触发保存与重连、展示 OmniRoute 诊断。
    - 限制：前端不应成为 provider registry 权威；现有 `FALLBACK_PROVIDERS` 只能作为加载失败时的 UI fallback，后续 Phase D 应收敛为消费 gateway 返回的 provider metadata。
    - Phase D-1 后，Electron 侧 provider fallback 列表和 `test-ai-connection` 的 provider/baseUrl/apiKey/model 投影已收口到 `electron/config/providers.ts`；`electron/main.ts` 只保留 IPC 编排、Google native 特例调用和真实 fetch 副作用。
+   - Phase D-2 后，Memory 向量召回的 provider 推断、embedding preset、threshold/topK 边界已收口到 `electron/config/vectorRecall.ts`；`electron/main.ts` 只保留配置文件写入和 Gateway 重启副作用。
 
 ## OCT 与 OmniRoute 职责边界
 
