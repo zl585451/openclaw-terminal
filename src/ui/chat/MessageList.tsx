@@ -4,9 +4,8 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
-import { extractAssistantCotAndMain, hasAssistantCotMarkers, stripLeakedToolCallSections, stripTextToolAnnotations } from '../../utils/cotExtract';
-import { blockRouter } from '../../core/blockRouter';
-import { blocksToSegments } from '../../core/blockAdapter';
+import { hasAssistantCotMarkers } from '../../utils/cotExtract';
+// removed imports
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
 import QuestionCards from '../../components/QuestionCards';
@@ -18,7 +17,7 @@ import { getCachedPreprocessedMarkdown, stabilizeStreamingMarkdown } from '../..
 import type { ChatMessage } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
 import StreamingMarkdownContent from './StreamingMarkdownContent';
-import { renderBlocksCacheKey, renderBlocksToParsedContent } from './renderBlocksAdapter';
+import { useMsgParse } from '../../hooks/useMsgParse';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
 
@@ -866,18 +865,6 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
 
 // ── ChatMessageList ───────────────────────────────────────────────────────
 
-/** 列表渲染用稳定引用，避免每条 user 消息因新对象触发无意义子树更新 */
-const STABLE_EMPTY_OPTIONS: OptionItem[] = [];
-const USER_ROW_PARSE_PLACEHOLDER = {
-  text: '',
-  options: STABLE_EMPTY_OPTIONS,
-  totalPages: undefined as number | undefined,
-  isTaskList: false,
-  isReflectiveQuestions: false,
-  forcePills: undefined as boolean | undefined,
-  segments: undefined as RenderSegment[] | undefined,
-};
-
 export interface ChatMessageListProps {
   messages: ChatMessage[];
   displayMessages: ChatMessage[];
@@ -1064,113 +1051,30 @@ export const ChatMessageList = memo(function ChatMessageList({
           )
         )}
         {displayMessages.map((msg) => {
-        const raw = typeof msg.content === 'string'
-          ? msg.content
-          : String((msg.content as any)?.text ?? (msg.content as any)?.content ?? msg.content ?? '');
-        // 占位消息（isStreamingRaw + 空内容）：不跳过，让 streamingDomRef 能 attach
-        // 打字机依赖 DOM 节点存在才能直接写 textContent
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
-        const fullContent =
-          isStreamingMsg
-            ? (
-                (msg.isStreamingRaw && raw.trim())
-                  ? raw
-                  : (streamingContent || raw)
-              )
-            : raw;
-        /** 与 useMessages 流式正文一致：先去掉泄漏的工具段，再走 CoT / Markdown */
-        const fullForCot =
-          msg.role === 'assistant' && fullContent ? stripLeakedToolCallSections(fullContent) : fullContent;
-        const displayedLength = displayedText.length;
 
-        // ═══ CoT 分离：支持 [cot]…[/cot] 和 <think>…</think> 两种格式 ═══
-        const { cotContent: streamingCotContent, cotStarted: streamingCotStarted, mainContent: mainTextFull } =
-          allowCotDisplay && msg.role === 'assistant' && fullForCot
-            ? !hasAssistantCotMarkers(fullForCot)
-              ? { cotContent: null, cotStarted: false, mainContent: stripTextToolAnnotations(fullForCot) }
-              : extractAssistantCotAndMain(fullForCot)
-            : { cotContent: null, cotStarted: false, mainContent: fullContent };
-        const display = isStreamingMsg ? mainTextFull.slice(0, displayedLength) : mainTextFull;
-        const shouldBypassStreamingParse =
-          usePlainStreamingText && msg.role === 'assistant' && isStreamingMsg;
-        const parsed =
-          msg.role === 'user'
-            ? USER_ROW_PARSE_PLACEHOLDER
-            : msg.role === 'assistant'
-              ? (() => {
-                  if (shouldBypassStreamingParse) {
-                    return {
-                      text: display,
-                      options: STABLE_EMPTY_OPTIONS,
-                      totalPages: undefined,
-                      isTaskList: false,
-                      isReflectiveQuestions: false,
-                      forcePills: undefined,
-                      segments: undefined,
-                    };
-                  }
-                  const fc = typeof fullContent === 'string' ? fullContent : '';
-                  // 如果已经通过 streamingCotContent 提取了 CoT 内容，
-                  // 就把剥离了 [cot]...[/cot] 的纯正文传给 blockRouter，
-                  // 避免 blockRouter 再次把 [cot] 解析成 segment 造成双重渲染
-                  const cotStrippedContent = streamingCotContent !== null
-                    ? mainTextFull
-                    : fc;
-                  // 流式阶段（非 raw）：缓存解析结果，避免每帧重跑解析器
-                  if (isStreamingMsg) {
-                    const cached = streamingParseCacheRef.current;
-                    if (cached && cached.input === cotStrippedContent) return cached.output;
-                    const blocks = blockRouter(cotStrippedContent);
-                    const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
-                    const result = parseOptionBox(bridgedText);
-                    streamingParseCacheRef.current = { input: cotStrippedContent, output: result };
-                    return result;
-                  }
-                  // 非流式（最终渲染）
-                  // 同样使用剥离 CoT 的内容，避免 parseOptionBox 重复解析 [cot]
-                  // CoT 统一由消息循环外部的 CoTBlock 渲染（使用通用提取器）
-                  const { mainContent: nonStreamingCotStripped } = extractAssistantCotAndMain(fc);
-                  const cachedFinal = finalizedParseCacheRef.current.get(msg.id);
-                  const cacheInput = renderBlocksCacheKey(nonStreamingCotStripped, msg.renderBlocks);
-                  if (cachedFinal && cachedFinal.input === cacheInput) {
-                    return cachedFinal.output;
-                  }
-                  let finalParsed;
-                  if (msg.renderBlocks && msg.renderBlocks.length > 0) {
-                    finalParsed = renderBlocksToParsedContent(msg.renderBlocks);
-                  } else {
-                    const blocks = blockRouter(nonStreamingCotStripped);
-                    const bridgedText = blocksToSegments(blocks).map((s) => s.content).join('');
-                    finalParsed = parseOptionBox(bridgedText);
-                  }
-                  finalizedParseCacheRef.current.set(msg.id, {
-                    input: cacheInput,
-                    output: finalParsed,
-                  });
-                  return finalParsed;
-                })()
-              : {
-                  text: display,
-                  options: STABLE_EMPTY_OPTIONS,
-                  totalPages: undefined,
-                  isTaskList: false,
-                  isReflectiveQuestions: false,
-                  forcePills: undefined,
-                  segments: undefined,
-                };
-        const textToShow = msg.role === 'assistant'
-          ? isStreamingMsg
-            ? (display as string)
-            : parsed.text?.trim()
-              ? parsed.text
-              : mainTextFull
-          : (display as string);
-        const optionsToShow = parsed.options;
-        const totalPages = parsed.totalPages;
-        const isTaskList = !!parsed.isTaskList;
-        const isReflectiveQuestions = !!parsed.isReflectiveQuestions;
-        const forcePills = parsed.forcePills;
-        const segmentsToShow = parsed.segments;
+        const {
+          textToShow,
+          cotContent: streamingCotContent,
+          cotStarted: streamingCotStarted,
+          optionsToShow,
+          totalPages,
+          isTaskList,
+          isReflectiveQuestions,
+          forcePills,
+          segments: segmentsToShow,
+          raw,
+        } = useMsgParse({
+          msg,
+          isStreamingMsg: !!isStreamingMsg,
+          streamingContent,
+          displayedText,
+          allowCotDisplay,
+          usePlainStreamingText,
+          streamingParseCacheRef,
+          finalizedParseCacheRef,
+        });
+
         const inlineThinkingPlaceholder =
           msg.role === 'assistant' &&
           msg.id === lastAssistantId &&
