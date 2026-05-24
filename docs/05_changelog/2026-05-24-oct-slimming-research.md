@@ -328,3 +328,20 @@
 
 - `npx vitest run src/hooks/__tests__/settingsPayload.test.ts src/hooks/__tests__/settings.test.ts`
 - `npx tsc --noEmit`
+
+## Phase D-7 Provider metadata 权威测试补强
+
+新增：
+
+- `src/hooks/__tests__/settings.test.ts`
+  - 覆盖 `useApiKeys()` 在 Electron `getProviderList()` 成功时使用 gateway/Electron 返回的 provider metadata，不落回前端 emergency fallback。
+  - 覆盖 Electron bridge / `getProviderList()` 不可用时只使用最小 `EMERGENCY_FALLBACK_PROVIDERS`，确认 fallback 只含默认模型级别的兜底信息。
+
+影响：
+
+- Phase D-5 的“前端不再复制完整 provider/model registry”有了结构性回归测试保护。
+- 后续删除或继续收敛 provider registry 时，可以用该测试区分“正常权威来源”和“无 bridge 兜底”。
+
+验证：
+
+- `npx vitest run src/hooks/__tests__/settings.test.ts`

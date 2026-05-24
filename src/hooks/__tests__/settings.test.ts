@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { useApiKeys } from '../settings/useApiKeys';
 import {
   OMNIROUTE_LIVE_ALIAS_UNKNOWN,
   formatLiveOmniRouteAlias,
@@ -111,5 +113,48 @@ describe('OmniRoute settings diagnostics', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Gateway 状态桥未就绪');
+  });
+});
+
+describe('Settings provider metadata loading', () => {
+  it('uses gateway/Electron provider metadata when getProviderList succeeds', async () => {
+    const providerList = {
+      custom: {
+        id: 'custom',
+        name: 'Custom Gateway Provider',
+        baseUrl: 'http://gateway.example/v1',
+        keyLink: '',
+        keyPlaceholder: 'sk-custom',
+        defaultModel: 'gateway-model',
+        models: [
+          { id: 'gateway-model', label: 'Gateway Model', tools: true, thinking: false },
+          { id: 'gateway-model-2', label: 'Gateway Model 2', tools: true, thinking: false },
+        ],
+      },
+    };
+    (window as any).electronAPI = {
+      getProviderList: vi.fn().mockResolvedValue({ success: true, data: providerList }),
+    };
+
+    const { result } = renderHook(() => useApiKeys());
+
+    await waitFor(() => {
+      expect(result.current.providers.custom?.name).toBe('Custom Gateway Provider');
+    });
+    expect(result.current.providers.custom.models).toHaveLength(2);
+  });
+
+  it('falls back to minimal emergency provider metadata when getProviderList is unavailable', async () => {
+    (window as any).electronAPI = {};
+
+    const { result } = renderHook(() => useApiKeys());
+
+    await waitFor(() => {
+      expect(result.current.providers['bailian-coding']?.baseUrl).toBe('https://coding.dashscope.aliyuncs.com/v1');
+    });
+    expect(result.current.providers['bailian-coding'].models).toEqual([
+      { id: 'qwen3.5-plus', label: 'qwen3.5-plus', tools: true, thinking: false },
+    ]);
+    expect(result.current.providers.deepseek.defaultModel).toBe('deepseek-v4-flash');
   });
 });
