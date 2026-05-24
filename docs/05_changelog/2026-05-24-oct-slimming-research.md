@@ -233,3 +233,27 @@
 
 - `npx vitest run electron/config/vectorRecall.test.ts electron/config/providers.test.ts electron/config/apiKeys.test.ts`
 - `npx tsc -p tsconfig.electron.json --noEmit`
+
+## Phase D-3 Memory Summarizer 配置收口
+
+新增：
+
+- `electron/config/memorySummarizer.ts`
+  - 从 `electron/main.ts` 抽出 Memory 摘要模型配置的 UI 数据投影。
+  - 抽出 `save-memory-summarizer-config` 的嵌套 `memory.summarizer.api` 写入规则。
+  - 保留 `electron/main.ts` 中的 IPC、配置文件写入、Gateway 重启和重连副作用。
+
+- `electron/config/memorySummarizer.test.ts`
+  - 覆盖空配置默认投影。
+  - 覆盖已保存摘要模型配置投影。
+  - 覆盖 baseUrl/apiKey/model trim、enabled 写入和无关 memory 配置保留。
+
+影响：
+
+- `electron/main.ts` 不再内联摘要模型配置的嵌套对象解析与写入矩阵。
+- Memory 摘要设置保存后仍保持原行为：写入 `config.json`、刷新 `loadOpenClawConfig()`，并在 Gateway 存活时重启。
+
+验证：
+
+- `npx vitest run electron/config/memorySummarizer.test.ts electron/config/vectorRecall.test.ts electron/config/providers.test.ts electron/config/apiKeys.test.ts`
+- `npx tsc -p tsconfig.electron.json --noEmit`

@@ -33,6 +33,11 @@ import {
   buildMemoryVectorRecallConfigData,
   MemoryVectorRecallPayload,
 } from './config/vectorRecall';
+import {
+  applyMemorySummarizerConfig,
+  buildMemorySummarizerConfigData,
+  MemorySummarizerPayload,
+} from './config/memorySummarizer';
 
 let mainWindow: BrowserWindow | null = null;
 let floatWindow: BrowserWindow | null = null;
@@ -2685,19 +2690,9 @@ ipcMain.handle(
 ipcMain.handle('get-memory-summarizer-config', async () => {
   try {
     const cfg = readAppConfig();
-    const memoryCfg = cfg.memory && typeof cfg.memory === 'object' ? cfg.memory : {};
-    const summarizer = memoryCfg.summarizer && typeof memoryCfg.summarizer === 'object'
-      ? memoryCfg.summarizer
-      : {};
-    const apiCfg = summarizer.api && typeof summarizer.api === 'object' ? summarizer.api : {};
     return {
       success: true,
-      data: {
-        enabled: summarizer.enabled !== false,
-        baseUrl: String(apiCfg.baseUrl || ''),
-        apiKey: String(apiCfg.apiKey || ''),
-        model: String(apiCfg.model || ''),
-      },
+      data: buildMemorySummarizerConfigData(cfg),
     };
   } catch (e: any) {
     return { success: false, error: e?.message || String(e) };
@@ -2708,32 +2703,11 @@ ipcMain.handle(
   'save-memory-summarizer-config',
   async (
     _,
-    payload: {
-      enabled?: boolean;
-      baseUrl?: string;
-      apiKey?: string;
-      model?: string;
-    }
+    payload: MemorySummarizerPayload
   ) => {
     try {
       ensureConfigFile();
-      const cfg = readAppConfig();
-      const memoryCfg = cfg.memory && typeof cfg.memory === 'object' ? { ...cfg.memory } : {};
-      const summarizer = memoryCfg.summarizer && typeof memoryCfg.summarizer === 'object'
-        ? { ...memoryCfg.summarizer }
-        : {};
-      const apiCfg = summarizer.api && typeof summarizer.api === 'object'
-        ? { ...summarizer.api }
-        : {};
-
-      if (payload.enabled !== undefined) summarizer.enabled = payload.enabled !== false;
-      if (payload.baseUrl !== undefined) apiCfg.baseUrl = String(payload.baseUrl || '').trim();
-      if (payload.apiKey !== undefined) apiCfg.apiKey = String(payload.apiKey || '').trim();
-      if (payload.model !== undefined) apiCfg.model = String(payload.model || '').trim();
-
-      summarizer.api = apiCfg;
-      memoryCfg.summarizer = summarizer;
-      cfg.memory = memoryCfg;
+      const cfg = applyMemorySummarizerConfig(readAppConfig(), payload);
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
       loadOpenClawConfig();
 
