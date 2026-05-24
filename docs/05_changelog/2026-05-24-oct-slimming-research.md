@@ -274,6 +274,10 @@
   - 增加 fake `providerRouter` 注入。
   - 断言 `/model <id>` 和 `/status` 都通过注入 router 解析模型能力。
 
+- `oct-gateway/README.md`
+  - 移除已退出代码路径的 `OCT_USE_NEW_ROUTER` / `OCT_USE_NEW_CHAT_ENGINE` / `OCT_USE_NEW_TRANSPORT` 迁移开关说明。
+  - 将 README 状态更新为 2026-05 瘦身收口：新 router/chat/transport 默认生效，剩余高风险项是 `ai.js` 本地 provider fallback 是否删除或降级为显式 legacy mode。
+
 影响：
 
 - `/status` / `/model` 不再由 slash handler 私自创建第二个 provider router。

@@ -2,7 +2,7 @@
 
 OCT 独立 AI Gateway，替换 OpenClaw Gateway。
 
-> **最新状态**: 分层重构 Phase 1～4 已完成开发侧收口，Phase 5 处于“联调修复 + 低风险清理”阶段 ✅ (2026-04-08)  
+> **最新状态**: 分层重构已进入 2026-05 瘦身收口；Transport / Router / Chat 主链 / 启动副作用已默认走新边界，Phase C 仅剩高风险 legacy provider fallback 降级/删除确认。  
 > **版本**: v0.5.0-dev
 
 ## 启动
@@ -48,7 +48,7 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 - **Gateway**：`gateway/router.js`、`gateway/slash.js`
 - **Runtime**：`runtime/chatEngine.js`、`runtime/contextBuilder.js`、`runtime/streamController.js`、`runtime/providerRouter.js`、`runtime/toolLoop.js`
 - **Services**：`services/postProcessor.js`、`services/imageService.js`
-- **入口**：`index.js` 仍保留 legacy fallback 与启动胶水，待 Phase 5 清理
+- **入口**：`index.js` 保留依赖装配职责；Transport、lifecycle、memory jobs、capability snapshot、image config、script adapter 分支与 chat request lifecycle 已抽到可测试边界
 
 - **连接层**：WebSocket 18789，OCT 自有 token 认证（无 ECDSA 签名）
 - **Orchestrator**：意图分类、后台任务派发，预留 Agent 路由扩展
@@ -56,17 +56,11 @@ OCT_GATEWAY_TOKEN=可选，Gateway 连接认证 token
 - **OpenClaw Skills**：`skill_adapter.js` 解析 `skills/` 下的 SKILL.md，注入到系统提示词
 - **后台任务**：`task_queue.js` + `worker.js`，任务持久化到 `tasks_runtime.json`，60 秒超时
 
-## 重构开关
-
-- `OCT_USE_NEW_ROUTER=1`：Slash、`sessions.list`、普通 `chat.send` 优先走 `MessageRouter`
-- `OCT_USE_NEW_CHAT_ENGINE=1`：普通聊天主链切到 `ChatEngine`
-- `OCT_USE_NEW_TRANSPORT=1`：WS/HTTP 生命周期切到 `transport/*`
-
 ## 当前实现说明
 
-- 新旧路径目前并存，这是有意保留的联调保护带
+- 旧 `OCT_USE_NEW_*` 迁移开关已退出代码路径；当前默认使用分层后的 router、chat engine 与 transport。
 - 连接协议仍保持原样：`req` / `res` / `event` JSON 结构未改
-- `ai.js` 已明显瘦身，但最终的 flag 清理和 legacy 删除仍留在 Phase 5
+- `ai.js` 仍保留本地 provider fallback 保护带；删除或降级该路径会改变传统 provider 用户行为，需要在 Phase C 后期单独确认。
 
 ## 2026-04-08 联调修复摘要
 
@@ -171,11 +165,11 @@ npm run build
 ```
 
 ### 🚀 下一阶段
-- 先做 Transport / Router / Runtime 联调验收
-- 再进入 Phase 5：删除 legacy fallback、收紧 `index.js`、清理 Feature Flag
-- 最后再考虑 Gateway 生态扩展（Agent 路由、多模型负载均衡）
+- Phase E：收敛消息/渲染协议兼容层，形成唯一 Render Protocol spec 与 golden tests。
+- Phase F：将 script adapter / tools / image / memory 等非核心能力按“可选能力包”标注边界，准备懒加载或开关化。
+- 高风险确认点：是否删除 `ai.js` 本地 provider fallback，或仅降级为显式 legacy mode。
 
 ---
 
 > **维护者**: OpenClaw Team  
-> **最后更新**: 2026-04-08（分层重构 Phase 1～4 开发侧收口）
+> **最后更新**: 2026-05-24（OCT 瘦身 Phase C/D 收口）
