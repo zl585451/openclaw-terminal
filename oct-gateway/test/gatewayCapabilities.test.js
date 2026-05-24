@@ -25,6 +25,12 @@ function main() {
         b: { status: 'disconnected' },
       }),
     },
+    optionalCapabilitiesProvider: () => ({
+      version: 'test',
+      packages: {
+        tools: { status: 'available', loadedCount: 2 },
+      },
+    }),
     logger,
   });
 
@@ -37,6 +43,12 @@ function main() {
     mcpReady: true,
     mcpServers: 2,
     mcpConnectedServers: 1,
+    optionalCapabilities: {
+      version: 'test',
+      packages: {
+        tools: { status: 'available', loadedCount: 2 },
+      },
+    },
   });
 
   const fallback = createGatewayCapabilitiesProvider({

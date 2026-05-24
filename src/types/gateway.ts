@@ -12,6 +12,21 @@ export interface GatewayCapabilities {
   mcpReady?: boolean;
   mcpServers?: number;
   mcpConnectedServers?: number;
+  optionalCapabilities?: GatewayOptionalCapabilities;
+}
+
+export interface GatewayOptionalCapabilityPackage {
+  status?: 'enabled' | 'disabled' | 'available' | 'unavailable' | string;
+  loadedCount?: number;
+  serverCount?: number;
+  lazyLoadCandidate?: boolean;
+  entrypoints?: string[];
+  [key: string]: unknown;
+}
+
+export interface GatewayOptionalCapabilities {
+  version?: string;
+  packages?: Record<string, GatewayOptionalCapabilityPackage>;
 }
 
 export interface GatewayUsagePayload {

@@ -44,6 +44,7 @@ const ContextBuilder = require('./runtime/contextBuilder');
 const ProviderRouter = require('./runtime/providerRouter');
 const { createChatRequestHandler } = require('./runtime/chatRequestHandler');
 const { createGatewayCapabilitiesProvider } = require('./runtime/gatewayCapabilities');
+const { createOptionalCapabilitiesSnapshot } = require('./runtime/optionalCapabilities');
 const { buildImageGenerationConfig } = require('./runtime/imageGenerationConfig');
 const { createStreamSmoother } = require('./runtime/streamUtils');
 const { normalizeAssistantMarkdown } = require('./services/markdownNormalizer');
@@ -213,6 +214,11 @@ const getGatewayCapabilities = createGatewayCapabilitiesProvider({
   config,
   providerRouter,
   mcpManager,
+  optionalCapabilitiesProvider: createOptionalCapabilitiesSnapshot({
+    config,
+    toolLoader,
+    mcpManager,
+  }),
   logger: log,
 });
 

@@ -439,4 +439,34 @@
 - `node oct-gateway/test/renderBlocksNormalizer.test.js`
 - `npx vitest run src/ui/chat/renderProtocolV3Golden.test.ts src/ui/chat/renderBlocksAdapter.test.ts`
 - `npx tsc --noEmit`
+
+## Phase F-1 Optional Capability 边界打包
+
+新增/调整：
+
+- `oct-gateway/runtime/optionalCapabilities.js`
+  - 新增 gateway 可选能力包快照：`tools`、`mcp_tools`、`script_adapter`、`image_analysis`、`memory`、`ai_library`。
+  - 每个包输出 `status`、`entrypoints`、`lazyLoadCandidate`，tools/MCP 额外输出加载数量。
+
+- `oct-gateway/runtime/gatewayCapabilities.js`
+  - capability snapshot 可注入 `optionalCapabilitiesProvider`。
+  - `/status` / WS hello / HTTP status 能继续消费原核心字段，同时附带 optional capability 边界信息。
+
+- `src/types/gateway.ts`
+  - 增加 `GatewayOptionalCapabilities` / `GatewayOptionalCapabilityPackage` 类型。
+
+- `docs/02_architecture/oct-optional-capabilities.md`
+  - 新增 Phase F core vs optional 能力边界文档。
+
+影响：
+
+- Phase F 先完成“打包与可观测边界”，没有物理懒加载，也没有删除 script adapter / tools / image / memory。
+- 后续如果要真正 lazy-load 或开关化，可直接以 `optionalCapabilities.packages.*.entrypoints` 为拆包范围。
+
+验证：
+
+- `node oct-gateway/test/optionalCapabilities.test.js`
+- `node oct-gateway/test/gatewayCapabilities.test.js`
+- `node oct-gateway/test/gatewaySmoke.test.js`
+- `npx tsc --noEmit`
 - `npx tsc --noEmit`
