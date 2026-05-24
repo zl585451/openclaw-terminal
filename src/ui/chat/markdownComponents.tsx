@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from '../../components/CodeBlock';
-import MermaidRenderer from '../../components/canvas/MermaidRenderer';
+import MermaidRenderer from '../../components/canvas/MermaidRendererLazy';
 import { highlightCode } from '../../utils/codeHighlight';
 import { diagramSpecToMermaid, parseDiagramSpec } from '../../utils/diagramSchema';
 import { getEChartsPayloadTitle, looksLikeEChartsPayload } from '../../utils/echartsPayload';

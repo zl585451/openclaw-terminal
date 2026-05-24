@@ -1,16 +1,17 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import TitleBar from './components/TitleBar';
 import TabBar from './components/TabBar';
-import ChatTab from './ui/chat/ChatTab.v2';
 import type { ChatMessage } from './ui/chat/chatTypes';
-import SoundTab from './components/SoundTab';
-import ReaperTab from './components/ReaperTab';
-import SettingsPanel from './components/SettingsPanel';
 import WorkbenchHost from './components/workbench/WorkbenchHost';
 import FirstLaunchSetup from './components/FirstLaunchSetup';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { WorkbenchProvider } from './workbench/WorkbenchContext';
 import './styles/App.css';
+
+const ChatTab = lazy(() => import('./ui/chat/ChatTab.v2'));
+const SoundTab = lazy(() => import('./components/SoundTab'));
+const ReaperTab = lazy(() => import('./components/ReaperTab'));
+const SettingsPanel = lazy(() => import('./components/SettingsPanel'));
 
 const ScriptAdapterApp = lazy(() =>
   import('./modules/script-adapter').then((module) => ({ default: module.ScriptAdapterApp }))
@@ -173,16 +174,22 @@ const App: React.FC = () => {
           {appView === 'chat' ? (
             <>
               {activeTab === 'chat' && (
-                <ChatTab
-                  messages={messages}
-                  setMessages={setMessages}
-                  getNextMessageId={getNextMessageId}
-                  onStatusChange={() => {}}
-                  onSwitchTab={setActiveTab}
-                />
+                <Suspense fallback={null}>
+                  <ChatTab
+                    messages={messages}
+                    setMessages={setMessages}
+                    getNextMessageId={getNextMessageId}
+                    onStatusChange={() => {}}
+                    onSwitchTab={setActiveTab}
+                  />
+                </Suspense>
               )}
-              {activeTab === 'sound' && <SoundTab />}
-              {activeTab === 'reaper' && <ReaperTab />}
+              <Suspense fallback={null}>
+                {activeTab === 'sound' && <SoundTab />}
+              </Suspense>
+              <Suspense fallback={null}>
+                {activeTab === 'reaper' && <ReaperTab />}
+              </Suspense>
             </>
           ) : (
             <Suspense fallback={<div className="script-adapter-loading">正在加载内容制作工作台...</div>}>
@@ -196,12 +203,14 @@ const App: React.FC = () => {
         </div>
         <WorkbenchHost />
         {showSettings && (
-          <SettingsPanel
-            onClose={() => {
-              setShowSettings(false);
-              dismissFirstLaunchSetup();
-            }}
-          />
+          <Suspense fallback={null}>
+            <SettingsPanel
+              onClose={() => {
+                setShowSettings(false);
+                dismissFirstLaunchSetup();
+              }}
+            />
+          </Suspense>
         )}
         {showFirstLaunchSetup && (
           <FirstLaunchSetup

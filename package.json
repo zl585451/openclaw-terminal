@@ -137,6 +137,8 @@
     "nativeRebuilder": "legacy"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/noto-sans-sc": "^5.2.9",
     "@types/prismjs": "^1.26.6",
     "@types/react-syntax-highlighter": "^15.5.13",

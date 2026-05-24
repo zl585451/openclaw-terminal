@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import MermaidRenderer from '../../components/canvas/MermaidRenderer';
+import MermaidRenderer from '../../components/canvas/MermaidRendererLazy';
 import { markdownComponents } from '../../ui/chat/markdownComponents';
 import { diagramSpecToMermaid, parseDiagramSpec } from '../../utils/diagramSchema';
 import { buildChapterLineRangesFromLines } from '../../utils/chapterParser';

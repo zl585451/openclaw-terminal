@@ -1,4 +1,4 @@
-import ReactFlowRenderer from '../../components/canvas/ReactFlowRenderer';
+import ReactFlowRenderer from '../../components/canvas/ReactFlowRendererLazy';
 import type { WorkbenchRendererPlugin } from './types';
 
 export const reactFlowPlugin: WorkbenchRendererPlugin = {

@@ -1,4 +1,4 @@
-import EChartsRenderer from '../../components/canvas/EChartsRenderer';
+import EChartsRenderer from '../../components/canvas/EChartsRendererLazy';
 import { looksLikeEChartsPayload } from '../../utils/echartsPayload';
 import type { WorkbenchRendererPlugin } from './types';
 
