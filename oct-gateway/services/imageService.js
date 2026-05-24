@@ -1,6 +1,7 @@
 class ImageService {
-  constructor({ imageAnalyzer, logger }) {
+  constructor({ imageAnalyzer, getImageAnalyzer, logger }) {
     this.imageAnalyzer = imageAnalyzer;
+    this.getImageAnalyzer = getImageAnalyzer;
     this.log = logger;
   }
 
@@ -43,7 +44,11 @@ class ImageService {
 
     let imageSummary = '';
     try {
-      imageSummary = await this.imageAnalyzer.analyzeImages(imageAttachments, {
+      const imageAnalyzer = this.imageAnalyzer || this.getImageAnalyzer?.();
+      if (!imageAnalyzer?.analyzeImages) {
+        throw new Error('image analyzer unavailable');
+      }
+      imageSummary = await imageAnalyzer.analyzeImages(imageAttachments, {
         currentProviderId: providerConfig.id,
         apiKey: providerConfig.apiKey,
         baseUrl: providerConfig.baseUrl,

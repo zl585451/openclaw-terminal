@@ -15,7 +15,6 @@ class SlashHandler {
   constructor({
     session,
     memory,
-    memoryFeedback,
     config,
     aiLibrary,
     tools,
@@ -25,7 +24,6 @@ class SlashHandler {
   }) {
     this.session = session;
     this.memory = memory;
-    this.memoryFeedback = memoryFeedback;
     this.config = config;
     this.aiLibrary = aiLibrary;
     this.tools = tools;
@@ -740,16 +738,6 @@ class SlashHandler {
       return;
     }
 
-    if (subCmd === 'feedback') {
-      const feedbackText = await this.memoryFeedback.loadFeedbackForBoot();
-      if (!feedbackText || feedbackText.trim().length < 10) {
-        this.reply(connection, '暂无反馈记录');
-        return;
-      }
-      this.reply(connection, feedbackText.replace('## 📌 反馈与纠正（启动时加载）\n\n', '📌 最近反馈记录\n\n'));
-      return;
-    }
-
     if (subCmd === 'stats') {
       const alive = await mem.isAlive();
       if (!alive) {
@@ -768,7 +756,7 @@ class SlashHandler {
         `历史天数：${totalDays} 天`,
         `Memory v2：✅ 在线`,
         '',
-        '口令：/memory boot|read|search|status|today|feedback|stats',
+        '口令：/memory boot|read|search|status|today|stats',
       ].join('\n'));
       return;
     }
@@ -777,7 +765,6 @@ class SlashHandler {
       '可用记忆口令：',
       '/memory boot — 重载核心记忆',
       '/memory today — 今天的对话摘要',
-      '/memory feedback — 最近反馈记录',
       '/memory stats — 记忆统计',
       '/memory read core://xxx — 读取节点',
       '/memory search 关键词 — 搜索',

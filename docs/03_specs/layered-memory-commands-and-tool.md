@@ -24,8 +24,6 @@
 
 - `backend`：默认 `file`，当前主链仅使用本地 Memory v2 文件后端。
 - `root`：Memory v2 根目录；默认 `~/.openclaw/memory`。
-- `auto_save_feedback`：默认 `false`。
-- `load_feedback_on_boot`：默认 `false`。
 
 向量写入配置位于 `memory.vectorRecall.write`：
 

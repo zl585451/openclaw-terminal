@@ -50,13 +50,13 @@
 | 项目 | 内容 |
 |------|------|
 | 做什么 | 检测明确反馈或纠正，按规则写入 Memory v2 |
-| 文件 | `oct-gateway/memory_feedback.js` → `detectAndSaveFeedback()` |
-| 调用链 | onDone → detectAndSaveFeedback(userMsg, fullReply) → detectFeedbackType() → memory.createMemory() |
-| 写到哪 | `core://agent/feedback/positive/...`、`core://agent/feedback/negative/...`、`core://agent/corrections/...` |
-| 启动加载 | `loadFeedbackForBoot()` 在 system prompt 生成时注入最近反馈 |
-| 前置条件 | `config.memory.auto_save_feedback === true` |
+| 文件 | 已删除 |
+| 调用链 | 已删除 |
+| 写到哪 | 历史数据可能仍存在，但不再新写入 |
+| 启动加载 | 已删除 |
+| 前置条件 | 无 |
 | 验证 | 发「好的」后终端看到 `[Memory] 反馈已写入:` 或 `[Feedback]` 相关日志 |
-| 状态 | ✅ 正常（2026-03-20 修复：已在 onDone 调用） |
+| 状态 | ❌ 已删除（2026-05-25 瘦身：移除 `memory_feedback.js`、启动回注与 `/memory feedback` 入口） |
 
 ---
 

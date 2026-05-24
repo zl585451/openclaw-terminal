@@ -1013,13 +1013,10 @@ const defaultMemoryConfig = {
   backend: process.env.OCT_MEMORY_BACKEND || 'file',
   root: process.env.OCT_MEMORY_ROOT || path.join(os.homedir(), '.openclaw', 'memory'),
   auto_save_history: true,
-  auto_save_feedback: false,
   enable_memory_search: true,
   search_cache_ttl: 300,
   search_default_limit: 10,
   max_history_days: 7,
-  max_feedback_days: 7,
-  load_feedback_on_boot: false,
   compress_length: { user: 100, amy: 200 },
 };
 

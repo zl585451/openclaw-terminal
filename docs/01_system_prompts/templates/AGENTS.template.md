@@ -150,7 +150,7 @@
 | 类型 | 触发词 | 写入路径 |
 |------|--------|----------|
 | 正面 | 问得好、这样可以、这个方案对 | 仅在明确有学习价值时写入 |
-| 负面 | 不对、错了、太长了、废话多 | `core://agent/feedback/negative` 或 `core://agent/corrections` |
+| 负面 | 不对、错了、太长了、废话多 | `core://agent/corrections` |
 | 纠正 | 应该是、以后不要、记住 | `core://agent/corrections` |
 
 ---

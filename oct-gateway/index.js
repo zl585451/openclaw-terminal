@@ -15,14 +15,12 @@ const { streamChat, loadSystemPrompt } = require('./ai');
 const session = require('./session');
 const memory = require('./memory');
 const memoryHistory = require('./memory_history');
-const memoryFeedback = require('./memory_feedback');
 const memorySearch = require('./memory_search');
 const { sanitizeAssistantReply, sanitizeMemoryNodeContent, stripCotText, toUserVisibleAssistantText } = require('./cot_sanitize');
 const memoryGovernor = require('./memory_governor');
 const memoryManagementAgent = require('./memory_management_agent');
 const reviewQueueMaintenance = require('./review_queue_maintenance');
 const reviewQueueActions = require('./review_queue_actions');
-const imageAnalyzer = require('./image_analyzer');
 const ImageService = require('./services/imageService');
 const PostProcessor = require('./services/postProcessor');
 const {
@@ -59,38 +57,15 @@ const toolLoader = require('./tool_loader');
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./clarification_memory');
 const memoryTaskQueue = require('./memory_task_queue');
-const aiLibrary = require('./tools/ai_library');
+const { createLazyAiLibrary } = require('./runtime/lazyAiLibrary');
 const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
 const { handleImageGenerate } = require('./image_gen');
 const {
-  startChapterPipelineRun,
-  cancelChapterPipelineRun,
-  listChapterPipelineRuns,
-} = require('./script_adapter/chapterPipeline');
-const persistence = require('./script_adapter/persistence');
-const connectionRegistry = require('./script_adapter/connectionRegistry');
-const {
-  startBatch: startScriptAdapterBatch,
-  getBatchStatus: getScriptAdapterBatchStatus,
-  listBatches: listScriptAdapterBatches,
-  cancelBatch: cancelScriptAdapterBatch,
-  approveGate: approveScriptAdapterBatchGate,
-  rejectGate: rejectScriptAdapterBatchGate,
-  rerunChapter: rerunScriptAdapterBatchChapter,
-  deleteBatch: deleteScriptAdapterBatch,
-} = require('./script_adapter/batchOrchestrator');
-const {
-  startIntake: startScriptAdapterIntake,
-} = require('./script_adapter/intakeOrchestrator');
-const {
-  startAnalysis: startScriptAdapterAnalysis,
-} = require('./script_adapter/businessAnalysisOrchestrator');
-const {
-  startProductionHandoff: startScriptAdapterProductionHandoff,
-} = require('./script_adapter/productionHandoffOrchestrator');
-const { createScriptAdapterMessageHandler } = require('./script_adapter/messageHandler');
+  createLazyScriptAdapterMessageHandler,
+  createLazyScriptAdapterRuntime,
+} = require('./script_adapter/lazyMessageHandler');
 const { createLogger } = require('./logger');
 const { scheduleMemoryHealthCheck } = require('./services/startupHealth');
 const { startScheduler, stopScheduler } = require('./summarizer/scheduler');
@@ -111,14 +86,19 @@ const systemPromptReady = (async () => {
   return SYSTEM_PROMPT;
 })();
 
-const imageService = new ImageService({ imageAnalyzer, logger: log });
+const imageService = new ImageService({
+  getImageAnalyzer: () => require('./image_analyzer'),
+  logger: log,
+});
+const aiLibrary = createLazyAiLibrary({
+  loadModule: () => require('./tools/ai_library'),
+});
 const providerRouter = new ProviderRouter({ config });
 const postProcessor = new PostProcessor({
   memoryModule: memory,
   sessionModule: session,
   streamChat,
   memoryGovernor,
-  memoryFeedback,
   memoryHistory,
   clarificationMemory,
   memoryTaskQueue,
@@ -127,7 +107,6 @@ const postProcessor = new PostProcessor({
 const slashHandler = new SlashHandler({
   session,
   memory,
-  memoryFeedback,
   config,
   aiLibrary,
   tools: toolLoader,
@@ -168,22 +147,63 @@ const contextBuilder = new ContextBuilder({
     getCompletedTasksContext: (sessionKey) => orchestrator.getCompletedTasksContext(sessionKey),
   },
 });
-const handleScriptAdapterMessage = createScriptAdapterMessageHandler({
-  startIntake: startScriptAdapterIntake,
-  startAnalysis: startScriptAdapterAnalysis,
-  startProductionHandoff: startScriptAdapterProductionHandoff,
-  startChapterPipelineRun,
-  cancelChapterPipelineRun,
-  listChapterPipelineRuns,
-  startBatch: startScriptAdapterBatch,
-  getBatchStatus: getScriptAdapterBatchStatus,
-  listBatches: listScriptAdapterBatches,
-  cancelBatch: cancelScriptAdapterBatch,
-  approveGate: approveScriptAdapterBatchGate,
-  rejectGate: rejectScriptAdapterBatchGate,
-  rerunChapter: rerunScriptAdapterBatchChapter,
-  deleteBatch: deleteScriptAdapterBatch,
-  connectionRegistry,
+const getScriptAdapterRuntime = createLazyScriptAdapterRuntime({
+  logger: log,
+  loadRuntime: () => {
+    const {
+      startChapterPipelineRun,
+      cancelChapterPipelineRun,
+      listChapterPipelineRuns,
+    } = require('./script_adapter/chapterPipeline');
+    const persistence = require('./script_adapter/persistence');
+    const connectionRegistry = require('./script_adapter/connectionRegistry');
+    const {
+      startBatch: startScriptAdapterBatch,
+      getBatchStatus: getScriptAdapterBatchStatus,
+      listBatches: listScriptAdapterBatches,
+      cancelBatch: cancelScriptAdapterBatch,
+      approveGate: approveScriptAdapterBatchGate,
+      rejectGate: rejectScriptAdapterBatchGate,
+      rerunChapter: rerunScriptAdapterBatchChapter,
+      deleteBatch: deleteScriptAdapterBatch,
+    } = require('./script_adapter/batchOrchestrator');
+    const {
+      startIntake: startScriptAdapterIntake,
+    } = require('./script_adapter/intakeOrchestrator');
+    const {
+      startAnalysis: startScriptAdapterAnalysis,
+    } = require('./script_adapter/businessAnalysisOrchestrator');
+    const {
+      startProductionHandoff: startScriptAdapterProductionHandoff,
+    } = require('./script_adapter/productionHandoffOrchestrator');
+    const { createScriptAdapterMessageHandler } = require('./script_adapter/messageHandler');
+
+    return {
+      persistence,
+      connectionRegistry,
+      handleMessage: createScriptAdapterMessageHandler({
+        startIntake: startScriptAdapterIntake,
+        startAnalysis: startScriptAdapterAnalysis,
+        startProductionHandoff: startScriptAdapterProductionHandoff,
+        startChapterPipelineRun,
+        cancelChapterPipelineRun,
+        listChapterPipelineRuns,
+        startBatch: startScriptAdapterBatch,
+        getBatchStatus: getScriptAdapterBatchStatus,
+        listBatches: listScriptAdapterBatches,
+        cancelBatch: cancelScriptAdapterBatch,
+        approveGate: approveScriptAdapterBatchGate,
+        rejectGate: rejectScriptAdapterBatchGate,
+        rerunChapter: rerunScriptAdapterBatchChapter,
+        deleteBatch: deleteScriptAdapterBatch,
+        connectionRegistry,
+        logger: log,
+      }),
+    };
+  },
+});
+const handleScriptAdapterMessage = createLazyScriptAdapterMessageHandler({
+  getRuntime: getScriptAdapterRuntime,
   logger: log,
 });
 const handleChatRequest = createChatRequestHandler({
@@ -252,6 +272,10 @@ async function handleTransportMessage(msg, connection) {
 }
 
 function subscribeConnectionToRunningBatches(connection) {
+  if (!getScriptAdapterRuntime.isLoaded()) {
+    return;
+  }
+  const { persistence, connectionRegistry } = getScriptAdapterRuntime();
   for (const batch of persistence.listRunningBatches()) {
     connectionRegistry.subscribe(batch.id, connection);
   }

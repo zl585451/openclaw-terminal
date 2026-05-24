@@ -8,7 +8,6 @@
 | `/provider` | 查看/切换 AI 服务商 | index.js |
 | `/memory boot` | 重载核心记忆 | index.js |
 | `/memory today` | 今天的对话摘要 | index.js |
-| `/memory feedback` | 最近反馈记录 | index.js → memory_feedback.js |
 | `/memory stats` | 记忆统计 | index.js |
 | `/memory read URI` | 读取指定记忆节点 | index.js → memory.js |
 | `/memory search 关键词` | 搜索记忆 | index.js → memory_search.js |

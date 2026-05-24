@@ -126,7 +126,7 @@ function getReviewRetentionHours(record = {}, options = {}) {
   const layer = String(options.layer || 'scratch');
   const source = String(record.source || '');
 
-  if (source === 'feedback' || source === 'clarification_preference') return 24 * 14;
+  if (source === 'clarification_preference') return 24 * 14;
   if (layer === 'project') return score >= 3 ? 24 * 14 : 24 * 7;
   if (layer === 'core') return score >= 3 ? 24 * 10 : 24 * 5;
   if (layer === 'archive') return 24 * 7;
@@ -139,7 +139,6 @@ function buildCleanupHint(record = {}, options = {}) {
   const source = String(record.source || '');
 
   if (source === 'clarification_preference') return 'recheck_after_repeat_confirmation';
-  if (source === 'feedback') return 'merge_into_feedback_memory_if_repeated';
   if (layer === 'project') return score >= 3 ? 'promote_if_referenced_again' : 'archive_if_not_reused';
   if (layer === 'core') return score >= 3 ? 'promote_if_user_repeats' : 'drop_if_not_confirmed';
   return score >= 3 ? 'keep_short_term_then_review' : 'auto_drop_if_idle';
@@ -232,7 +231,7 @@ function routeRecord(record = {}) {
   const explicitMemoryIntent = hasExplicitMemoryIntent(sanitized);
   const ephemeralLike = looksLikeEphemeralRecord(sanitized);
 
-  if (!explicitMemoryIntent && content.length < 10 && source !== 'feedback' && source !== 'clarification_preference') {
+  if (!explicitMemoryIntent && content.length < 10 && source !== 'clarification_preference') {
     const result = { decision: 'reject', reason: 'too_short_low_value', layer };
     log.debug('routeRecord', {
       source,
@@ -258,7 +257,6 @@ function routeRecord(record = {}) {
 
   if (
     isLongTermNamespace(uri) &&
-    source !== 'feedback' &&
     source !== 'clarification_preference' &&
     !explicitMemoryIntent &&
     score < 5
@@ -288,7 +286,6 @@ function routeRecord(record = {}) {
   const shouldPromote =
     layer === 'project' ||
     layer === 'archive' ||
-    source === 'feedback' ||
     source === 'clarification_preference' ||
     score >= 4;
 

@@ -7,7 +7,6 @@ class PostProcessor {
     sessionModule,
     streamChat,
     memoryGovernor,
-    memoryFeedback,
     memoryHistory,
     clarificationMemory,
     memoryTaskQueue,
@@ -17,7 +16,6 @@ class PostProcessor {
     this.session = sessionModule;
     this.streamChat = streamChat;
     this.memoryGovernor = memoryGovernor;
-    this.memoryFeedback = memoryFeedback;
     this.memoryHistory = memoryHistory;
     this.clarificationMemory = clarificationMemory;
     this.memoryTaskQueue = memoryTaskQueue;
@@ -25,10 +23,6 @@ class PostProcessor {
   }
 
   process({ userMessage, assistantReply, sessionKey, prevAssistantReply, toolsUsed, attachments }) {
-    this.memoryTaskQueue.enqueue(
-      () => this.memoryFeedback.detectAndSaveFeedback(userMessage, assistantReply),
-      'memoryFeedback'
-    );
     this.memoryTaskQueue.enqueue(
       () => this.detectAndSaveParking(userMessage, sessionKey),
       'detectAndSaveParking'

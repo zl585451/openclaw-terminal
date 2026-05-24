@@ -1,5 +1,8 @@
-const aiLibrary = require('./ai_library');
+const { createLazyAiLibrary } = require('../runtime/lazyAiLibrary');
 const shared = require('./shared');
+const aiLibrary = createLazyAiLibrary({
+  loadModule: () => require('./ai_library'),
+});
 
 module.exports = {
   name: 'search_knowledge',

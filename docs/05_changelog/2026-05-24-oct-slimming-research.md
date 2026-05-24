@@ -461,6 +461,83 @@
 影响：
 
 - Phase F 先完成“打包与可观测边界”，没有物理懒加载，也没有删除 script adapter / tools / image / memory。
+
+## 2026-05-25 Follow-up：memory feedback 子能力删除
+
+在不偏离现有瘦身计划主线的前提下，本轮继续完成了一次 **memory 子能力级别的减法**：
+
+- 删除 `oct-gateway/memory_feedback.js`
+- 删除对话完成后的 feedback 自动检测入队
+- 删除启动时 feedback 回注到 system prompt
+- 删除 `/memory feedback` 用户入口
+- 删除 `memory.auto_save_feedback` / `memory.load_feedback_on_boot` / `max_feedback_days` 配置项
+- 删除 `memory_governor.js`、`memory_management_agent.js`、`LogPanel` 中仍面向 feedback 子能力的活跃兼容分支
+
+边界说明：
+
+- 这不是新的架构阶段，也不是 provider fallback/optional capability 懒加载的替代任务；
+- 它属于既有瘦身计划下，对 **非核心、低收益、仍挂在活跃运行时主链附近的 memory feedback 支线** 的进一步收口；
+- 本轮仍未删除 provider router、本地 fallback、tools、script adapter、image、memory 主包本身。
+
+验证：
+
+- `node oct-gateway/test/slashHandlerRegression.test.js`
+- `node oct-gateway/test/gatewaySmoke.test.js`
+- `npx tsc --noEmit`
+
+## 2026-05-25 Follow-up：Phase F-2 Script Adapter Gateway 懒加载
+
+### 结论
+
+- Phase F-2 已从 optional capability 边界进入第一条实际懒加载改造：`script_adapter` gateway runtime。
+- `oct-gateway/index.js` 不再在启动阶段 eager require 内容生产工作流的 chapter pipeline、batch/intake/analysis/handoff orchestrators、persistence、connection registry 与真实 message handler。
+- 普通聊天、设置查询、图片生成等非 `scriptAdapter.*` 请求不会初始化 `script_adapter` runtime。
+- 首个 `scriptAdapter.*` 请求仍会委托到原 `script_adapter/messageHandler.js`，协议形状与已有工作台消息语义保持不变。
+
+### 新增/调整文件
+
+- `oct-gateway/script_adapter/lazyMessageHandler.js`
+  - 新增 lazy runtime gate。
+  - 非脚本工作流请求直接 fallthrough。
+  - 脚本工作流请求按需加载 runtime，并复用缓存实例。
+- `oct-gateway/index.js`
+  - 将 `script_adapter` runtime 子模块从顶部 eager require 移入 lazy loader。
+  - running batch 连接补订阅仅在 runtime 已加载后执行，避免普通连接触发内容工作流初始化。
+- `oct-gateway/test/scriptAdapterLazyMessageHandler.test.js`
+  - 覆盖非脚本请求不加载、脚本请求只加载一次、加载失败返回 gateway error response。
+
+### 2026-05-25 追加：image analyzer fallback 按需加载
+
+- `oct-gateway/services/imageService.js` 改为支持 `getImageAnalyzer()` 工厂。
+- `oct-gateway/index.js` 不再启动期 eager require `image_analyzer.js`。
+- inline vision 模型的图片请求不加载 analyzer；非视觉模型需要图片转文本时才加载 fallback。
+- 新增 `oct-gateway/test/imageService.test.js` 覆盖 inline vision 不加载、fallback 按需加载、失败后 text-only 降级。
+
+### 2026-05-25 追加：AI.library knowledge client 按需加载
+
+- 新增 `oct-gateway/runtime/lazyAiLibrary.js`，让 gateway 入口不再启动期 eager require `tools/ai_library.js`。
+- `oct-gateway/runtime/contextBuilder.js` 仅在 `ai_library.knowledge_search_enabled === true` 时调用知识检索，默认聊天不加载专业知识检索 client。
+- `oct-gateway/tools/search_knowledge.js` 保留工具定义，但真实 AI.library client 只在工具执行时加载。
+- 新增 `oct-gateway/test/lazyAiLibrary.test.js` 锁定首次方法调用前不加载、后续复用同一实例。
+
+### 2026-05-25 追加：ToolLoader static tools 按需加载
+
+- `oct-gateway/tool_loader.js` 移除模块初始化时的 `loadTools()`。
+- 新增 `ensureToolsLoaded()`，在 `getDefinitions()`、`executeTool()`、`getToolMeta()` 首次调用时加载静态工具。
+- `registerProvider()` 不触发静态工具加载，MCP 动态 provider 注册仍可在启动期完成。
+- 新增 `oct-gateway/test/toolLoaderLazyInit.test.js`，锁定 require 不加载、首次 definitions 读取加载一次。
+
+### 2026-05-25 追加：前端 ScriptAdapterApp 入口级懒加载
+
+- `src/App.tsx` 将 `ScriptAdapterApp` 从静态 import 改为 `React.lazy()`。
+- 普通聊天首屏不再静态加载完整 `src/modules/script-adapter` UI。
+- 用户进入“内容制作工作台”或“项目素材库”时通过 `Suspense` 按需加载，并保留原 `initialScreen` / `onBack` 行为。
+- `src/styles/App.css` 新增 `.script-adapter-loading` 加载态。
+
+### 后续计划
+
+- Phase F-2 已完成静态工具注册层的懒加载；后续若要拆具体工具文件，还需按工具类别逐个补执行回归。
+- 前端 `src/modules/script-adapter` 已完成 App 入口级 lazy import；后续如需继续瘦身，可再按 Workbench / Library 子视图拆更细 chunk。
 - 后续如果要真正 lazy-load 或开关化，可直接以 `optionalCapabilities.packages.*.entrypoints` 为拆包范围。
 
 验证：

@@ -83,7 +83,6 @@
 
 **Gateway 侧（已在阶段 1 修复）**：
 - ✅ oct-gateway/transport/ws.js:120, :128
-- ✅ oct-gateway/memory_feedback.js:245, :269, :292
 
 **前端侧（待阶段 3 修复）**：
 - ❌ src/components/SettingsPanel.tsx:176, :207

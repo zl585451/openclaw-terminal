@@ -35,7 +35,7 @@ Gateway 启动时，`ai.js#loadSystemPrompt()` 会读取：
 - 最近日/周/月摘要。
 - 追问偏好。
 
-自动反馈加载默认关闭：`memory.auto_save_feedback = false`、`memory.load_feedback_on_boot = false`。这是为了避免“好像”这类普通表达被误判成正反馈，并减少低价值反馈噪声。
+反馈启动加载链路已删除；Gateway 启动时不再注入最近反馈记录。
 
 ## 4.4 历史清理
 

@@ -2,7 +2,6 @@ const config = require('./config');
 const toolLoader = require('./tool_loader');
 const skillAdapter = require('./skill_adapter');
 const memory = require('./memory');
-const memoryFeedback = require('./memory_feedback');
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('./logger');
@@ -220,11 +219,6 @@ async function loadSystemPrompt(promptsDir) {
       len: bootMemory?.length || 0,
       preview: (bootMemory || '').slice(0, 100),
     });
-    if (config.memory && config.memory.load_feedback_on_boot) {
-      const feedbackBlock = await memoryFeedback.loadFeedbackForBoot();
-      if (feedbackBlock) bootMemory = bootMemory + feedbackBlock;
-    }
-
     // 加载追问偏好
     try {
       const clarificationMemory = require('./clarification_memory');

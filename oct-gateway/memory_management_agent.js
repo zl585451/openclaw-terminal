@@ -47,9 +47,6 @@ function buildSuggestions(summary) {
   if ((summary.byLayer.scratch || 0) > (summary.byLayer.core || 0) * 2 && summary.pending > 6) {
     suggestions.push('scratch_candidates_dominate_queue');
   }
-  if ((summary.bySource.feedback || 0) > 0 && (summary.bySource.clarification_preference || 0) > 0) {
-    suggestions.push('feedback_and_preference_signals_present');
-  }
   return suggestions;
 }
 
@@ -61,7 +58,6 @@ function normalizePathFamily(uri = '') {
   if (lowered.startsWith('core://my_user/profile')) return 'core://my_user/profile';
   if (lowered.startsWith('core://my_user/history')) return 'core://my_user/history';
   if (lowered.startsWith('core://agent/review_queue')) return 'core://agent/review_queue';
-  if (lowered.startsWith('core://agent/feedback')) return 'core://agent/feedback';
   if (lowered.startsWith('core://agent/')) return 'core://agent/*';
   if (lowered.startsWith('core://amy/')) return 'core://amy/*';
   if (lowered.startsWith('project://')) {
@@ -128,16 +124,6 @@ function buildActionableAdvice(summary) {
       });
     }
 
-    if (source.source === 'feedback' && source.count >= 4) {
-      advice.push({
-        priority: 'medium',
-        type: 'rule_tightening',
-        action: 'dedupe_feedback_memory',
-        source: source.source,
-        count: source.count,
-        reason: 'feedback-derived candidates are accumulating; merge or dedupe rules may be needed',
-      });
-    }
   }
 
   for (const family of summary.hotPathFamilies) {
@@ -222,10 +208,6 @@ function inferImpactAreas(item = {}) {
   if (source === 'clarification_preference' || pathFamily === 'core://my_user/preferences') {
     areas.add('偏好系统');
     areas.add('相关记忆注入');
-  }
-  if (source === 'feedback' || pathFamily === 'core://agent/feedback') {
-    areas.add('反馈闭环');
-    areas.add('长期规则修正');
   }
   if (pathFamily === 'core://amy/*') {
     areas.add('AMY 身份设定');
@@ -516,8 +498,6 @@ function inferRecommendedChange(item = {}) {
       return '提高 history_summary 进入长期层或 review_queue 的门槛，更多历史摘要仅保留在 archive 语义下';
     case 'require_repeated_preference_confirmation':
       return '偏好类记忆需要重复出现或明确“记住”信号后再晋升长期层';
-    case 'dedupe_feedback_memory':
-      return '合并相似反馈节点，避免同一风格修正被重复写入';
     case 'raise_preference_promotion_threshold':
       return '提高 core://my_user/preferences 的 promote 分数线，并加强 hold/confirm 逻辑';
     case 'protect_amy_identity_namespace':
@@ -550,8 +530,6 @@ function inferExpectedImpact(item = {}) {
     case 'require_repeated_preference_confirmation':
     case 'raise_preference_promotion_threshold':
       return '减少错误偏好长期化，提高偏好系统稳定性';
-    case 'dedupe_feedback_memory':
-      return '减少重复反馈节点，提高反馈闭环信噪比';
     case 'protect_amy_identity_namespace':
       return '降低身份层被临时内容污染的风险';
     case 'compact_project_memory_candidates':

@@ -27,7 +27,6 @@ index.js 接收
     │       ▼ (onDone)
     │
     ├─→ saveRawTurn()                 → Memory v2 JSONL (core://logs/raw/...)
-    ├─→ detectAndSaveFeedback()       → Memory v2 notes (core://agent/feedback/...)
     ├─→ detectAndSaveParking()        → Memory v2 notes (core://my_user/daily/.../parking_lot)
     └─→ detectAndSaveClarification()  → Memory v2 notes (core://my_user/preferences/...)
 ```
@@ -41,7 +40,6 @@ Gateway 启动
     │
     ├─→ loadSystemPrompt()
     │       ├─→ loadBootMemory()    → Memory v2 (核心记忆)
-    │       ├─→ loadFeedbackForBoot() → Memory v2 (最近反馈)
     │       └─→ 读取本地 MD 文件     → SOUL.md / AGENTS.md / USER.md
     │
     ├─→ warmGlossaryCache()         → Memory v2 搜索预热
@@ -58,7 +56,6 @@ Gateway 启动
 | 对话历史 | `core://my_user/history/YYYY-MM-DD/HH-MM-SS` | `core://my_user/history/2026-03-20/14-30-00` |
 | 自我评估 | `core://agent/self_eval/YYYY-MM-DD/HH-MM-SS` | 🔇 已停用（历史数据仍存在） |
 | 模式提炼 | `core://agent/learned_patterns/YYYY-MM-DD` | 🔇 已停用（依赖自评） |
-| 用户反馈 | `core://agent/feedback/{positive\|negative}/YYYY-MM-DD/HH-MM-SS` | `core://agent/feedback/positive/2026-03-20/14-30-10` |
 | 纠正规则 | `core://agent/corrections/YYYY-MM-DD/HH-MM-SS` | `core://agent/corrections/2026-03-20/14-30-15` |
 | 停车场 | `core://my_user/daily/YYYY-MM-DD/parking_lot/HH-MM` | `core://my_user/daily/2026-03-20/parking_lot/14-30` |
 | 偏好 | `core://my_user/preferences/{category}` | `core://my_user/preferences/cost_vs_efficiency` |

@@ -48,7 +48,7 @@
 - 已接入 Governor 的入口：
   - `extractAndSaveMemory()`
   - `memory_history.js`
-  - `memory_feedback.js`
+  - `memory_feedback.js`（已于 2026-05-25 删除）
   - `clarification_memory.js`
   - `tools/shared.js` 中的 `memory_write`
   - 相关记忆注入筛选
@@ -110,7 +110,7 @@
 现有写入入口很多，但治理入口几乎没有：
 
 - `memory_history.saveHistorySummary()`
-- `memory_feedback.detectAndSaveFeedback()`
+- `memory_feedback.detectAndSaveFeedback()`（已删除）
 - `extractAndSaveMemory()`
 - `clarification_memory.detectAndSaveClarification()`
 - `memory_search.searchMemory()` 的结果注入
@@ -146,7 +146,7 @@
 - 启动加载核心记忆与反馈：`oct-gateway/ai.js`
 - 相关记忆检索与注入：`oct-gateway/index.js`
 - 对话历史摘要：`oct-gateway/memory_history.js`
-- 用户反馈闭环：`oct-gateway/memory_feedback.js`
+- 用户反馈闭环：`oct-gateway/memory_feedback.js`（已删除）
 - 自动记忆提炼：`oct-gateway/index.js` 中 `extractAndSaveMemory()`
 - 追问偏好学习：`oct-gateway/clarification_memory.js`
 
@@ -334,7 +334,7 @@
 
 - `core://my_user/history/*` → 归为 `archive`
 - `core://my_user/preferences/*` → 归为 `core-user`
-- `core://agent/feedback/*` → 归为 `feedback`
+- `core://agent/feedback/*` → 历史遗留路径（2026-05-25 后不再新增）
 - `core://agent/self_eval/*` → 归为 `governance`
 - `core://project/*` / `core://my_user/project_*` → 归为 `project`
 - 新候选区可先落到：
@@ -574,7 +574,7 @@
 
 建议：
 
-- 反馈写到 `feedback/*`
+- feedback 写入链路已删除（历史说明保留作迁移参考）
 - Governor 再决定是否反向修改 `preferences/*` 或 `rules/*`
 
 也就是说：
@@ -697,7 +697,7 @@ shouldMerge(nodeA, nodeB)
 1. 新建 `memory_governor.js`
 2. 接管：
    - `memory_history.js`
-   - `memory_feedback.js`
+   - `memory_feedback.js`（已删除）
    - `extractAndSaveMemory()`
    - 相关记忆注入筛选
 3. 新增 `core://agent/review_queue/...` 作为候选层

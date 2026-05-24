@@ -445,11 +445,13 @@ class ContextBuilder {
     const modelContext = `[当前运行模型] 你当前运行的底层大模型是：\`${this.config.DASHSCOPE_MODEL}\`。当用户问「你是什么大模型」「基于什么模型」时，必须如实回答当前模型名称，严禁说自己是 DeepSeek、GPT、Claude 或其他任何模型。\n\n`;
 
     let knowledgeContext = '';
-    try {
-      const knowledge = await this.aiLibrary.searchKnowledge(userMessage);
-      knowledgeContext = this.aiLibrary.formatKnowledgeForPrompt(knowledge);
-    } catch (error) {
-      this.log.debug('AI.library 检索失败，跳过', { error: error?.message || String(error) });
+    if (this.config.ai_library?.knowledge_search_enabled === true) {
+      try {
+        const knowledge = await this.aiLibrary.searchKnowledge(userMessage);
+        knowledgeContext = this.aiLibrary.formatKnowledgeForPrompt(knowledge);
+      } catch (error) {
+        this.log.debug('AI.library 检索失败，跳过', { error: error?.message || String(error) });
+      }
     }
 
     const projectContextSection = this._buildProjectContextSection(projectContext);

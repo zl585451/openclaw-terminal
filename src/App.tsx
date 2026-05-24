@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import TitleBar from './components/TitleBar';
 import TabBar from './components/TabBar';
 import ChatTab from './ui/chat/ChatTab.v2';
@@ -8,11 +8,13 @@ import ReaperTab from './components/ReaperTab';
 import SettingsPanel from './components/SettingsPanel';
 import WorkbenchHost from './components/workbench/WorkbenchHost';
 import FirstLaunchSetup from './components/FirstLaunchSetup';
-import { ScriptAdapterApp } from './modules/script-adapter';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { WorkbenchProvider } from './workbench/WorkbenchContext';
 import './styles/App.css';
 
+const ScriptAdapterApp = lazy(() =>
+  import('./modules/script-adapter').then((module) => ({ default: module.ScriptAdapterApp }))
+);
 
 export type TabType = 'chat' | 'sound' | 'reaper';
 type AppView = 'chat' | 'script-adapter';
@@ -183,11 +185,13 @@ const App: React.FC = () => {
               {activeTab === 'reaper' && <ReaperTab />}
             </>
           ) : (
-            <ScriptAdapterApp
-              key={scriptAdapterEntry}
-              initialScreen={scriptAdapterEntry}
-              onBack={() => setAppView('chat')}
-            />
+            <Suspense fallback={<div className="script-adapter-loading">正在加载内容制作工作台...</div>}>
+              <ScriptAdapterApp
+                key={scriptAdapterEntry}
+                initialScreen={scriptAdapterEntry}
+                onBack={() => setAppView('chat')}
+              />
+            </Suspense>
           )}
         </div>
         <WorkbenchHost />

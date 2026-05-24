@@ -67,7 +67,6 @@ function createHandler() {
       clearThinkMode: () => {},
     },
     memory: { isAlive: async () => false },
-    memoryFeedback: {},
     config,
     aiLibrary: { checkHealth: async () => false },
     tools: {},

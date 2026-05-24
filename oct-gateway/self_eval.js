@@ -9,7 +9,7 @@
  * 如需启用，取消 index.js 的注释即可。
  *
  * 停用原因：评分不准确，自动规则写入 SOUL.md 质量不可控。
- * 替代方案：用户反馈检测（memory_feedback.js 的 detectAndSaveFeedback）。
+ * 替代方案：无。feedback 闭环已在 2026-05-25 瘦身中删除。
  *
  * 相关文档：docs/03_specs/99_known_issues.md #3
  */

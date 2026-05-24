@@ -119,7 +119,7 @@
 | 做什么 | 加载 API Key、模型、记忆配置、图片分析配置 |
 | 文件 | `oct-gateway/config.js` |
 | 数据源 | `.env` > `config.json` > `~/.openclaw/openclaw.json` > 默认值 |
-| 关键配置 | `memory.auto_save_history`、`memory.auto_save_feedback`、`memory.load_feedback_on_boot` |
+| 关键配置 | `memory.auto_save_history` |
 | 验证 | 终端看到 `[Config] Model: xxx` |
 | 状态 | ✅ 正常 |
 

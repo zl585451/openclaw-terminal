@@ -54,12 +54,12 @@ function categorize(entry: { level: LogLevel; tag: string; raw: string }): LogCa
   if (/\[(?:minimax|dashscope) tts\]|tts:/i.test(entry.raw)) return 'TTS';
   if (['ai'].includes(tag)) return 'AI';
   if (['tool', 'tools'].includes(tag)) return 'Tool';
-  if (['memory', 'memhistory', 'feedback', 'extractmem', 'mem',
-       'memory_history', 'memory_feedback', 'memory_search', 'clarification'].includes(tag)) return 'Memory';
+  if (['memory', 'memhistory', 'extractmem', 'mem',
+       'memory_history', 'memory_search', 'clarification'].includes(tag)) return 'Memory';
   if (['gateway', 'system', 'session', 'config', 'ai_library'].includes(tag)) return 'System';
   // 关键词兜底
   if (/tool_call|web_search|exec_command|read_file|write_file/i.test(entry.raw)) return 'Tool';
-  if (/memory|history|feedback/i.test(entry.raw)) return 'Memory';
+  if (/memory|history/i.test(entry.raw)) return 'Memory';
   if (/gateway|connect|heartbeat|心跳/i.test(entry.raw)) return 'System';
   if (/ai\s|model|stream|request|response/i.test(entry.raw)) return 'AI';
   return 'System';

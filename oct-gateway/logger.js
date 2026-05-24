@@ -51,7 +51,7 @@ const ANSI = {
 
 function isMemoryModule(module) {
   const m = String(module || '').toLowerCase();
-  // memory, mem, memory_history, memory_feedback, memory_search 等
+  // memory, mem, memory_history, memory_search 等
   return m === 'mem' || m.includes('memory') || m.startsWith('mem_') || m.startsWith('memory_');
 }
 

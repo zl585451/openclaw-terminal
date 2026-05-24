@@ -22,8 +22,6 @@
 
 - `memory.backend = "file"`
 - `memory.root = "~/.openclaw/memory"`
-- `memory.auto_save_feedback = false`
-- `memory.load_feedback_on_boot = false`
 - `memory.nocturne.enabled = false`
 - `memory.nocturne.autoStart = false`
 - `memory.vectorRecall.write.mode = "selective"`

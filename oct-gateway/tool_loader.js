@@ -31,11 +31,13 @@ function resolveToolMeta(tool) {
 let _definitions = [];
 let _executors = {};
 let _metaByToolName = {};
+let _loaded = false;
 
 /** 动态工具提供者（MCP 等批量工具源） */
 const _providers = [];
 
 function loadTools() {
+  _loaded = true;
   _definitions = [];
   _executors = {};
   _metaByToolName = {};
@@ -77,6 +79,10 @@ function loadTools() {
   console.log(`[ToolLoader] 共加载 ${_definitions.length} 个工具`);
 }
 
+function ensureToolsLoaded() {
+  if (!_loaded) loadTools();
+}
+
 /**
  * 注册一个动态工具提供者。提供者需实现：
  *   getDefinitions() → OpenAI tool 格式数组
@@ -92,6 +98,7 @@ function registerProvider(provider) {
 }
 
 function getDefinitions() {
+  ensureToolsLoaded();
   const providerDefs = _providers.flatMap(p => {
     try { return p.getDefinitions(); } catch { return []; }
   });
@@ -104,6 +111,7 @@ function resolveDefinitionByName(name) {
 }
 
 function resolveToolContext(name, args) {
+  ensureToolsLoaded();
   const toolName = String(name || '');
   return {
     toolName,
@@ -115,6 +123,7 @@ function resolveToolContext(name, args) {
 }
 
 async function executeTool(name, args, context) {
+  ensureToolsLoaded();
   // OCT 定位为系统管家：已注册工具默认允许执行。
   // 如需恢复历史权限闸门，可显式传入 enforceAgentPermission=true。
   if (context?.enforceAgentPermission === true && context?.skipAgentPermission !== true) {
@@ -160,14 +169,15 @@ async function executeTool(name, args, context) {
   throw new Error(`工具 "${name}" 不存在`);
 }
 
-// 初始化时立即加载
-loadTools();
-
 module.exports = {
   loadTools,
+  ensureToolsLoaded,
   getDefinitions,
   executeTool,
-  getToolMeta: (name) => _metaByToolName[name] || null,
+  getToolMeta: (name) => {
+    ensureToolsLoaded();
+    return _metaByToolName[name] || null;
+  },
   registerProvider,
   setOnTaskBoardUpdate: shared.setOnTaskBoardUpdate,
 };
