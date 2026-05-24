@@ -5,6 +5,7 @@ import DocumentAppendBar from './DocumentAppendBar';
 import type { WorkbenchArtifactType } from '../../workbench/types';
 import { useProject } from '../../contexts/ProjectContext';
 import { getChapterText } from '../../modules/script-adapter/services/aiLibraryClient';
+import '../CanvasPanel.css';
 
 export default function WorkbenchPanel() {
   const workbench = useWorkbench();
