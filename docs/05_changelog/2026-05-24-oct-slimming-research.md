@@ -345,3 +345,30 @@
 验证：
 
 - `npx vitest run src/hooks/__tests__/settings.test.ts`
+
+## Phase D-8 新手推荐模型目录收口
+
+新增/调整：
+
+- `src/hooks/settings/recommendedModels.ts`
+  - 删除前端 `RECOMMENDED_MODELS` 完整推荐模型表。
+  - 新手模式推荐模型改为从 Electron/gateway provider metadata 的 `provider.models` 派生；无模型列表时只回退到 `provider.defaultModel`。
+  - 文件现在只保留新手模式入口 provider 顺序和卡片副标题，不再承担模型目录权威。
+
+- `src/ui/settings/tabs/ConnectionTabView.Beginner.tsx`
+  - 新手模式 provider 切换复用 `applyChatProviderSelection()`，不再硬编码 DeepSeek/MiniMax/DashScope Base URL。
+  - 保存与测试连接继续复用 `buildAiConnectionTestPayload()`。
+
+- `src/hooks/__tests__/recommendedModels.test.ts`
+  - 覆盖推荐模型来自 provider metadata 的前 3 项。
+  - 覆盖无模型列表时回退 `defaultModel`。
+
+影响：
+
+- Phase D 的核心目标基本达成：前端设置层不再维护完整 provider/model registry，只做 UI 投影、提交和兜底。
+- Provider/model 正常权威收敛到 Electron `getProviderList()` / gateway provider metadata；前端只保留最小 emergency fallback 与新手入口顺序。
+
+验证：
+
+- `npx vitest run src/hooks/__tests__/recommendedModels.test.ts src/hooks/__tests__/settings.test.ts src/hooks/__tests__/settingsPayload.test.ts`
+- `npx tsc --noEmit`

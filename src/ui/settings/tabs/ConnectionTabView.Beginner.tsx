@@ -8,7 +8,11 @@ import {
   isBeginnerProviderId,
 } from '../../../hooks/settings/recommendedModels';
 import type { BeginnerProviderId } from '../../../hooks/settings/recommendedModels';
-import { buildAiConnectionTestPayload, type SettingsMode } from '../../../hooks/settings/useApiKeys';
+import {
+  applyChatProviderSelection,
+  buildAiConnectionTestPayload,
+  type SettingsMode,
+} from '../../../hooks/settings/useApiKeys';
 import { humanizeAiConnectionError } from '../../../utils/aiConnectionErrors';
 import { detectProviderFromKey } from '../../../utils/providerUtils';
 import type { ProviderEntry, SettingsApiKeysState } from './ConnectionTabView';
@@ -17,19 +21,17 @@ import { getChatProviderApiKeyField, getChatProviderApiKeyValue, isChatProviderK
 function buildProviderPatch(
   prev: SettingsApiKeysState,
   providerId: BeginnerProviderId,
+  provider: ProviderEntry | undefined,
   keyValue?: string,
   modelId?: string,
 ): SettingsApiKeysState {
-  const next = { ...prev, OCT_PROVIDER: providerId };
+  const next = applyChatProviderSelection(prev, providerId, provider);
   if (modelId) next.OCT_MODEL = modelId;
   if (providerId === 'deepseek') {
-    next.DEEPSEEK_BASE_URL = prev.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
     if (keyValue !== undefined) next.DEEPSEEK_API_KEY = keyValue;
   } else if (providerId === 'minimax') {
-    next.MINIMAX_BASE_URL = prev.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1';
     if (keyValue !== undefined) next.MINIMAX_API_KEY = keyValue;
   } else {
-    next.DASHSCOPE_BASE_URL = prev.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1';
     if (keyValue !== undefined) next.DASHSCOPE_API_KEY = keyValue;
   }
   return next;
@@ -76,7 +78,7 @@ export function ConnectionTabViewBeginner({
   const [rollbackAvailable, setRollbackAvailable] = useState(false);
 
   const selectedProvider = (providers[selectedProviderId] || currentProvider) as ProviderEntry | undefined;
-  const recommendedModels = useMemo(() => getRecommendedModels(selectedProviderId), [selectedProviderId]);
+  const recommendedModels = useMemo(() => getRecommendedModels(selectedProvider), [selectedProvider]);
   const recommendedModel = recommendedModels[recommendedIndex] || selectedProvider?.defaultModel || '';
   const selectedRecommendedModel =
     apiKeys.OCT_MODEL && recommendedModels.includes(apiKeys.OCT_MODEL)
@@ -103,7 +105,8 @@ export function ConnectionTabViewBeginner({
 
   const updateProvider = (providerId: BeginnerProviderId, keyValue?: string, modelId?: string) => {
     setSelectedProviderId(providerId);
-    setApiKeys((prev) => buildProviderPatch(prev, providerId, keyValue, modelId || getFirstRecommendedModel(providerId) || prev.OCT_MODEL));
+    const provider = providers[providerId];
+    setApiKeys((prev) => buildProviderPatch(prev, providerId, provider, keyValue, modelId || getFirstRecommendedModel(provider) || prev.OCT_MODEL));
   };
 
   const handleKeyChange = (value: string) => {
@@ -125,7 +128,7 @@ export function ConnectionTabViewBeginner({
     } else {
       setDetectionMessage(detection.reason);
     }
-    setApiKeys((prev) => buildProviderPatch(prev, selectedProviderId, value, prev.OCT_MODEL || getFirstRecommendedModel(selectedProviderId)));
+    setApiKeys((prev) => buildProviderPatch(prev, selectedProviderId, selectedProvider, value, prev.OCT_MODEL || getFirstRecommendedModel(selectedProvider)));
   };
 
   const handleSaveAndTest = async () => {
@@ -135,10 +138,10 @@ export function ConnectionTabViewBeginner({
       return;
     }
     const nextApiKeys = {
-      ...buildProviderPatch(apiKeys, selectedProviderId, currentKey, selectedRecommendedModel),
+      ...buildProviderPatch(apiKeys, selectedProviderId, selectedProvider, currentKey, selectedRecommendedModel),
       OCT_SETTINGS_MODE: 'beginner' as const,
     };
-    setApiKeys((prev) => ({ ...buildProviderPatch(prev, selectedProviderId, currentKey, selectedRecommendedModel), OCT_SETTINGS_MODE: 'beginner' }));
+    setApiKeys((prev) => ({ ...buildProviderPatch(prev, selectedProviderId, selectedProvider, currentKey, selectedRecommendedModel), OCT_SETTINGS_MODE: 'beginner' }));
     const ok = await saveGatewayAndReconnect();
     if (!ok) {
       setTestConnectionStatus('error');
