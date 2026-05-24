@@ -18,6 +18,14 @@ type StreamPaintingContext = {
   finalizeStreamingAssistantMessage: (rawText?: string) => void;
   pendingStreamFinalizeRef: React.MutableRefObject<boolean>;
   lastStreamReconcileMsRef: React.MutableRefObject<number>;
+  /**
+   * When a streaming DOM node is available, the paint loop already writes
+   * directly to textContent. Publishing the same text back to React on every
+   * tick makes the whole chat tree rerender at typing cadence, which is much
+   * more expensive than the DOM write. Keep this opt-in for structured
+   * streaming renderers that do not provide a direct DOM sink.
+   */
+  publishDomTextToReact?: boolean;
 };
 
 export function useStreamPainting(
@@ -40,6 +48,7 @@ export function useStreamPainting(
     finalizeStreamingAssistantMessage,
     pendingStreamFinalizeRef,
     lastStreamReconcileMsRef,
+    publishDomTextToReact = false,
   } = ctx;
 
   const streamPaintRafRef = useRef<number | null>(null);
@@ -128,7 +137,7 @@ export function useStreamPainting(
         streamPaintShownLenRef.current = shown;
         const visibleText = main.slice(0, shown);
         el.textContent = visibleText;
-        publishVisibleText(visibleText);
+        if (publishDomTextToReact) publishVisibleText(visibleText);
         if (typingSound !== 'off') {
           for (let i = 0; i < step; i++) {
             playClickSound(typingSound, typingSoundVolume);
@@ -137,7 +146,7 @@ export function useStreamPainting(
       }
     } else if (targetLen > 0) {
       el.textContent = main;
-      publishVisibleText(main);
+      if (publishDomTextToReact) publishVisibleText(main);
     }
 
     try {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { WorkbenchRoundtripContext, CanvasEvent, WorkbenchEvent } from '../workbench/types';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import type { IpcRendererLike } from '../types/electronAPI';
@@ -293,7 +293,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
     setMemoryOnline(true);
   }, []);
 
-  const send = async (
+  const send = useCallback(async (
     content: string,
     imageDataUrl?: string,
     files?: GatewaySendPayload['files'],
@@ -319,13 +319,13 @@ export function useWebSocket(options: UseWebSocketOptions) {
       console.error('[useWebSocket] send error:', error);
       return {};
     }
-  };
+  }, []);
 
-  return {
+  return useMemo(() => ({
     wsConnected,
     wsReconnecting,
     wsError,
     memoryOnline,
     send,
-  };
+  }), [memoryOnline, send, wsConnected, wsError, wsReconnecting]);
 }

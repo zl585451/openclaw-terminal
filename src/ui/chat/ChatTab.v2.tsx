@@ -254,6 +254,22 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   });
 
   const showWelcome = messages.length === 0 && !onboardingDismissed;
+  const emptyConversationPlaceholder = useMemo(
+    () => (
+      showWelcome ? (
+        <div className="chat-empty">
+          <WelcomeHero onCardAction={handleWelcomeAction} onSkip={handleSkipOnboarding} />
+        </div>
+      ) : (
+        <div className="chat-empty">
+          <div className="oct-empty-simple">
+            <div className="oct-empty-glyph">{'\u2726'}</div>
+          </div>
+        </div>
+      )
+    ),
+    [handleWelcomeAction, handleSkipOnboarding, showWelcome]
+  );
 
   // Register the chat's quickSend as the node-inspect handler so Canvas
   // renderers can trigger "explain this node" queries without prop drilling.
@@ -274,6 +290,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     awaitingResponse: msgs.awaitingResponse,
     messagesLength: messages.length,
   });
+  const displayMessages = useMemo(
+    () => messages.length > scroll.visibleCount ? messages.slice(-scroll.visibleCount) : messages,
+    [messages, scroll.visibleCount]
+  );
 
   // 每次渲染后同步 ref，确保 msgs 内回调始终调到最新的 scroll 方法
   scrollBridgeRef.current.reconcile = scroll.reconcile;
@@ -442,13 +462,13 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
         <ChatMessageList
           messages={messages}
-          displayMessages={messages.length > scroll.visibleCount ? messages.slice(-scroll.visibleCount) : messages}
+          displayMessages={displayMessages}
           isStreaming={msgs.isStreaming}
           awaitingResponse={msgs.awaitingResponse}
           streamingContent={msgs.streamingRenderText || msgs.fullTextRef.current}
           displayedText={msgs.streamingRenderText || typewriter.displayedText}
-          usePlainStreamingText={false}
-          useStructuredStreamingMarkdown={true}
+          usePlainStreamingText={true}
+          useStructuredStreamingMarkdown={false}
           speakingMessageId={speakingMessageId}
           agentPhase={msgs.agentPhase}
           thinkingElapsed={msgs.thinkingElapsed}
@@ -466,19 +486,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           streamingDomRef={msgs.streamingDomRef}
           markdownComponents={mdComponents}
           allowCotDisplay={true}
-          emptyConversationPlaceholder={
-            showWelcome ? (
-              <div className="chat-empty">
-                <WelcomeHero onCardAction={handleWelcomeAction} onSkip={handleSkipOnboarding} />
-              </div>
-            ) : (
-              <div className="chat-empty">
-                <div className="oct-empty-simple">
-                  <div className="oct-empty-glyph">{'\u2726'}</div>
-                </div>
-              </div>
-            )
-          }
+          emptyConversationPlaceholder={emptyConversationPlaceholder}
         />
         <ScrollToBottomButton
           visible={scroll.showScrollBtn}

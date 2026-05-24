@@ -902,7 +902,47 @@ export interface ChatMessageListProps {
   emptyConversationPlaceholder?: React.ReactNode;
 }
 
-export const ChatMessageList = function ChatMessageList({
+function sameMessageRefs(a: ChatMessage[], b: ChatMessage[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function areChatMessageListPropsEqual(prev: ChatMessageListProps, next: ChatMessageListProps): boolean {
+  return (
+    prev.messages === next.messages &&
+    sameMessageRefs(prev.displayMessages, next.displayMessages) &&
+    prev.isStreaming === next.isStreaming &&
+    prev.awaitingResponse === next.awaitingResponse &&
+    prev.streamingContent === next.streamingContent &&
+    prev.displayedText === next.displayedText &&
+    prev.speakingMessageId === next.speakingMessageId &&
+    prev.agentPhase === next.agentPhase &&
+    prev.thinkingElapsed === next.thinkingElapsed &&
+    prev.wsConnected === next.wsConnected &&
+    prev.quickSend === next.quickSend &&
+    prev.bottomRef === next.bottomRef &&
+    prev.onScroll === next.onScroll &&
+    prev.onMessageContextMenu === next.onMessageContextMenu &&
+    prev.onQuoteQuestion === next.onQuoteQuestion &&
+    prev.pendingPills === next.pendingPills &&
+    prev.messagesContainerRef === next.messagesContainerRef &&
+    prev.activeTools === next.activeTools &&
+    prev.activityTimeline === next.activityTimeline &&
+    prev.getToolDisplayName === next.getToolDisplayName &&
+    prev.streamingDomRef === next.streamingDomRef &&
+    prev.usePlainStreamingText === next.usePlainStreamingText &&
+    prev.useStructuredStreamingMarkdown === next.useStructuredStreamingMarkdown &&
+    prev.markdownComponents === next.markdownComponents &&
+    prev.allowCotDisplay === next.allowCotDisplay &&
+    prev.emptyConversationPlaceholder === next.emptyConversationPlaceholder
+  );
+}
+
+export const ChatMessageList = memo(function ChatMessageList({
   messages,
   displayMessages,
   isStreaming,
@@ -1186,6 +1226,6 @@ export const ChatMessageList = function ChatMessageList({
       </div>
     </div>
   );
-};
+}, areChatMessageListPropsEqual);
 
 export default ChatMessageList;
