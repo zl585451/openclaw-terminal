@@ -126,6 +126,23 @@ module.exports = {
       return results;
     };
 
+    const doTavily = async (q, cnt) => {
+      const res = await proxyFetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: tavilyKey, query: q, max_results: cnt,
+          search_depth: 'advanced', include_answer: true,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) throw new Error(`Tavily API ${res.status}`);
+      const json = await res.json();
+      return (json.results || []).slice(0, cnt).map(r => ({
+        title: r.title, url: r.url, snippet: r.content || '',
+      }));
+    };
+
     const useEngine = engine === 'auto'
       ? (braveKey ? 'brave' : (tavilyKey ? 'tavily' : 'duckduckgo'))
       : engine;
@@ -166,11 +183,23 @@ module.exports = {
         return toolSearchOk(payload, { engine: 'brave', query, results, enriched: enrich });
       } catch (braveErr) {
         if (engine === 'auto') {
-          log.warn('Brave search failed, falling back to DuckDuckGo', { query, error: braveErr?.message });
+          // Brave → Tavily（如有 key）→ DuckDuckGo（兜底）
           try {
-            let results = await doDuckDuckGo(query, count);
+            let results;
+            if (tavilyKey) {
+              log.warn('Brave search failed, falling back to Tavily', { query, error: braveErr?.message });
+              try {
+                results = await doTavily(query, count);
+              } catch (tavilyErr) {
+                log.warn('Tavily fallback also failed, falling back to DuckDuckGo', { query, error: tavilyErr?.message });
+                results = await doDuckDuckGo(query, count);
+              }
+            } else {
+              log.warn('Brave search failed, falling back to DuckDuckGo', { query, error: braveErr?.message });
+              results = await doDuckDuckGo(query, count);
+            }
             if (results.length === 0) {
-              const h = 'DuckDuckGo 无即时结果（国内可能无法访问），建议配置 Brave 或 Tavily';
+              const h = '搜索结果为空（国内可能无法访问），请检查网络与 API 密钥';
               const payload = { engine: 'duckduckgo', query, results: [], fallback: true, enriched: enrich, hint: h };
               return toolSearchOk(payload, {
                 engine: 'duckduckgo',
@@ -194,7 +223,7 @@ module.exports = {
             });
           } catch (ddgErr) {
             return toolSearchFail(
-              `Brave 失败: ${braveErr?.message}，降级 DuckDuckGo 也失败: ${ddgErr?.message}`,
+              `Brave 失败: ${braveErr?.message}，降级 Tavily/DuckDuckGo 也失败: ${ddgErr?.message}`,
               '检查网络与 API 密钥，或稍后重试'
             );
           }
