@@ -2,9 +2,9 @@
  * read_document — 二进制文档解析工具
  *
  * 支持格式：.docx, .xlsx, .xls, .csv, .pdf
- * 依赖：mammoth (docx), xlsx (Excel), pdf-parse (PDF)
+ * 可选依赖：mammoth (docx), xlsx (Excel), pdf-parse (PDF)
  *
- * 安装依赖（在 oct-gateway 目录下）：
+ * 安装依赖（在 oct-gateway/optional-tools 目录下）：
  *   npm install mammoth xlsx pdf-parse
  *
  * 放置位置：oct-gateway/tools/read_document.js
@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('../logger');
+const { loadOptionalDependency, formatMissingOptionalDependency } = require('./optionalDependency');
 
 const log = createLogger('tool:read_document');
 
@@ -29,7 +30,7 @@ const MAX_TEXT_LENGTH = 30000; // 返回给 AI 的最大字符数，防止上下
  * .docx → 纯文本（mammoth）
  */
 async function parseDocx(filePath) {
-  const mammoth = require('mammoth');
+  const mammoth = loadOptionalDependency('mammoth');
   const buf = fs.readFileSync(filePath);
 
   // 先提取纯文本（结构清晰，token 效率高）
@@ -57,7 +58,7 @@ async function parseDocx(filePath) {
  * .xlsx / .xls → Markdown 表格 或 JSON
  */
 async function parseExcel(filePath, opts = {}) {
-  const XLSX = require('xlsx');
+  const XLSX = loadOptionalDependency('xlsx');
   const workbook = XLSX.readFile(filePath, { type: 'file' });
   const sheetNames = workbook.SheetNames;
 
@@ -127,7 +128,7 @@ async function parseCsv(filePath) {
 
   // 简单 CSV 解析（不处理引号内逗号的复杂场景，用 xlsx 库作为后备）
   try {
-    const XLSX = require('xlsx');
+    const XLSX = loadOptionalDependency('xlsx');
     const workbook = XLSX.read(raw, { type: 'string' });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
@@ -168,17 +169,7 @@ async function parseCsv(filePath) {
  * .pdf → 纯文本（pdf-parse）
  */
 async function parsePdf(filePath) {
-  let pdfParse;
-  try {
-    pdfParse = require('pdf-parse');
-  } catch (e) {
-    return {
-      content: null,
-      format: 'error',
-      warnings: ['pdf-parse 未安装。请在 oct-gateway 目录下执行: npm install pdf-parse'],
-    };
-  }
-
+  const pdfParse = loadOptionalDependency('pdf-parse');
   const buf = fs.readFileSync(filePath);
   const data = await pdfParse(buf);
   const text = (data.text || '').trim();
@@ -324,19 +315,18 @@ module.exports = {
 
       // 区分「依赖未安装」和「文件本身有问题」
       const msg = e?.message || String(e);
-      const isMissingDep = msg.includes('Cannot find module');
-      const depName = ext === '.docx' ? 'mammoth'
-        : (ext === '.xlsx' || ext === '.xls' || ext === '.csv') ? 'xlsx'
-        : ext === '.pdf' ? 'pdf-parse' : '未知';
+      const missingOptionalDependency = formatMissingOptionalDependency(e);
+      if (missingOptionalDependency) {
+        return {
+          ...missingOptionalDependency,
+          path: resolvedPath,
+        };
+      }
 
       return {
         success: false,
-        error: isMissingDep
-          ? `缺少依赖: ${depName}。请在 oct-gateway 目录下执行 npm install ${depName}`
-          : `解析失败: ${msg}`,
-        hint: isMissingDep
-          ? `执行命令: cd oct-gateway && npm install ${depName}`
-          : '文件可能已损坏或格式不标准，请确认文件可用。',
+        error: `解析失败: ${msg}`,
+        hint: '文件可能已损坏或格式不标准，请确认文件可用。',
         path: resolvedPath,
       };
     }
