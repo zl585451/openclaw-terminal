@@ -1,5 +1,5 @@
-const { ImapFlow } = require('imapflow');
 const vault = require('../vault_manager');
+const { loadOptionalDependency } = require('./optionalDependency');
 
 module.exports = {
   name: 'email_reader',
@@ -96,15 +96,17 @@ module.exports = {
     const port = credsObj.port || credsObj.imapPort || 993;
     const secure = credsObj.secure !== false;
 
-    const client = new ImapFlow({
-      host,
-      port,
-      secure,
-      auth: { user, pass },
-      logger: false,
-    });
-
+    let client;
     try {
+      const { ImapFlow } = loadOptionalDependency('imapflow');
+      client = new ImapFlow({
+        host,
+        port,
+        secure,
+        auth: { user, pass },
+        logger: false,
+      });
+
       await client.connect();
       const mailbox = await client.mailboxOpen(folder);
       const total = mailbox.exists || 0;
@@ -134,7 +136,12 @@ module.exports = {
         messages: messages.reverse(),
       });
     } catch (e) {
-      try { await client.logout(); } catch {}
+      if (client) {
+        try { await client.logout(); } catch {}
+      }
+      if (e?.code === 'OCT_OPTIONAL_DEPENDENCY_MISSING') {
+        return `❌ ${e.message}\n${e.hint}`;
+      }
       throw new Error(`读取邮箱失败：${e.message}`);
     }
   },

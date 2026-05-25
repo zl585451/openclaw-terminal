@@ -1,4 +1,5 @@
 const assert = require('assert');
+const path = require('path');
 
 function freshToolLoaderWithCapturedLogs() {
   const modulePath = require.resolve('../tool_loader');
@@ -41,6 +42,41 @@ function testFirstDefinitionsCallLoadsStaticToolsOnce() {
   }
 }
 
+function testOptionalToolDependenciesStayOutOfCoreGateway() {
+  const gatewayPackage = require('../package.json');
+  const optionalToolsPackage = require('../optional-tools/package.json');
+  const optionalDeps = ['imapflow', 'mammoth', 'nodemailer', 'pdf-parse', 'xlsx'];
+
+  for (const dep of optionalDeps) {
+    assert.equal(
+      gatewayPackage.dependencies[dep],
+      undefined,
+      `${dep} must stay out of oct-gateway core dependencies`
+    );
+    assert.equal(
+      typeof optionalToolsPackage.dependencies[dep],
+      'string',
+      `${dep} must be declared by oct-gateway/optional-tools`
+    );
+  }
+}
+
+function testMissingOptionalDependencyMessageIsActionable() {
+  const { loadOptionalDependency, formatMissingOptionalDependency } = require('../tools/optionalDependency');
+  try {
+    loadOptionalDependency('__oct_missing_optional_dependency__', { installName: 'missing-package' });
+    assert.fail('missing optional dependency should throw');
+  } catch (error) {
+    const formatted = formatMissingOptionalDependency(error);
+    assert.equal(error.code, 'OCT_OPTIONAL_DEPENDENCY_MISSING');
+    assert.equal(formatted.success, false);
+    assert(formatted.error.includes('缺少可选工具依赖'));
+    assert(formatted.hint.includes(path.join('oct-gateway', 'optional-tools')) || formatted.hint.includes('oct-gateway/optional-tools'));
+  }
+}
+
 testRequireDoesNotLoadStaticTools();
 testFirstDefinitionsCallLoadsStaticToolsOnce();
+testOptionalToolDependenciesStayOutOfCoreGateway();
+testMissingOptionalDependencyMessageIsActionable();
 console.log('PASS ToolLoader defers static tool loading until first use');

@@ -57,6 +57,13 @@
         ]
       },
       {
+        "from": "oct-gateway/optional-tools/node_modules",
+        "to": "oct-gateway/optional-tools/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "oct-gateway",
         "to": "oct-gateway",
         "filter": [
