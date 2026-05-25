@@ -31,6 +31,12 @@
     "electron:build:mac": "npm run rebuild:gateway:native && npm run build && electron-builder --mac --x64 --arm64",
     "electron:build:linux": "npm run rebuild:gateway:native && npm run build && electron-builder --linux --x64",
     "electron:build:all": "npm run rebuild:gateway:native && npm run build && electron-builder --win --mac --linux --x64",
+    "deps:check": "npm ls --depth=0",
+    "deps:gateway": "npm --prefix oct-gateway ls --depth=0",
+    "deps:optional-tools": "npm --prefix oct-gateway/optional-tools ls --depth=0",
+    "audit:prod": "npm audit --omit=dev --registry=https://registry.npmjs.org",
+    "audit:gateway": "npm --prefix oct-gateway audit --omit=dev --registry=https://registry.npmjs.org",
+    "audit:optional-tools": "npm --prefix oct-gateway/optional-tools audit --omit=dev --registry=https://registry.npmjs.org",
     "test": "npm run check:node && vitest run",
     "test:watch": "vitest"
   },
