@@ -1217,11 +1217,6 @@
 .backgroundStepRunning,
 .backgroundStepFailed,
 .backgroundStepPending {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  padding: 9px 10px;
   border: 1px solid rgba(53, 64, 67, 0.1);
   border-radius: 10px;
   background: rgba(244, 246, 241, 0.92);
@@ -1244,65 +1239,6 @@
 
 .backgroundStepPending {
   opacity: 0.72;
-}
-
-.backgroundStepDone span,
-.backgroundStepRunning span,
-.backgroundStepFailed span,
-.backgroundStepPending span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  background: rgba(53, 64, 67, 0.08);
-  color: #4f595c;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.backgroundStepDone span {
-  background: #1e755b;
-  color: #ffffff;
-}
-
-.backgroundStepRunning span {
-  background: #ef9f27;
-  color: #ffffff;
-}
-
-.backgroundStepFailed span {
-  background: #be3a34;
-  color: #ffffff;
-}
-
-.backgroundStepDone strong,
-.backgroundStepRunning strong,
-.backgroundStepFailed strong,
-.backgroundStepPending strong {
-  color: #15191b;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.backgroundStepDone div,
-.backgroundStepRunning div,
-.backgroundStepFailed div,
-.backgroundStepPending div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.backgroundStepDone em,
-.backgroundStepRunning em,
-.backgroundStepFailed em,
-.backgroundStepPending em {
-  color: #667075;
-  font-size: 11px;
-  font-style: normal;
-  line-height: 1.45;
 }
 
 .composerActionBar {
@@ -6731,4 +6667,238 @@
   font-size: 11px;
   color: rgba(40, 80, 160, 0.45);
   font-style: italic;
+}
+
+/* ── TaskCreateWizard missing styles ─────────────────────────── */
+
+.backgroundStepItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+}
+
+.backgroundStepRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.backgroundStepName {
+  color: #15191b;
+  font-size: 12px;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.backgroundStepDuration {
+  flex-shrink: 0;
+  color: #667075;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.backgroundStepDesc {
+  margin: 0;
+  color: #667075;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.composerEvidenceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.evidenceHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.evidenceHeader strong {
+  color: #15191b;
+  font-size: 13px;
+}
+
+.evidenceSummary {
+  color: #667075;
+  font-size: 12px;
+  text-align: right;
+  line-height: 1.45;
+}
+
+.composerFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(53, 64, 67, 0.1);
+}
+
+.footerSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.footerSummary strong {
+  color: #15191b;
+  font-size: 14px;
+}
+
+.footerSummary span {
+  color: #667075;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ── StepAnalysis classes ────────────────────────────────────── */
+
+.decisionForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.decisionItem {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(53, 64, 67, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 253, 0.92);
+}
+
+.decisionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.decisionHeader strong {
+  color: #15191b;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.decisionValue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.decisionValue > span:first-child {
+  color: #111819;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.decisionValue p {
+  width: 100%;
+  margin: 0;
+  color: #596165;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sourceTag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(30, 117, 91, 0.1);
+  color: #176149;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.decisionEdit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.decisionEdit select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid rgba(53, 64, 67, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 253, 0.96);
+  color: #15191b;
+  font-size: 14px;
+}
+
+.decisionNote textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px;
+  border: 1px solid rgba(53, 64, 67, 0.12);
+  border-radius: 10px;
+  background: rgba(248, 249, 246, 0.88);
+  color: #1f2528;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.decisionNote textarea:focus {
+  outline: none;
+  border-color: rgba(30, 117, 91, 0.38);
+}
+
+/* ── StepStrategy classes ────────────────────────────────────── */
+
+.strategyReport {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.strategySummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(30, 117, 91, 0.16);
+  border-radius: 12px;
+  background: rgba(239, 247, 242, 0.88);
+}
+
+.strategySummary h3 {
+  margin: 0;
+  color: #15191b;
+  font-size: 15px;
+}
+
+.strategySummary p {
+  margin: 0;
+  color: #4f595c;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.strategyOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.strategyOptions h3 {
+  margin: 0;
+  color: #15191b;
+  font-size: 15px;
 }

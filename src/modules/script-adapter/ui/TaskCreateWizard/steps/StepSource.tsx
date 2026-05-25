@@ -1,5 +1,5 @@
 import { useWizardContext } from '../WizardContext';
-import styles from '../../styles/scriptAdapter.module.css';
+import styles from '../../../styles/scriptAdapter.module.css';
 import { pickLocalFile, uploadBook, listBooks } from '../../../services/aiLibraryClient';
 import { CreationRangeMode } from '../index';
 

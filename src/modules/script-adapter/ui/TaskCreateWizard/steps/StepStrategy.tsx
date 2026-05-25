@@ -1,39 +1,54 @@
 import { useWizardContext } from '../WizardContext';
-import styles from '../../styles/scriptAdapter.module.css';
+import styles from '../../../styles/scriptAdapter.module.css';
 
 export function StepStrategy() {
-  const context = useWizardContext();
   const {
     analysisReport,
-  } = context;
+    selectedStrategyId,
+    setSelectedStrategyId,
+  } = useWizardContext();
 
   if (!analysisReport) {
     return <div className={styles.composerGateCard}>正在进行初读分析，请稍候...</div>;
   }
 
   return (
-    <div className={`${styles.card} ${styles.composerGateCard}`}>
-      <div className={styles.composerSectionHeader}>
-        <div>
-          <div className={styles.detailEyebrow}>第 3 步 · 确定修改方向</div>
-          <h2>初读分析报告与策略选择</h2>
-          <p className={styles.sectionLead}>AI 已读取你的素材并出具了初读分析报告。请选择你最倾向的修改策略。</p>
-        </div>
-      </div>
-
-      <div className={styles.strategyReport}>
-        <div className={styles.strategySummary}>
-          <h3>初读摘要</h3>
-          <p>{analysisReport.summary}</p>
-        </div>
-
-        <div className={styles.strategyOptions}>
-          <h3>推荐修改方向</h3>
-          {analysisReport.strategyOptions.map((opt: any) => (
-            <div key={opt.id} className={styles.strategyCard}>
-              <h4>{opt.title}</h4>
-              <p>{opt.desc}</p>
+    <div className={styles.composerGateCard}>
+      {analysisReport.evidence && analysisReport.evidence.length > 0 && (
+        <div className={styles.evidencePanel}>
+          <div className={styles.taskFieldLabel}>问题证据</div>
+          {analysisReport.evidence.map((item: any, idx: number) => (
+            <div key={`${item.location}-${item.issue}-${idx}`} className={styles.evidenceItem}>
+              <div>
+                <strong>{item.location}</strong>
+                <span>{item.issue}</span>
+              </div>
+              <p>{item.quote}</p>
             </div>
+          ))}
+        </div>
+      )}
+
+      <div className={styles.strategyPanel}>
+        <div className={styles.composerSectionHeader}>
+          <div>
+            <div className={styles.taskFieldLabel}>选择修改方向</div>
+            <span className={styles.mutedText}>这里决定"怎么改、改多深"，不会在你确认前启动制作 Agent。</span>
+          </div>
+        </div>
+        <div className={styles.strategyGrid}>
+          {analysisReport.strategyOptions.map((option: any) => (
+            <button
+              key={option.id}
+              type="button"
+              className={selectedStrategyId === option.id ? styles.strategyCardActive : styles.strategyCard}
+              onClick={() => setSelectedStrategyId(option.id)}
+            >
+              <span>{option.recommended ? 'AI 推荐' : option.editDepth}</span>
+              <strong>{option.title}</strong>
+              <em>{option.desc}</em>
+              <small>{option.impact}</small>
+            </button>
           ))}
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import styles from '../styles/scriptAdapter.module.css';
+import styles from '../../styles/scriptAdapter.module.css';
 import { WizardContext } from './WizardContext';
 import { StepSource } from './steps/StepSource';
 import { StepAnalysis } from './steps/StepAnalysis';
@@ -448,6 +448,7 @@ export function TaskCreateWizard({ onBack, onStart }: WizardProps) {
       decisionOverrides, setDecisionOverrides,
       editingDecisionId, setEditingDecisionId,
       updateDecision, updateDecisionNote,
+      selectedStrategyId, setSelectedStrategyId,
       ...sourceHook
     }}>
       <div className={styles.createShell}>

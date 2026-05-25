@@ -16,6 +16,8 @@ export interface WizardContextType {
   setEditingDecisionId: (id: string | null) => void;
   updateDecision: (itemId: string, value: string, desc: string) => void;
   updateDecisionNote: (itemId: string, customNote: string) => void;
+  selectedStrategyId: string;
+  setSelectedStrategyId: (id: string) => void;
 
   // useWizardSource states and helpers shared via context for step components
   sourceMode: 'library' | 'upload' | 'paste';
