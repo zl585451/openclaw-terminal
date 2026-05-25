@@ -173,7 +173,26 @@ export function parseEChartsPayload(raw: string): EChartsPayload | null {
   if (direct) return direct;
 
   const repaired = bestEffortRepairJson(source);
-  return repaired ? tryParseCandidate(repaired) : null;
+  if (repaired) {
+    const result = tryParseCandidate(repaired);
+    if (result) return result;
+  }
+
+  // Layer 2 defense: source might have a non-JSON prefix (e.g. AI explanation
+  // text leaked in). Locate the first { and attempt extraction from there.
+  const firstBrace = source.indexOf('{');
+  if (firstBrace > 0) {
+    const sliced = source.slice(firstBrace);
+    const slicedRepaired = bestEffortRepairJson(sliced);
+    if (slicedRepaired) {
+      const result = tryParseCandidate(slicedRepaired);
+      if (result) return result;
+    }
+    const result = tryParseCandidate(sliced);
+    if (result) return result;
+  }
+
+  return null;
 }
 
 export function looksLikeEChartsPayload(raw: string): boolean {

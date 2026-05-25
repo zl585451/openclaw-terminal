@@ -124,6 +124,7 @@ function applyOctTheme(rawOption: Record<string, unknown>): Record<string, unkno
   const hasNonCartesian = seriesTypes.some((t) =>
     ['pie', 'radar', 'funnel', 'gauge', 'sankey', 'treemap', 'sunburst'].includes(t)
   ) || 'radar' in option;
+  const hasPie = seriesTypes.includes('pie');
   const defaultTrigger = hasNonCartesian ? 'item' : 'axis';
 
   // Merge tooltip
@@ -147,6 +148,27 @@ function applyOctTheme(rawOption: Record<string, unknown>): Record<string, unkno
   };
   const userLegend = option.legend as Record<string, unknown> | undefined;
   const mergedLegend = userLegend ? { ...legendBase, ...userLegend } : legendBase;
+
+  // Pie charts: legend at bottom-right to avoid overlapping the circular chart
+  if (hasPie) {
+    ['top', 'left'].forEach(k => delete mergedLegend[k]);
+    mergedLegend.bottom = 10;
+    mergedLegend.right = 10;
+  }
+
+  // Pie chart series: readable label defaults on dark theme
+  if (hasPie && Array.isArray(option.series)) {
+    option.series = (option.series as Record<string, unknown>[]).map(s => {
+      const item = s as Record<string, unknown>;
+      if (item.type === 'pie') {
+        return {
+          ...item,
+          label: { color: TITLE_COLOR, fontSize: 13, fontWeight: 'bold', ...(item.label as Record<string, unknown> || {}) },
+        };
+      }
+      return item;
+    });
+  }
 
   // Patch axis styling
   const axisDefaults = {

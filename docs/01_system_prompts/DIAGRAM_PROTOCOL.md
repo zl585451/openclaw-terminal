@@ -240,3 +240,33 @@
 - 生成 Markdown / Canvas 文档成果物
 
 而不是在聊天区一次塞多张图。
+
+---
+
+## 标签使用规范
+
+### 硬约束
+
+- `[echart]` / `[canvas]` 标签必须**独立成行**，标签所在行不允许有除标签外的其他文字（包括行首空白）
+- 标签必须成对出现：`[echart]...[/echart]`、`[canvas]...[/canvas]`
+- 禁止在聊天正文中提及 `[echart]`、`[canvas]` 等内部标签名称——用户不需要知道底层用什么格式出图
+- 饼图图例（legend）应置于底部，避免与圆形图表区域重叠
+
+### 正例
+
+```markdown
+用饼图展示各币种占比：
+
+[echart]
+{"option":{"legend":{"bottom":0},"series":[{"type":"pie","data":[...],"label":{"color":"#fff","fontSize":12,"fontWeight":"bold"}}]}}
+[/echart]
+```
+
+### 反例
+
+```markdown
+好的，我用 [echart] 标签给你画个饼图：
+
+[echart]{"option":{...}}
+[/echart]
+```

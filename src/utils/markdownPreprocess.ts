@@ -294,8 +294,9 @@ export function normalizeCustomEchartBlocks(text: string): string {
   let result = text;
 
   // [echart]...[/echart] → ```echart``` 代码块
+  // 必须行首匹配，避免 AI 正文中提及 [echart] 时误吞说明文字
   if (/\[echart\]/i.test(result)) {
-    result = result.replace(/\[echart\]\s*([\s\S]*?)\s*\[\/echart\]/gi, (_match, payload: string) => {
+    result = result.replace(/(?:^|\n)\s*\[echart\]\s*([\s\S]*?)\s*\[\/echart\]/gi, (_match, payload: string) => {
       const normalizedPayload = String(payload || '').trim();
       if (!normalizedPayload) return '';
       return `\n\`\`\`echart\n${normalizedPayload}\n\`\`\`\n`;
@@ -304,8 +305,9 @@ export function normalizeCustomEchartBlocks(text: string): string {
 
   // [canvas]...[/canvas] → 当 payload 看起来是 echart JSON 时转成 ```echart```
   // 兜底：部分模型不走工具调用，直接把 [canvas]...[/canvas] 输出到正文
+  // 必须行首匹配，与 [echart] 规则一致
   if (/\[canvas\]/i.test(result)) {
-    result = result.replace(/\[canvas\]\s*([\s\S]*?)\s*\[\/canvas\]/gi, (_match, payload: string) => {
+    result = result.replace(/(?:^|\n)\s*\[canvas\]\s*([\s\S]*?)\s*\[\/canvas\]/gi, (_match, payload: string) => {
       const normalizedPayload = String(payload || '').trim();
       if (!normalizedPayload) return '';
 

@@ -1,7 +1,7 @@
 # 结构图输出协议
 
 > 状态：CURRENT  
-> 最后更新：2026-04-10  
+> 最后更新：2026-05-11  
 > 用途：约束结构图任务的默认输出方式，让 AI 先按“结果需求”理解，再由系统内部选择图形实现。
 
 ---
@@ -121,7 +121,7 @@
 
 - 布局哲学
 - 分层说明长文
-- “我准备怎么画”的分析过程
+- "我准备怎么画"的分析过程
 
 ---
 
@@ -140,7 +140,7 @@
   "edges": [
     { "source": "gw", "target": "biz", "label": "路由分发" }
   ],
-  "direction": "TB",
+  "direction": "LR",
   "title": "XX系统架构"
 }
 ```
@@ -158,10 +158,54 @@
 ### 分层规则
 
 - 节点 ≥ 6 时必须分层或分组
-- 默认 `direction = TB`
+- 默认 `direction = LR`，让主链路从左到右展开
+- 只有单根组织树、纯层级图或用户明确要求上下层级时，才使用 `direction = TB`
 - 主链路优先连续
+- 主链路控制在 5-7 个节点，阶段细节作为子节点下挂
 - 非主链路尽量减少
 - 同组同类角色 > 3 个时，应合并为汇总节点
+
+### 节点形状规则
+
+- 输入、输出、起止节点使用 `"shape":"stadium"`
+- 判断、条件、质检门禁使用 `"shape":"diamond"`
+- 普通处理节点使用 `"shape":"rect"`
+- 回退、重试、返工边使用 `"style":"dashed"`，并补充短 edge label
+
+### 推荐结构图样板
+
+```json
+{
+  "title": "有声书改本工具逻辑架构",
+  "direction": "LR",
+  "nodes": [
+    { "id": "input", "label": "输入素材", "group": "输入层", "shape": "stadium" },
+    { "id": "parse", "label": "内容解析", "group": "解析层", "shape": "rect" },
+    { "id": "understand", "label": "AI结构理解", "group": "AI处理层", "shape": "rect" },
+    { "id": "rewrite", "label": "剧本改写", "group": "AI处理层", "shape": "rect" },
+    { "id": "review", "label": "人工校对", "group": "人工层", "shape": "diamond" },
+    { "id": "export", "label": "导出产物", "group": "输出层", "shape": "stadium" },
+    { "id": "audio", "label": "音频转写", "group": "解析层", "shape": "rect" },
+    { "id": "roles", "label": "角色识别", "group": "AI处理层", "shape": "rect" },
+    { "id": "scenes", "label": "场景切分", "group": "AI处理层", "shape": "rect" },
+    { "id": "lines", "label": "台词旁白", "group": "AI处理层", "shape": "rect" },
+    { "id": "docx", "label": "DOCX/JSON", "group": "输出层", "shape": "stadium" }
+  ],
+  "edges": [
+    { "source": "input", "target": "parse" },
+    { "source": "parse", "target": "understand" },
+    { "source": "understand", "target": "rewrite" },
+    { "source": "rewrite", "target": "review" },
+    { "source": "review", "target": "export", "label": "通过" },
+    { "source": "parse", "target": "audio" },
+    { "source": "understand", "target": "roles" },
+    { "source": "understand", "target": "scenes" },
+    { "source": "rewrite", "target": "lines" },
+    { "source": "export", "target": "docx" },
+    { "source": "review", "target": "rewrite", "label": "返工", "style": "dashed" }
+  ]
+}
+```
 
 ---
 
@@ -196,3 +240,33 @@
 - 生成 Markdown / Canvas 文档成果物
 
 而不是在聊天区一次塞多张图。
+
+---
+
+## 标签使用规范
+
+### 硬约束
+
+- `[echart]` / `[canvas]` 标签必须**独立成行**，标签所在行不允许有除标签外的其他文字（包括行首空白）
+- 标签必须成对出现：`[echart]...[/echart]`、`[canvas]...[/canvas]`
+- 禁止在聊天正文中提及 `[echart]`、`[canvas]` 等内部标签名称——用户不需要知道底层用什么格式出图
+- 饼图图例（legend）应置于底部，避免与圆形图表区域重叠
+
+### 正例
+
+```markdown
+用饼图展示各币种占比：
+
+[echart]
+{"option":{"legend":{"bottom":0},"series":[{"type":"pie","data":[...],"label":{"color":"#fff","fontSize":12,"fontWeight":"bold"}}]}}
+[/echart]
+```
+
+### 反例
+
+```markdown
+好的，我用 [echart] 标签给你画个饼图：
+
+[echart]{"option":{...}}
+[/echart]
+```
