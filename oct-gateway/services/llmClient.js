@@ -132,9 +132,15 @@ function buildHeaders(baseUrl, apiKey) {
 }
 
 /**
- * 解析 script_adapter 等场景的 provider 配置。(Phase 5: 优先外部 OmniRoute，支持开发者环境变量回退)
+ * 解析 script_adapter 等场景的 provider 配置。
+ * script_adapter 真实制作必须优先使用专用模型配置，避免外部 OmniRoute 不可用时阻断批次交付。
  */
 function resolveProviderFor(purpose = 'general', capability = null) {
+  if (purpose === 'script_adapter') {
+    const scriptAdapterProvider = resolveScriptAdapterProvider();
+    if (scriptAdapterProvider) return scriptAdapterProvider;
+  }
+
   try {
     const externalOmniRoute = require('../runtime/externalOmniRoute');
     const extResolved = externalOmniRoute.resolveCapabilityTarget();
@@ -154,8 +160,6 @@ function resolveProviderFor(purpose = 'general', capability = null) {
 
   // 开发者 / 兼容性备用回退路径
   if (purpose === 'script_adapter') {
-    const scriptAdapterProvider = resolveScriptAdapterProvider();
-    if (scriptAdapterProvider) return scriptAdapterProvider;
     const currentProvider = resolveCurrentProvider();
     if (currentProvider) return currentProvider;
     const summarizerProvider = resolveSummarizerProvider();
@@ -174,7 +178,12 @@ function resolveScriptAdapterProvider() {
   const sa = config.scriptAdapter && typeof config.scriptAdapter === 'object' ? config.scriptAdapter : {};
   const baseUrl = String(sa.baseUrl || config.getEnvOrConfig?.('SCRIPT_ADAPTER_BASE_URL') || '').trim();
   const apiKey = String(sa.apiKey || config.getEnvOrConfig?.('SCRIPT_ADAPTER_API_KEY') || '').trim();
-  const model = String(sa.model || config.getEnvOrConfig?.('SCRIPT_ADAPTER_MODEL') || '').trim();
+  const model = String(
+    sa.model
+    || config.getEnvOrConfig?.('SCRIPT_ADAPTER_MODEL')
+    || config.getEnvOrConfig?.('SCRIPT_ADAPTER_TEXT_REWRITER_MODEL')
+    || '',
+  ).trim();
   if (!baseUrl || !apiKey || !model) return null;
   return { baseUrl: baseUrl.replace(/\/$/, ''), apiKey, model, source: 'script_adapter' };
 }

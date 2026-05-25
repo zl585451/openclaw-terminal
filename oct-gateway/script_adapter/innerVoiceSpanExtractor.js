@@ -2,6 +2,24 @@
 
 const { resolveViewpoint, normalizeRole } = require('./viewpointResolver');
 
+const VISUAL_READING_CONTEXT_CHARS = 80;
+const VISUAL_READING_TRIGGERS = [
+  '写着',
+  '写道',
+  '写的是',
+  '上面写',
+  '记录着',
+  '记载',
+  '印着',
+  '刻着',
+  '标注着',
+  '显示',
+  '看到',
+  '见到',
+  '辨认出',
+  '能看清',
+];
+
 /**
  * Extract unquoted inner-voice / OS spans from narration gaps.
  * This MVP is intentionally rule-first: it only lifts strong protagonist reactions
@@ -20,6 +38,7 @@ function extractInnerVoiceSpans(params = {}) {
   const viewpoint = normalizeSpeaker(params.viewpointHint) || normalizeSpeaker(viewpointResult.viewpoint);
   const knownRoles = buildKnownRoles(viewpointResult, params);
   const gaps = Array.isArray(spanDoc.narrationGaps) ? spanDoc.narrationGaps : [];
+  const sourceText = String(spanDoc.sourceText || '');
   const spans = [];
   let currentActor = viewpoint || '';
 
@@ -50,7 +69,9 @@ function extractInnerVoiceSpans(params = {}) {
         continue;
       }
 
-      const verdict = classifyInnerVoiceLine(line.text);
+      const verdict = classifyInnerVoiceLine(line.text, {
+        leftContext: getLineLeftContext({ line, gap, sourceText }),
+      });
       if (verdict.isInnerVoice) {
         const speaker = currentActor || viewpoint;
         if (!speaker) continue;
@@ -122,9 +143,10 @@ function splitGapLines(gap) {
   return lines;
 }
 
-function classifyInnerVoiceLine(text) {
+function classifyInnerVoiceLine(text, options = {}) {
   const value = normalizeLine(text);
   if (!value) return no('empty');
+  if (hasVisualReadingCue(options.leftContext)) return no('visual_reading_not_inner_voice');
   if (isChapterTitle(value)) return no('chapter_title');
   if (isNarrativeAction(value)) return no('narrative_action');
   if (isWorldBuilding(value)) return no('world_building');
@@ -152,6 +174,24 @@ function classifyInnerVoiceLine(text) {
   }
 
   return no('not_inner_voice');
+}
+
+function getLineLeftContext({ line, gap, sourceText }) {
+  if (sourceText) {
+    const start = Number(line?.start || 0);
+    return sourceText.slice(Math.max(0, start - VISUAL_READING_CONTEXT_CHARS), start);
+  }
+
+  const gapText = String(gap?.text || '');
+  const gapStart = Number(gap?.start || 0);
+  const lineStart = Number(line?.start || 0);
+  const relativeStart = Math.max(0, lineStart - gapStart);
+  return gapText.slice(Math.max(0, relativeStart - VISUAL_READING_CONTEXT_CHARS), relativeStart);
+}
+
+function hasVisualReadingCue(leftContext) {
+  const context = String(leftContext || '').slice(-VISUAL_READING_CONTEXT_CHARS);
+  return VISUAL_READING_TRIGGERS.some((trigger) => context.includes(trigger));
 }
 
 function extractEmbeddedInnerVoiceCue(line, currentActor, knownRoles) {
@@ -250,7 +290,7 @@ function isChapterTitle(value) {
 }
 
 function isNarrativeAction(value) {
-  if (/^(他|她|宁默|王大山|狱卒|男人|女人|老人|老犯人)(撑开|睁开|闭上|皱|抬|低|走|站|坐|蹲|放|端|看|盯|伸|拿|摆|退|推|打开|弯腰|咳|眉头|脑海|身体|眼皮|脸色)/.test(value)) return true;
+  if (/^[\u4e00-\u9fa5]{1,4}(撑开|睁开|闭上|皱|抬|低|走|站|坐|蹲|放|端|看|盯|伸|拿|摆|退|推|打开|弯腰|咳)/.test(value)) return true;
   if (/^(这时|随后|接着|下一刻|这一刻|那一刻|画面中|画面里|衙堂上|油灯|牢房|走廊)/.test(value)) return true;
   return false;
 }

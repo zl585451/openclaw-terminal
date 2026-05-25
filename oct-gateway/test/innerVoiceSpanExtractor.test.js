@@ -157,6 +157,24 @@ describe('innerVoiceSpanExtractor', () => {
     expect(isValidInnerVoiceSpanText('来真的？')).toBe(true);
   });
 
+  it('keeps visually read written content as narration instead of OS', () => {
+    const sourceText = [
+      '周佳宁翻开封面。',
+      '扉页上用钢笔写着一行字：',
+      '临水市公安局 刑侦科 周振山',
+      '案卷记录上写着：',
+      '左臂怎么了？',
+      '她继续往后翻。',
+    ].join('\n');
+    const spanDoc = extractQuoteSpans({ sourceText });
+    const result = extractInnerVoiceSpans({ spanDoc, viewpointHint: '周佳宁' });
+
+    expect(result.spans).toHaveLength(0);
+    expect(classifyInnerVoiceLine('左臂怎么了？', {
+      leftContext: '案卷记录上写着：',
+    }).reason).toBe('visual_reading_not_inner_voice');
+  });
+
   it('keeps third-person action and descriptions as narration', () => {
     expect(classifyInnerVoiceLine('宁默眉头皱的很深。').isInnerVoice).toBe(false);
     expect(classifyInnerVoiceLine('他撑开眼皮。').isInnerVoice).toBe(false);

@@ -17,6 +17,7 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     'SCRIPT_ADAPTER_API_KEY',
     'SCRIPT_ADAPTER_BASE_URL',
     'SCRIPT_ADAPTER_MODEL',
+    'SCRIPT_ADAPTER_TEXT_REWRITER_MODEL',
     'NEWAPI_API_KEY',
     'NEWAPI_BASE_URL',
     'OMNIROUTE_MODEL',
@@ -113,17 +114,21 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     expect(provider.model).toBe('sa-model-original');
   });
 
-  it('3. resolves successfully to the single external OmniRoute outlet when configured', () => {
+  it('3. keeps script_adapter on its dedicated provider even when external OmniRoute is configured', () => {
     process.env.OCT_USE_EXTERNAL_OMNIROUTE = 'true';
     process.env.OMNIROUTE_BASE_URL = 'https://omni-test.api/v1';
     process.env.OMNIROUTE_API_KEY = 'sk-omni-secret';
     process.env.OMNIROUTE_MODEL = 'combo-chat';
+    process.env.SCRIPT_ADAPTER_BASE_URL = 'https://sa-test.api/v1';
+    process.env.SCRIPT_ADAPTER_API_KEY = 'sa-key';
+    process.env.SCRIPT_ADAPTER_MODEL = 'sa-model';
 
     const provider = resolveProviderFor('script_adapter', 'oct-plan');
     expect(provider).toBeDefined();
-    expect(provider.baseUrl).toBe('https://omni-test.api/v1');
-    expect(provider.apiKey).toBe('sk-omni-secret');
-    expect(provider.model).toBe('combo-chat');
+    expect(provider.baseUrl).toBe('https://sa-test.api/v1');
+    expect(provider.apiKey).toBe('sa-key');
+    expect(provider.model).toBe('sa-model');
+    expect(provider.source).toBe('script_adapter');
   });
 
   it('4. honors SCRIPT_ADAPTER override when OmniRoute is not configured', () => {
@@ -136,6 +141,17 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     expect(provider.baseUrl).toBe('https://sa-test.api/v1');
     expect(provider.apiKey).toBe('sa-key');
     expect(provider.model).toBe('sa-model');
+  });
+
+  it('4b. accepts SCRIPT_ADAPTER_TEXT_REWRITER_MODEL as script adapter model fallback', () => {
+    process.env.SCRIPT_ADAPTER_BASE_URL = 'https://sa-test.api/v1';
+    process.env.SCRIPT_ADAPTER_API_KEY = 'sa-key';
+    process.env.SCRIPT_ADAPTER_TEXT_REWRITER_MODEL = 'sa-text-model';
+
+    const provider = resolveProviderFor('script_adapter');
+    expect(provider).toBeDefined();
+    expect(provider.baseUrl).toBe('https://sa-test.api/v1');
+    expect(provider.model).toBe('sa-text-model');
   });
 
   it('5. does not read new configs outside env or disturb other purpose priorities', () => {
