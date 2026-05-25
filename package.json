@@ -144,13 +144,13 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@xterm/addon-fit": "^0.11.0",
     "@xyflow/react": "^12.10.2",
-    "docx": "^9.6.1",
+    "docx": "^9.7.0",
     "dotenv": "^16.6.1",
-    "echarts": "^6.0.0",
+    "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
     "katex": "^0.16.45",
     "mammoth": "^1.12.0",
-    "mermaid": "^11.14.0",
+    "mermaid": "^11.15.0",
     "node-pty": "^1.1.0",
     "prismjs": "^1.30.0",
     "react": "^18.2.0",
@@ -160,10 +160,10 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "undici": "^6.24.1",
-    "ws": "^8.20.0",
+    "undici": "^6.26.0",
+    "ws": "^8.21.0",
     "xterm": "^5.3.0",
-    "zustand": "^5.0.12"
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",
@@ -187,7 +187,7 @@
     "typescript": "^5.3.3",
     "vite": "^5.0.8",
     "vite-plugin-javascript-obfuscator": "^3.1.0",
-    "vitest": "^4.1.0",
+    "vitest": "^4.1.7",
     "wait-on": "^7.2.0"
   }
 }
