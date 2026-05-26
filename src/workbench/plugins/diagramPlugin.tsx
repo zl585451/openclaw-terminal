@@ -1,4 +1,4 @@
-import MermaidRenderer from '../../components/canvas/MermaidRenderer';
+import MermaidRendererLazy from '../../components/canvas/MermaidRendererLazy';
 import { normalizeDiagramContent } from '../../utils/diagramSchema';
 import type { WorkbenchRendererPlugin } from './types';
 
@@ -11,7 +11,7 @@ export const diagramPlugin: WorkbenchRendererPlugin = {
       /^\s*\{[\s\S]*"diagramType"\s*:/.test(String(document.content || ''))),
   render: (document) => (
     <div className="canvas-preview">
-      <MermaidRenderer content={normalizeDiagramContent(document.content)} />
+      <MermaidRendererLazy content={normalizeDiagramContent(document.content)} />
     </div>
   ),
   getExportFilename: () => 'canvas.mmd',
