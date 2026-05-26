@@ -119,6 +119,7 @@ function ScriptSegmentBubble({ segment }: { segment: AdaptedSegment }) {
 
 function formatSegmentSpeaker(segment: AdaptedSegment): string {
   if (segment.type === 'narration') return '旁白';
+  if (segment.type === 'document_reading') return '文献·待确认';
   if (segment.type === 'inner_monologue') {
     return `${segment.speaker || '内心'} · OS`;
   }

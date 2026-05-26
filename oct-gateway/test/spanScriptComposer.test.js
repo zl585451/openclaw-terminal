@@ -36,6 +36,20 @@ describe('spanScriptComposer', () => {
     expect(result.payload.segments[1].text).toBe('叮，系统已激活');
   });
 
+  it('keeps document reading attributions as document reading segments', () => {
+    const spanDoc = extractQuoteSpans({ sourceText: '他翻到那页，上面写着“太玄经第一卷”。' });
+    const result = composeScriptFromSpans({
+      spanDoc,
+      attributions: [
+        { quoteId: 'q001', voiceType: 'document_reading', speaker: '文献', confidence: 'medium', evidence: '上面写着' },
+      ],
+    });
+
+    expect(result.payload.segments[1].type).toBe('document_reading');
+    expect(result.payload.segments[1].speaker).toBe('文献');
+    expect(result.payload.segments[1].text).toBe('太玄经第一卷');
+  });
+
   it('normalizes pure sfx away from system speaker', () => {
     const spanDoc = extractQuoteSpans({ sourceText: '门内传来【咚】的一声。' });
     const result = composeScriptFromSpans({

@@ -13,6 +13,16 @@
 - `oct-gateway/script_adapter/agents/textRewriterAgent.js`
   - `normalizeSegmentType` 放行 `document_reading`，避免被强制降级为 `narration`。
 
+- `oct-gateway/script_adapter/agents/quoteAttributionAgent.js`
+  - 当 quote 左侧 200 字上下文命中文献阅读触发词时，给归因输入标记 `kindHint = document_reading`。
+  - 提示词硬性要求 `document_reading` 不归为对白或 OS，speaker 优先写原文作者名，无法判断时写「文献」。
+
+- `oct-gateway/script_adapter/spanScriptComposer.js`
+  - 归因结果为 `voiceType = document_reading` 时保留为 `type = document_reading`，不再落回 dialogue。
+
+- `src/modules/script-adapter/services/exportClient.ts`
+  - 导出 docx / Markdown 时将 `document_reading` 显示为「文献·待确认」，避免落入「未标注」。
+
 ## 目的
 
 把“角色正在阅读的文字内容”从普通旁白和角色 OS 中分离出来，交给后续人工确认，减少误归因。

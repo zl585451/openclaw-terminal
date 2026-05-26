@@ -2,7 +2,7 @@
 
 const { sanitizeSpeaker } = require('./speakerCandidateExtractor');
 
-const VALID_VOICE_TYPES = new Set(['dialogue', 'inner_monologue', 'system_voice', 'device_voice', 'sfx']);
+const VALID_VOICE_TYPES = new Set(['dialogue', 'inner_monologue', 'system_voice', 'device_voice', 'sfx', 'document_reading']);
 const VALID_CONFIDENCE = new Set(['high', 'medium', 'low']);
 const POLLUTED_SPEAKERS = new Set(['角色名', '未知角色', 'unknown', 'speaker', '说话人']);
 

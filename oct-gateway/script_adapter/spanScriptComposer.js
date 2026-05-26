@@ -259,6 +259,7 @@ function groupInnerVoiceSpans(spans) {
 
 function mapVoiceTypeToSegmentType(voiceType) {
   if (voiceType === 'inner_monologue') return 'inner_monologue';
+  if (voiceType === 'document_reading') return 'document_reading';
   return 'dialogue';
 }
 
