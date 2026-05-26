@@ -839,7 +839,7 @@ async function streamChatRaw({
       }
       const effectiveSupportsTools = canAttemptTools(caps);
       effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveSupportsTools ? 'supported' : 'unsupported');
-      effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
+      effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id, model);
       const validatedMessages = validateAndFixMessages(effectiveMessages, { logger: log });
       const droppedCount = effectiveMessages.length - validatedMessages.length;
       if (droppedCount > 0) {
@@ -978,7 +978,7 @@ async function streamChatRaw({
     }
     const effectiveToolsSupport = caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown');
     effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveToolsSupport);
-    effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
+    effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id, model);
     const validatedMessages = validateAndFixMessages(effectiveMessages, { logger: log });
     const droppedCount = effectiveMessages.length - validatedMessages.length;
     if (droppedCount > 0) {

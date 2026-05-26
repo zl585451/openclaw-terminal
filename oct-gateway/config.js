@@ -26,7 +26,18 @@ function ensureLocalBypassForOct() {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean)
-      .concat(['localhost', '127.0.0.1', '::1'])
+      .concat([
+        'localhost',
+        '127.0.0.1',
+        '::1',
+        // 国内 AI 服务直连，不走代理
+        'dashscope.aliyuncs.com',
+        'api.deepseek.com',
+        'api.moonshot.cn',
+        'open.bigmodel.cn',
+        'ark.cn-beijing.volces.com',
+        'api.siliconflow.cn',
+      ])
   ));
 
   if (mergedNoProxy.length > 0) {
