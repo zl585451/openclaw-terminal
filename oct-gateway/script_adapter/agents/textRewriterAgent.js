@@ -352,7 +352,9 @@ function normalizePayload(payload) {
 }
 
 function normalizeSegmentType(type) {
-  return ['narration', 'dialogue', 'inner_monologue'].includes(type) ? type : 'narration';
+  return ['narration', 'dialogue', 'inner_monologue', 'document_reading'].includes(type)
+    ? type
+    : 'narration';
 }
 
 function parseTextRewriterOutput(raw) {

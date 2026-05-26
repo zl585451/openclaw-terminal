@@ -115,10 +115,15 @@ function startAnalysis(params = {}, connection, logger) {
 
   publish('analysis.started');
   runAnalysisToCompletion({ run, params, context, publish, logger, runId }).catch((error) => {
-    logger?.warn?.('script_adapter_analysis_unhandled_failed', {
-      runId,
-      error: error?.message || String(error),
-    });
+    const errMsg = error?.message || String(error);
+    logger?.warn?.('script_adapter_analysis_unhandled_failed', { runId, error: errMsg });
+    // 兜底：外部 catch 触发说明 runAnalysisToCompletion 内部 catch 也抛了，
+    // 此时 UI 可能仍在等待事件，必须 emit failure 让前端从 loading 状态恢复。
+    if (run.status === 'running') {
+      run.status = 'failed';
+      run.error = errMsg;
+    }
+    publish('analysis.failed');
   });
 
   return { success: true, analysisRun: clone(run) };
@@ -213,14 +218,14 @@ async function executeStep(stepId, params, context) {
   if (stepId === 'business_analysis') {
     const provider = resolveProviderFor('script_adapter');
     const result = await runBusinessAnalysisCompletion({ provider, params, context });
-    context.analysisReport = normalizeAnalysisReport(parseJsonObject(result.content), params);
+    context.analysisReport = normalizeAnalysisReport(result.payload, params);
     return { model: formatProviderLabel(result.model, provider) };
   }
 }
 
-async function runBusinessAnalysisCompletion({ provider, params, context }) {
+async function runBusinessAnalysisCompletion({ provider, params, context, request = requestBusinessAnalysis }) {
   try {
-    return await requestBusinessAnalysis({
+    const result = await request({
       provider,
       params,
       context,
@@ -228,9 +233,13 @@ async function runBusinessAnalysisCompletion({ provider, params, context }) {
       maxTokens: 2000,
       temperature: 0.3,
     });
+    return {
+      ...result,
+      payload: parseJsonObject(result.content),
+    };
   } catch (error) {
     if (!isRetryableAnalysisError(error)) throw error;
-    const retry = await requestBusinessAnalysis({
+    const retry = await request({
       provider,
       params,
       context,
@@ -241,6 +250,7 @@ async function runBusinessAnalysisCompletion({ provider, params, context }) {
     });
     return {
       ...retry,
+      payload: parseJsonObject(retry.content),
       model: `${retry.model} (compact retry)`,
     };
   }
@@ -293,20 +303,28 @@ function sampleAnalysisText(text, charBudget) {
 
 function isRetryableAnalysisError(error) {
   const message = String(error?.message || error || '').toLowerCase();
-  return error?.name === 'LlmClientTimeoutError'
+  return error?.code === 'BUSINESS_ANALYSIS_JSON_PARSE_FAILED'
+    || error?.name === 'LlmClientTimeoutError'
     || message.includes('timeout')
     || message.includes('超时')
     || message.includes('json_parse')
-    || message.includes('unexpected end');
+    || message.includes('unexpected end')
+    || message.includes('expected')
+    || message.includes('after array element');
 }
 
 function canFallbackToRuleAnalysis(error) {
   const message = String(error?.message || error || '').toLowerCase();
-  return error?.name === 'LlmClientTimeoutError'
+  return error?.code === 'BUSINESS_ANALYSIS_JSON_PARSE_FAILED'
+    || error?.name === 'LlmClientTimeoutError'
     || error?.status === 402
     || error?.status === 403
+    || message.includes('business_analysis_json_parse_failed')
     || message.includes('timeout')
     || message.includes('超时')
+    || message.includes('json_parse')
+    || message.includes('unexpected end')
+    || message.includes('after array element')
     || message.includes('quota')
     || message.includes('insufficient_user_quota')
     || message.includes('llm_http_402')
@@ -509,10 +527,24 @@ function parseJsonObject(content) {
   const raw = String(content || '').trim();
   try {
     return JSON.parse(raw);
-  } catch {}
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('BUSINESS_ANALYSIS_JSON_PARSE_FAILED');
-  return JSON.parse(match[0]);
+  } catch (rawError) {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw createJsonParseError(rawError, raw);
+    try {
+      return JSON.parse(match[0]);
+    } catch (extractedError) {
+      throw createJsonParseError(extractedError, match[0]);
+    }
+  }
+}
+
+function createJsonParseError(cause, raw) {
+  const detail = cause?.message ? `: ${cause.message}` : '';
+  const error = new Error(`BUSINESS_ANALYSIS_JSON_PARSE_FAILED${detail}`);
+  error.code = 'BUSINESS_ANALYSIS_JSON_PARSE_FAILED';
+  error.cause = cause;
+  error.rawSnippet = String(raw || '').slice(0, 500);
+  return error;
 }
 
 function normalizeText(value) {
@@ -555,4 +587,10 @@ function clone(value) {
 module.exports = {
   ANALYSIS_STEPS,
   startAnalysis,
+  _test: {
+    canFallbackToRuleAnalysis,
+    isRetryableAnalysisError,
+    parseJsonObject,
+    runBusinessAnalysisCompletion,
+  },
 };

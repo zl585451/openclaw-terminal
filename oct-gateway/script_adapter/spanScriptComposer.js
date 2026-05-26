@@ -8,6 +8,32 @@ const {
   normalizeFunctionalSpeaker,
 } = require('./voiceTypeClassifier');
 
+const DOCUMENT_READING_TRIGGERS = [
+  '写着',
+  '写道',
+  '写的是',
+  '上面写',
+  '记录着',
+  '记载',
+  '印着',
+  '刻着',
+  '翻开',
+  '翻到',
+  '读到',
+  '看见',
+  '目光落',
+  '找到',
+  '那一行',
+  '那页',
+  '那个字',
+  '那行字',
+  '记录里写着',
+  '扉页上',
+  '标注着',
+  '显示',
+];
+const DOCUMENT_READING_CONTEXT_CHARS = 200;
+
 function composeScriptFromSpans(params = {}) {
   const spanDoc = params.spanDoc || {};
   const attributionMap = normalizeAttributionMap(params.attributions);
@@ -83,7 +109,10 @@ function appendGapSegments({ event, sourceText, innerVoices, segments }) {
   for (const item of allEvents) {
     if (Number(item.start) < cursor) continue;
     if (Number(item.start) > cursor) {
-      appendNarrationSegment(sourceText.slice(cursor, Number(item.start)), segments);
+      const text = sourceText.slice(cursor, Number(item.start));
+      const leftContext = sourceText.slice(Math.max(0, cursor - DOCUMENT_READING_CONTEXT_CHARS), cursor);
+      if (hasDocumentReadingCue(leftContext)) appendDocumentReadingSegment(text, segments);
+      else appendNarrationSegment(text, segments);
     }
     if (item.kind === 'sfx') appendSfxSegment(item, segments);
     else appendInnerVoiceSegment(item, segments);
@@ -91,8 +120,16 @@ function appendGapSegments({ event, sourceText, innerVoices, segments }) {
   }
 
   if (cursor < Number(event.end)) {
-    appendNarrationSegment(sourceText.slice(cursor, Number(event.end)), segments);
+    const text = sourceText.slice(cursor, Number(event.end));
+    const leftContext = sourceText.slice(Math.max(0, cursor - DOCUMENT_READING_CONTEXT_CHARS), cursor);
+    if (hasDocumentReadingCue(leftContext)) appendDocumentReadingSegment(text, segments);
+    else appendNarrationSegment(text, segments);
   }
+}
+
+function hasDocumentReadingCue(leftContext) {
+  const context = String(leftContext || '').slice(-DOCUMENT_READING_CONTEXT_CHARS);
+  return DOCUMENT_READING_TRIGGERS.some((trigger) => context.includes(trigger));
 }
 
 function appendNarrationSegment(text, segments) {
@@ -104,6 +141,21 @@ function appendNarrationSegment(text, segments) {
     segmentId: formatSegmentId(segments.length + 1),
     type: 'narration',
     text: normalizedText,
+  });
+}
+
+function appendDocumentReadingSegment(text, segments) {
+  const normalizedText = normalizeNarrationGap(text);
+  if (!normalizedText) return;
+  if (isCueOnlyText(normalizedText)) return;
+  segments.push({
+    segmentId: formatSegmentId(segments.length + 1),
+    type: 'document_reading',
+    text: normalizedText,
+    meta: {
+      needsReview: true,
+      reviewReason: '疑似被阅读的文字内容，需人工确认演播声线',
+    },
   });
 }
 

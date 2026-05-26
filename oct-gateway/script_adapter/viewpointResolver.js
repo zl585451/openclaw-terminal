@@ -15,7 +15,6 @@ const COMMON_NON_ROLES = new Set([
 const BAD_ROLE_TOKENS = new Set([
   '嗫嚅',
   '没听过他',
-  '欠',
   '幻听',
   '故障',
   '串频',

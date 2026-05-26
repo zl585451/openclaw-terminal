@@ -27,5 +27,6 @@
 - `voice_markers` 是阶段 6 推荐字段；`voice_registry` 保留给既有 UI 和导出逻辑。
 - `basic_qc_report` 是阶段 5 规则质检结果；`review_report` 保留给既有 UI 和导出逻辑。
 - 当 `basic_qc_report.conclusion` 或 `review_report.conclusion` 为 `reject` 时，交付打包模块必须拒绝生成 `final_package`，由章节运行状态记录失败和质检报告。
+- `adapted_script.segments[].type` 仍以 `narration` / `dialogue` / `inner_monologue` 为主；新增 `document_reading` 用于标记疑似被阅读的文字内容，交付前必须人工确认是否归并为旁白或对白。
 - `performance_design` 可选。单章 MVP 主线可跳过演播设计，但 manifest 和 notes 仍应完整生成。
 - UI 展示 final package 时优先读取包内字段；缺失时回退到执行 sheet 中独立 artifacts。
