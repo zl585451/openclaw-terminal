@@ -44,7 +44,8 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
       .then((books) => {
         if (cancelled) return;
         setLibraryBooks(books);
-        if (!selectedBatchBookId && books[0]) setSelectedBatchBookId(books[0].id);
+        // 用 functional updater 防止旧闭包覆盖 Effect 1 已设的 bookId
+        if (books[0]) setSelectedBatchBookId((current) => current || books[0].id);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -72,14 +73,15 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
         if (cancelled) return;
         setBatchChapters(chapters);
         setSelectedBatchChapterIndices((current) => {
-          if (current.length > 0 && current.every((index) => chapters.some((chapter) => chapter.chapter_index === index))) {
-            return current;
-          }
+          // 优先用合同锁定的章节范围（防止 race condition 回退到单章）
           if (taskContract?.bookId === selectedBatchBookId) {
             const lockedIndices = taskContract.chapterIndices.filter((index) =>
               chapters.some((chapter) => chapter.chapter_index === index),
             );
             return lockedIndices;
+          }
+          if (current.length > 0 && current.every((index) => chapters.some((chapter) => chapter.chapter_index === index))) {
+            return current;
           }
           return chapters[0] ? [chapters[0].chapter_index] : [];
         });
@@ -180,6 +182,13 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
     return current.some((value, index) => value !== locked[index]);
   }, [selectedBatchChapterIndices, taskContract]);
 
+  const contractChapterLabel = taskContract?.chapterIndices?.length
+    ? `第 ${taskContract.chapterIndices[0] + 1}-${taskContract.chapterIndices[taskContract.chapterIndices.length - 1] + 1} 章（共 ${taskContract.chapterIndices.length} 章）`
+    : '';
+  const actualChapterLabel = selectedBatchChapterIndices?.length
+    ? `第 ${selectedBatchChapterIndices[0] + 1}-${selectedBatchChapterIndices[selectedBatchChapterIndices.length - 1] + 1} 章（共 ${selectedBatchChapterIndices.length} 章）`
+    : '';
+
   const startBatchButtonText = batchEstimate.chapterCount <= 1
     ? '确认开工，启动真实单章制作'
     : batchEstimate.chapterCount <= 5
@@ -260,6 +269,11 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
           <div className={styles.contractSummaryGrid}>
             <div><span>素材</span><strong>{selectedBatchBook?.title || taskContract?.bookTitle || '待选择素材'}</strong></div>
             <div><span>范围</span><strong>{contractRangeLabel}</strong></div>
+            {lockedSelectionMismatch && (
+              <div style={{ gridColumn: '1 / -1', fontSize: 12, color: '#be3a34' }}>
+                ⚠ 实际选中章节已偏离锁定范围：锁定 {contractChapterLabel || '未知'}，当前选中 {actualChapterLabel || '未知'}
+              </div>
+            )}
             <div><span>修改策略</span><strong>{taskContract?.strategyTitle || '轻度听感改编'}</strong></div>
             <div><span>交付物</span><strong>{deliverySummary}</strong></div>
             <div><span>未启用</span><strong>{deliveryOptions.bgmSfx ? '无' : 'BGM/SFX 建议'}</strong></div>
@@ -290,6 +304,12 @@ export function BatchSetupPanel({ taskContract, onBatchStarted }: BatchSetupPane
           <div className={styles.sectionTitle}>最终预算与真实制作队列</div>
           <div className={styles.batchBudgetStats}>
             <div><span>已选章节</span><strong>{batchEstimate.chapterCount}</strong></div>
+            {taskContract && (
+              <div style={{ gridColumn: '1 / -1', fontSize: 13, color: '#666', borderTop: '1px dashed #ddd', paddingTop: 6 }}>
+                <div>任务锁定：<strong>{contractChapterLabel}</strong></div>
+                <div>实际送审：<strong>{actualChapterLabel}</strong></div>
+              </div>
+            )}
             <div><span>总字数</span><strong>{batchEstimate.totalChars.toLocaleString('zh-CN')}</strong></div>
             <div><span>预计耗时</span><strong>{batchEstimate.estimatedDurationMinutes} 分钟</strong></div>
             <div><span>预计费用</span><strong>¥{batchEstimate.estimatedCostCny.toFixed(2)}</strong></div>

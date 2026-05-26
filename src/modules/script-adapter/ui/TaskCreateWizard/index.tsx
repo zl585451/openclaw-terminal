@@ -52,9 +52,11 @@ export function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const [intakeStepIndex, setIntakeStepIndex] = useState(0);
   const [, setIntakeError] = useState('');
   const [analysisStatus, setAnalysisStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
-  const [, setAnalysisError] = useState('');
+  const [analysisError, setAnalysisError] = useState('');
+  const [analysisStuckWarning, setAnalysisStuckWarning] = useState(false);
   const [productionStatus, setProductionStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
   const [productionError, setProductionError] = useState('');
+  const [productionStuckWarning, setProductionStuckWarning] = useState(false);
   const [, setProductionQueue] = useState<ProductionQueueItem[]>([]);
   const [selectedStrategyId, setSelectedStrategyId] = useState('');
   const [deliveryOptions] = useState<DeliveryOptions>({
@@ -180,6 +182,19 @@ export function TaskCreateWizard({ onBack, onStart }: WizardProps) {
     });
   }, [setProductionRun]);
 
+  // ── 超时提示：业务分析 / 制作交接超过预期时间 ─────────────────────
+  useEffect(() => {
+    if (analysisStatus !== 'running') { setAnalysisStuckWarning(false); return; }
+    const timer = setTimeout(() => setAnalysisStuckWarning(true), 90000);
+    return () => clearTimeout(timer);
+  }, [analysisStatus]);
+
+  useEffect(() => {
+    if (productionStatus !== 'running') { setProductionStuckWarning(false); return; }
+    const timer = setTimeout(() => setProductionStuckWarning(true), 90000);
+    return () => clearTimeout(timer);
+  }, [productionStatus]);
+
   const canOpenStep = (step: WizardStep) => {
     if (step === 1) return true;
     if (step === 2) return sourceConfirmed;
@@ -211,8 +226,10 @@ export function TaskCreateWizard({ onBack, onStart }: WizardProps) {
   const evidenceSummary = activeStep === 2
     ? `素材摄入 ${intakeSucceededCount}/${displayedIntakeSteps.length} 成功 · 当前页无 Agent 执行`
     : isProductionRunning || productionStatus === 'completed' || productionStatus === 'failed'
-      ? `制作交接 ${productionSucceededCount}/${displayedProductionSteps.length} 成功 · ${productionStatus === 'completed' ? '工作台合同已生成' : productionStatus === 'failed' ? '交接失败' : '交接中'}`
-      : `业务分析 ${analysisSucceededCount}/${displayedAnalysisSteps.length} 成功 · ${businessAgentStep?.status === 'succeeded' ? 'Agent 已完成' : businessAgentStep?.status === 'running' ? 'Agent 执行中' : businessAgentStep?.status === 'failed' ? 'Agent 失败' : '等待 Agent'}`;
+      ? `制作交接 ${productionSucceededCount}/${displayedProductionSteps.length} 成功 · ${productionStatus === 'completed' ? '工作台合同已生成' : productionStatus === 'failed' ? `交接失败 · ${productionError || ''}` : '交接中'}`
+      : analysisStatus === 'failed'
+        ? `业务分析失败 · ${analysisError || '未知错误'}`
+        : `业务分析 ${analysisSucceededCount}/${displayedAnalysisSteps.length} 成功 · ${businessAgentStep?.status === 'succeeded' ? 'Agent 已完成' : businessAgentStep?.status === 'running' ? 'Agent 执行中' : businessAgentStep?.status === 'failed' ? 'Agent 失败' : '等待 Agent'}`;
 
   const handleConfirmSource = async () => {
     if (isIntakeRunning || !sourceReady) return;
@@ -544,6 +561,9 @@ export function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                         <span className={styles.backgroundStepDuration}>{step.executor}</span>
                       </div>
                       <p className={styles.backgroundStepDesc}>{step.desc}</p>
+                      {step.status === 'failed' && step.error && (
+                        <p style={{ color: '#be3a34', fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{step.error}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -560,8 +580,39 @@ export function TaskCreateWizard({ onBack, onStart }: WizardProps) {
                         <span className={styles.backgroundStepDuration}>{step.executor}</span>
                       </div>
                       <p className={styles.backgroundStepDesc}>{step.desc}</p>
+                      {step.status === 'failed' && step.error && (
+                        <p style={{ color: '#be3a34', fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{step.error}</p>
+                      )}
                     </div>
                   ))}
+                </div>
+              )}
+              {/* 超时提示：分析 / 制作超过预期时间 */}
+              {activeStep === 2 && analysisStuckWarning && analysisStatus === 'running' && (
+                <div className={styles.backgroundStepRunning} style={{ padding: '10px 12px' }}>
+                  <span style={{ color: '#b8860b', fontSize: 13, lineHeight: 1.4 }}>
+                    ⏳ 业务分析已运行超过 90 秒，可能因模型响应慢或 Gateway 连接中断。请确认 Gateway 运行正常，或返回重试。
+                  </span>
+                </div>
+              )}
+              {activeStep !== 1 && activeStep !== 2 && productionStuckWarning && productionStatus === 'running' && (
+                <div className={styles.backgroundStepRunning} style={{ padding: '10px 12px' }}>
+                  <span style={{ color: '#b8860b', fontSize: 13, lineHeight: 1.4 }}>
+                    ⏳ 制作交接已运行超过 90 秒，可能因 Gateway 连接中断。请确认 Gateway 运行正常，或返回重试。
+                  </span>
+                </div>
+              )}
+              {/* 运行级错误提示 */}
+              {activeStep === 2 && analysisStatus === 'failed' && analysisError && (
+                <div className={styles.backgroundStepFailed} style={{ padding: '10px 12px' }}>
+                  <strong style={{ color: '#be3a34' }}>业务分析失败：</strong>
+                  <span style={{ color: '#5c2623', fontSize: 13, lineHeight: 1.4 }}>{analysisError}</span>
+                </div>
+              )}
+              {activeStep !== 1 && activeStep !== 2 && productionStatus === 'failed' && productionError && (
+                <div className={styles.backgroundStepFailed} style={{ padding: '10px 12px' }}>
+                  <strong style={{ color: '#be3a34' }}>制作交接失败：</strong>
+                  <span style={{ color: '#5c2623', fontSize: 13, lineHeight: 1.4 }}>{productionError}</span>
                 </div>
               )}
             </div>
