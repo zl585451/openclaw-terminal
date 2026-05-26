@@ -3,6 +3,7 @@
 const assert = require('node:assert');
 const {
   parseGoogleVertexFromBaseUrl,
+  resolveGoogleProxyUrl,
   sanitizeGoogleModelId,
   convertMessagesToGoogleContents,
   normalizeGoogleFunctionCalls,
@@ -21,6 +22,12 @@ async function main() {
   );
   assert.equal(parsedGlobal.project, 'demo-project');
   assert.equal(parsedGlobal.location, 'global');
+
+  assert.equal(resolveGoogleProxyUrl({
+    GOOGLE_HTTPS_PROXY: 'http://127.0.0.1:10808',
+    HTTPS_PROXY: 'http://127.0.0.1:9999',
+  }), 'http://127.0.0.1:10808');
+  assert.equal(resolveGoogleProxyUrl({ HTTPS_PROXY: 'http://127.0.0.1:9999' }), 'http://127.0.0.1:9999');
 
   assert.equal(sanitizeGoogleModelId('google/gemini-2.5-flash'), 'gemini-2.5-flash');
   assert.equal(sanitizeGoogleModelId('gemini-2.5-flash-image-preview'), 'gemini-2.5-flash-image');

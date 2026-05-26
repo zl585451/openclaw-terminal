@@ -4,6 +4,7 @@ const { GoogleGenAI } = require('@google/genai');
 
 const DEFAULT_VERTEX_LOCATION = 'us-central1';
 const DEFAULT_API_VERSION = 'v1';
+let activeGoogleProxyUrl = '';
 
 function isGoogleNativeMode(rawConfig = {}) {
   const mode = String(
@@ -49,7 +50,38 @@ function isImagenModel(modelId) {
   return /^imagen[-.]/i.test(String(sanitizeGoogleModelId(modelId) || ''));
 }
 
+function resolveGoogleProxyUrl(rawConfig = {}) {
+  return String(
+    rawConfig.GOOGLE_HTTPS_PROXY
+    || rawConfig.HTTPS_PROXY
+    || rawConfig.https_proxy
+    || rawConfig.HTTP_PROXY
+    || rawConfig.http_proxy
+    || ''
+  ).trim();
+}
+
+function configureGoogleNativeProxy(rawConfig = {}) {
+  const proxyUrl = resolveGoogleProxyUrl(rawConfig);
+  if (!proxyUrl || proxyUrl === activeGoogleProxyUrl) return false;
+
+  delete process.env.NODE_USE_ENV_PROXY;
+  delete process.env.node_use_env_proxy;
+
+  try {
+    const { ProxyAgent, setGlobalDispatcher } = require('undici');
+    setGlobalDispatcher(new ProxyAgent(proxyUrl));
+    activeGoogleProxyUrl = proxyUrl;
+    return true;
+  } catch (error) {
+    console.warn('[GoogleNative] proxy setup skipped:', String(error?.message || error));
+    return false;
+  }
+}
+
 function resolveGoogleClientConfig(rawConfig = {}) {
+  configureGoogleNativeProxy(rawConfig);
+
   const apiKey = String(
     rawConfig.GOOGLE_AI_API_KEY
     || rawConfig.GOOGLE_API_KEY
@@ -567,6 +599,8 @@ module.exports = {
   isGoogleImageModel,
   isImagenModel,
   resolveGoogleClientConfig,
+  resolveGoogleProxyUrl,
+  configureGoogleNativeProxy,
   convertMessagesToGoogleContents,
   convertToolDefinitionsToGoogleTools,
   normalizeGoogleFunctionCalls,

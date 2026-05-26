@@ -865,6 +865,7 @@ async function streamChatRaw({
           GOOGLE_AI_API_KEY: apiKey,
           GOOGLE_AI_BASE_URL: baseUrl,
           GOOGLE_API_MODE: config.GOOGLE_API_MODE || 'native',
+          GOOGLE_HTTPS_PROXY: config.GOOGLE_HTTPS_PROXY || '',
           GOOGLE_CLOUD_PROJECT: config.GOOGLE_CLOUD_PROJECT || '',
           GOOGLE_CLOUD_LOCATION: config.GOOGLE_CLOUD_LOCATION || '',
           GOOGLE_GENAI_API_VERSION: config.GOOGLE_GENAI_API_VERSION || '',
