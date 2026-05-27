@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { BatchActivityEntry, BatchJob, ChapterRunRecord } from '../../types/batch';
+import { applyGatewayReviewDecision, approveGatewayGate } from '../../services/gatewayBatch';
 import { ReviewGatePreview } from './ReviewGatePreview';
 import { DeliveryPreview } from './DeliveryPreview';
 import styles from '../../styles/scriptAdapter.module.css';
@@ -41,13 +42,17 @@ export function BatchProgressView({
   const [scrollTop, setScrollTop] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [expandedChapterIndex, setExpandedChapterIndex] = useState<number | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const sortedRuns = useMemo(
     () => [...chapterRuns].sort((a, b) => a.chapterIndex - b.chapterIndex),
     [chapterRuns],
   );
   const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 4);
   const visible = sortedRuns.slice(start, Math.min(sortedRuns.length, start + Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + 8));
-  const currentRun = sortedRuns.find((run) => run.chapterIndex === expandedChapterIndex && run.sheet);
+  const firstReviewRun = sortedRuns.find(isAwaitingManualReview);
+  const currentRun = sortedRuns.find((run) => run.chapterIndex === expandedChapterIndex && run.sheet) ?? firstReviewRun;
   const batchVoiceRegistry = batch.config?.sharedContext?.voiceRegistry || [];
   const completed = batch.status === 'completed' && batch.failedChapters === 0;
   const pausedForRetry = batch.status === 'paused' && batch.failedChapters > 0;
@@ -60,12 +65,57 @@ export function BatchProgressView({
   const elapsedMs = runningRun?.startedAt ? Math.max(0, now - new Date(runningRun.startedAt).getTime()) : 0;
   const lastEventMs = lastEventAt ? Math.max(0, now - new Date(lastEventAt).getTime()) : null;
   const heartbeat = getHeartbeat(batch.status, lastEventMs);
+  const pendingGate = currentRun && isAwaitingManualReview(currentRun)
+    ? currentRun.sheet?.gates?.find((gate) => gate.status === 'pending')
+    : null;
 
   useEffect(() => {
     if (batch.status !== 'running') return undefined;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [batch.status]);
+
+  useEffect(() => {
+    const firstPendingGate = firstReviewRun?.sheet?.gates?.find((gate) => gate.status === 'pending');
+    if (!firstReviewRun || !firstPendingGate) return;
+    setExpandedChapterIndex(firstReviewRun.chapterIndex);
+    setReviewModalOpen(true);
+    setReviewError('');
+  }, [firstReviewRun?.id, firstReviewRun?.chapterIndex, firstReviewRun?.sheet?.updatedAt]);
+
+  const handleFinishReview = async () => {
+    if (!pendingGate) return;
+    setReviewError('');
+    setReviewSubmitting(true);
+    try {
+      const result = await approveGatewayGate(batch.id, pendingGate.gateId, '人工确认项已逐条处理完成。');
+      if (!result?.success) throw new Error(result?.error || '继续生产失败');
+      setReviewModalOpen(false);
+      onRefresh();
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const handleApplyReviewDecision = async (
+    segmentId: string,
+    decision: { type: string; speaker?: string; note?: string },
+  ) => {
+    if (!pendingGate) return;
+    setReviewError('');
+    setReviewSubmitting(true);
+    try {
+      const result = await applyGatewayReviewDecision(batch.id, pendingGate.gateId, segmentId, decision);
+      if (!result?.success) throw new Error(result?.error || '应用人工确认失败');
+      onRefresh();
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   return (
     <section className={`${styles.card} ${styles.batchProgressCard}`}>
@@ -250,9 +300,71 @@ export function BatchProgressView({
 
       {currentRun?.sheet ? (
         <div className={styles.batchExpandedSheet}>
-          <div className={styles.sectionTitle}>展开产物预览</div>
-          <ReviewGatePreview run={currentRun} bookId={batch.bookId} />
+          <div className={styles.sectionTitle}>人工审核面板</div>
+          <ReviewGatePreview
+            run={currentRun}
+            bookId={batch.bookId}
+            pendingGate={pendingGate}
+            applying={reviewSubmitting}
+            error={reviewError}
+            onApplyDecision={handleApplyReviewDecision}
+            onFinishReview={handleFinishReview}
+          />
+          {pendingGate ? (
+            <div className={styles.reviewActionBar}>
+              <div className={styles.reviewActionCopy}>
+                <strong>等待你的确认</strong>
+                <p>本章已暂停在人工审核节点。请打开问题卡片，逐条确认不确定内容应该归旁白还是角色声线。</p>
+              </div>
+              {reviewError ? <div className={styles.reviewErrorText}>{reviewError}</div> : null}
+              <div className={styles.reviewButtons}>
+                <button
+                  type="button"
+                  onClick={() => setReviewModalOpen(true)}
+                  className={styles.approveButton}
+                  disabled={reviewSubmitting}
+                >
+                  打开人工确认弹窗
+                </button>
+              </div>
+            </div>
+          ) : null}
           <DeliveryPreview sheet={currentRun.sheet} />
+        </div>
+      ) : null}
+
+      {reviewModalOpen && currentRun?.sheet && pendingGate ? (
+        <div className={styles.reviewModalOverlay} role="presentation">
+          <section className={styles.reviewModal} role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
+            <header className={styles.reviewModalHeader}>
+              <div>
+                <span>需要人工确认</span>
+                <h2 id="review-modal-title">{currentRun.chapterTitle || `第 ${currentRun.chapterIndex + 1} 章`}</h2>
+                <p>系统不确定某段内容该由谁来读。请逐张问题卡片确认归属；选择后会立即修改当前台本。</p>
+              </div>
+              <button type="button" aria-label="暂时收起审核弹窗" onClick={() => setReviewModalOpen(false)}>
+                ×
+              </button>
+            </header>
+
+            <div className={styles.reviewModalBody}>
+              <ReviewGatePreview
+                run={currentRun}
+                bookId={batch.bookId}
+                pendingGate={pendingGate}
+                applying={reviewSubmitting}
+                error={reviewError}
+                onApplyDecision={handleApplyReviewDecision}
+                onFinishReview={handleFinishReview}
+              />
+            </div>
+
+            <footer className={styles.reviewModalFooter}>
+              <button type="button" className={styles.ghostButton} onClick={() => setReviewModalOpen(false)} disabled={reviewSubmitting}>
+                暂时收起
+              </button>
+            </footer>
+          </section>
         </div>
       ) : null}
     </section>
@@ -265,6 +377,11 @@ function getHeartbeat(status: BatchJob['status'], lastEventMs: number | null) {
   if (lastEventMs <= 10000) return { tone: 'good', label: '后台活跃' };
   if (lastEventMs <= 45000) return { tone: 'warn', label: '模型处理中' };
   return { tone: 'danger', label: '长时间无更新' };
+}
+
+function isAwaitingManualReview(run: ChapterRunRecord): boolean {
+  return run.status === 'awaiting_review'
+    && Boolean(run.sheet?.gates?.some((gate) => gate.status === 'pending'));
 }
 
 function labelBatchStatus(status: BatchJob['status']) {
