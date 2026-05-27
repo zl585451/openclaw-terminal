@@ -27,7 +27,7 @@ const TEXT_REWRITER_TIMEOUT_MS = (() => {
 
 /**
  * 文本改编 Agent（分类切分优先架构）。
- * @param {{ sourceText: string, agent: object }} ctx
+ * @param {{ sourceText: string, agent: object, reviewFeedback?: string }} ctx
  * @param {object} [_options]
  * @returns {Promise<{ payload: object, latencyMs: number, model: string }>}
  */
@@ -38,9 +38,10 @@ async function runTextRewriterAgent(ctx, _options = {}) {
     throw new Error(`TEXT_REWRITER_TOO_LONG: ${sourceText.length} > ${HARD_LIMIT}`);
   }
   const report = createProgressReporter(ctx);
+  const reviewFeedback = String(ctx?.reviewFeedback || '').trim();
 
   if (shouldUseSpanAttributionPipeline()) {
-    return runSpanAttributionPass(sourceText, report);
+    return runSpanAttributionPass(sourceText, report, reviewFeedback);
   }
 
   const slices = createAdaptiveSlices(sourceText, { anchorSize: ANCHOR_SIZE });
@@ -51,7 +52,7 @@ async function runTextRewriterAgent(ctx, _options = {}) {
   return runSlicedClassifyFirstPass(sourceText, slices, report);
 }
 
-async function runSpanAttributionPass(sourceText, report = noop) {
+async function runSpanAttributionPass(sourceText, report = noop, reviewFeedback = '') {
   const startedAt = Date.now();
 
   report({ phase: 'span_extract', progressSummary: '正在抽取原文引号 span', progressPercent: 15 });
@@ -76,6 +77,7 @@ async function runSpanAttributionPass(sourceText, report = noop) {
     chapterTitle: spanDoc.chapterTitle,
     quotes: spanDoc.quotes,
     candidateSets,
+    reviewFeedback,
   });
 
   const viewpointResult = resolveViewpoint({

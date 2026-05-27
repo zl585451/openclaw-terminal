@@ -98,6 +98,15 @@ export function registerScriptAdapterHandlers(_deps: IpcDeps) {
     return sendRequest('scriptAdapter.batch.rejectGate', payload || {});
   });
 
+  ipcMain.handle('script-adapter-batch-apply-review-decision', (_event: unknown, payload: {
+    batchId: string;
+    gateId: string;
+    segmentId: string;
+    decision: { type: string; speaker?: string; note?: string };
+  }) => {
+    return sendRequest('scriptAdapter.batch.applyReviewDecision', payload || {});
+  });
+
   ipcMain.handle('script-adapter-batch-rerun', (_event: unknown, payload: { batchId: string; chapterIndex: number }) => {
     return sendRequest('scriptAdapter.batch.rerunChapter', {
       batchId: String(payload?.batchId || ''),

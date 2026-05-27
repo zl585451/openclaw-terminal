@@ -113,22 +113,24 @@ async function runBatchLoop(batchId, connection, logger) {
       if (!snapshot) break;
       const nextChapterIndex = persistence.findNextPendingChapter(batchId);
       if (nextChapterIndex == null) break;
-      await executeChapter(snapshot.batch, nextChapterIndex, emit, controller.signal, logger);
+      const chapterResult = await executeChapter(snapshot.batch, nextChapterIndex, emit, controller.signal, logger);
+      if (chapterResult?.status === 'awaiting_review') break;
       await sleep(isRealAgentsEnabled(snapshot.batch) ? 1200 : 150, controller.signal).catch(() => {});
     }
 
     const finalSnapshot = persistence.getBatch(batchId);
     if (finalSnapshot) {
       const pendingLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'pending');
+      const awaitingReviewLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'awaiting_review');
       const failedLeft = finalSnapshot.chapterRuns.some((run) => run.status === 'failed');
       const nextStatus = controller.signal.aborted
         ? 'cancelled'
-        : failedLeft || pendingLeft
+        : failedLeft || pendingLeft || awaitingReviewLeft
           ? 'paused'
           : 'completed';
       persistence.updateBatch(batchId, {
         status: nextStatus,
-        completedAt: controller.signal.aborted || failedLeft || !pendingLeft ? new Date().toISOString() : null,
+        completedAt: controller.signal.aborted || failedLeft || (!pendingLeft && !awaitingReviewLeft) ? new Date().toISOString() : null,
       });
       emit(
         nextStatus === 'cancelled'
@@ -165,6 +167,11 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
   const chapterData = inlineText
     ? { chapter: null, text: inlineText }
     : await fetchChapter(batch.bookId, chapterIndex);
+  const reviewFeedback = persistence.getLatestChapterReviewFeedback(
+    batch.id,
+    chapterIndex,
+    chapterRun.attempt,
+  );
   const startedAt = new Date().toISOString();
   persistence.updateChapterRun(chapterRun.id, {
     status: 'running',
@@ -197,6 +204,7 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
         realAgentsOverride: batch.config?.realAgents || 'off',
         deliveryOptions: batch.config?.deliveryOptions || {},
         sharedVoiceRegistry: batch.config?.sharedContext?.voiceRegistry || [],
+        reviewFeedback,
       },
       onProgress: (payload) => {
         const eventName = payload?.event === 'agent_progress'
@@ -214,6 +222,24 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
     const normalizedSheet = applyLockedVoiceRegistry(completedSheet, batch);
     const durationMs = Date.now() - new Date(startedAt).getTime();
     const chapterCost = estimateChapterCost(batch);
+    if (normalizedSheet.overallStatus === 'awaiting_review') {
+      const pendingGate = normalizedSheet.gates.find((gate) => gate.status === 'pending');
+      persistence.updateChapterRun(chapterRun.id, {
+        status: 'awaiting_review',
+        sheet: normalizedSheet,
+        durationMs,
+        cost: chapterCost,
+        pendingGateId: pendingGate?.gateId || null,
+        pendingGateType: pendingGate?.gateType || null,
+      });
+      emit('chapter_awaiting_review', {
+        chapterIndex,
+        runId: chapterRun.id,
+        sheet: normalizedSheet,
+        gate: pendingGate || null,
+      });
+      return { status: 'awaiting_review', sheet: normalizedSheet, gate: pendingGate || null };
+    }
     persistence.updateChapterRun(chapterRun.id, {
       status: 'completed',
       sheet: normalizedSheet,
@@ -229,6 +255,7 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
       runId: chapterRun.id,
       sheet: normalizedSheet,
     });
+    return { status: 'completed', sheet: normalizedSheet };
   } catch (error) {
     const failedSheet = error?.sheet || null;
     logger?.warn?.('script adapter chapter failed', {
@@ -248,6 +275,7 @@ async function executeChapter(batch, chapterIndex, emit, signal, logger) {
       runId: chapterRun.id,
       error: error instanceof Error ? error.message : String(error),
     });
+    return { status: 'failed', sheet: failedSheet || chapterRun.sheet || null };
   }
 }
 
@@ -362,7 +390,7 @@ function approveGate(params = {}, connection, logger) {
 
   persistence.resolveGateDecision(gateId, { status: 'approved', reviewerNote });
   const snapshot = persistence.getBatch(batchId);
-  const run = snapshot?.chapterRuns?.find((item) => item.pendingGateId === gateId);
+  const run = findRunByGate(snapshot, gateId);
   if (!snapshot || !run) {
     return { success: false, error: 'gate_not_found' };
   }
@@ -395,7 +423,7 @@ function rejectGate(params = {}) {
 
   persistence.resolveGateDecision(gateId, { status: 'rejected', reviewerNote });
   const snapshot = persistence.getBatch(batchId);
-  const run = snapshot?.chapterRuns?.find((item) => item.pendingGateId === gateId);
+  const run = findRunByGate(snapshot, gateId);
   if (!snapshot || !run) {
     return { success: false, error: 'gate_not_found' };
   }
@@ -409,6 +437,47 @@ function rejectGate(params = {}) {
     completedAt: new Date().toISOString(),
   });
   return { success: true, rejected: true, gateId };
+}
+
+function applyReviewDecision(params = {}) {
+  const batchId = String(params.batchId || '').trim();
+  const gateId = String(params.gateId || '').trim();
+  const segmentId = String(params.segmentId || '').trim();
+  const decision = params.decision && typeof params.decision === 'object' ? params.decision : {};
+  if (!batchId || !gateId || !segmentId) {
+    return { success: false, error: 'batchId, gateId and segmentId required' };
+  }
+
+  const snapshot = persistence.getBatch(batchId);
+  const run = findRunByGate(snapshot, gateId);
+  if (!snapshot || !run?.sheet) {
+    return { success: false, error: 'gate_not_found' };
+  }
+
+  const patched = patchAdaptedSegment(run.sheet, segmentId, decision);
+  if (!patched.changed) return { success: false, error: patched.error || 'segment_not_found' };
+
+  persistence.updateChapterRun(run.id, {
+    sheet: patched.sheet,
+    errorMessage: null,
+  });
+  return {
+    success: true,
+    batchId,
+    gateId,
+    segmentId,
+    sheet: patched.sheet,
+  };
+}
+
+function findRunByGate(snapshot, gateId) {
+  const targetGateId = String(gateId || '');
+  if (!snapshot?.chapterRuns || !targetGateId) return null;
+  return snapshot.chapterRuns.find((item) => item.pendingGateId === targetGateId)
+    || snapshot.chapterRuns.find((item) => item?.status === 'awaiting_review'
+      && Array.isArray(item?.sheet?.gates)
+      && item.sheet.gates.some((gate) => gate?.gateId === targetGateId && gate?.status === 'pending'))
+    || null;
 }
 
 async function fetchBook(bookId, params) {
@@ -579,6 +648,41 @@ function updateGateStatus(sheet, gateId, status, reviewerNote) {
   };
 }
 
+function patchAdaptedSegment(sheet, segmentId, decision) {
+  const nextSheet = cloneJson(sheet);
+  const artifact = Object.values(nextSheet.artifacts || {})
+    .find((item) => item?.artifactType === 'adapted_script' && Array.isArray(item?.payload?.segments));
+  if (!artifact) return { changed: false, error: 'adapted_script_not_found' };
+  const segment = artifact.payload.segments.find((item) => String(item?.segmentId || '') === segmentId);
+  if (!segment) return { changed: false, error: 'segment_not_found' };
+
+  const nextType = normalizeReviewDecisionType(decision.type);
+  const nextSpeaker = String(decision.speaker || '').trim();
+  segment.type = nextType;
+  if (nextType === 'narration') {
+    delete segment.speaker;
+  } else {
+    segment.speaker = nextSpeaker || segment.speaker || '未定';
+  }
+  const note = String(decision.note || '').trim();
+  segment.rewriteNote = note
+    ? `人工确认：${note}`
+    : `人工确认：${nextType === 'narration' ? '旁白' : segment.speaker}`;
+
+  nextSheet.updatedAt = new Date().toISOString();
+  return { changed: true, sheet: nextSheet };
+}
+
+function normalizeReviewDecisionType(type) {
+  const value = String(type || '').trim();
+  if (value === 'dialogue' || value === 'inner_monologue' || value === 'document_reading') return value;
+  return 'narration';
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
 function autoApproveQualityGates(sheet) {
   if (!sheet || !Array.isArray(sheet.gates)) return sheet;
   return {
@@ -622,6 +726,7 @@ module.exports = {
   cancelBatch,
   approveGate,
   rejectGate,
+  applyReviewDecision,
   rerunChapter,
   deleteBatch,
 };

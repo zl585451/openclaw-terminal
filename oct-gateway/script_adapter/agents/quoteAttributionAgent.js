@@ -109,11 +109,12 @@ function buildAttributionInput(ctx) {
   return [
     `chapterTitle: ${String(ctx?.chapterTitle || '未命名片段')}`,
     `knownRoles: ${knownRoles.join(', ') || '无'}`,
+    buildReviewFeedbackBlock(ctx?.reviewFeedback),
     'quotes:',
     JSON.stringify(items, null, 2),
     '',
     '请按 quoteId|voiceType|speaker|confidence|evidence 输出。',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function hasDocumentReadingTrigger(leftContext) {
@@ -121,8 +122,19 @@ function hasDocumentReadingTrigger(leftContext) {
   return DOCUMENT_READING_TRIGGERS.some((trigger) => context.includes(trigger));
 }
 
+function buildReviewFeedbackBlock(reviewFeedback) {
+  const feedback = String(reviewFeedback || '').trim();
+  if (!feedback) return '';
+  return [
+    'reviewFeedback:',
+    feedback,
+    '本次是人工退回后的重跑。必须优先修正 reviewFeedback 指出的文献/说话人/OS/旁白归因问题；不要重复被指出的错误。',
+  ].join('\n');
+}
+
 module.exports = {
   runQuoteAttributionAgent,
   buildAttributionInput,
   hasDocumentReadingTrigger,
+  buildReviewFeedbackBlock,
 };

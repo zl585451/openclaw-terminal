@@ -127,6 +127,22 @@ async function runChapterAgentPipeline({ sheet, emit, signal, onSheetUpdate, ctx
     const gate = currentSheet.gates.find((item) => item.afterAgentId === agent.agentId && item.status === 'pending');
     if (gate) {
       emit('gate_reached', { gate });
+      if (isRealAgentsEnabled(ctx)) {
+        const pendingGate = {
+          ...gate,
+          status: 'pending',
+          relatedArtifactId: artifact.artifactId,
+        };
+        currentSheet = {
+          ...currentSheet,
+          gates: currentSheet.gates.map((item) => (item.gateId === gate.gateId ? pendingGate : item)),
+          overallStatus: 'awaiting_review',
+          updatedAt: new Date().toISOString(),
+        };
+        onSheetUpdate?.(currentSheet);
+        emit('gate_updated', { gate: pendingGate });
+        return currentSheet;
+      }
       if (gate.gateType === 'quality_review' && isRejectReviewArtifact(artifact)) {
         const rejectedGate = {
           ...gate,
@@ -171,6 +187,13 @@ function isRejectReviewArtifact(artifact) {
   return String(artifact?.payload?.conclusion || '').trim().toLowerCase() === 'reject';
 }
 
+function isRealAgentsEnabled(ctx = {}) {
+  const override = ctx?.realAgentsOverride;
+  if (Array.isArray(override)) return override.length > 0;
+  const raw = String(override || '').trim().toLowerCase();
+  return raw === 'all' || raw === 'on' || raw === 'true' || raw === '1';
+}
+
 function updateAgentRun(sheet, runIndex, run) {
   return {
     ...sheet,
@@ -206,4 +229,5 @@ function createAbortError(reason) {
 module.exports = {
   runChapterAgentPipeline,
   isRejectReviewArtifact,
+  isRealAgentsEnabled,
 };

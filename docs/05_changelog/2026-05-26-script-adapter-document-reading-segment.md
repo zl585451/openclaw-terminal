@@ -3,8 +3,8 @@
 ## 变更
 
 - `oct-gateway/script_adapter/spanScriptComposer.js`
-  - 为旁白 gap 新增 `document_reading` 检测。
-  - 当片段左侧上下文命中“写着 / 记录着 / 扉页上”等阅读触发词时，先输出 `type = document_reading`，并标记 `needsReview`。
+  - 已回退旁白 gap 的 `document_reading` 自动检测。
+  - 旁白 gap 一律继续输出为 `narration`；`document_reading` 仅保留给 quote attribution 明确归因的片段。
 
 - `oct-gateway/script_adapter/basicQCChecker.js`
   - 新增 `document_reading_needs_review` P1 提示。

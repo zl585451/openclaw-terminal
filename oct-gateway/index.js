@@ -163,6 +163,7 @@ const getScriptAdapterRuntime = createLazyScriptAdapterRuntime({
       cancelBatch: cancelScriptAdapterBatch,
       approveGate: approveScriptAdapterBatchGate,
       rejectGate: rejectScriptAdapterBatchGate,
+      applyReviewDecision: applyScriptAdapterReviewDecision,
       rerunChapter: rerunScriptAdapterBatchChapter,
       deleteBatch: deleteScriptAdapterBatch,
     } = require('./script_adapter/batchOrchestrator');
@@ -193,6 +194,7 @@ const getScriptAdapterRuntime = createLazyScriptAdapterRuntime({
         cancelBatch: cancelScriptAdapterBatch,
         approveGate: approveScriptAdapterBatchGate,
         rejectGate: rejectScriptAdapterBatchGate,
+        applyReviewDecision: applyScriptAdapterReviewDecision,
         rerunChapter: rerunScriptAdapterBatchChapter,
         deleteBatch: deleteScriptAdapterBatch,
         connectionRegistry,

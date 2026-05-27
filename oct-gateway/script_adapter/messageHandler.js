@@ -24,6 +24,7 @@ function createScriptAdapterMessageHandler({
   deleteBatch,
   approveGate,
   rejectGate,
+  applyReviewDecision,
   connectionRegistry,
   logger,
 }) {
@@ -189,6 +190,16 @@ function createScriptAdapterMessageHandler({
         ok: Boolean(result.success),
         payload: result,
         errorMessage: result.error || 'reject gate failed',
+      });
+      return true;
+    }
+
+    if (msg.method === 'scriptAdapter.batch.applyReviewDecision') {
+      const result = applyReviewDecision(msg.params || {}, connection, logger);
+      sendResponse(connection, msg, {
+        ok: Boolean(result.success),
+        payload: result,
+        errorMessage: result.error || 'apply review decision failed',
       });
       return true;
     }

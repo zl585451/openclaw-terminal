@@ -117,7 +117,7 @@ Gateway 返回并推送 `analysisRun`：
 13. 角色音统筹真实调用不得重复输入整章正文，只能输入角色出场统计和少量代表片段。当前上限为每个角色 2 条、总计 16 条，默认超时 `35000ms`。
 14. `viewpoint_resolve` 为规则层，不调用 LLM。OS 抽取不得使用跨书默认主角；推不出视角角色时，不生成无 speaker 的 OS。
 15. `voice_type_classify` 为规则层，先于角色音 main/support 判断。基础类型包括 `narrator`、`character`、`inner_monologue`、`unresolved_voice`、`system_voice`、`device_voice`、`sfx`、`group_voice`、`cue`、`document_reading`。`未定女声A`、`神秘声音` 等必须保持 unresolved；系统提示、设备传声、纯拟声词在角色音表中统一进入 `category = sfx`，但 roleName 必须区分 `系统音`、`对讲机`、`SFX`。
-16. `spanScriptComposer` 必须清理纯 cue 旁白，例如 `苏尘：`、`她忽然开口问道：`；独立拟声词行必须输出为 `speaker = SFX`，不得归给人物；若上游把 `咔`、`咚`、`滋啦` 等纯拟声词标为 `系统音`，composer/export 应纠偏为 `SFX`；对疑似被阅读的文字内容，应先输出 `document_reading` 并标记人工确认；交付导出中 `document_reading` 的显示标签为「文献·待确认」。
+16. `spanScriptComposer` 必须清理纯 cue 旁白，例如 `苏尘：`、`她忽然开口问道：`；独立拟声词行必须输出为 `speaker = SFX`，不得归给人物；若上游把 `咔`、`咚`、`滋啦` 等纯拟声词标为 `系统音`，composer/export 应纠偏为 `SFX`；旁白 gap 一律按旁白处理，不基于左侧上下文自动改成 `document_reading`；交付导出中 `document_reading` 的显示标签为「文献·待确认」。
 16a. `quoteAttributionAgent` 若 quote 左侧 200 字上下文命中“写着 / 写道 / 写的是 / 上面写 / 记录着 / 翻开 / 翻到 / 找到第一个 / 那一行 / 那页 / 扉页上 / 目录”，必须给该 quote 输入 `kindHint = document_reading`；模型输出必须使用 `voiceType = document_reading`，speaker 写原文作者名，无法判断时写「文献」。
 17. `basicQCChecker` 必须拦截跨书 OS speaker、拟声词人物化、纯 cue 旁白残留，以及 `[系统音] 咔/咚/滋啦` 这类系统音与纯音效混淆；若存在 `document_reading`，必须给出 P1 人工确认提示。
 18. `quality_review` 的 `conclusion = reject` 是硬失败：章节不得继续进入 `packager.content_delivery@1.0`，批次应把该章标为 failed，并保留质检报告供用户重跑或返修。

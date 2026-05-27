@@ -331,6 +331,37 @@ function rerunChapter(batchId, chapterIndex) {
   return getChapterRun(batchId, chapterIndex);
 }
 
+function getLatestChapterReviewFeedback(batchId, chapterIndex, beforeAttempt) {
+  const rows = getDb().prepare(`
+    SELECT attempt, sheet, error_message
+    FROM chapter_runs
+    WHERE batch_id = ? AND chapter_index = ? AND attempt < ?
+    ORDER BY attempt DESC
+    LIMIT 5
+  `).all(String(batchId || ''), Number(chapterIndex), Number(beforeAttempt || 1));
+  for (const row of rows) {
+    const gateNote = extractRejectedGateNote(row.sheet);
+    if (gateNote) return gateNote;
+    const errorMessage = String(row.error_message || '').trim();
+    if (errorMessage.startsWith('Gate rejected:')) {
+      return errorMessage.replace(/^Gate rejected:\s*/, '').trim();
+    }
+  }
+  return '';
+}
+
+function extractRejectedGateNote(sheetJson) {
+  if (!sheetJson) return '';
+  try {
+    const sheet = typeof sheetJson === 'string' ? JSON.parse(sheetJson) : sheetJson;
+    const gates = Array.isArray(sheet?.gates) ? sheet.gates : [];
+    const rejected = [...gates].reverse().find((gate) => gate?.status === 'rejected' && gate?.reviewerNote);
+    return String(rejected?.reviewerNote || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 function deleteBatch(batchId) {
   const database = getDb();
   database.prepare('DELETE FROM batch_jobs WHERE id = ?').run(String(batchId || ''));
@@ -656,6 +687,7 @@ module.exports = {
   updateBatchStatus,
   updateChapterRun,
   rerunChapter,
+  getLatestChapterReviewFeedback,
   deleteBatch,
   findNextPendingChapter,
   listRunningBatches,

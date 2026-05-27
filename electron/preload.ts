@@ -48,6 +48,12 @@ const electronAPI = {
       ipcRenderer.invoke('script-adapter-batch-approve-gate', { batchId, gateId, reviewerNote }),
     rejectGate: (batchId: string, gateId: string, reviewerNote?: string) =>
       ipcRenderer.invoke('script-adapter-batch-reject-gate', { batchId, gateId, reviewerNote }),
+    applyReviewDecision: (
+      batchId: string,
+      gateId: string,
+      segmentId: string,
+      decision: { type: string; speaker?: string; note?: string },
+    ) => ipcRenderer.invoke('script-adapter-batch-apply-review-decision', { batchId, gateId, segmentId, decision }),
     rerunChapter: (batchId: string, chapterIndex: number) =>
       ipcRenderer.invoke('script-adapter-batch-rerun', { batchId, chapterIndex }),
     remove: (batchId: string) => ipcRenderer.invoke('script-adapter-batch-delete', { batchId }),
