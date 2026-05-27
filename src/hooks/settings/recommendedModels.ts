@@ -1,7 +1,7 @@
 import type { ProviderEntry } from '../../ui/settings/providerTypes';
 
 /** 新手模式展示的 provider 顺序。模型列表来自 Electron/gateway provider metadata。 */
-export const BEGINNER_PROVIDER_IDS = ['bailian-coding', 'deepseek', 'minimax'] as const;
+export const BEGINNER_PROVIDER_IDS = ['bailian', 'deepseek', 'minimax'] as const;
 
 export type BeginnerProviderId = (typeof BEGINNER_PROVIDER_IDS)[number];
 
@@ -11,7 +11,7 @@ export function isBeginnerProviderId(id: string): id is BeginnerProviderId {
 
 /** 新手卡片副标题（与服务商卡片一一对应） */
 export const BEGINNER_PROVIDER_CARD_SUBTITLE: Record<BeginnerProviderId, string> = {
-  'bailian-coding': '推荐新手',
+  'bailian': '推荐新手',
   deepseek: '便宜够用',
   minimax: '自研 M2.7',
 };

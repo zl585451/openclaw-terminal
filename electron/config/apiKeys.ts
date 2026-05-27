@@ -3,7 +3,7 @@ export type ApiKeyPayload = {
   DEEPSEEK_API_KEY?: string;
   MINIMAX_API_KEY?: string;
   MOONSHOT_API_KEY?: string;
-  NEWAPI_API_KEY?: string;
+  GROQ_API_KEY?: string;
   IMAGE_PROVIDER?: string;
   IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY?: boolean | string;
   IMAGE_API_KEY?: string;
@@ -35,7 +35,7 @@ export type ApiKeyPayload = {
   DEEPSEEK_BASE_URL?: string;
   MINIMAX_BASE_URL?: string;
   MOONSHOT_BASE_URL?: string;
-  NEWAPI_BASE_URL?: string;
+  GROQ_BASE_URL?: string;
   VISION_API_KEY?: string;
   VISION_BASE_URL?: string;
   VISION_MODEL?: string;
@@ -72,8 +72,8 @@ export function parseEnvContent(envContent: string): Record<string, string> {
 
 export const API_KEY_RESTART_KEYS = [
   'OCT_PROVIDER', 'OCT_MODEL', 'SCRIPT_ADAPTER_REAL_AGENTS', 'OPENCLAW_TOKEN', 'CUSTOM_MODEL',
-  'DASHSCOPE_BASE_URL', 'DEEPSEEK_BASE_URL', 'MINIMAX_BASE_URL', 'CUSTOM_BASE_URL',
-  'DASHSCOPE_API_KEY', 'DEEPSEEK_API_KEY', 'MINIMAX_API_KEY', 'NEWAPI_API_KEY', 'NEWAPI_BASE_URL',
+  'DASHSCOPE_BASE_URL', 'DEEPSEEK_BASE_URL', 'MINIMAX_BASE_URL', 'GROQ_BASE_URL', 'CUSTOM_BASE_URL',
+  'DASHSCOPE_API_KEY', 'DEEPSEEK_API_KEY', 'MINIMAX_API_KEY', 'GROQ_API_KEY',
   'CUSTOM_API_KEY', 'GOOGLE_AI_API_KEY', 'GOOGLE_AI_BASE_URL', 'HTTPS_PROXY', 'HTTP_PROXY',
   'BRAVE_SEARCH_API_KEY', 'TAVILY_API_KEY', 'VISION_API_KEY', 'VISION_BASE_URL', 'VISION_MODEL',
   'SILICONFLOW_API_KEY', 'OMNIROUTE_BASE_URL', 'OMNIROUTE_API_KEY', 'OMNIROUTE_MODEL',
@@ -122,7 +122,7 @@ export function applyApiKeyUpdates(
   assignIfPresent(cfg, keys, 'DEEPSEEK_API_KEY');
   assignIfPresent(cfg, keys, 'MINIMAX_API_KEY');
   assignIfPresent(cfg, keys, 'MOONSHOT_API_KEY');
-  assignIfPresent(cfg, keys, 'NEWAPI_API_KEY');
+  assignIfPresent(cfg, keys, 'GROQ_API_KEY');
   assignIfPresent(cfg, keys, 'IMAGE_PROVIDER', 'minimax');
   if (keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY !== undefined) {
     cfg.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY =
@@ -154,7 +154,7 @@ export function applyApiKeyUpdates(
   assignIfPresent(cfg, keys, 'DEEPSEEK_BASE_URL');
   assignIfPresent(cfg, keys, 'MINIMAX_BASE_URL');
   assignIfPresent(cfg, keys, 'MOONSHOT_BASE_URL');
-  assignIfPresent(cfg, keys, 'NEWAPI_BASE_URL');
+  assignIfPresent(cfg, keys, 'GROQ_BASE_URL');
   assignIfPresent(cfg, keys, 'CUSTOM_BASE_URL');
   assignIfPresent(cfg, keys, 'GOOGLE_AI_API_KEY');
   assignIfPresent(cfg, keys, 'GOOGLE_AI_BASE_URL');
@@ -233,7 +233,7 @@ export function buildApiKeysData(
   keys.DEEPSEEK_API_KEY = pick('DEEPSEEK_API_KEY', cfg.DEEPSEEK_API_KEY);
   keys.MINIMAX_API_KEY = pick('MINIMAX_API_KEY', cfg.MINIMAX_API_KEY);
   keys.MOONSHOT_API_KEY = pick('MOONSHOT_API_KEY', cfg.MOONSHOT_API_KEY);
-  keys.NEWAPI_API_KEY = pick('NEWAPI_API_KEY', cfg.NEWAPI_API_KEY);
+  keys.GROQ_API_KEY = pick('GROQ_API_KEY', cfg.GROQ_API_KEY);
   keys.IMAGE_PROVIDER = pick('IMAGE_PROVIDER', cfg.IMAGE_PROVIDER, 'minimax');
   keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY = pick(
     'IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY',
@@ -270,7 +270,7 @@ export function buildApiKeysData(
   keys.DEEPSEEK_BASE_URL = pick('DEEPSEEK_BASE_URL', cfg.DEEPSEEK_BASE_URL);
   keys.MINIMAX_BASE_URL = pick('MINIMAX_BASE_URL', cfg.MINIMAX_BASE_URL);
   keys.MOONSHOT_BASE_URL = pick('MOONSHOT_BASE_URL', cfg.MOONSHOT_BASE_URL);
-  keys.NEWAPI_BASE_URL = pick('NEWAPI_BASE_URL', cfg.NEWAPI_BASE_URL);
+  keys.GROQ_BASE_URL = pick('GROQ_BASE_URL', cfg.GROQ_BASE_URL);
   keys.CUSTOM_BASE_URL = pick('CUSTOM_BASE_URL', cfg.CUSTOM_BASE_URL);
   keys.GOOGLE_AI_API_KEY = pick('GOOGLE_AI_API_KEY', cfg.GOOGLE_AI_API_KEY);
   keys.GOOGLE_AI_BASE_URL = pick('GOOGLE_AI_BASE_URL', cfg.GOOGLE_AI_BASE_URL);
@@ -296,7 +296,7 @@ export function buildApiKeysData(
     DEEPSEEK_API_KEY: keys.DEEPSEEK_API_KEY || '',
     MINIMAX_API_KEY: keys.MINIMAX_API_KEY || '',
     MOONSHOT_API_KEY: keys.MOONSHOT_API_KEY || '',
-    NEWAPI_API_KEY: keys.NEWAPI_API_KEY || '',
+    GROQ_API_KEY: keys.GROQ_API_KEY || '',
     IMAGE_PROVIDER: keys.IMAGE_PROVIDER || 'minimax',
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: (keys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY || 'false').toLowerCase() === 'true',
     IMAGE_API_KEY: keys.IMAGE_API_KEY || '',
@@ -327,7 +327,7 @@ export function buildApiKeysData(
     DEEPSEEK_BASE_URL: keys.DEEPSEEK_BASE_URL || '',
     MINIMAX_BASE_URL: keys.MINIMAX_BASE_URL || '',
     MOONSHOT_BASE_URL: keys.MOONSHOT_BASE_URL || '',
-    NEWAPI_BASE_URL: keys.NEWAPI_BASE_URL || '',
+    GROQ_BASE_URL: keys.GROQ_BASE_URL || '',
     CUSTOM_BASE_URL: keys.CUSTOM_BASE_URL || '',
     GOOGLE_AI_API_KEY: keys.GOOGLE_AI_API_KEY || '',
     GOOGLE_AI_BASE_URL: keys.GOOGLE_AI_BASE_URL || '',

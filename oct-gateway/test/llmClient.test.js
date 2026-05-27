@@ -18,8 +18,6 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
     'SCRIPT_ADAPTER_BASE_URL',
     'SCRIPT_ADAPTER_MODEL',
     'SCRIPT_ADAPTER_TEXT_REWRITER_MODEL',
-    'NEWAPI_API_KEY',
-    'NEWAPI_BASE_URL',
     'OMNIROUTE_MODEL',
     'OMNIROUTE_BASE_URL',
     'OMNIROUTE_API_KEY',
@@ -58,7 +56,7 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
       const baseUrl = process.env.SCRIPT_ADAPTER_BASE_URL || process.env.DASHSCOPE_BASE_URL || '';
       const apiKey = process.env.SCRIPT_ADAPTER_API_KEY || process.env.DASHSCOPE_API_KEY || '';
       const model = process.env.SCRIPT_ADAPTER_MODEL || process.env.DASHSCOPE_MODEL || 'qwen-plus';
-      return { baseUrl, apiKey, model, id: 'bailian-coding', provider: 'bailian-coding' };
+      return { baseUrl, apiKey, model, id: 'bailian', provider: 'bailian' };
     };
 
     // Reset config states
@@ -101,7 +99,7 @@ describe('resolveProviderFor with OmniRoute capabilities', () => {
   });
 
   it('2. falls back to original logic when a legacy capability alias is passed but OmniRoute is unavailable', () => {
-    // Nothing is configured in candidate providers: bailian-coding, deepseek, newapi.
+    // Nothing is configured in candidate providers: bailian or deepseek.
     // Configure only original script adapter.
     process.env.SCRIPT_ADAPTER_BASE_URL = 'https://original-sa.api/v1';
     process.env.SCRIPT_ADAPTER_API_KEY = 'sa-key-original';

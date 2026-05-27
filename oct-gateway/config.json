@@ -58,9 +58,7 @@
   "minimax": {
     "api_key": ""
   },
-  "NEWAPI_API_KEY": "eRbd8PoKBrn90OIfEDwqek9KITgle4S8AJLUqd83sAwulrrY",
-  "OCT_PROVIDER": "newapi",
-  "OCT_MODEL": "gemini-3.1-flash-lite",
-  "NEWAPI_BASE_URL": "http://34.29.227.161:3000/v1",
+  "OCT_PROVIDER": "google",
+  "OCT_MODEL": "google/gemini-3.1-flash-lite-preview",
   "CUSTOM_MODEL": ""
 }

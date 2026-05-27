@@ -9,7 +9,7 @@ export interface ApiKeysState {
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
   MOONSHOT_API_KEY: string;
-  NEWAPI_API_KEY: string;
+  GROQ_API_KEY: string;
   IMAGE_PROVIDER: string;
   IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: boolean;
   IMAGE_API_KEY: string;
@@ -41,7 +41,7 @@ export interface ApiKeysState {
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
   MOONSHOT_BASE_URL: string;
-  NEWAPI_BASE_URL: string;
+  GROQ_BASE_URL: string;
   CUSTOM_BASE_URL: string;
   GOOGLE_AI_API_KEY: string;
   GOOGLE_AI_BASE_URL: string;
@@ -83,19 +83,11 @@ function emergencyProvider(
 }
 
 const EMERGENCY_FALLBACK_PROVIDERS: ProvidersState = {
-  'bailian-coding': emergencyProvider(
-    'bailian-coding',
-    '阿里云百炼 Coding Plan',
-    'https://coding.dashscope.aliyuncs.com/v1',
-    'sk-sp-xxxxxxxxxxxxxxxx',
-    'https://bailian.console.aliyun.com/',
-    'qwen3.5-plus',
-  ),
+  'bailian': emergencyProvider('bailian', '阿里云百炼', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://bailian.console.aliyun.com/', 'qwen-plus'),
   deepseek: emergencyProvider('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://platform.deepseek.com/', 'deepseek-v4-flash'),
   minimax: emergencyProvider('minimax', 'MiniMax', 'https://api.minimaxi.com/v1', 'sk-cp-xxxxxxxxxxxxxxxx', 'https://platform.minimaxi.com/docs/token-plan/intro', 'MiniMax-M2.7'),
   siliconflow: emergencyProvider('siliconflow', '硅基流动 SiliconFlow', 'https://api.siliconflow.cn/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://cloud.siliconflow.cn/', 'Qwen/Qwen2.5-72B-Instruct'),
   moonshot: emergencyProvider('moonshot', 'Kimi 开放平台', 'https://api.moonshot.cn/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://platform.kimi.com/', 'kimi-k2.6'),
-  newapi: emergencyProvider('newapi', 'New API 外部分发网关', 'http://127.0.0.1:3000/v1', 'sk-xxxxxxxxxxxxxxxx', 'https://docs.newapi.ai/', '__custom__', true),
   google: emergencyProvider(
     'google',
     'Google Gemini（Vertex AI 原生）',
@@ -116,7 +108,7 @@ type GatewayConfigPayload = {
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
   MOONSHOT_API_KEY: string;
-  NEWAPI_API_KEY: string;
+  GROQ_API_KEY: string;
   IMAGE_PROVIDER: string;
   IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: boolean;
   IMAGE_API_KEY: string;
@@ -145,7 +137,7 @@ type GatewayConfigPayload = {
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
   MOONSHOT_BASE_URL: string;
-  NEWAPI_BASE_URL: string;
+  GROQ_BASE_URL: string;
   CUSTOM_BASE_URL: string;
   GOOGLE_AI_API_KEY: string;
   GOOGLE_AI_BASE_URL: string;
@@ -171,14 +163,14 @@ type AiConnectionTestPayload = {
   DEEPSEEK_API_KEY: string;
   MINIMAX_API_KEY: string;
   MOONSHOT_API_KEY: string;
+  GROQ_API_KEY: string;
   CUSTOM_API_KEY: string;
-  NEWAPI_API_KEY: string;
   GOOGLE_AI_API_KEY: string;
   DASHSCOPE_BASE_URL: string;
   DEEPSEEK_BASE_URL: string;
   MINIMAX_BASE_URL: string;
   MOONSHOT_BASE_URL: string;
-  NEWAPI_BASE_URL: string;
+  GROQ_BASE_URL: string;
   CUSTOM_BASE_URL: string;
   GOOGLE_AI_BASE_URL: string;
 };
@@ -189,7 +181,7 @@ type ChatProviderBaseUrlPayload = Pick<
   | 'DEEPSEEK_BASE_URL'
   | 'MINIMAX_BASE_URL'
   | 'MOONSHOT_BASE_URL'
-  | 'NEWAPI_BASE_URL'
+  | 'GROQ_BASE_URL'
   | 'CUSTOM_BASE_URL'
   | 'GOOGLE_AI_BASE_URL'
 >;
@@ -208,16 +200,9 @@ function resolveProviderId(data: Partial<ApiKeysState>): string {
 
   if (hasCustomRoute) return 'custom';
 
-  if (
-    !!String((data as Record<string, string>).NEWAPI_BASE_URL || '').trim()
-    || !!String((data as Record<string, string>).NEWAPI_API_KEY || '').trim()
-  ) {
-    return 'newapi';
-  }
-
   return inferProviderFromBaseUrl(
     data.GOOGLE_AI_BASE_URL
-    || (data as Record<string, string>).NEWAPI_BASE_URL
+    || data.GROQ_BASE_URL
     || data.MINIMAX_BASE_URL
     || data.DASHSCOPE_BASE_URL
     || data.DEEPSEEK_BASE_URL
@@ -229,12 +214,11 @@ function hasConfiguredKey(data: Partial<ApiKeysState>, providerId: string): bool
   if (providerId === 'deepseek') return !!String(data.DEEPSEEK_API_KEY || '').trim();
   if (providerId === 'minimax') return !!String(data.MINIMAX_API_KEY || '').trim();
   if (providerId === 'moonshot') return !!String((data as Record<string, string>).MOONSHOT_API_KEY || '').trim();
-  if (providerId === 'newapi') return !!String((data as Record<string, string>).NEWAPI_API_KEY || '').trim();
   if (providerId === 'custom') return !!String(data.CUSTOM_API_KEY || '').trim();
   if (providerId === 'google') return !!String(data.GOOGLE_AI_API_KEY || '').trim();
   if (providerId === 'openai') return !!String((data as Record<string, string>).OPENAI_API_KEY || '').trim()
     || !!String(data.DASHSCOPE_API_KEY || '').trim();
-  if (providerId === 'groq') return !!String((data as Record<string, string>).GROQ_API_KEY || '').trim()
+  if (providerId === 'groq') return !!String(data.GROQ_API_KEY || '').trim()
     || !!String(data.DASHSCOPE_API_KEY || '').trim();
   if (providerId === 'ollama') return true;
   return !!String(data.DASHSCOPE_API_KEY || '').trim();
@@ -261,7 +245,7 @@ function normalizeLoadedApiKeys(
   const customModel = String(nextApiKeys.CUSTOM_MODEL || '').trim();
   const knownModels = new Set((provider?.models || []).map((model) => model.id));
 
-  if ((providerId === 'newapi' || providerId === 'google') && configuredModel) {
+  if (providerId === 'google' && configuredModel) {
     const shouldUseCustomMode =
       configuredModel !== '__custom__'
       && !knownModels.has(configuredModel)
@@ -305,7 +289,7 @@ export function buildGatewayPayload(
     DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
     MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY || '',
     MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY || '',
-    NEWAPI_API_KEY: apiKeys.NEWAPI_API_KEY || '',
+    GROQ_API_KEY: apiKeys.GROQ_API_KEY || '',
     IMAGE_PROVIDER: apiKeys.IMAGE_PROVIDER || 'minimax',
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: !!apiKeys.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY,
     IMAGE_API_KEY: apiKeys.IMAGE_API_KEY || '',
@@ -326,7 +310,7 @@ export function buildGatewayPayload(
     IMAGE_SIZE: apiKeys.IMAGE_SIZE || '1024x1024',
     TTS_MINIMAX_VOICE_ID: apiKeys.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse',
     CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
-    OCT_PROVIDER: currentProviderId || 'bailian-coding',
+    OCT_PROVIDER: currentProviderId || 'bailian',
     OCT_MODEL: effectiveModel,
     SCRIPT_ADAPTER_REAL_AGENTS: apiKeys.SCRIPT_ADAPTER_REAL_AGENTS || '',
     CUSTOM_MODEL: apiKeys.CUSTOM_MODEL || '',
@@ -360,14 +344,14 @@ function buildChatProviderBaseUrlPayload(
     && currentProviderId !== 'minimax'
     && currentProviderId !== 'google'
     && currentProviderId !== 'moonshot'
-    && currentProviderId !== 'newapi';
+    && currentProviderId !== 'groq';
 
   return {
     DASHSCOPE_BASE_URL: isDashScopeScopedProvider ? resolvedBaseUrl : '',
     DEEPSEEK_BASE_URL: currentProviderId === 'deepseek' ? resolvedBaseUrl : '',
     MINIMAX_BASE_URL: currentProviderId === 'minimax' ? resolvedBaseUrl : '',
     MOONSHOT_BASE_URL: currentProviderId === 'moonshot' ? resolvedBaseUrl : '',
-    NEWAPI_BASE_URL: currentProviderId === 'newapi' ? resolvedBaseUrl : '',
+    GROQ_BASE_URL: currentProviderId === 'groq' ? resolvedBaseUrl : '',
     CUSTOM_BASE_URL: currentProviderId === 'custom' ? resolvedBaseUrl : '',
     GOOGLE_AI_BASE_URL: currentProviderId === 'google' ? resolvedBaseUrl : '',
   };
@@ -377,7 +361,7 @@ function getChatProviderBaseUrlField(providerId: string): ChatProviderBaseUrlFie
   if (providerId === 'deepseek') return 'DEEPSEEK_BASE_URL';
   if (providerId === 'minimax') return 'MINIMAX_BASE_URL';
   if (providerId === 'moonshot') return 'MOONSHOT_BASE_URL';
-  if (providerId === 'newapi') return 'NEWAPI_BASE_URL';
+  if (providerId === 'groq') return 'GROQ_BASE_URL';
   if (providerId === 'custom') return 'CUSTOM_BASE_URL';
   if (providerId === 'google') return 'GOOGLE_AI_BASE_URL';
   return 'DASHSCOPE_BASE_URL';
@@ -424,8 +408,8 @@ function resolveChatProviderBaseUrl(
     baseUrl = apiKeys.MINIMAX_BASE_URL;
   } else if (currentProviderId === 'moonshot') {
     baseUrl = apiKeys.MOONSHOT_BASE_URL;
-  } else if (currentProviderId === 'newapi') {
-    baseUrl = apiKeys.NEWAPI_BASE_URL;
+  } else if (currentProviderId === 'groq') {
+    baseUrl = apiKeys.GROQ_BASE_URL;
   } else if (currentProviderId === 'custom') {
     baseUrl = apiKeys.CUSTOM_BASE_URL;
   } else if (currentProviderId === 'google') {
@@ -450,9 +434,6 @@ function resolveChatProviderModel(
   if (currentProviderId === 'custom' && apiKeys.CUSTOM_MODEL) {
     effectiveModel = apiKeys.CUSTOM_MODEL;
   }
-  if (currentProviderId === 'newapi' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
-    effectiveModel = apiKeys.CUSTOM_MODEL;
-  }
   if (currentProviderId === 'google' && apiKeys.OCT_MODEL === '__custom__' && apiKeys.CUSTOM_MODEL) {
     effectiveModel = apiKeys.CUSTOM_MODEL;
   }
@@ -470,13 +451,13 @@ export function buildAiConnectionTestPayload(
     || resolveChatProviderModel(apiKeys, currentProviderId, currentProvider);
   const providerBaseUrls = buildChatProviderBaseUrlPayload(currentProviderId, baseUrl, currentProvider);
   return {
-    OCT_PROVIDER: currentProviderId || 'bailian-coding',
+    OCT_PROVIDER: currentProviderId || 'bailian',
     OCT_MODEL: effectiveModel,
     DASHSCOPE_API_KEY: apiKeys.DASHSCOPE_API_KEY || '',
     DEEPSEEK_API_KEY: apiKeys.DEEPSEEK_API_KEY || '',
     MINIMAX_API_KEY: apiKeys.MINIMAX_API_KEY || '',
     MOONSHOT_API_KEY: apiKeys.MOONSHOT_API_KEY || '',
-    NEWAPI_API_KEY: apiKeys.NEWAPI_API_KEY || '',
+    GROQ_API_KEY: apiKeys.GROQ_API_KEY || '',
     CUSTOM_API_KEY: apiKeys.CUSTOM_API_KEY || '',
     ...providerBaseUrls,
     GOOGLE_AI_API_KEY: apiKeys.GOOGLE_AI_API_KEY || '',
@@ -489,7 +470,7 @@ export function useApiKeys() {
     DEEPSEEK_API_KEY: '',
     MINIMAX_API_KEY: '',
     MOONSHOT_API_KEY: '',
-    NEWAPI_API_KEY: '',
+    GROQ_API_KEY: '',
     IMAGE_PROVIDER: 'minimax',
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: false,
     IMAGE_API_KEY: '',
@@ -521,7 +502,7 @@ export function useApiKeys() {
     DEEPSEEK_BASE_URL: '',
     MINIMAX_BASE_URL: '',
     MOONSHOT_BASE_URL: '',
-    NEWAPI_BASE_URL: '',
+    GROQ_BASE_URL: '',
     CUSTOM_BASE_URL: '',
     GOOGLE_AI_API_KEY: '',
     GOOGLE_AI_BASE_URL: '',
@@ -640,10 +621,9 @@ export function useApiKeys() {
       apiKeys.CUSTOM_BASE_URL,
       apiKeys.CUSTOM_API_KEY,
       apiKeys.CUSTOM_MODEL,
-      apiKeys.NEWAPI_API_KEY,
       apiKeys.MINIMAX_BASE_URL,
       apiKeys.MOONSHOT_BASE_URL,
-      apiKeys.NEWAPI_BASE_URL,
+      apiKeys.GROQ_BASE_URL,
       apiKeys.DASHSCOPE_BASE_URL,
       apiKeys.DEEPSEEK_BASE_URL,
       apiKeys.GOOGLE_AI_BASE_URL,

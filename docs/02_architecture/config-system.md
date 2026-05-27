@@ -48,9 +48,9 @@
 | 配置项 | 说明 |
 |--------|------|
 | `OCT_SETTINGS_MODE` | 设置页展示模式：`beginner` / `advanced`，仅前端 UI 使用，Gateway 忽略 |
-| `OCT_PROVIDER` | 当前服务商 ID（bailian-coding、deepseek、siliconflow 等） |
+| `OCT_PROVIDER` | 当前服务商 ID（bailian、deepseek、siliconflow 等） |
 | `OCT_MODEL` | 当前模型 ID |
-| `DASHSCOPE_API_KEY` | 百炼/Coding Plan 等使用 |
+| `DASHSCOPE_API_KEY` | 百炼等使用 |
 | `DEEPSEEK_API_KEY` | DeepSeek 使用 |
 | `DASHSCOPE_BASE_URL` | 百炼 Base URL |
 | `DEEPSEEK_BASE_URL` | DeepSeek Base URL |
@@ -59,7 +59,7 @@
 | `ai_library.*` | AI.library 知识库（enabled、url、timeout_ms、default_top_k） |
 
 ## Provider 系统
-- **PROVIDERS**：预设服务商（bailian、bailian-coding、deepseek、siliconflow、moonshot、groq、openai、ollama、custom）
+- **PROVIDERS**：预设服务商（bailian、deepseek、siliconflow、moonshot、groq、openai、ollama、custom）
 - **getProviderConfig()**：返回当前 provider 的 apiKey、baseUrl、models
 - **MODEL_REGISTRY**：模型能力（supportsTools、supportsStreamOptions、maxTokens）
 

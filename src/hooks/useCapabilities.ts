@@ -42,7 +42,7 @@ function computeImageGenReadyFromApiKeys(data: Record<string, unknown>): boolean
   if (hasValue(data.IMAGE_API_KEY)) return true
   if (!asBool(data.IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY)) return false
   if (provider === 'minimax') return hasValue(data.MINIMAX_API_KEY) || hasValue(data.DASHSCOPE_API_KEY)
-  return hasValue(data.CUSTOM_API_KEY) || hasValue(data.DASHSCOPE_API_KEY) || hasValue(data.DEEPSEEK_API_KEY) || hasValue(data.MINIMAX_API_KEY)
+  return hasValue(data.CUSTOM_API_KEY) || hasValue(data.DASHSCOPE_API_KEY) || hasValue(data.DEEPSEEK_API_KEY) || hasValue(data.MINIMAX_API_KEY) || hasValue(data.GROQ_API_KEY)
 }
 
 function computeMusicGenReadyFromApiKeys(data: Record<string, unknown>): boolean {

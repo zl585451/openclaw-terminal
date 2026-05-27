@@ -29,13 +29,13 @@ OCT 的配置（通过 `config.js` 的 `getEnvOrConfig(key)` 获取）遵循以�
 |---|---|---|---|---|---|
 | `OCT_PROVIDER` | `config.js` `_currentProvider` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `inferProviderFromBaseUrl` | 网关核心路由、设置面板渲染 | 修改可能导致前端设置面板或模型列表加载崩溃。 | 严禁删除或重命名。Phase 2 中可作为首选来源，决定默认 provider。 |
 | `OCT_MODEL` | `config.js` `_currentModel` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `legacyConfig.DASHSCOPE_MODEL` | 核心聊天、Agent、能力探测 | 若缺失则默认降级为 `qwen-plus`，可能会造成高阶能力（如思考）失效。 | 第一阶段保持原样（绑定 getter/setter 代理到 `DASHSCOPE_MODEL`）。 |
-| `DASHSCOPE_API_KEY` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `legacyConfig` | 百炼、百炼Coding、硅基、OpenAI、Groq、MiniMax、自定义服务、Wanx 生图工具、读图 | **混用度极高**。由于设置面板中默认将「连接」主 Key 写入该字段，多个 provider 和生图工具会默认将其作为兜底 fallback。直接修改会大面积致盲调用。 | 第一阶段及 Phase 2 必须完全保留。在 Phase 3 中通过 CredentialResolver 做规范化分离。 |
+| `DASHSCOPE_API_KEY` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `legacyConfig` | 百炼、百炼Coding、硅基、OpenAI、MiniMax、自定义服务、Wanx 生图工具、读图；Groq 仅作为旧配置 fallback | **混用度极高**。由于设置面板历史上默认将「连接」主 Key 写入该字段，多个 provider 和生图工具会默认将其作为兜底 fallback。直接修改会大面积致盲调用。 | 第一阶段及 Phase 2 必须完全保留。在 Phase 3 中通过 CredentialResolver 做规范化分离。 |
 | `DASHSCOPE_BASE_URL` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `legacyConfig` | 百炼、百炼Coding、图片云端分析 | 第一阶段必须保留。 | 保持现有优先级，仅作为 `bailian` 族默认 URL 来源。 |
 | `DEEPSEEK_API_KEY` / `_BASE_URL` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `legacyConfig` | DeepSeek 核心路由、百炼降级 fallback | DeepSeek 独立链路的账密保证。 | 保持不变。 |
 | `GOOGLE_AI_API_KEY` / `_BASE_URL` / `GEMINI_API_KEY` | `config.js` `getProviderConfig()`, `googleNative.js` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `google.profile.json` | Google 原生 SDK 链路、生图 | 独立 Google Scoped 配置。Gemini 在原生与兼容模式间的账密。 | 保持不变。多模态链路在 Phase 2 之前不做软路由。 |
 | `MOONSHOT_API_KEY` / `_BASE_URL` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` | Kimi 开放平台直连 | 针对 `sk-sp-` Key 有前置警告和置空防错。 | 保持不变。 |
+| `GROQ_API_KEY` / `_BASE_URL` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. 旧 `DASHSCOPE_*` Groq 配置 fallback | Groq OpenAI-compatible 直连 | 独立字段匹配 Groq 官方 `GROQ_API_KEY` 接法。 | 保持不变，旧 `DASHSCOPE_*` 只做兼容读取。 |
 | `MINIMAX_API_KEY` / `_BASE_URL` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `legacyConfig` | MiniMax 官方直连、百炼降级 fallback | MiniMax 官方直连。 | 保持不变。 |
-| `NEWAPI_API_KEY` / `_BASE_URL` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` | New API 分发网关 | 新一代分发网关核心参数。 | 保持不变。 |
 | `CUSTOM_API_KEY` / `_BASE_URL` / `_MODEL` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` | 自定义兼容 OpenAI 协议服务 | 自定义中转配置。 | 保持不变。 |
 | `SILICONFLOW_API_KEY` | `config.js` `getProviderConfig()` | 1. `_fileConfig` <br> 2. `process.env` | 硅基流动服务 | 存在防止百炼 `sk-sp-` Key 混入的定制校验逻辑。 | 保持不变。 |
 | `SUMMARIZER_API_KEY` / `_BASE_URL` / `_MODEL` | `services/summarizer.js`, `summarizer/client.js` | 1. `_fileConfig` <br> 2. `process.env` <br> 3. `config.memory.summarizer.api` | 工具返回压缩、系统级三级摘要 | 有两套实现。其中系统级摘要不走 `llmClient`，直接独立账密并发起 raw fetch 请求。 | 保持独立配置。在 Phase 2 中将 `services/summarizer` 纳入逻辑别名。 |
@@ -51,7 +51,7 @@ OCT 的配置（通过 `config.js` 的 `getEnvOrConfig(key)` 获取）遵循以�
 ### 3.1 哪些 Provider 当前会复用 `DASHSCOPE_API_KEY`？
 当特定 API Key 缺失时，以下预设服务商在加载时，会将 `DASHSCOPE_API_KEY` 作为 fallback Key 加载：
 - **硅基流动 (SiliconFlow)**: 复用 `DASHSCOPE_API_KEY`，但如果 Key 带有百炼 Coding Plan 的 `sk-sp-` 前缀，会打印报警并置空（防止 401 报错）。
-- **Groq**: 默认在其 `keyEnvVars` 中包含 `DASHSCOPE_API_KEY` 作为兜底。
+- **Groq**: 主字段为 `GROQ_API_KEY` / `GROQ_BASE_URL`；仅在旧配置缺少 Groq 专属字段时读取 `DASHSCOPE_API_KEY` 或指向 Groq 的 `DASHSCOPE_BASE_URL` 作为兜底。
 - **OpenAI**: 默认在其 `keyEnvVars` 中包含 `DASHSCOPE_API_KEY` 作为兜底。
 - **MiniMax**: 默认在其 `keyEnvVars` 中包含 `DASHSCOPE_API_KEY` 作为兜底。
 - **Custom (自定义服务)**: 默认在其 `keyEnvVars` 中包含 `DASHSCOPE_API_KEY` 作为兜底。
@@ -74,7 +74,7 @@ OCT 的配置（通过 `config.js` 的 `getEnvOrConfig(key)` 获取）遵循以�
 
 ### 3.4 哪些字段不能在第一阶段删除或改名？
 - **UI 及基础会话绑定字段**: `OCT_PROVIDER`, `OCT_MODEL`, `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL`, `DASHSCOPE_MODEL`
-- **主流商户账密字段**: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `GOOGLE_AI_API_KEY`, `GOOGLE_AI_BASE_URL`, `GEMINI_API_KEY`, `MOONSHOT_API_KEY`, `MINIMAX_API_KEY`, `NEWAPI_API_KEY`, `SILICONFLOW_API_KEY`
+- **主流商户账密字段**: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `GOOGLE_AI_API_KEY`, `GOOGLE_AI_BASE_URL`, `GEMINI_API_KEY`, `MOONSHOT_API_KEY`, `MINIMAX_API_KEY`, `SILICONFLOW_API_KEY`
 - **各旁路专用字段**: `SUMMARIZER_*`, `SCRIPT_ADAPTER_*`, `EMBEDDING_*`, `VISION_*`, `IMAGE_*`
 
 这些字段在第一阶段不应受到任何删除、迁移或改名的物理破坏，以确保系统 100% 的后向兼容与稳定性。

@@ -42,7 +42,7 @@ export function registerMediaHandlers(_deps: IpcDeps) {
       : providerPreference === 'minimax' ? ['minimax']
       : providerPreference === 'dashscope' ? ['dashscope']
       : currentProviderId === 'minimax' ? ['minimax']
-      : currentProviderId === 'bailian' || currentProviderId === 'bailian-coding' ? ['dashscope']
+      : currentProviderId === 'bailian' ? ['dashscope']
       : [];
 
     const errors: string[] = [];

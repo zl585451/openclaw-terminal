@@ -99,7 +99,7 @@
 - `oct-gateway/test/chatRequestHandler.test.js`
   - 覆盖 Phase C-2 新增 `createChatRequestHandler()`，锁定普通 `chat.send` 生命周期、tool/canvas event 转发、agent 短路、session 写入、最终 done payload。
 - `src/hooks/__tests__/settingsPayload.test.ts`
-  - 覆盖前端设置 payload 作为“设置投影”的边界，验证 OmniRoute 字段、NewAPI 自定义模型、Google scoped baseUrl 不串写到 DashScope 字段。
+  - 覆盖前端设置 payload 作为“设置投影”的边界，验证 OmniRoute 字段、Google scoped baseUrl 不串写到 DashScope 字段。
   - Phase D-4 增加连接测试 payload 覆盖，锁定高级/新手设置页共用同一套 chat provider 投影规则。
   - Phase D-6 增加 provider selection / editable Base URL helper 覆盖，锁定高级设置页 Base URL 分支不再散落在 JSX 中。
 - Phase D-5 将前端 provider fallback 从完整模型目录压缩为 emergency metadata，减少与 `oct-gateway/providers.js` / Electron provider helper 的重复维护面。

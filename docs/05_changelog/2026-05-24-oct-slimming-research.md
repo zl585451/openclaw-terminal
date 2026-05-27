@@ -57,7 +57,7 @@
 - `src/hooks/__tests__/settingsPayload.test.ts`
   - 覆盖前端设置 payload 构造边界。
   - 验证 OmniRoute 设置字段能保存到 payload。
-  - 验证 NewAPI 自定义模型与 Google scoped baseUrl 不污染其他 provider baseUrl 字段。
+  - 验证 Google scoped baseUrl 不污染其他 provider baseUrl 字段。
 
 ## Phase C-1 最小入口拆分
 
@@ -195,7 +195,7 @@
   - 覆盖 fallback provider 列表关键字段。
   - 覆盖 gateway `providers.js` 可用、缺失、加载失败三种路径。
   - 覆盖显式 provider、自定义配置、DashScope Coding URL 推断。
-  - 覆盖 New API 自定义模型与 Google 连接参数投影。
+  - 覆盖 Google 连接参数投影。
 
 影响：
 
@@ -345,7 +345,7 @@
   - 新增 `readChatProviderBaseUrl()` / `writeChatProviderBaseUrl()`，统一高级设置页 Base URL 输入框的读取与写入字段选择。
 
 - `src/ui/settings/tabs/ConnectionTabView.tsx`
-  - 高级设置页不再内联 provider 切换时的 `DASHSCOPE_BASE_URL` / `DEEPSEEK_BASE_URL` / `MINIMAX_BASE_URL` / `MOONSHOT_BASE_URL` / `NEWAPI_BASE_URL` / `CUSTOM_BASE_URL` / `GOOGLE_AI_BASE_URL` 分支矩阵。
+  - 高级设置页不再内联 provider 切换时的 `DASHSCOPE_BASE_URL` / `DEEPSEEK_BASE_URL` / `MINIMAX_BASE_URL` / `MOONSHOT_BASE_URL` / `CUSTOM_BASE_URL` / `GOOGLE_AI_BASE_URL` 分支矩阵。
   - 高级 Base URL 输入框不再内联读写字段判断。
 
 - `src/hooks/__tests__/settingsPayload.test.ts`

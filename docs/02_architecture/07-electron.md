@@ -73,7 +73,7 @@
 - 如果当前 Provider 是 `minimax`
   - `auto` 会尝试 MiniMax 云端朗读
   - 设置页会显示 MiniMax 云端音色选择
-- 如果当前 Provider 是 `bailian` / `bailian-coding`
+- 如果当前 Provider 是 `bailian`
   - `auto` 会尝试 DashScope 云端朗读
 - 如果当前 Provider 没有云端 TTS 能力
   - `auto` 直接降级为本地朗读链

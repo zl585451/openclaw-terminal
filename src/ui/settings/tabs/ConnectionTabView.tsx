@@ -724,7 +724,7 @@ export function ConnectionTabView({
         <h4>推荐配置</h4>
         <ol>
           <li>主对话 AI：负责聊天、写作、Canvas 和工具调用，建议直连百炼等官方接口</li>
-          <li>工具 AI：图片、向量、后台分析、生图等专项能力，建议后续统一走 New API 网关</li>
+          <li>工具 AI：图片、向量、后台分析、生图等专项能力，按专项配置独立管理</li>
           <li>不确定的配置先保持默认，需要时再展开高级配置</li>
         </ol>
       </div>
@@ -823,7 +823,7 @@ export function ConnectionTabView({
                   <option key={id} value={id}>{p.name}</option>
                 ))}
                 {Object.keys(providers).length === 0 && (
-                  <option value="bailian-coding">阿里云百炼 Coding Plan</option>
+                  <option value="bailian">阿里云百炼</option>
                 )}
               </select>
             </div>
@@ -865,12 +865,6 @@ export function ConnectionTabView({
                   默认走 Google 官方 <strong>@google/genai / Vertex AI 原生 SDK</strong>。建议把 Base URL 填成
                   <code>https://aiplatform.googleapis.com/v1beta1/projects/你的PROJECT_ID/locations/us-central1/endpoints/openapi</code>，
                   这样网关能自动识别项目与区域；计费直接落到你的 GCP 项目，工具调用与多轮兼容性也会比 OpenAI 兼容层更稳。
-                </p>
-              )}
-              {currentProviderId === 'newapi' && (
-                <p className="settings-desc settings-desc-spaced">
-                  New API 建议作为外部分发网关单独部署；这里填写 New API 里创建的令牌，Base URL 通常是
-                  <code>http://127.0.0.1:3000/v1</code> 或你的公网网关地址。
                 </p>
               )}
             </div>
@@ -1106,10 +1100,10 @@ export function ConnectionTabView({
       <section className="settings-section">
         <h3>2. 工具 AI 网关</h3>
         <p className="settings-desc">
-          工具 AI 用于图片、向量、后台分析、生图和批量任务。当前这些能力仍在高级配置中分别设置；后续会收敛到一个 New API 令牌。
+          工具 AI 用于图片、向量、后台分析、生图和批量任务。当前这些能力在高级配置中分别设置，避免聊天 Key 被误用于专项服务。
         </p>
         <div className="settings-note-card">
-          推荐过渡方案：主对话直连百炼，工具能力逐步统一到 New API。这样能保留聊天速度，又方便以后做额度和收费。
+          推荐方案：主对话直连当前选择的聊天服务商，专项能力使用各自的独立 Key、Base URL 和模型配置。
         </div>
       </section>
 

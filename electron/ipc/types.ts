@@ -138,6 +138,8 @@ export interface PersonaSettings {
 export interface ApiKeyPayload {
   DASHSCOPE_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
+  GROQ_API_KEY?: string;
+  GROQ_BASE_URL?: string;
   GOOGLE_AI_API_KEY?: string;
   GEMINI_API_KEY?: string;
   OPENAI_API_KEY?: string;

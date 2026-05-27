@@ -1547,7 +1547,7 @@ async function streamChatRaw({
       const prevModel = config.DASHSCOPE_MODEL;
       const originalModel = model;
       const fallbackModel = 'MiniMax-M2.5';
-      config.currentProvider = 'bailian-coding';
+      config.currentProvider = 'bailian';
       config.DASHSCOPE_MODEL = fallbackModel;
       try {
         log.debug('streamChat fallback re-enter', { originalModel, fallbackModel });

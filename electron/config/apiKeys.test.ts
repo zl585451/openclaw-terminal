@@ -34,6 +34,8 @@ describe('electron api key config helpers', () => {
       OMNIROUTE_MODEL: 'omni/chat',
       OCT_USE_EXTERNAL_OMNIROUTE: 'on',
       BRAVE_SEARCH_API_KEY: 'brave-key',
+      GROQ_API_KEY: 'gsk-test',
+      GROQ_BASE_URL: 'https://api.groq.com/openai/v1',
     }, defaults);
 
     expect(previousCfg.OMNIROUTE_CHAT_MODEL).toBe('legacy-chat');
@@ -48,6 +50,8 @@ describe('electron api key config helpers', () => {
     expect(cfg.OMNIROUTE_TOOL_MODEL).toBe('');
     expect(cfg.OCT_USE_EXTERNAL_OMNIROUTE).toBe('true');
     expect(cfg.BRAVE_SEARCH_API_KEY).toBe('brave-key');
+    expect(cfg.GROQ_API_KEY).toBe('gsk-test');
+    expect(cfg.GROQ_BASE_URL).toBe('https://api.groq.com/openai/v1');
   });
 
   it('fills minimum connection defaults for new config files', () => {

@@ -15,7 +15,7 @@ function baseApiKeys(overrides: Partial<ApiKeysState> = {}): ApiKeysState {
     DEEPSEEK_API_KEY: '',
     MINIMAX_API_KEY: '',
     MOONSHOT_API_KEY: '',
-    NEWAPI_API_KEY: '',
+    GROQ_API_KEY: '',
     IMAGE_PROVIDER: 'minimax',
     IMAGE_ALLOW_FALLBACK_TO_CHAT_KEY: false,
     IMAGE_API_KEY: '',
@@ -47,7 +47,7 @@ function baseApiKeys(overrides: Partial<ApiKeysState> = {}): ApiKeysState {
     DEEPSEEK_BASE_URL: '',
     MINIMAX_BASE_URL: '',
     MOONSHOT_BASE_URL: '',
-    NEWAPI_BASE_URL: '',
+    GROQ_BASE_URL: '',
     CUSTOM_BASE_URL: '',
     GOOGLE_AI_API_KEY: '',
     GOOGLE_AI_BASE_URL: '',
@@ -67,36 +67,36 @@ function baseApiKeys(overrides: Partial<ApiKeysState> = {}): ApiKeysState {
 }
 
 describe('settings gateway payload boundary', () => {
-  it('persists OmniRoute fields and custom NewAPI model without leaking base URLs across providers', () => {
+  it('persists OmniRoute fields and custom Google model without leaking base URLs across providers', () => {
     const provider: ProviderEntry = {
-      id: 'newapi',
-      name: 'New API',
-      baseUrl: 'http://127.0.0.1:3000/v1',
+      id: 'google',
+      name: 'Google',
+      baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/test/locations/us-central1/endpoints/openapi',
       keyLink: '',
       keyPlaceholder: '',
-      defaultModel: '__custom__',
+      defaultModel: 'google/gemini-2.5-flash',
       models: [],
     };
 
     const payload = buildGatewayPayload(
       baseApiKeys({
-        NEWAPI_API_KEY: 'sk-newapi',
-        NEWAPI_BASE_URL: 'http://127.0.0.1:20128/v1',
+        GOOGLE_AI_API_KEY: 'AQ.test',
+        GOOGLE_AI_BASE_URL: provider.baseUrl,
         OCT_MODEL: '__custom__',
-        CUSTOM_MODEL: 'combo/chat-live',
+        CUSTOM_MODEL: 'google/gemini-custom',
         OMNIROUTE_BASE_URL: 'http://127.0.0.1:20128/v1',
         OMNIROUTE_API_KEY: 'sk-omni',
         OMNIROUTE_MODEL: 'combo/free',
         OCT_USE_EXTERNAL_OMNIROUTE: true,
       }),
-      'newapi',
+      'google',
       provider,
       { BRAVE_SEARCH_API_KEY: '', TAVILY_API_KEY: '' },
     );
 
-    expect(payload.OCT_PROVIDER).toBe('newapi');
-    expect(payload.OCT_MODEL).toBe('combo/chat-live');
-    expect(payload.NEWAPI_BASE_URL).toBe('http://127.0.0.1:20128/v1');
+    expect(payload.OCT_PROVIDER).toBe('google');
+    expect(payload.OCT_MODEL).toBe('google/gemini-custom');
+    expect(payload.GOOGLE_AI_BASE_URL).toBe(provider.baseUrl);
     expect(payload.DASHSCOPE_BASE_URL).toBe('');
     expect(payload.OMNIROUTE_BASE_URL).toBe('http://127.0.0.1:20128/v1');
     expect(payload.OMNIROUTE_API_KEY).toBe('sk-omni');
@@ -163,6 +163,47 @@ describe('settings gateway payload boundary', () => {
       OCT_MODEL: 'google/gemini-custom',
       GOOGLE_AI_API_KEY: 'AQ.test',
       GOOGLE_AI_BASE_URL: provider.baseUrl,
+      DASHSCOPE_BASE_URL: '',
+    });
+  });
+
+  it('stores Groq key and base URL in Groq-scoped fields while keeping DashScope clean', () => {
+    const provider: ProviderEntry = {
+      id: 'groq',
+      name: 'Groq',
+      baseUrl: 'https://api.groq.com/openai/v1',
+      keyLink: '',
+      keyPlaceholder: '',
+      defaultModel: 'llama-3.3-70b-versatile',
+      models: [],
+    };
+
+    const selected = applyChatProviderSelection(
+      baseApiKeys({
+        DASHSCOPE_API_KEY: 'sk-dashscope',
+        DASHSCOPE_BASE_URL: 'https://coding.dashscope.aliyuncs.com/v1',
+        GROQ_API_KEY: 'gsk-test',
+      }),
+      'groq',
+      provider,
+    );
+
+    expect(readChatProviderBaseUrl(selected, 'groq')).toBe(provider.baseUrl);
+    expect(selected.DASHSCOPE_BASE_URL).toBe('https://coding.dashscope.aliyuncs.com/v1');
+
+    const payload = buildGatewayPayload(
+      selected,
+      'groq',
+      provider,
+      { BRAVE_SEARCH_API_KEY: '', TAVILY_API_KEY: '' },
+    );
+
+    expect(payload).toMatchObject({
+      OCT_PROVIDER: 'groq',
+      OCT_MODEL: 'llama-3.3-70b-versatile',
+      GROQ_API_KEY: 'gsk-test',
+      GROQ_BASE_URL: provider.baseUrl,
+      DASHSCOPE_API_KEY: 'sk-dashscope',
       DASHSCOPE_BASE_URL: '',
     });
   });

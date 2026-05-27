@@ -7,7 +7,7 @@ export function humanizeAiConnectionError(raw: string, providerId?: string): str
     return 'MiniMax 需要 Token Plan API Key（以 sk-cp- 开头），普通按量 Key 不能用。';
   }
   if (lower.includes('401') || lower.includes('403') || lower.includes('unauthorized') || lower.includes('forbidden')) {
-    return 'API Key 无效或权限不足。百炼 Coding Plan 需要 sk-sp- 前缀的 Key；MiniMax 需要 sk-cp- 前缀的 Token Plan Key。';
+    return 'API Key 无效或权限不足。MiniMax 需要 sk-cp- 前缀的 Token Plan Key。';
   }
   if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('abort')) {
     return '连接超时。如果你使用 Google 或 OpenAI，可能需要在高级设置里填写 HTTPS 代理地址。';

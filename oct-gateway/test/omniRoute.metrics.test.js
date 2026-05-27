@@ -57,7 +57,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
   it('2. registers and tracks failed requests and categorizes error types', () => {
     metrics.recordRequest({
       capability: 'default',
-      providerId: 'bailian-coding',
+      providerId: 'bailian',
       model: 'qwen3.5-plus',
       latencyMs: 500,
       status: 503,
@@ -67,7 +67,7 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
 
     metrics.recordRequest({
       capability: 'default',
-      providerId: 'bailian-coding',
+      providerId: 'bailian',
       model: 'qwen3.5-plus',
       latencyMs: 30000,
       status: 500,
@@ -84,8 +84,8 @@ describe('OmniRoute Phase 8: Observability, Cost & Rate Limits', () => {
     expect(data.capabilities.default.errorTypes.LlmClientHttpError).toBe(1);
     expect(data.capabilities.default.errorTypes.LlmClientTimeoutError).toBe(1);
 
-    expect(data.providers['bailian-coding'].errorCount).toBe(2);
-    expect(data.providers['bailian-coding'].errorTypes['LlmClientHttpError']).toBe(1);
+    expect(data.providers['bailian'].errorCount).toBe(2);
+    expect(data.providers['bailian'].errorTypes['LlmClientHttpError']).toBe(1);
   });
 
   it('3. rolling recent requests window is desensitized and strictly protects user content', () => {
