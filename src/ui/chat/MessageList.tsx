@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo, useMemo, useLayoutEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -97,6 +97,7 @@ const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolea
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
 const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
 const CHAT_MERMAID_RENDER_LIMIT = 1;
+const MAX_BOTTOM_SPACER_VIEWPORT_RATIO = 0.6;
 
 function limitChatMermaidBlocks(text: string, maxBlocks = CHAT_MERMAID_RENDER_LIMIT): string {
   if (!text || typeof text !== 'string') return text;
@@ -955,6 +956,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   const { settings } = useSettings();
   const assistantName = settings.aiName || 'OpenClaw';
   const [pageByMsgId, setPageByMsgId] = useState<Record<number, number>>({});
+  const [bottomSpacerHeight, setBottomSpacerHeight] = useState(0);
+  const contentMeasureRef = useRef<HTMLDivElement | null>(null);
   const streamingParseCacheRef = useRef<{ input: string; output: ReturnType<typeof parseOptionBox> } | null>(null);
   const finalizedParseCacheRef = useRef<
     Map<number, { input: string; output: ReturnType<typeof parseOptionBox> }>
@@ -963,6 +966,58 @@ export const ChatMessageList = memo(function ChatMessageList({
   const handlePageChange = useCallback((msgId: number, page: number) => {
     setPageByMsgId((prev) => ({ ...prev, [msgId]: page }));
   }, []);
+
+  const updateBottomSpacerHeight = useCallback(() => {
+    const wrap = messagesContainerRef.current;
+    const content = contentMeasureRef.current;
+    if (!wrap || !content) {
+      setBottomSpacerHeight(0);
+      return;
+    }
+
+    const viewportHeight = wrap.clientHeight;
+    const realContentHeight = content.offsetHeight;
+    const maxSpacerHeight = Math.round(viewportHeight * MAX_BOTTOM_SPACER_VIEWPORT_RATIO);
+    const isTurnActive = awaitingResponse || isStreaming;
+    const availableHeight = Math.floor(viewportHeight - realContentHeight);
+    const nextHeight = isTurnActive
+      ? maxSpacerHeight
+      : Math.max(0, Math.min(maxSpacerHeight, availableHeight));
+
+    setBottomSpacerHeight((current) => (
+      Math.abs(current - nextHeight) <= 1 ? current : nextHeight
+    ));
+  }, [awaitingResponse, isStreaming, messagesContainerRef]);
+
+  useLayoutEffect(() => {
+    updateBottomSpacerHeight();
+
+    const wrap = messagesContainerRef.current;
+    const content = contentMeasureRef.current;
+    if (!wrap || !content) return;
+    if (typeof ResizeObserver === 'undefined' || typeof requestAnimationFrame === 'undefined') return;
+
+    const resizeObserver = new ResizeObserver(updateBottomSpacerHeight);
+    resizeObserver.observe(wrap);
+    resizeObserver.observe(content);
+
+    const frame = requestAnimationFrame(updateBottomSpacerHeight);
+    return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+    };
+  }, [
+    updateBottomSpacerHeight,
+    messagesContainerRef,
+    messages.length,
+    displayMessages.length,
+    isStreaming,
+    awaitingResponse,
+    streamingContent,
+    displayedText,
+    pendingPills?.length,
+    activityTimeline.length,
+  ]);
 
   // 检查任何来源的思维链标记：streamingContent 或 最后一条 assistant 消息的 content
   const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
@@ -993,6 +1048,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     tailMsg.role === 'assistant' &&
     !!tailMsg.isStreaming &&
     !(typeof tailMsg.content === 'string' ? tailMsg.content : '').trim();
+  const shouldHoldSendAnchorSpacer = awaitingResponse || isStreaming || tailMsg?.role === 'user';
 
   return (
     <div
@@ -1002,39 +1058,40 @@ export const ChatMessageList = memo(function ChatMessageList({
       ref={messagesContainerRef}
     >
       <div className="chat-messages">
-        {messages.length === 0 && (
-          emptyConversationPlaceholder ?? (
-          <div className="chat-empty">
-            <span className="empty-icon">✦</span>
-            <span>输入消息开始对..</span>
-          </div>
-          )
-        )}
-        {showTypingIndicator && !emptyStreamingAssistantTail && (
-          agentPhase === 'thinking' ? (
-            // 思考阶段：用 CoTBlock 占位面板替代 chat-thinking 条（无末条空 assistant 时）
-            <div className="cot-stream-wrapper">
-              <CoTBlock
-                content=""
-                isStreaming={true}
-                isPlaceholder={true}
-              />
+        <div className="chat-messages-content" ref={contentMeasureRef}>
+          {messages.length === 0 && (
+            emptyConversationPlaceholder ?? (
+            <div className="chat-empty">
+              <span className="empty-icon">✦</span>
+              <span>输入消息开始对..</span>
             </div>
-          ) : (
-            // 其他等待阶段（typing / tool_executing）：保持原有样式
-            <div className="chat-thinking">
-              <span className="msg-label">◆ {assistantName}</span>
-              {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
-              {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
-              <span className="processing-blocks typing-dots">
-                <span className="block" />
-                <span className="block" />
-                <span className="block" />
-              </span>
-            </div>
-          )
-        )}
-        {displayMessages.map((msg) => {
+            )
+          )}
+          {showTypingIndicator && !emptyStreamingAssistantTail && (
+            agentPhase === 'thinking' ? (
+              // 思考阶段：用 CoTBlock 占位面板替代 chat-thinking 条（无末条空 assistant 时）
+              <div className="cot-stream-wrapper">
+                <CoTBlock
+                  content=""
+                  isStreaming={true}
+                  isPlaceholder={true}
+                />
+              </div>
+            ) : (
+              // 其他等待阶段（typing / tool_executing）：保持原有样式
+              <div className="chat-thinking">
+                <span className="msg-label">◆ {assistantName}</span>
+                {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
+                {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
+                <span className="processing-blocks typing-dots">
+                  <span className="block" />
+                  <span className="block" />
+                  <span className="block" />
+                </span>
+              </div>
+            )
+          )}
+          {displayMessages.map((msg) => {
         const isStreamingMsg = msg.role === 'assistant' && msg.isStreaming;
 
         const {
@@ -1102,26 +1159,30 @@ export const ChatMessageList = memo(function ChatMessageList({
             />
           </React.Fragment>
         );
-        })}
-        {pendingPills && pendingPills.length > 0 && (
-          <div className="response-tray-inline">
-            <div className="response-tray-inline__pills">
-              {pendingPills.map((pill: string, i: number) => (
-                <button
-                  key={i}
-                  className="response-tray-inline__pill"
-                  title={pill}
-                  onClick={() => quickSend(pill)}
-                >
-                  {pill}
-                </button>
-              ))}
+          })}
+          {pendingPills && pendingPills.length > 0 && (
+            <div className="response-tray-inline">
+              <div className="response-tray-inline__pills">
+                {pendingPills.map((pill: string, i: number) => (
+                  <button
+                    key={i}
+                    className="response-tray-inline__pill"
+                    title={pill}
+                    onClick={() => quickSend(pill)}
+                  >
+                    {pill}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
         <div ref={bottomRef as React.Ref<HTMLDivElement>} style={{ height: 0, margin: 0, padding: 0 }} />
-        {/* 底部 spacer：保持较大的支撑，确保发送后用户消息可以顶到上方目标位 */}
-        <div style={{ height: '60vh', flexShrink: 0, pointerEvents: 'none' }} aria-hidden />
+        <div
+          className="chat-bottom-spacer"
+          style={{ height: shouldHoldSendAnchorSpacer ? '60vh' : bottomSpacerHeight }}
+          aria-hidden
+        />
       </div>
     </div>
   );

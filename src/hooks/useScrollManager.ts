@@ -159,6 +159,12 @@ export function useScrollManager({
 
     snapJustFiredRef.current = true;
     scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
+    requestAnimationFrame(() => {
+      scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
+      requestAnimationFrame(() => {
+        scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
+      });
+    });
 
     const snapTime = Date.now();
     const checkRelease = () => {
