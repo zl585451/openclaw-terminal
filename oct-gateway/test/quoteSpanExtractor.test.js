@@ -31,4 +31,13 @@ describe('quoteSpanExtractor', () => {
     expect(doc.quotes.map((quote) => quote.text)).toEqual(['醒了？', '感觉如何？']);
     expect(reconstructFromSpans(doc)).toBe(sourceText);
   });
+
+  it('keeps leading sound suffix with the previous onomatopoeia quote', () => {
+    const sourceText = '门轴发出“吱呀”声。她放下对讲机。随后传来“沙沙”声，她回头。';
+    const doc = extractQuoteSpans({ sourceText });
+    expect(doc.quotes.map((quote) => quote.text)).toEqual(['吱呀声。', '沙沙声，']);
+    expect(doc.quotes.map((quote) => quote.rawText)).toEqual(['“吱呀”声。', '“沙沙”声，']);
+    expect(doc.narrationGaps.map((gap) => gap.text)).toEqual(['门轴发出', '她放下对讲机。随后传来', '她回头。']);
+    expect(reconstructFromSpans(doc)).toBe(sourceText);
+  });
 });
