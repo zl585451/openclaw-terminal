@@ -238,6 +238,15 @@ function convertMessagesToGoogleContents(messages) {
   const contents = [];
   const systemTexts = [];
   const toolNameByCallId = collectFunctionNameMap(messages);
+  const pendingToolResponseParts = [];
+
+  const flushPendingToolResponses = () => {
+    if (pendingToolResponseParts.length === 0) return;
+    contents.push({
+      role: 'user',
+      parts: pendingToolResponseParts.splice(0),
+    });
+  };
 
   for (const message of Array.isArray(messages) ? messages : []) {
     if (!message || typeof message !== 'object') continue;
@@ -253,13 +262,17 @@ function convertMessagesToGoogleContents(messages) {
       continue;
     }
 
-    if (message.google_native_content && typeof message.google_native_content === 'object') {
-      const sanitized = sanitizeGoogleNativeContent(message.google_native_content);
-      if (sanitized) contents.push(sanitized);
-      continue;
-    }
-
     if (message.role === 'tool') {
+      if (message.google_native_content && typeof message.google_native_content === 'object') {
+        const sanitized = sanitizeGoogleNativeContent(message.google_native_content);
+        if (sanitized) {
+          pendingToolResponseParts.push(
+            ...sanitized.parts.filter((part) => part?.functionResponse)
+          );
+        }
+        continue;
+      }
+
       const callId = String(message.tool_call_id || '').trim();
       const toolName = String(
         message.tool_name
@@ -269,15 +282,20 @@ function convertMessagesToGoogleContents(messages) {
       const resultText = typeof message.content === 'string'
         ? message.content
         : JSON.stringify(message.content || '');
-      contents.push({
-        role: 'user',
-        parts: [{
-          functionResponse: {
-            name: toolName || undefined,
-            response: { output: resultText },
-          },
-        }],
+      pendingToolResponseParts.push({
+        functionResponse: {
+          name: toolName || undefined,
+          response: { output: resultText },
+        },
       });
+      continue;
+    }
+
+    flushPendingToolResponses();
+
+    if (message.google_native_content && typeof message.google_native_content === 'object') {
+      const sanitized = sanitizeGoogleNativeContent(message.google_native_content);
+      if (sanitized) contents.push(sanitized);
       continue;
     }
 
@@ -308,6 +326,8 @@ function convertMessagesToGoogleContents(messages) {
     if (parts.length === 0) continue;
     contents.push({ role, parts });
   }
+
+  flushPendingToolResponses();
 
   return {
     contents,
