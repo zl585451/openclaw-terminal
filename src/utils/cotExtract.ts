@@ -88,6 +88,19 @@ export function getAssistantVisibleMain(raw: string): string {
   return hasAssistantCotMarkers(base) ? extractAssistantCotAndMain(base).mainContent : base;
 }
 
+/**
+ * useMessages finalize 阶段对 assistant 原始文本的清理链：
+ * stripThinkModeMarker -> stripLeakedToolCallSections -> stripTextToolAnnotations
+ */
+export function sanitizeAssistantContent(raw: string): string {
+  const text = String(raw || '');
+  if (!text) return '';
+  const step1 = text.replace(/\n?\[THINK_MODE:\w+\]/gi, '').trim();
+  const step2 = stripLeakedToolCallSections(step1);
+  const step3 = stripTextToolAnnotations(step2);
+  return step3;
+}
+
 export function stripTextToolAnnotations(input: string): string {
   const text = String(input || '');
   if (!text) return '';

@@ -93,3 +93,31 @@ export function getDangerMatch(message: string): { desc: string; level: DangerLe
   }
   return null;
 }
+
+/**
+ * 发送前权限守卫：先做权限拦截（alert），再做危险确认（confirm）。
+ * 返回 true 表示允许发送，false 表示用户/权限拒绝。
+ *
+ * 行为等价于 useMessages 中 sendMessage / quickSend 原有的 alert + confirm 流程。
+ * alertFn / confirmFn 可注入以便测试。
+ */
+export function guardMessagePermission(
+  message: string,
+  config: PermissionConfig,
+  alertFn: (msg: string) => void = typeof window !== 'undefined' ? window.alert.bind(window) : () => {},
+  confirmFn: (msg: string) => boolean = typeof window !== 'undefined' ? window.confirm.bind(window) : () => true,
+): boolean {
+  const permCheck = checkPermission(message, config);
+  if (!permCheck.allowed) {
+    alertFn(permCheck.reason || '此操作已被权限设置拦截');
+    return false;
+  }
+  const dangerMatch = getDangerMatch(message);
+  if (dangerMatch) {
+    const ok = confirmFn(
+      `危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`,
+    );
+    if (!ok) return false;
+  }
+  return true;
+}

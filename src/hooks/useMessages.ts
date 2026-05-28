@@ -7,14 +7,14 @@ import { useWebSocket } from './useWebSocket';
 import type { WorkbenchRoundtripContext } from '../workbench/types';
 import { workbenchBus } from '../workbench/WorkbenchBus';
 import { toWorkbenchCommand } from '../workbench/types';
-import { checkPermission, getDangerMatch } from '../utils/permissionCheck';
+import { guardMessagePermission } from '../utils/permissionCheck';
 import type { PermissionConfig } from '../utils/permissionCheck';
 import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTypes';
 import type { RenderBlock } from '../types/renderProtocol';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
-import { getAssistantVisibleMain, stripLeakedToolCallSections, stripTextToolAnnotations } from '../utils/cotExtract';
-import { stripThinkModeMarker } from '../utils/socraticTemplates';
+import { getAssistantVisibleMain, sanitizeAssistantContent } from '../utils/cotExtract';
+import { parseSystemReplyStatus } from '../utils/systemReplyParser';
 import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
 import { useTokenUsage } from './useTokenUsage';
@@ -214,9 +214,7 @@ export function useMessages({
     );
   }, [fsmPhase, messages]);
   const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
-    const finalRaw = stripTextToolAnnotations(
-      stripLeakedToolCallSections(stripThinkModeMarker(rawText ?? fullTextRef.current ?? '')),
-    );
+    const finalRaw = sanitizeAssistantContent(rawText ?? fullTextRef.current ?? '');
     if (finalizeFallbackTimerRef.current != null) {
       clearTimeout(finalizeFallbackTimerRef.current);
       finalizeFallbackTimerRef.current = null;
@@ -258,9 +256,7 @@ export function useMessages({
     }
     finalizeFallbackTimerRef.current = setTimeout(() => {
       finalizeFallbackTimerRef.current = null;
-      const fallbackRaw = stripTextToolAnnotations(
-        stripLeakedToolCallSections(stripThinkModeMarker(rawText ?? fullTextRef.current ?? '')),
-      );
+      const fallbackRaw = sanitizeAssistantContent(rawText ?? fullTextRef.current ?? '');
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!(last?.role === 'assistant' && last.isStreaming)) {
@@ -435,9 +431,7 @@ export function useMessages({
       }
 
       if (!systemReply) {
-        const fallbackText = stripTextToolAnnotations(
-          stripLeakedToolCallSections(stripThinkModeMarker(String(content || '').trim())),
-        );
+        const fallbackText = sanitizeAssistantContent(String(content || '').trim());
         const finalText = preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
         if (finalText !== fullTextRef.current) {
           streamingMessageRef.current = finalText;
@@ -474,40 +468,20 @@ export function useMessages({
 
       const text = finalStreamContent;
       if (systemReply && text.startsWith('🦞')) {
-        const modelMatch = text.match(/Model:\s*(.+)/);
-        const tokensMatch = text.match(/Tokens:\s*([\d.]+)k?\s*\/\s*([\d.]+)k/i);
-        const ctxMatch1 = text.match(/Context:\s*([\d.]+)\s*\/\s*([\d.]+)k\s*\((\d+)%\)/i);
-        const ctxMatch2 = text.match(/Context:\s*([\d.]+)k\s*tokens/i);
-
-        if (modelMatch) setModelName(modelMatch[1].trim());
-        if (tokensMatch) {
+        const status = parseSystemReplyStatus(text);
+        if (status.modelName) setModelName(status.modelName);
+        if (status.tokenIn != null || status.ctxMax != null || status.ctxUsed != null) {
           setFromSystemReply({
-            tokenIn: parseFloat(tokensMatch[1]) * 1000,
-            ctxMax: parseFloat(tokensMatch[2]) * 1000,
+            ...(status.tokenIn != null ? { tokenIn: status.tokenIn } : {}),
+            ...(status.ctxMax != null ? { ctxMax: status.ctxMax } : {}),
+            ...(status.ctxUsed != null ? { ctxUsed: status.ctxUsed } : {}),
           });
         }
-        if (ctxMatch1) {
-          setFromSystemReply({
-            ctxUsed: parseFloat(ctxMatch1[1]) * 1000,
-            ctxMax: parseFloat(ctxMatch1[2]) * 1000,
-          });
-        } else if (ctxMatch2) {
-          setFromSystemReply({
-            ctxUsed: parseFloat(ctxMatch2[1]) * 1000,
-          });
-        }
-
-        const apiKeyMatch = text.match(/api-key\s*\(([^)]+)\)/i);
-        const thinkMatch = text.match(/(?:Reasoning|Think):\s*(\S+)/i);
-        const runtimeMatch = text.match(/Runtime:\s*(\S+)/i);
-        const compactMatch = text.match(/Compactions:\s*(\d+)/i);
-        const queueMatch = text.match(/Queue:\s*(.+)/i);
-
-        if (apiKeyMatch) setApiKeyInfo(`api-key (${apiKeyMatch[1]})`);
-        if (thinkMatch) setThinkMode(thinkMatch[1]);
-        if (runtimeMatch) setRuntimeMode(runtimeMatch[1]);
-        if (compactMatch) setCompactions(parseInt(compactMatch[1]));
-        if (queueMatch) setQueueInfo(queueMatch[1].trim());
+        if (status.apiKeyInfo) setApiKeyInfo(status.apiKeyInfo);
+        if (status.thinkMode) setThinkMode(status.thinkMode);
+        if (status.runtimeMode) setRuntimeMode(status.runtimeMode);
+        if (status.compactions != null) setCompactions(status.compactions);
+        if (status.queueInfo) setQueueInfo(status.queueInfo);
       }
 
       setMessages((prev) => {
@@ -857,18 +831,7 @@ export function useMessages({
     const fullContentForAMY = gatewayPayloadText + fileRefs;
     const displayContent = displayText + (files && files.length > 0 ? `${displayText ? '\n\n' : ''}📎 ` + files.map((f) => f.name).join(', ') : '');
 
-    const permCheck = checkPermission(fullContentForAMY, permissions);
-    if (!permCheck.allowed) {
-      window.alert(permCheck.reason || '此操作已被权限设置拦截');
-      return;
-    }
-    const dangerMatch = getDangerMatch(fullContentForAMY);
-    if (dangerMatch) {
-      const ok = window.confirm(
-        `危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`
-      );
-      if (!ok) return;
-    }
+    if (!guardMessagePermission(fullContentForAMY, permissions)) return;
 
     const cmdIsSystem = !imageDataUrl && !files?.length && isSystemCommand(fullContentForAMY);
     await _sendMessageCore({
@@ -887,18 +850,7 @@ export function useMessages({
   const quickSend = useCallback((content: string) => {
     if (!content.trim()) return;
 
-    const permCheck = checkPermission(content.trim(), permissions);
-    if (!permCheck.allowed) {
-      window.alert(permCheck.reason || '此操作已被权限设置拦截');
-      return;
-    }
-    const dangerMatch = getDangerMatch(content.trim());
-    if (dangerMatch) {
-      const ok = window.confirm(
-        `危险操作警告\n\n检测到: ${dangerMatch.desc}\n级别: ${dangerMatch.level}\n\n确认仍要发送此消息？`
-      );
-      if (!ok) return;
-    }
+    if (!guardMessagePermission(content.trim(), permissions)) return;
 
     const isSystem = isSystemCommand(content.trim());
     void _sendMessageCore({
