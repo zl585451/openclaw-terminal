@@ -13,7 +13,7 @@ import type { UseTypewriterReturn } from './useTypewriter';
 import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTypes';
 import type { RenderBlock } from '../types/renderProtocol';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
-import { getAssistantVisibleMain, sanitizeAssistantContent } from '../utils/cotExtract';
+import { getAssistantVisibleMain, normalizeAssistantTranscriptContent } from '../utils/cotExtract';
 import { parseSystemReplyStatus } from '../utils/systemReplyParser';
 import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
@@ -214,7 +214,7 @@ export function useMessages({
     );
   }, [fsmPhase, messages]);
   const finalizeStreamingAssistantMessage = useCallback((rawText?: string) => {
-    const finalRaw = sanitizeAssistantContent(rawText ?? fullTextRef.current ?? '');
+    const finalRaw = normalizeAssistantTranscriptContent(rawText ?? fullTextRef.current ?? '');
     if (finalizeFallbackTimerRef.current != null) {
       clearTimeout(finalizeFallbackTimerRef.current);
       finalizeFallbackTimerRef.current = null;
@@ -256,7 +256,7 @@ export function useMessages({
     }
     finalizeFallbackTimerRef.current = setTimeout(() => {
       finalizeFallbackTimerRef.current = null;
-      const fallbackRaw = sanitizeAssistantContent(rawText ?? fullTextRef.current ?? '');
+      const fallbackRaw = normalizeAssistantTranscriptContent(rawText ?? fullTextRef.current ?? '');
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!(last?.role === 'assistant' && last.isStreaming)) {
@@ -431,7 +431,7 @@ export function useMessages({
       }
 
       if (!systemReply) {
-        const fallbackText = sanitizeAssistantContent(String(content || '').trim());
+        const fallbackText = normalizeAssistantTranscriptContent(String(content || '').trim());
         const finalText = preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
         if (finalText !== fullTextRef.current) {
           streamingMessageRef.current = finalText;
