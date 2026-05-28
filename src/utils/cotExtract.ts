@@ -83,7 +83,10 @@ export function stripLeakedToolCallSections(input: string): string {
 
 /** 流式/打字机用：与 finalize 阶段可见正文一致的处理顺序 */
 export function getAssistantVisibleMain(raw: string): string {
-  const pre = stripLeakedToolCallSections(String(raw || ''));
+  const text = String(raw || '');
+  if (!text) return '';
+  const noThink = text.replace(/\n?\[THINK_MODE:\w+\]/gi, '').trim();
+  const pre = stripLeakedToolCallSections(noThink);
   const base = stripTextToolAnnotations(pre);
   return hasAssistantCotMarkers(base) ? extractAssistantCotAndMain(base).mainContent : base;
 }
@@ -99,6 +102,128 @@ export function sanitizeAssistantContent(raw: string): string {
   const step2 = stripLeakedToolCallSections(step1);
   const step3 = stripTextToolAnnotations(step2);
   return step3;
+}
+
+/**
+ * 写入 transcript 的最终文本统一走此函数。
+ *
+ * 在 sanitizeAssistantContent 基础上额外治理：
+ * - 剥离孤立 JSON 状态对象（{"status":...}, {"role":"assistant"...}, {"type":"tool_call"...}）
+ * - 剥离 waiting_user_reply 标记
+ * - 剥离 render_blocks 原始代码围栏
+ */
+export function normalizeAssistantTranscriptContent(raw: string): string {
+  const text = String(raw || '');
+  if (!text) return '';
+  const base = sanitizeAssistantContent(text);
+  // 剥离 render_blocks 代码围栏（Content-Type: render_blocks 的原始 JSON 块）
+  const noRenderBlocks = base.replace(/```(?:json\s+)?render_blocks(?:\s+json)?[\s\S]*?```/gi, '').trim();
+  // 剥离孤立单行 JSON 状态对象（仅在代码围栏外部执行）
+  const noStatusJson = stripStatusJsonOutsideFences(noRenderBlocks);
+  // 剥离 waiting_user_reply
+  const noWaitingReply = noStatusJson.replace(/\bwaiting_user_reply\b/g, '');
+  return noWaitingReply.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * 在代码围栏外部执行 JSON 状态对象剥离。
+ * 避免误删 ```json 代码块内展示的 JSON 示例。
+ */
+function stripStatusJsonOutsideFences(text: string): string {
+  // 收集所有代码围栏内容并替换为占位符
+  const fences: string[] = [];
+  const withoutFences = text.replace(/(`{3,}[\s\S]*?`{3,})/g, (match) => {
+    fences.push(match);
+    return `\x00FENCE_${fences.length - 1}\x00`;
+  });
+
+  const cleaned = stripProtocolJsonObjects(withoutFences).trim();
+  // 恢复代码围栏
+  return cleaned.replace(/\x00FENCE_(\d+)\x00/g, (_, idx) => fences[parseInt(idx)] || '');
+}
+
+function stripProtocolJsonObjects(text: string): string {
+  let out = '';
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const start = text.indexOf('{', cursor);
+    if (start === -1) {
+      out += text.slice(cursor);
+      break;
+    }
+
+    out += text.slice(cursor, start);
+
+    const end = findJsonObjectEnd(text, start);
+    if (end === -1) {
+      out += text.slice(start);
+      break;
+    }
+
+    const candidate = text.slice(start, end);
+    if (!isProtocolJsonObject(candidate)) {
+      out += candidate;
+    }
+    cursor = end;
+  }
+
+  return out;
+}
+
+function findJsonObjectEnd(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') {
+      depth += 1;
+      continue;
+    }
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return i + 1;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function isProtocolJsonObject(text: string): boolean {
+  try {
+    const parsed = JSON.parse(text);
+    return (
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      ('status' in parsed || 'role' in parsed || 'type' in parsed)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function stripTextToolAnnotations(input: string): string {
