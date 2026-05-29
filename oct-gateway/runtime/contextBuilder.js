@@ -161,7 +161,7 @@ class ContextBuilder {
     const recallInjection = await this._buildVectorRecallInjection({ userMessage, sessionKey });
     const messages = this.contextManager.buildApiMessages(history, finalSystemPrompt, lastUserMsg);
     if (recallInjection) {
-      messages.splice(1, 0, { role: 'system', content: recallInjection });
+      messages[0].content += `\n\n${recallInjection}`;
     }
     this.log.info('context window', this.contextManager.summarize(messages));
 
