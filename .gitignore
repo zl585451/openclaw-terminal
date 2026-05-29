@@ -60,6 +60,13 @@ prompts/MEMORY.md
 oct-gateway/tasks_runtime.json
 tasks_runtime.json
 
+# YouTube 临时文件（不提交）
+_yt_*
+_youtube_*
+
+# 调试日志（不提交）
+latest
+
 # 本地开发文件（不提交）
 启动.bat
 .cursorignore
