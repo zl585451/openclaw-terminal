@@ -16,6 +16,18 @@ import * as pty from 'node-pty';
 import * as crypto from 'crypto';
 import WebSocket from 'ws';
 import { registerAllIpcHandlers, type IpcDeps } from './ipc';
+
+if (!app) {
+  const nextEnv = { ...process.env };
+  delete nextEnv.ELECTRON_RUN_AS_NODE;
+  const child = spawn(process.execPath, process.argv.slice(1), {
+    detached: true,
+    stdio: 'ignore',
+    env: nextEnv,
+  });
+  child.unref();
+  process.exit(0);
+}
 import {
   ApiKeyPayload,
   applyApiKeyUpdates,
@@ -973,11 +985,15 @@ function createWindow() {
     alwaysOnTop: false,
   });
 
-  // 窗口准备好后显示，避免白屏/黑屏
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-    console.log('[Electron] Window ready to show');
-  });
+  const revealMainWindow = (reason: string) => {
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+    mainWindow.show();
+    console.log('[Electron] Window shown:', reason);
+  };
+
+  // ready-to-show can be skipped when the renderer fails before first paint.
+  mainWindow.once('ready-to-show', () => revealMainWindow('ready-to-show'));
+  const revealFallbackTimer = setTimeout(() => revealMainWindow('fallback-timeout'), 2000);
 
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
     const devPort = parseInt(process.env.VITE_DEV_PORT || '5176');
@@ -1007,16 +1023,22 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('did-fail-load', (_e, errCode, errDesc) => {
+    clearTimeout(revealFallbackTimer);
+    revealMainWindow('did-fail-load');
     console.error('[Electron] 页面加载失败:', errCode, errDesc);
     dialog.showErrorBox('加载失败', `错误代码：${errCode}\n${errDesc}`);
   });
 
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    clearTimeout(revealFallbackTimer);
+    revealMainWindow('render-process-gone');
     console.error('[Electron] 渲染进程崩溃:', details);
     dialog.showErrorBox('渲染进程崩溃', JSON.stringify(details));
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
+    clearTimeout(revealFallbackTimer);
+    revealMainWindow('did-finish-load');
     const connected = openclawWs?.readyState === WebSocket.OPEN;
     sendStatus({ connected });
   });
