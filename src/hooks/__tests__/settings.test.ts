@@ -150,10 +150,10 @@ describe('Settings provider metadata loading', () => {
     const { result } = renderHook(() => useApiKeys());
 
     await waitFor(() => {
-      expect(result.current.providers['bailian-coding']?.baseUrl).toBe('https://coding.dashscope.aliyuncs.com/v1');
+      expect(result.current.providers['bailian']?.baseUrl).toBe('https://dashscope.aliyuncs.com/compatible-mode/v1');
     });
-    expect(result.current.providers['bailian-coding'].models).toEqual([
-      { id: 'qwen3.5-plus', label: 'qwen3.5-plus', tools: true, thinking: false },
+    expect(result.current.providers['bailian'].models).toEqual([
+      { id: 'qwen-plus', label: 'qwen-plus', tools: true, thinking: false },
     ]);
     expect(result.current.providers.deepseek.defaultModel).toBe('deepseek-v4-flash');
   });

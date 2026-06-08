@@ -4,6 +4,7 @@ const { GoogleGenAI } = require('@google/genai');
 
 const DEFAULT_VERTEX_LOCATION = 'us-central1';
 const DEFAULT_API_VERSION = 'v1';
+let activeGoogleProxyUrl = '';
 
 function isGoogleNativeMode(rawConfig = {}) {
   const mode = String(
@@ -49,7 +50,38 @@ function isImagenModel(modelId) {
   return /^imagen[-.]/i.test(String(sanitizeGoogleModelId(modelId) || ''));
 }
 
+function resolveGoogleProxyUrl(rawConfig = {}) {
+  return String(
+    rawConfig.GOOGLE_HTTPS_PROXY
+    || rawConfig.HTTPS_PROXY
+    || rawConfig.https_proxy
+    || rawConfig.HTTP_PROXY
+    || rawConfig.http_proxy
+    || ''
+  ).trim();
+}
+
+function configureGoogleNativeProxy(rawConfig = {}) {
+  const proxyUrl = resolveGoogleProxyUrl(rawConfig);
+  if (!proxyUrl || proxyUrl === activeGoogleProxyUrl) return false;
+
+  delete process.env.NODE_USE_ENV_PROXY;
+  delete process.env.node_use_env_proxy;
+
+  try {
+    const { ProxyAgent, setGlobalDispatcher } = require('undici');
+    setGlobalDispatcher(new ProxyAgent(proxyUrl));
+    activeGoogleProxyUrl = proxyUrl;
+    return true;
+  } catch (error) {
+    console.warn('[GoogleNative] proxy setup skipped:', String(error?.message || error));
+    return false;
+  }
+}
+
 function resolveGoogleClientConfig(rawConfig = {}) {
+  configureGoogleNativeProxy(rawConfig);
+
   const apiKey = String(
     rawConfig.GOOGLE_AI_API_KEY
     || rawConfig.GOOGLE_API_KEY
@@ -206,6 +238,15 @@ function convertMessagesToGoogleContents(messages) {
   const contents = [];
   const systemTexts = [];
   const toolNameByCallId = collectFunctionNameMap(messages);
+  const pendingToolResponseParts = [];
+
+  const flushPendingToolResponses = () => {
+    if (pendingToolResponseParts.length === 0) return;
+    contents.push({
+      role: 'user',
+      parts: pendingToolResponseParts.splice(0),
+    });
+  };
 
   for (const message of Array.isArray(messages) ? messages : []) {
     if (!message || typeof message !== 'object') continue;
@@ -221,13 +262,17 @@ function convertMessagesToGoogleContents(messages) {
       continue;
     }
 
-    if (message.google_native_content && typeof message.google_native_content === 'object') {
-      const sanitized = sanitizeGoogleNativeContent(message.google_native_content);
-      if (sanitized) contents.push(sanitized);
-      continue;
-    }
-
     if (message.role === 'tool') {
+      if (message.google_native_content && typeof message.google_native_content === 'object') {
+        const sanitized = sanitizeGoogleNativeContent(message.google_native_content);
+        if (sanitized) {
+          pendingToolResponseParts.push(
+            ...sanitized.parts.filter((part) => part?.functionResponse)
+          );
+        }
+        continue;
+      }
+
       const callId = String(message.tool_call_id || '').trim();
       const toolName = String(
         message.tool_name
@@ -237,15 +282,20 @@ function convertMessagesToGoogleContents(messages) {
       const resultText = typeof message.content === 'string'
         ? message.content
         : JSON.stringify(message.content || '');
-      contents.push({
-        role: 'user',
-        parts: [{
-          functionResponse: {
-            name: toolName || undefined,
-            response: { output: resultText },
-          },
-        }],
+      pendingToolResponseParts.push({
+        functionResponse: {
+          name: toolName || undefined,
+          response: { output: resultText },
+        },
       });
+      continue;
+    }
+
+    flushPendingToolResponses();
+
+    if (message.google_native_content && typeof message.google_native_content === 'object') {
+      const sanitized = sanitizeGoogleNativeContent(message.google_native_content);
+      if (sanitized) contents.push(sanitized);
       continue;
     }
 
@@ -276,6 +326,8 @@ function convertMessagesToGoogleContents(messages) {
     if (parts.length === 0) continue;
     contents.push({ role, parts });
   }
+
+  flushPendingToolResponses();
 
   return {
     contents,
@@ -567,6 +619,8 @@ module.exports = {
   isGoogleImageModel,
   isImagenModel,
   resolveGoogleClientConfig,
+  resolveGoogleProxyUrl,
+  configureGoogleNativeProxy,
   convertMessagesToGoogleContents,
   convertToolDefinitionsToGoogleTools,
   normalizeGoogleFunctionCalls,

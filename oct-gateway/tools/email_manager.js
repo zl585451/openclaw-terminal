@@ -1,4 +1,5 @@
 const vault = require('../vault_manager');
+const { loadOptionalDependency } = require('./optionalDependency');
 
 function parseCredentials(raw) {
   let credentials = raw;
@@ -89,7 +90,7 @@ module.exports = {
     }
 
     try {
-      const { ImapFlow } = require('imapflow');
+      const { ImapFlow } = loadOptionalDependency('imapflow');
       const client = new ImapFlow({
         host: imap.host,
         port: imap.port,
@@ -155,6 +156,9 @@ module.exports = {
         await client.logout();
       }
     } catch (e) {
+      if (e?.code === 'OCT_OPTIONAL_DEPENDENCY_MISSING') {
+        return `❌ ${e.message}\n${e.hint}`;
+      }
       return `❌ 邮件操作失败：${e.message}`;
     }
   }

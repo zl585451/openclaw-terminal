@@ -204,6 +204,12 @@ export interface ElectronAPI {
     subscribe: (batchId: string) => Promise<ApiResult & { subscribed?: boolean; batchId?: string }>;
     approveGate: (batchId: string, gateId: string, reviewerNote?: string) => Promise<ApiResult>;
     rejectGate: (batchId: string, gateId: string, reviewerNote?: string) => Promise<ApiResult>;
+    applyReviewDecision: (
+      batchId: string,
+      gateId: string,
+      segmentId: string,
+      decision: { type: string; speaker?: string; note?: string },
+    ) => Promise<ApiResult>;
     rerunChapter: (batchId: string, chapterIndex: number) => Promise<ApiResult>;
     remove: (batchId: string) => Promise<ApiResult>;
   };

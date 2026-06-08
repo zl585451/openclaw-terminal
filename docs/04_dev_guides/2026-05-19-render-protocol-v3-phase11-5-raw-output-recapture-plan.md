@@ -32,7 +32,7 @@ This section defines how to re-run the 4 stability test prompts against both Gem
 4. Ensure the correct API key is configured (via Settings or `.env` `GOOGLE_AI_API_KEY`).
 5. Save and confirm the provider is active (gateway log should show `"Active provider"` with `google`).
 
-**Do NOT use `newapi` for recapture** — the original corpus used the `google` provider. The `newapi` proxy may alter formatting.
+**Use the `google` provider for recapture** — the original corpus used Google and should be regenerated on the same provider family.
 
 ### Step 3: Switch Provider to DeepSeek
 

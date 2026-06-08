@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useRef } from 'react';
 import TitleBar from './components/TitleBar';
 import TabBar from './components/TabBar';
 import type { ChatMessage } from './ui/chat/chatTypes';
@@ -6,16 +6,12 @@ import WorkbenchHost from './components/workbench/WorkbenchHost';
 import FirstLaunchSetup from './components/FirstLaunchSetup';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { WorkbenchProvider } from './workbench/WorkbenchContext';
+import ChatTab from './ui/chat/ChatTab.v2';
+import SoundTab from './components/SoundTab';
+import ReaperTab from './components/ReaperTab';
+import SettingsPanel from './ui/settings/SettingsPanel';
+import { ScriptAdapterApp } from './modules/script-adapter';
 import './styles/App.css';
-
-const ChatTab = lazy(() => import('./ui/chat/ChatTab.v2'));
-const SoundTab = lazy(() => import('./components/SoundTab'));
-const ReaperTab = lazy(() => import('./components/ReaperTab'));
-const SettingsPanel = lazy(() => import('./ui/settings/SettingsPanel'));
-
-const ScriptAdapterApp = lazy(() =>
-  import('./modules/script-adapter').then((module) => ({ default: module.ScriptAdapterApp }))
-);
 
 export type TabType = 'chat' | 'sound' | 'reaper';
 type AppView = 'chat' | 'script-adapter';
@@ -76,7 +72,7 @@ const App: React.FC = () => {
           String(data.DASHSCOPE_API_KEY || '').trim()
           || String(data.DEEPSEEK_API_KEY || '').trim()
           || String(data.MINIMAX_API_KEY || '').trim()
-          || String(data.NEWAPI_API_KEY || '').trim()
+          || String(data.GROQ_API_KEY || '').trim()
           || String(data.CUSTOM_API_KEY || '').trim()
           || String(data.GOOGLE_AI_API_KEY || '').trim()
         );

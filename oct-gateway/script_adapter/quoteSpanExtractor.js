@@ -35,6 +35,7 @@ function extractQuoteSpans(params = {}) {
   }));
 
   const narrationGaps = buildNarrationGaps(sourceText, quoteRanges);
+  mergeLeadingSoundSuffixIntoPreviousQuote({ quotes, narrationGaps });
 
   return {
     chapterTitle,
@@ -100,6 +101,29 @@ function buildNarrationGaps(sourceText, quoteRanges) {
   }
 
   return gaps;
+}
+
+function mergeLeadingSoundSuffixIntoPreviousQuote({ quotes, narrationGaps }) {
+  for (const gap of narrationGaps) {
+    const match = gap.text.match(/^声([。，、！!？?\s]?)/);
+    if (!match) continue;
+    const prevQuote = findPreviousQuoteForGap(quotes, gap);
+    if (!prevQuote) continue;
+    const suffix = match[0];
+    prevQuote.text += suffix;
+    prevQuote.rawText += suffix;
+    prevQuote.end += suffix.length;
+    prevQuote.innerEnd += suffix.length;
+    gap.text = gap.text.slice(suffix.length);
+    gap.start += suffix.length;
+  }
+}
+
+function findPreviousQuoteForGap(quotes, gap) {
+  for (let index = quotes.length - 1; index >= 0; index -= 1) {
+    if (Number(quotes[index].end) <= Number(gap.start)) return quotes[index];
+  }
+  return null;
 }
 
 function makeGap(index, start, end, sourceText) {

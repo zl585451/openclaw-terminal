@@ -1,7 +1,6 @@
-import { Suspense, lazy } from 'react';
+import { Suspense } from 'react';
 import type { WorkbenchDocument } from '../../types';
-
-const ScriptViewer = lazy(() => import('./ScriptViewer'));
+import ScriptViewer from './ScriptViewer';
 
 export default function ScriptViewerLazy({ document }: { document: WorkbenchDocument }) {
   return (

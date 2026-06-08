@@ -1,6 +1,6 @@
 # Provider 系统 — AI 服务商市场化
 
-> **最后更新**：2026-04-30（新增 New API 外部分发网关 Provider） | **状态**：✅ 正常
+> **最后更新**：2026-05-28（移除旧外部分发网关 Provider） | **状态**：✅ 正常
 
 ---
 
@@ -23,13 +23,11 @@
 | ID | 名称 | Base URL |
 |----|------|----------|
 | bailian | 阿里云百炼 | dashscope.aliyuncs.com |
-| bailian-coding | 阿里云百炼 Coding Plan | coding.dashscope.aliyuncs.com |
 | deepseek | DeepSeek | api.deepseek.com |
 | siliconflow | 硅基流动 | api.siliconflow.cn |
 | moonshot | Kimi 开放平台 | api.moonshot.cn |
-| groq | Groq | api.groq.com |
+| groq | Groq | api.groq.com/openai/v1（`GROQ_API_KEY` / `GROQ_BASE_URL`，兼容旧 `DASHSCOPE_*` Groq 配置） |
 | openai | OpenAI | api.openai.com |
-| newapi | New API 外部分发网关 | 127.0.0.1:3000/v1（可改） |
 | ollama | Ollama 本地 | localhost:11434 |
 | custom | 自定义 | 用户填写 |
 | google | Google Gemini（Vertex AI API 密钥） | aiplatform.googleapis.com/.../endpoints/openapi（可改） |
@@ -67,19 +65,9 @@
 ### Beginner / Advanced 设置分层
 
 - 2026-04-22 起，连接页支持 `beginner` / `advanced` 两层。
-- `beginner` 模式只暴露 3 个默认 provider 卡片（`bailian-coding` / `deepseek` / `minimax`）、单一 API Key 输入框和推荐模型。
+- `beginner` 模式只暴露 3 个默认 provider 卡片（`bailian` / `deepseek` / `minimax`）、单一 API Key 输入框和推荐模型。
 - `advanced` 模式保留完整 provider / key / model / baseUrl / proxy 表单。
 - 分层只改变设置页入口，不改变 `PROVIDERS`、`MODEL_REGISTRY`、Gateway 请求拼装或后端 provider 能力声明。
-
-### New API 外部分发网关
-
-- `OCT_PROVIDER=newapi` 用于把 OCT 接到独立部署的 New API 服务，而不是把 New API 嵌入 OCT。
-- 配置键：
-  - `NEWAPI_API_KEY`：New API 后台创建的令牌。
-  - `NEWAPI_BASE_URL`：New API 的 OpenAI 兼容入口，默认 `http://127.0.0.1:3000/v1`。
-  - `OCT_MODEL` / `CUSTOM_MODEL`：填写 New API 后台渠道可识别的模型 ID。
-- 运行时按 OpenAI 兼容 `/chat/completions` 调用；New API 自己负责上游渠道、额度、用量统计、限流与计费。
-- 设计边界：OCT 只保存“连到哪个 New API 网关、使用哪个令牌和模型”；用户充值、渠道分发、余额扣费仍由 New API 后台负责。
 
 ## 多模态能力路由
 
@@ -88,7 +76,7 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 - `OCT_PROVIDER=minimax`
   - `auto` 朗读会优先走 MiniMax WebSocket TTS
   - 可显示 MiniMax 云端音色配置
-- `OCT_PROVIDER=bailian` 或 `bailian-coding`
+- `OCT_PROVIDER=bailian`
   - `auto` 朗读会优先走 DashScope 云端 TTS
 - `OCT_PROVIDER=deepseek` / `google` / `custom` / 其他无云端语音能力的 Provider
   - `auto` 不会偷偷调用 MiniMax 或 DashScope
@@ -159,7 +147,7 @@ OCT 的云端语音链不是“谁配置了 Key 就调用谁”，而是按**当
 ## 更新日志
 | 日期 | 内容 |
 |------|------|
-| 2026-04-30 | 新增 `newapi` Provider：支持 `NEWAPI_API_KEY` / `NEWAPI_BASE_URL`，用于接入独立部署的 New API 外部分发网关 |
+| 2026-05-28 | 移除旧外部分发网关 Provider，主配置默认迁到 Google；自定义 OpenAI 兼容服务继续通过 `custom` provider 接入 |
 | 2026-04-26 | thinking-mode 工具续轮不再只对 DeepSeek 回传 `reasoning_content`；凡流式响应实际返回该字段，Gateway 都会在 assistant tool-call 消息中原样带回，修复 Google Gemini 3.x 预览工具调用后的 400 |
 | 2026-04-23 | `moonshot` provider 对齐 Kimi 官方平台：控制台链接改为 `platform.kimi.com`，默认模型切到 `kimi-k2.6`，并补齐 `kimi-k2.5 / kimi-k2-turbo-preview` 等官方模型；`moonshot-v1-*` 仅作为兼容选项保留 |
 | 2026-04-22 | 连接页新增 beginner / advanced 两层：新手模式只暴露 3 个默认 provider 卡片与单一 Key 入口；不改 Gateway provider 注册与能力声明 |

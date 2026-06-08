@@ -175,9 +175,11 @@ function canAttemptTools(caps) {
   return caps.toolsSupport !== 'unsupported';
 }
 
-function normalizeMessagesForProvider(messages, providerId) {
+function normalizeMessagesForProvider(messages, providerId, model) {
   const list = Array.isArray(messages) ? messages : [];
-  if (providerId !== 'minimax') return list;
+  const modelName = String(model || '').toLowerCase();
+  const isMiniMax = providerId === 'minimax' || modelName.includes('minimax');
+  if (!isMiniMax) return list;
 
   const systemText = list
     .filter((msg) => msg?.role === 'system' && typeof msg.content === 'string' && msg.content.trim())

@@ -3,6 +3,7 @@
 const assert = require('node:assert');
 const {
   parseGoogleVertexFromBaseUrl,
+  resolveGoogleProxyUrl,
   sanitizeGoogleModelId,
   convertMessagesToGoogleContents,
   normalizeGoogleFunctionCalls,
@@ -21,6 +22,12 @@ async function main() {
   );
   assert.equal(parsedGlobal.project, 'demo-project');
   assert.equal(parsedGlobal.location, 'global');
+
+  assert.equal(resolveGoogleProxyUrl({
+    GOOGLE_HTTPS_PROXY: 'http://127.0.0.1:10808',
+    HTTPS_PROXY: 'http://127.0.0.1:9999',
+  }), 'http://127.0.0.1:10808');
+  assert.equal(resolveGoogleProxyUrl({ HTTPS_PROXY: 'http://127.0.0.1:9999' }), 'http://127.0.0.1:9999');
 
   assert.equal(sanitizeGoogleModelId('google/gemini-2.5-flash'), 'gemini-2.5-flash');
   assert.equal(sanitizeGoogleModelId('gemini-2.5-flash-image-preview'), 'gemini-2.5-flash-image');
@@ -57,6 +64,72 @@ async function main() {
   assert.equal(converted.contents[2].role, 'user');
   assert.equal(converted.contents[2].parts[0].functionResponse.name, 'web_search');
   assert.equal('id' in converted.contents[2].parts[0].functionResponse, false);
+
+  const convertedMultiTool = convertMessagesToGoogleContents([
+    {
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'call_a',
+          function: {
+            name: 'web_search',
+            arguments: '{"query":"套餐 A"}',
+          },
+        },
+        {
+          id: 'call_b',
+          function: {
+            name: 'web_search',
+            arguments: '{"query":"套餐 B"}',
+          },
+        },
+      ],
+      google_native_content: {
+        role: 'model',
+        parts: [
+          { functionCall: { name: 'web_search', args: { query: '套餐 A' } } },
+          { functionCall: { name: 'web_search', args: { query: '套餐 B' } } },
+        ],
+      },
+    },
+    {
+      role: 'tool',
+      tool_call_id: 'call_a',
+      tool_name: 'web_search',
+      content: '{"result":"A"}',
+      google_native_content: {
+        role: 'user',
+        parts: [{
+          functionResponse: {
+            name: 'web_search',
+            response: { output: '{"result":"A"}' },
+          },
+        }],
+      },
+    },
+    {
+      role: 'tool',
+      tool_call_id: 'call_b',
+      tool_name: 'web_search',
+      content: '{"result":"B"}',
+      google_native_content: {
+        role: 'user',
+        parts: [{
+          functionResponse: {
+            name: 'web_search',
+            response: { output: '{"result":"B"}' },
+          },
+        }],
+      },
+    },
+  ]);
+  assert.equal(convertedMultiTool.contents.length, 2);
+  assert.equal(convertedMultiTool.contents[0].parts.length, 2);
+  assert.equal(convertedMultiTool.contents[1].role, 'user');
+  assert.equal(convertedMultiTool.contents[1].parts.length, 2);
+  assert.equal(convertedMultiTool.contents[1].parts[0].functionResponse.response.output, '{"result":"A"}');
+  assert.equal(convertedMultiTool.contents[1].parts[1].functionResponse.response.output, '{"result":"B"}');
 
   const sanitized = _internals.sanitizeGoogleNativeContent({
     role: 'model',

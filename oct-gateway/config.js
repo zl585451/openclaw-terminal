@@ -26,7 +26,18 @@ function ensureLocalBypassForOct() {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean)
-      .concat(['localhost', '127.0.0.1', '::1'])
+      .concat([
+        'localhost',
+        '127.0.0.1',
+        '::1',
+        // 国内 AI 服务直连，不走代理
+        'dashscope.aliyuncs.com',
+        'api.deepseek.com',
+        'api.moonshot.cn',
+        'open.bigmodel.cn',
+        'ark.cn-beijing.volces.com',
+        'api.siliconflow.cn',
+      ])
   ));
 
   if (mergedNoProxy.length > 0) {
@@ -779,23 +790,14 @@ function normalizeHttpBaseUrl(raw) {
 
 function normalizeProviderBaseUrl(baseUrl, providerId) {
   const normalized = normalizeHttpBaseUrl(baseUrl);
-  if (!normalized) return '';
-  if (providerId !== 'newapi') return normalized;
-  try {
-    const parsed = new URL(normalized);
-    if (parsed.pathname === '/' || parsed.pathname === '') {
-      parsed.pathname = '/v1';
-      return parsed.toString().replace(/\/$/, '');
-    }
-  } catch {}
   return normalized;
 }
 
 // 从 baseUrl 推断 provider id
 function inferProviderFromBaseUrl(baseUrl) {
-  if (!baseUrl || typeof baseUrl !== 'string') return 'bailian-coding';
+  if (!baseUrl || typeof baseUrl !== 'string') return 'bailian';
   const u = baseUrl.toLowerCase();
-  if (u.includes('coding.dashscope')) return 'bailian-coding';
+  if (u.includes('coding.dashscope')) return 'bailian';
   if (u.includes('dashscope')) return 'bailian';
   if (u.includes('deepseek')) return 'deepseek';
   if (u.includes('siliconflow')) return 'siliconflow';
@@ -805,7 +807,7 @@ function inferProviderFromBaseUrl(baseUrl) {
   if (u.includes('localhost:11434') || u.includes('127.0.0.1:11434')) return 'ollama';
   if (u.includes('generativelanguage.googleapis.com')) return 'google';
   if (u && u.length > 10) return 'custom';
-  return 'bailian-coding';
+  return 'bailian';
 }
 
 // Prioritize user settings from Electron config over environment variables
@@ -848,14 +850,14 @@ function readOptionalBoolConfig(key) {
 }
 
 function getProviderConfig() {
-  const preset = PROVIDERS[_currentProvider] || PROVIDERS['bailian-coding'];
-  const isBailian = preset.id === 'bailian' || preset.id === 'bailian-coding';
+  const preset = PROVIDERS[_currentProvider] || PROVIDERS['bailian'];
+  const isBailian = preset.id === 'bailian';
   const isDeepseek = preset.id === 'deepseek';
   const isMinimax = preset.id === 'minimax';
   const isMoonshot = preset.id === 'moonshot';
+  const isGroq = preset.id === 'groq';
   const isGoogle = preset.id === 'google';
   const isCustom = preset.id === 'custom';
-  const isNewApi = preset.id === 'newapi';
 
   let apiKey = '';
   if (preset.fixedApiKey) {
@@ -921,10 +923,13 @@ function getProviderConfig() {
     baseUrl = getEnvOrConfig('MINIMAX_BASE_URL') || preset.baseUrl;
   } else if (isMoonshot) {
     baseUrl = getEnvOrConfig('MOONSHOT_BASE_URL') || preset.baseUrl;
+  } else if (isGroq) {
+    const legacyGroqBaseUrl = String(getEnvOrConfig('DASHSCOPE_BASE_URL') || '').toLowerCase().includes('groq')
+      ? getEnvOrConfig('DASHSCOPE_BASE_URL')
+      : '';
+    baseUrl = getEnvOrConfig('GROQ_BASE_URL') || legacyGroqBaseUrl || preset.baseUrl;
   } else if (isGoogle) {
     baseUrl = sanitizeGoogleOpenAiBaseUrl(getEnvOrConfig('GOOGLE_AI_BASE_URL') || preset.baseUrl);
-  } else if (isNewApi) {
-    baseUrl = getEnvOrConfig('NEWAPI_BASE_URL') || preset.baseUrl;
   } else if (isCustom) {
     // 自定义服务：从配置中读取 Base URL 和 API Key
     baseUrl = _fileConfig.CUSTOM_BASE_URL || process.env.CUSTOM_BASE_URL || '';
@@ -939,13 +944,10 @@ function getProviderConfig() {
   if (isGoogle && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
     effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
   }
-  if (isNewApi && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
-    effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
-  }
   const customModelSupportsTools = readOptionalBoolConfig('CUSTOM_MODEL_SUPPORTS_TOOLS');
 
   let models = preset.models || [];
-  if ((isCustom || isNewApi) && effectiveModel && effectiveModel !== '__custom__') {
+  if (isCustom && effectiveModel && effectiveModel !== '__custom__') {
     const customModelToolMode = customModelSupportsTools === true
       ? 'enabled'
       : customModelSupportsTools === false
@@ -1004,8 +1006,8 @@ function getProviderConfig() {
     apiKey,
     baseUrl,
     models,
-    customModel: (isCustom || isNewApi) ? effectiveModel : undefined,
-    customModelSupportsTools: (isCustom || isNewApi) ? customModelSupportsTools : undefined,
+    customModel: isCustom ? effectiveModel : undefined,
+    customModelSupportsTools: isCustom ? customModelSupportsTools : undefined,
   };
 }
 
@@ -1173,8 +1175,8 @@ const config = {
   DASHSCOPE_BASE_URL: getEnvOrConfig('DASHSCOPE_BASE_URL') || legacyConfig.DASHSCOPE_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1',
   DEEPSEEK_API_KEY: pickKey(_fileConfig.DEEPSEEK_API_KEY, process.env.DEEPSEEK_API_KEY, legacyConfig.DEEPSEEK_API_KEY),
   DEEPSEEK_BASE_URL: getEnvOrConfig('DEEPSEEK_BASE_URL') || legacyConfig.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
-  NEWAPI_API_KEY: pickKey(_fileConfig.NEWAPI_API_KEY, process.env.NEWAPI_API_KEY),
-  NEWAPI_BASE_URL: getEnvOrConfig('NEWAPI_BASE_URL') || 'http://127.0.0.1:3000/v1',
+  GROQ_API_KEY: pickKey(_fileConfig.GROQ_API_KEY, process.env.GROQ_API_KEY),
+  GROQ_BASE_URL: getEnvOrConfig('GROQ_BASE_URL') || 'https://api.groq.com/openai/v1',
 
   // 搜索引擎 API Key（优先从 config.json 读取，与主进程保存一致）
   BRAVE_SEARCH_API_KEY: _fileConfig.BRAVE_SEARCH_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '',

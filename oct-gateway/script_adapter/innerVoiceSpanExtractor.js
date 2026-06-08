@@ -222,7 +222,7 @@ function inferActorFromLine(text, fallback = '', knownRoles = []) {
     if (idx > found.index) found = { role, index: idx };
   }
   if (found.role) return found.role;
-  if (/^(她|夫人)/.test(value) && fallback && fallback !== '宁默') return fallback;
+  if (/^(她|夫人)/.test(value) && fallback) return fallback;
   if (/^(他|自己|我)/.test(value) && fallback) return fallback;
   return '';
 }

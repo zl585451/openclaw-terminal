@@ -94,8 +94,8 @@ Gateway 返回并推送 `analysisRun`：
 
 1. 不得把整章大文本直接完整塞入单次分析 prompt；应按头部、中段、尾段抽样生成开工判断样本。
 2. 默认 LLM 超时窗口为 `120000ms`，可通过 `SCRIPT_ADAPTER_ANALYSIS_TIMEOUT_MS` 或 `scriptAdapter.analysisTimeoutMs` 调整。
-3. 首次分析失败若属于超时或 JSON 截断类错误，可使用更紧凑正文样本重试一次；重试仍必须调用真实 LLM，不允许降级为 mock。
-4. 如果业务分析 Agent 因额度不足、限流、超时或 provider 网络错误失败，Gateway 可以追加 `rule_strategy_fallback` 规则步骤生成保守策略，让用户继续进入开工页。
+3. 首次分析失败若属于超时、JSON 截断或 JSON 语法错误，可使用更紧凑正文样本重试一次；重试仍必须调用真实 LLM，不允许降级为 mock。
+4. 如果业务分析 Agent 因额度不足、限流、超时、provider 网络错误或重试后仍无法解析 JSON 失败，Gateway 可以追加 `rule_strategy_fallback` 规则步骤生成保守策略，让用户继续进入开工页。
 5. 规则兜底不得伪装成 Agent 成功：`business_analysis` 步骤必须保留 `failed` 和错误原因，兜底步骤必须标记为 `mode = rule`。
 6. 内容创作 Agent 的默认模型优先级为：`scriptAdapter` 专用配置、当前聊天 provider、Summarizer 兜底。Summarizer 不得优先于当前聊天 provider，避免用户切换模型后业务分析仍走旧摘要模型。
 7. `business_analysis.model` 应包含模型来源和 host 证据，例如 `MiniMax-M2.7 · current_provider · api.minimaxi.com`。
@@ -116,9 +116,10 @@ Gateway 返回并推送 `analysisRun`：
 12. 角色音统筹是可降级分析步骤：真实 `classifier.voice_role_marker@1.0` 超时、网络失败或只识别到旁白时，Gateway 不得让整章失败；应基于 `adapted_script.segments` 聚合出场统计，生成 `voice_registry.payload.degraded = true` 的规则角色音表，并在 summary / metrics 暴露降级原因。
 13. 角色音统筹真实调用不得重复输入整章正文，只能输入角色出场统计和少量代表片段。当前上限为每个角色 2 条、总计 16 条，默认超时 `35000ms`。
 14. `viewpoint_resolve` 为规则层，不调用 LLM。OS 抽取不得使用跨书默认主角；推不出视角角色时，不生成无 speaker 的 OS。
-15. `voice_type_classify` 为规则层，先于角色音 main/support 判断。基础类型包括 `narrator`、`character`、`inner_monologue`、`unresolved_voice`、`system_voice`、`device_voice`、`sfx`、`group_voice`、`cue`。`未定女声A`、`神秘声音` 等必须保持 unresolved；系统提示、设备传声、纯拟声词在角色音表中统一进入 `category = sfx`，但 roleName 必须区分 `系统音`、`对讲机`、`SFX`。
-16. `spanScriptComposer` 必须清理纯 cue 旁白，例如 `苏尘：`、`她忽然开口问道：`；独立拟声词行必须输出为 `speaker = SFX`，不得归给人物；若上游把 `咔`、`咚`、`滋啦` 等纯拟声词标为 `系统音`，composer/export 应纠偏为 `SFX`。
-17. `basicQCChecker` 必须拦截跨书 OS speaker、拟声词人物化、纯 cue 旁白残留，以及 `[系统音] 咔/咚/滋啦` 这类系统音与纯音效混淆。
+15. `voice_type_classify` 为规则层，先于角色音 main/support 判断。基础类型包括 `narrator`、`character`、`inner_monologue`、`unresolved_voice`、`system_voice`、`device_voice`、`sfx`、`group_voice`、`cue`、`document_reading`。`未定女声A`、`神秘声音` 等必须保持 unresolved；系统提示、设备传声、纯拟声词在角色音表中统一进入 `category = sfx`，但 roleName 必须区分 `系统音`、`对讲机`、`SFX`。
+16. `spanScriptComposer` 必须清理纯 cue 旁白，例如 `苏尘：`、`她忽然开口问道：`；独立拟声词行必须输出为 `speaker = SFX`，不得归给人物；若上游把 `咔`、`咚`、`滋啦` 等纯拟声词标为 `系统音`，composer/export 应纠偏为 `SFX`；旁白 gap 一律按旁白处理，不基于左侧上下文自动改成 `document_reading`；交付导出中 `document_reading` 的显示标签为「文献·待确认」。
+16a. `quoteAttributionAgent` 若 quote 左侧 200 字上下文命中“写着 / 写道 / 写的是 / 上面写 / 记录着 / 翻开 / 翻到 / 找到第一个 / 那一行 / 那页 / 扉页上 / 目录”，必须给该 quote 输入 `kindHint = document_reading`；模型输出必须使用 `voiceType = document_reading`，speaker 写原文作者名，无法判断时写「文献」。
+17. `basicQCChecker` 必须拦截跨书 OS speaker、拟声词人物化、纯 cue 旁白残留，以及 `[系统音] 咔/咚/滋啦` 这类系统音与纯音效混淆；若存在 `document_reading`，必须给出 P1 人工确认提示。
 18. `quality_review` 的 `conclusion = reject` 是硬失败：章节不得继续进入 `packager.content_delivery@1.0`，批次应把该章标为 failed，并保留质检报告供用户重跑或返修。
 
 协议约束：

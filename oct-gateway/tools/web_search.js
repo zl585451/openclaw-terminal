@@ -53,20 +53,97 @@ async function enrichResults(proxyFetch, results, limit = 2) {
 }
 
 function toolSearchFail(error, hint) {
-  return { success: false, data: null, error, hint: hint || null };
+  return { success: false, data: null, searchQuality: { level: 'empty', reason: '搜索失败' }, error, hint: hint || null };
 }
 
-/** 成功响应：data 为规范载荷，legacy 中的字段同步保留在顶层以兼容旧消费方 */
+/**
+ * 评估搜索质量：让模型能直接感知本次搜索的信息丰度，便于退级决策
+ */
+function assessSearchQuality(results) {
+  if (!results || results.length === 0) {
+    return { level: 'empty', reason: '未找到相关结果，该主题可能信息较少或过于小众' };
+  }
+  const snippetLengths = results.map((r) => (r.snippet || '').length);
+  const avgSnippet = snippetLengths.reduce((a, b) => a + b, 0) / results.length;
+  const shortCount = snippetLengths.filter((l) => l < 60).length;
+
+  if (results.length <= 2 || avgSnippet < 80) {
+    const reasons = [];
+    if (results.length <= 2) reasons.push(`仅 ${results.length} 条结果`);
+    if (avgSnippet < 80) reasons.push('摘要普遍过短');
+    return {
+      level: 'limited',
+      resultCount: results.length,
+      avgSnippetLen: Math.round(avgSnippet),
+      reason: `${reasons.join('，')}，当前主题相关信息确实较少`,
+    };
+  }
+
+  return {
+    level: 'rich',
+    resultCount: results.length,
+    avgSnippetLen: Math.round(avgSnippet),
+    reason: `找到 ${results.length} 条较完整结果`,
+  };
+}
+
+/**
+ * 成功响应：data 为规范载荷，legacy 中的字段同步保留在顶层以兼容旧消费方
+ *
+ * 关键设计：当搜索质量不佳（limited/empty）时，设置 message 字段。
+ * serializeToolResultForModel 会优先提取 message 输出为纯文本（而不是 JSON），
+ * 确保模型无法忽略这个警告信号。
+ */
 function toolSearchOk(data, legacy) {
+  const results = (data && data.results) || [];
+  const searchQuality = assessSearchQuality(results);
   const hint =
     legacy && Object.prototype.hasOwnProperty.call(legacy, 'hint')
       ? legacy.hint
       : data && data.hint != null
         ? data.hint
         : null;
+
+  // 质量不佳时生成醒目的纯文本警告（利用 serializer 的 message 优先输出机制）
+  let message = null;
+  if (searchQuality.level === 'limited' || searchQuality.level === 'empty') {
+    const parts = [];
+    parts.push('══════════════════════════════════════');
+    parts.push('⚠️  搜索退级警告 — 请检查对话历史');
+    parts.push('══════════════════════════════════════');
+    parts.push(`质量: ${searchQuality.level === 'empty' ? '无结果 — 该主题可能暂无收录' : '信息有限 — 仅找到少量相关内容'}`);
+    parts.push('');
+
+    if (results.length > 0) {
+      parts.push('【当前结果】');
+      results.forEach((r, i) => {
+        parts.push(`  ${i + 1}. ${r.title || '(无标题)'}`);
+        if (r.url) parts.push(`     ${r.url}`);
+        parts.push(`     ${(r.snippet || '(无摘要)').slice(0, 200)}`);
+      });
+    } else {
+      parts.push('【当前结果】无');
+    }
+
+    parts.push('');
+    parts.push('【退级决策 — 回看对话历史中的 web_search 调用次数】');
+    parts.push('  • 如果这是第 1 次搜索 → 允许换关键词再搜 1 次（总共最多 2 次）');
+    parts.push('  • 如果已经是第 2 次搜索 → 立即停止，诚实回答用户');
+    parts.push('  • 绝对禁止第 3 次搜索，禁止换搜索引擎重试');
+    parts.push('');
+    parts.push('【诚实回答模板】');
+    parts.push(`  "抱歉，关于「${data?.query || '该主题'}」目前互联网上能找到的信息${searchQuality.level === 'empty' ? '非常有限' : '很少'}。`);
+    parts.push(`   ${results.length > 0 ? '以下是我找到的少量内容：[呈现结果]。这可能因为该信息较新或较为小众。' : '这可能因为该信息较新尚未被收录，或话题过于小众。建议提供更多线索或稍后再试。"'}`);
+    parts.push('══════════════════════════════════════');
+
+    message = parts.join('\n');
+  }
+
   return {
     success: true,
+    searchQuality,
     data,
+    message,
     error: null,
     hint,
     ...legacy,

@@ -15,6 +15,19 @@ import { spawn, spawnSync } from 'child_process';
 import * as pty from 'node-pty';
 import * as crypto from 'crypto';
 import WebSocket from 'ws';
+import { registerAllIpcHandlers, type IpcDeps } from './ipc';
+
+if (!app) {
+  const nextEnv = { ...process.env };
+  delete nextEnv.ELECTRON_RUN_AS_NODE;
+  const child = spawn(process.execPath, process.argv.slice(1), {
+    detached: true,
+    stdio: 'ignore',
+    env: nextEnv,
+  });
+  child.unref();
+  process.exit(0);
+}
 import {
   ApiKeyPayload,
   applyApiKeyUpdates,
@@ -52,13 +65,13 @@ const scriptAdapterPendingRequests = new Map<string, {
   timeout: ReturnType<typeof setTimeout>;
 }>();
 const MAX_RECONNECT_RETRIES = 999; // 增加重连次数上限
-let reconnectRetryCount = 0;
+(globalThis as any).reconnectRetryCount = 0;
 /** 应用/主窗口正在关闭，避免 WebSocket 断开回调里向已销毁的窗口 send 导致报错 */
 let appQuitting = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let suppressAutoReconnect = false;
-/** 为 true 时表示即将主动结束 OCT Gateway 子进程，exit 回调不应视为崩溃 */
-let expectOctGatewayProcessExit = false;
+/* 以下变量通过 globalThis 与 IPC 模块共享 */
+(globalThis as any).suppressAutoReconnect = false;
+(globalThis as any).expectOctGatewayProcessExit = false;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
 let currentSessionKey: string = 'main';
 let currentGatewayModel: string | undefined;
@@ -972,11 +985,15 @@ function createWindow() {
     alwaysOnTop: false,
   });
 
-  // 窗口准备好后显示，避免白屏/黑屏
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-    console.log('[Electron] Window ready to show');
-  });
+  const revealMainWindow = (reason: string) => {
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+    mainWindow.show();
+    console.log('[Electron] Window shown:', reason);
+  };
+
+  // ready-to-show can be skipped when the renderer fails before first paint.
+  mainWindow.once('ready-to-show', () => revealMainWindow('ready-to-show'));
+  const revealFallbackTimer = setTimeout(() => revealMainWindow('fallback-timeout'), 2000);
 
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
     const devPort = parseInt(process.env.VITE_DEV_PORT || '5176');
@@ -1006,16 +1023,22 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('did-fail-load', (_e, errCode, errDesc) => {
+    clearTimeout(revealFallbackTimer);
+    revealMainWindow('did-fail-load');
     console.error('[Electron] 页面加载失败:', errCode, errDesc);
     dialog.showErrorBox('加载失败', `错误代码：${errCode}\n${errDesc}`);
   });
 
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    clearTimeout(revealFallbackTimer);
+    revealMainWindow('render-process-gone');
     console.error('[Electron] 渲染进程崩溃:', details);
     dialog.showErrorBox('渲染进程崩溃', JSON.stringify(details));
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
+    clearTimeout(revealFallbackTimer);
+    revealMainWindow('did-finish-load');
     const connected = openclawWs?.readyState === WebSocket.OPEN;
     sendStatus({ connected });
   });
@@ -1026,22 +1049,22 @@ function createWindow() {
       openclawWs.close();
       openclawWs = null;
     }
-    if (logWatcher) {
-      logWatcher.close();
-      logWatcher = null;
+    if ((globalThis as any).logWatcher) {
+      try { (globalThis as any).logWatcher.close(); } catch {}
+      (globalThis as any).logWatcher = null;
     }
-    if (logTailProcess) {
-      logTailProcess.kill();
-      logTailProcess = null;
+    if ((globalThis as any).logTailProcess) {
+      try { (globalThis as any).logTailProcess.kill(); } catch {}
+      (globalThis as any).logTailProcess = null;
     }
-    if (gatewayProcess && !gatewayProcess.killed) {
-      gatewayProcess.kill();
-      gatewayProcess = null;
+    if ((globalThis as any).gatewayProcess && !(globalThis as any).gatewayProcess.killed) {
+      (globalThis as any).gatewayProcess.kill();
+      (globalThis as any).gatewayProcess = null;
     }
-    if (octGatewayProcess && !octGatewayProcess.killed) {
-      expectOctGatewayProcessExit = true;
-      octGatewayProcess.kill();
-      octGatewayProcess = null;
+    if ((globalThis as any).octGatewayProcess && !(globalThis as any).octGatewayProcess.killed) {
+      (globalThis as any).expectOctGatewayProcessExit = true;
+      try { (globalThis as any).octGatewayProcess.kill(); } catch {}
+      (globalThis as any).octGatewayProcess = null;
       await new Promise(r => setTimeout(r, 500));
     }
     mainWindow = null;
@@ -1071,29 +1094,16 @@ function createFloatWindow() {
       contextIsolation: false,
     },
   });
+  (globalThis as any).floatWindow = floatWindow;
   floatWindow.setAlwaysOnTop(true, 'floating');
   floatWindow.loadFile(path.join(__dirname, '..', 'electron', 'float.html'));
-  floatWindow.on('closed', () => { floatWindow = null; });
+  floatWindow.on('closed', () => {
+    floatWindow = null;
+    (globalThis as any).floatWindow = null;
+  });
 }
 
-ipcMain.on('float-restore', () => {
-  if (floatWindow) {
-    floatWindow.close();
-    floatWindow = null;
-  }
-  if (mainWindow) {
-    mainWindow.show();
-    mainWindow.focus();
-  }
-});
 
-ipcMain.handle('enter-floating-mode', () => {
-  if (mainWindow) {
-    mainWindow.hide();
-  }
-  createFloatWindow();
-  return { success: true };
-});
 
 function generateId(): string {
   return `req-${Date.now()}-${++requestId}`;
@@ -1126,12 +1136,14 @@ function connectOpenClaw() {
   if (openclawWs?.readyState === WebSocket.OPEN || openclawWs?.readyState === WebSocket.CONNECTING) return;
 
   openclawWs = null;
-  console.log('[OCT] Connecting to', OPENCLAW_WS_URL, 'retry:', reconnectRetryCount);
-  sendConnLog(`正在连接 ${OPENCLAW_WS_URL} (重试 #${reconnectRetryCount})`);
+  (globalThis as any).openclawWs = null;
+  console.log('[OCT] Connecting to', OPENCLAW_WS_URL, 'retry:', (globalThis as any).reconnectRetryCount);
+  sendConnLog(`正在连接 ${OPENCLAW_WS_URL} (重试 #${(globalThis as any).reconnectRetryCount})`);
   sendConnLog(`Token: ${(process.env.OCT_GATEWAY_TOKEN || OPENCLAW_TOKEN || '').trim() ? '已设置' : '未设置'}`);
 
   const ws = new WebSocket(OPENCLAW_WS_URL);
   openclawWs = ws;
+  (globalThis as any).openclawWs = ws;
 
   let heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
   let pongTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -1186,15 +1198,16 @@ function connectOpenClaw() {
     closeHandled = true;
     clearHeartbeat();
     openclawWs = null;
-    if (suppressAutoReconnect) {
+    (globalThis as any).openclawWs = null;
+    if ((globalThis as any).suppressAutoReconnect) {
       sendConnLog('当前为主动重连流程，跳过自动退避重连');
       return;
     }
     if (!mainWindow) return;
     if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
-    reconnectRetryCount++;
-    if (reconnectRetryCount <= MAX_RECONNECT_RETRIES) {
-      const delay = Math.min(5000 * Math.pow(2, reconnectRetryCount - 1), 60000);
+    (globalThis as any).reconnectRetryCount++;
+    if ((globalThis as any).reconnectRetryCount <= MAX_RECONNECT_RETRIES) {
+      const delay = Math.min(5000 * Math.pow(2, (globalThis as any).reconnectRetryCount - 1), 60000);
       sendStatus({ connected: false, reconnecting: true });
       sendConnLog(`${delay / 1000} 秒后重连`);
       scheduleReconnect(delay);
@@ -1208,7 +1221,7 @@ function connectOpenClaw() {
     clearHeartbeat();
     const reasonStr = (reason?.length ? reason.toString('utf8') : '') || '(无)';
     console.log('[OCT] WebSocket disconnected', code, reasonStr);
-    sendConnLog(`WebSocket 已断开 code=${code} reason=${reasonStr}，${reconnectRetryCount <= MAX_RECONNECT_RETRIES ? '将按退避延迟重连' : '已达重试上限'}`);
+    sendConnLog(`WebSocket 已断开 code=${code} reason=${reasonStr}，${(globalThis as any).reconnectRetryCount <= MAX_RECONNECT_RETRIES ? '将按退避延迟重连' : '已达重试上限'}`);
     scheduleReconnectForSocket();
   });
 
@@ -1251,7 +1264,7 @@ function sendStatus(status: {
   };
 }) {
   if (appQuitting) return;
-  if (status.connected) reconnectRetryCount = 0;
+  if (status.connected) (globalThis as any).reconnectRetryCount = 0;
   if (status.model) currentGatewayModel = status.model;
   if (status.capabilities) currentGatewayCapabilities = status.capabilities;
   console.log('[OCT] Sending status to frontend:', status);
@@ -1587,6 +1600,7 @@ function sendOctConnectRequest() {
   } catch (err: any) {
     if (err?.code === 'EPIPE' || String(err?.message).includes('broken pipe')) {
       openclawWs = null;
+      (globalThis as any).openclawWs = null;
       sendStatus({ connected: false, reconnecting: true });
       setTimeout(connectOpenClaw, 1500);
     } else {
@@ -1711,6 +1725,7 @@ function sendChatMessage(
     if (isBrokenPipe && openclawWs) {
       sendConnLog(`发送失败: broken pipe，连接已断开，1.5s 后重连`);
       openclawWs = null;
+      (globalThis as any).openclawWs = null;
       sendStatus({ connected: false, reconnecting: true });
       setTimeout(connectOpenClaw, 1500);
     } else if (err?.message) {
@@ -1725,122 +1740,21 @@ function sendChatMessage(
   }
 }
 
+function getOpenClawStatus() {
+  return {
+    connected: openclawWs?.readyState === WebSocket.OPEN,
+    sessionKey: currentSessionKey,
+    model: currentGatewayModel,
+    capabilities: currentGatewayCapabilities,
+  };
+}
+
 // IPC handlers
-ipcMain.handle('set-always-on-top', (_, value: boolean) => {
-  if (mainWindow) {
-    mainWindow.setAlwaysOnTop(value);
-    return true;
-  }
-  return false;
-});
 
-ipcMain.handle('get-always-on-top', () => {
-  return mainWindow ? mainWindow.isAlwaysOnTop() : false;
-});
 
-ipcMain.handle('minimize-window', () => mainWindow?.minimize());
 
-ipcMain.handle('maximize-window', () => {
-  if (mainWindow) {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
-    }
-  }
-});
-
-ipcMain.handle('close-window', () => mainWindow?.close());
-
-ipcMain.handle('open-image-dialog', async () => {
-  const result = await dialog.showOpenDialog(mainWindow!, {
-    filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif'] }],
-    properties: ['openFile']
-  });
-  if (result.canceled || !result.filePaths[0]) return { success: false };
-  try {
-    const buf = fs.readFileSync(result.filePaths[0]);
-    const ext = path.extname(result.filePaths[0]).toLowerCase();
-    const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif' }[ext] || 'image/png';
-    return { success: true, base64: buf.toString('base64'), mime };
-  } catch (e: any) {
-    return { success: false, error: e?.message };
-  }
-});
 
 // 通用文件上传对话框
-ipcMain.handle('open-file-dialog', async (_, options?: { allowMultiple?: boolean; filters?: { name: string; extensions: string[] }[] }) => {
-  const result = await dialog.showOpenDialog(mainWindow!, {
-    filters: options?.filters || [
-      { name: 'All Files', extensions: ['*'] },
-      { name: 'Documents', extensions: ['pdf', 'doc', 'docx', 'txt', 'md', 'json', 'csv', 'xls', 'xlsx'] },
-      { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'] },
-      { name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac'] },
-      { name: 'Video', extensions: ['mp4', 'avi', 'mov', 'mkv', 'webm'] },
-      { name: 'Code', extensions: ['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'go', 'rs', 'html', 'css', 'sql'] },
-    ],
-    properties: options?.allowMultiple ? ['openFile', 'multiSelections'] : ['openFile']
-  });
-
-  if (result.canceled || !result.filePaths.length) return { success: false };
-
-  try {
-    const files = await Promise.all(result.filePaths.map(async (filePath) => {
-      const stats = fs.statSync(filePath);
-      const ext = path.extname(filePath).toLowerCase();
-      const fileName = path.basename(filePath);
-
-      // 检测 MIME 类型
-      const mimeMap: Record<string, string> = {
-        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
-        '.webp': 'image/webp', '.bmp': 'image/bmp',
-        '.pdf': 'application/pdf',
-        '.txt': 'text/plain', '.md': 'text/markdown', '.json': 'application/json',
-        '.csv': 'text/csv',
-        '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.flac': 'audio/flac',
-        '.mp4': 'video/mp4', '.avi': 'video/x-msvideo', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska', '.webm': 'video/webm',
-        '.js': 'text/javascript', '.ts': 'text/typescript', '.jsx': 'text/javascript', '.tsx': 'text/typescript',
-        '.py': 'text/x-python', '.java': 'text/x-java', '.cpp': 'text/x-c++', '.c': 'text/x-c',
-        '.h': 'text/x-c-header', '.go': 'text/x-go', '.rs': 'text/x-rust',
-        '.html': 'text/html', '.css': 'text/css', '.sql': 'text/x-sql',
-      };
-
-      const mimeType = mimeMap[ext] || 'application/octet-stream';
-      const isImage = mimeType.startsWith('image/');
-
-      // 默认只传元数据；图片保留 base64（视觉直传），音频在发送时按需读取为 base64（Gemini input_audio）
-      if (isImage) {
-        const buf = fs.readFileSync(filePath);
-        return {
-          path: filePath,
-          name: fileName,
-          size: stats.size,
-          ext: ext.slice(1),
-          mimeType,
-          isText: false,
-          content: null,
-          base64: buf.toString('base64'),
-        };
-      }
-      return {
-        path: filePath,
-        name: fileName,
-        size: stats.size,
-        ext: ext.slice(1),
-        mimeType,
-        isText: false,
-        content: null,
-        base64: '',
-      };
-    }));
-
-    return { success: true, files };
-  } catch (e: any) {
-    return { success: false, error: e?.message };
-  }
-});
 
 // 剧本文件解析：.txt 直接读取，.docx 用 mammoth 转纯文本
 function ensureScriptDraftDir(): string {
@@ -1866,138 +1780,14 @@ function createScriptDraftPath(fileName: string): string {
   return path.join(draftDir, `${stem}-${ts}.txt`);
 }
 
-ipcMain.handle('save-script-draft-cache', async (_, payload: {
-  content?: string;
-  draftCachePath?: string;
-  sourcePath?: string;
-  title?: string;
-}) => {
-  try {
-    const content = String(payload?.content || '');
-    if (!content.trim()) {
-      return { success: false, error: 'content is empty' };
-    }
 
-    const draftPath = payload?.draftCachePath
-      ? String(payload.draftCachePath)
-      : createScriptDraftPath(payload?.title || payload?.sourcePath || 'script-draft');
-    const resolved = path.resolve(draftPath);
-    const draftRoot = path.resolve(ensureScriptDraftDir());
-    if (!resolved.startsWith(draftRoot)) {
-      return { success: false, error: 'invalid draft cache path' };
-    }
 
-    fs.writeFileSync(resolved, content, 'utf-8');
-    return { success: true, draftCachePath: resolved };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
 
-ipcMain.handle('parse-script-file', async () => {
-  const result = await dialog.showOpenDialog(mainWindow!, {
-    title: '选择剧本文件',
-    filters: [
-      { name: '剧本文件', extensions: ['txt', 'docx'] },
-    ],
-    properties: ['openFile'],
-  });
-  if (result.canceled || !result.filePaths.length) return { success: false };
-
-  const filePath = result.filePaths[0];
-  const ext = path.extname(filePath).toLowerCase();
-  const fileName = path.basename(filePath);
-
-  try {
-    let text = '';
-    if (ext === '.docx') {
-      const { value } = await mammoth.extractRawText({ path: filePath });
-      text = value;
-    } else {
-      // .txt 自动检测编码，优先 utf-8，GB18030 兜底
-      const buf = fs.readFileSync(filePath);
-      // 简单探测：utf-8 BOM 或纯 ASCII → utf8，否则用 latin1 再转
-      text = buf.toString('utf-8');
-      // 如果含乱码替换符说明编码不对，改用 GB18030（Windows 中文 txt 常见）
-      if (text.includes('\uFFFD')) {
-        const { TextDecoder } = require('util');
-        text = new TextDecoder('gbk').decode(buf);
-      }
-    }
-    const draftCachePath = createScriptDraftPath(fileName);
-    fs.writeFileSync(draftCachePath, text, 'utf-8');
-    return { success: true, text, fileName, sourcePath: filePath, draftCachePath };
-  } catch (e: any) {
-    return { success: false, error: e?.message };
-  }
-});
-
-ipcMain.handle('minimize-for-capture', () => {
-  if (mainWindow) {
-    mainWindow.setOpacity(0);
-    mainWindow.setIgnoreMouseEvents(true);
-    mainWindow.hide();
-  }
-  return { success: true };
-});
-
-ipcMain.handle('restore-after-capture', () => {
-  if (mainWindow) {
-    mainWindow.setOpacity(1);
-    mainWindow.setIgnoreMouseEvents(false);
-    mainWindow.show();
-    mainWindow.focus();
-  }
-  return { success: true };
-});
 
 let pendingCodeWindowData: { language: string; code: string } | null = null;
 
-ipcMain.handle('open-code-window', (_, payload: { language?: string; code?: string }) => {
-  const language = payload?.language || 'text';
-  const code = typeof payload?.code === 'string' ? payload.code : '';
 
-  if (codeWindow) {
-    codeWindow.close();
-    codeWindow = null;
-  }
 
-  pendingCodeWindowData = { language, code };
-  codeWindow = new BrowserWindow({
-    width: 700,
-    height: 500,
-    minWidth: 400,
-    minHeight: 300,
-    frame: true,
-    backgroundColor: '#0a0a0f',
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-  });
-
-  const codeWinPath = path.join(__dirname, '..', 'electron', 'code-window.html');
-  codeWindow.loadFile(codeWinPath);
-
-  codeWindow.on('closed', () => {
-    codeWindow = null;
-    pendingCodeWindowData = null;
-  });
-
-  return { success: true };
-});
-
-ipcMain.on('code-window-ready', (e) => {
-  if (pendingCodeWindowData && e.sender) {
-    e.sender.send('code-window-data', pendingCodeWindowData);
-    pendingCodeWindowData = null;
-  }
-});
-
-ipcMain.on('code-window-close', (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  if (win) win.close();
-});
 
 // 系统终端窗口 (node-pty + xterm)
 function createTerminalWindow() {
@@ -2052,6 +1842,7 @@ function createTerminalWindow() {
       contextIsolation: false,
     },
   });
+  (globalThis as any).terminalWindow = terminalWindow;
 
   const termPath = path.join(__dirname, '..', 'electron', 'terminal-window.html');
   terminalWindow.loadFile(termPath);
@@ -2062,59 +1853,15 @@ function createTerminalWindow() {
       terminalPty = null;
     }
     terminalWindow = null;
+    (globalThis as any).terminalWindow = null;
   });
 }
 
-ipcMain.handle('open-terminal-window', () => {
-  createTerminalWindow();
-  return { success: true };
-});
 
-ipcMain.on('terminal-ready', (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  if (!win || win !== terminalWindow) return;
 
-  const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || 'bash');
-  const cwd = process.env.HOME || process.env.USERPROFILE || process.cwd();
-  terminalPty = pty.spawn(shell, [], {
-    cwd,
-    env: process.env as Record<string, string>,
-    cols: 80,
-    rows: 24,
-  });
 
-  terminalPty.onData((data) => {
-    if (terminalWindow && !terminalWindow.isDestroyed()) {
-      terminalWindow.webContents.send('terminal-data', data);
-    }
-  });
 
-  terminalPty.onExit(() => {
-    terminalPty = null;
-  });
-});
 
-ipcMain.on('terminal-input', (e, data: string) => {
-  if (terminalPty) {
-    terminalPty.write(data);
-  }
-});
-
-ipcMain.on('terminal-close', (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  if (win) win.close();
-});
-
-ipcMain.on('terminal-set-pin', (e, pinned: boolean) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  if (win) win.setAlwaysOnTop(pinned);
-});
-
-ipcMain.on('terminal-resize', (e, cols: number, rows: number) => {
-  if (terminalPty) {
-    terminalPty.resize(cols, rows);
-  }
-});
 
 function getClawConfigPath() {
   return path.join(app.getPath('userData'), 'claw-config.json');
@@ -2155,8 +1902,8 @@ function registerScreenshotShortcut(shortcut: string) {
 
 const DEFAULT_LOG_PATH = path.join(os.homedir(), '.openclaw', 'logs', 'gateway.log');
 
-let logTailProcess: ReturnType<typeof spawn> | null = null;
-let logWatcher: fs.FSWatcher | null = null;
+(globalThis as any).logTailProcess = null;
+(globalThis as any).logWatcher = null;
 
 // 日志噪音过滤
 function isNoisyLogLine(line: unknown): boolean {
@@ -2209,145 +1956,8 @@ function readLogTail(filePath: string): { success: boolean; content?: string; li
   }
 }
 
-ipcMain.handle('read-log-file', async (_, logPath: string) => {
-  const pathToUse = logPath || process.env.OPENCLAW_LOG_PATH || DEFAULT_LOG_PATH;
-  return readLogTail(pathToUse);
-});
 
-ipcMain.handle('start-log-watch', async (_, logPath: string) => {
-  const pathToUse = logPath || process.env.OPENCLAW_LOG_PATH || DEFAULT_LOG_PATH;
-  console.log('[LOG] Starting log watch for:', pathToUse);
 
-  // 停止旧的监听
-  if (logTailProcess) {
-    logTailProcess.kill();
-    logTailProcess = null;
-  }
-  if (logWatcher) {
-    logWatcher.close();
-    logWatcher = null;
-  }
-
-  if (!fs.existsSync(pathToUse)) {
-    console.log('[LOG] File does not exist:', pathToUse);
-    mainWindow?.webContents.send('openclaw-log-lines', [
-      '[LOG] 日志文件不存在，且 Gateway 不是由 CLAW TERMINAL 启动。',
-      '[LOG] 请点击 [▶ 启动] 以获取实时日志。',
-    ]);
-    return { success: false, error: 'Log file not found' };
-  }
-
-  try {
-    const seenRaw = new Set<string>();
-    // 先读取最新20行，用原始行去重，避免 tail 输出时重复
-    const content = fs.readFileSync(pathToUse, 'utf-8');
-    const allLines = content.split('\n').filter((l) => l.trim());
-    const formatted: string[] = [];
-    for (const raw of allLines.slice(-20)) {
-      const r = raw.trim();
-      if (seenRaw.has(r)) continue;
-      seenRaw.add(r);
-      const msg = (() => { try { const o = JSON.parse(raw); return o?.['1'] ?? o?.message ?? ''; } catch { return raw; } })();
-      if (isNoisyLogLine(msg)) continue;
-      const out = formatGatewayLogLine(raw);
-      if (out) formatted.push(out);
-    }
-    if (formatted.length > 0) {
-      mainWindow?.webContents.send('openclaw-log-lines', formatted);
-    } else {
-      mainWindow?.webContents.send('openclaw-log-lines', ['[LOG] 等待Gateway日志...']);
-    }
-    // 根据平台使用不同的日志监控方式
-    if (process.platform === 'win32') {
-      // Windows: 使用 PowerShell
-      const psPath = pathToUse.replace(/'/g, "''");
-      const psCmd = `$p='${psPath}'; while($true){if(Test-Path -LiteralPath $p){Get-Content -LiteralPath $p -Tail 10 -Encoding UTF8}; Start-Sleep -Milliseconds 500}`;
-      
-      try {
-        const { execSync } = require('child_process');
-        execSync('where powershell.exe', { stdio: 'ignore', windowsHide: true });
-        logTailProcess = spawn('powershell.exe', ['-NoProfile', '-Command', psCmd], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-        });
-      } catch (e) {
-        console.warn('[Main] PowerShell not found, using fallback log watcher');
-        mainWindow?.webContents.send('openclaw-log-lines', ['[WARN] PowerShell 未找到，使用备用日志监控']);
-        // 备用方案：fs.watch
-        try {
-          const fsWatcher = fs.watch(pathToUse, { persistent: false }, (eventType) => {
-            if (eventType === 'change' && fs.existsSync(pathToUse)) {
-              try {
-                const content = fs.readFileSync(pathToUse, 'utf-8');
-                const lines = content.split('\n').slice(-10);
-                lines.forEach(line => {
-                  if (line.trim()) mainWindow?.webContents.send('openclaw-log-lines', [line]);
-                });
-              } catch (e) {}
-            }
-          });
-          (global as any).logFsWatcher = fsWatcher;
-        } catch (e2) {
-          console.error('[Main] Fallback log watcher failed:', e2);
-        }
-      }
-    } else {
-      // Mac/Linux: 使用 tail -f
-      logTailProcess = spawn('tail', ['-f', pathToUse], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
-    }
-    if (logTailProcess) {
-      let buf = '';
-      logTailProcess.stdout?.on('data', (chunk: Buffer) => {
-        buf += chunk.toString('utf8');
-        const lines = buf.split(/\r?\n/);
-        buf = lines.pop() ?? '';
-        for (const raw of lines) {
-          const t = raw.trim();
-          if (!t || seenRaw.has(t)) continue;
-          seenRaw.add(t);
-          const msg = (() => { try { const o = JSON.parse(t); return o?.['1'] ?? o?.message ?? ''; } catch { return t; } })();
-          if (isNoisyLogLine(msg)) continue;
-          const out = formatGatewayLogLine(t);
-          if (!out) continue;
-          mainWindow?.webContents.send('openclaw-log-lines', [out]);
-        }
-      });
-
-      logTailProcess.stderr?.on('data', (chunk: Buffer) => {
-        const msg = chunk.toString('utf8').trim();
-        if (msg) mainWindow?.webContents.send('openclaw-log-lines', [`[ERR] ${msg}`]);
-      });
-
-      logTailProcess.on('exit', (code) => {
-        logTailProcess = null;
-        if (code !== 0 && code !== null) {
-          mainWindow?.webContents.send('openclaw-log-lines', [`[LOG] tail 进程退出: ${code}`]);
-        }
-      });
-    }
-
-    mainWindow?.webContents.send('openclaw-log-lines', ['[LOG] 正在监听日志...']);
-    return { success: true };
-  } catch (e) {
-    console.log('[LOG] Exception:', e);
-    return { success: false, error: String(e) };
-  }
-});
-
-ipcMain.handle('stop-log-watch', () => {
-  if (logTailProcess) {
-    logTailProcess.kill();
-    logTailProcess = null;
-  }
-  if (logWatcher) {
-    logWatcher.close();
-    logWatcher = null;
-  }
-  return { success: true };
-});
 
 // ===== Gateway 进程管理 =====
 
@@ -2444,8 +2054,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   }
 
   try {
-    octGatewayProcess = spawn(runtimeCommand, runtimeArgs, {
-      cwd: path.dirname(entry),
+    const spawnedProcess = spawn(runtimeCommand, runtimeArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false,
@@ -2462,6 +2071,8 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
           : {}),
       }),
     });
+    octGatewayProcess = spawnedProcess;
+    (globalThis as any).octGatewayProcess = spawnedProcess;
 
     octGatewayProcess.stdout?.on('data', (chunk: Buffer) => {
       chunk.toString('utf8').split('\n').forEach((l) => {
@@ -2476,11 +2087,12 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
     octGatewayProcess.on('exit', (code, signal) => {
       console.log('[Gateway] 进程退出', { code, signal: signal || undefined });
       octGatewayProcess = null;
-      const intentional = expectOctGatewayProcessExit;
-      expectOctGatewayProcessExit = false;
+      (globalThis as any).octGatewayProcess = null;
+      const intentional = (globalThis as any).expectOctGatewayProcessExit;
+      (globalThis as any).expectOctGatewayProcessExit = false;
       if (mainWindow && !mainWindow.isDestroyed() && !appQuitting) {
         if (!intentional) {
-          suppressAutoReconnect = true;
+          (globalThis as any).suppressAutoReconnect = true;
           sendConnLog(
             `[Gateway] 进程已退出 code=${code == null ? -1 : code}，Gateway 已停止；请使用「启动/重启 Gateway」后再连`
           );
@@ -2503,7 +2115,7 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
 }
 
 // AI.library 插件（随 OCT 启动知识库 HTTP，默认 :8001）
-ipcMain.handle('get-ai-library-plugin', async () => {
+async function getAiLibraryPlugin() {
   syncAiLibraryPluginConfigFromDisk();
   let healthy = false;
   try {
@@ -2530,225 +2142,87 @@ ipcMain.handle('get-ai-library-plugin', async () => {
       dataRoot: getNativeLibraryRoot(),
     },
   };
-});
+}
 
-ipcMain.handle(
-  'save-ai-library-plugin',
-  async (
-    _,
-    payload: {
-      OCT_AI_LIBRARY_AUTO_START?: boolean;
-      OCT_AI_LIBRARY_PATH?: string;
-      OCT_AI_LIBRARY_PORT?: number;
+async function saveAiLibraryPlugin(payload: {
+  OCT_AI_LIBRARY_AUTO_START?: boolean;
+  OCT_AI_LIBRARY_PATH?: string;
+  OCT_AI_LIBRARY_PORT?: number;
+}) {
+  try {
+    let cfg: Record<string, unknown> = {};
+    if (fs.existsSync(CONFIG_FILE)) {
+      try {
+        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      } catch {
+        /* ignore */
+      }
     }
-  ) => {
-    try {
-      let cfg: Record<string, unknown> = {};
-      if (fs.existsSync(CONFIG_FILE)) {
-        try {
-          cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-        } catch {
-          /* ignore */
-        }
-      }
-      if (payload.OCT_AI_LIBRARY_AUTO_START !== undefined) {
-        cfg.OCT_AI_LIBRARY_AUTO_START = payload.OCT_AI_LIBRARY_AUTO_START;
-      }
-      if (payload.OCT_AI_LIBRARY_PATH !== undefined) {
-        cfg.OCT_AI_LIBRARY_PATH = String(payload.OCT_AI_LIBRARY_PATH || '').trim();
-      }
-      if (payload.OCT_AI_LIBRARY_PORT !== undefined) {
-        const p = Number(payload.OCT_AI_LIBRARY_PORT);
-        if (!Number.isNaN(p) && p > 0) cfg.OCT_AI_LIBRARY_PORT = p;
-      }
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
-      loadOpenClawConfig();
+    if (payload.OCT_AI_LIBRARY_AUTO_START !== undefined) {
+      cfg.OCT_AI_LIBRARY_AUTO_START = payload.OCT_AI_LIBRARY_AUTO_START;
+    }
+    if (payload.OCT_AI_LIBRARY_PATH !== undefined) {
+      cfg.OCT_AI_LIBRARY_PATH = String(payload.OCT_AI_LIBRARY_PATH || '').trim();
+    }
+    if (payload.OCT_AI_LIBRARY_PORT !== undefined) {
+      const p = Number(payload.OCT_AI_LIBRARY_PORT);
+      if (!Number.isNaN(p) && p > 0) cfg.OCT_AI_LIBRARY_PORT = p;
+    }
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    loadOpenClawConfig();
 
-      if (aiLibraryHttpServer?.listening) {
-        await new Promise<void>((resolve) => {
-          aiLibraryHttpServer?.close(() => resolve());
-        });
-        aiLibraryHttpServer = null;
+    if (aiLibraryHttpServer?.listening) {
+      await new Promise<void>((resolve) => {
+        aiLibraryHttpServer?.close(() => resolve());
+      });
+      aiLibraryHttpServer = null;
+    }
+    if (aiLibraryProcess && !aiLibraryProcess.killed) {
+      try {
+        aiLibraryProcess.kill('SIGTERM');
+      } catch {
+        /* ignore */
       }
-      if (aiLibraryProcess && !aiLibraryProcess.killed) {
-        try {
-          aiLibraryProcess.kill('SIGTERM');
-        } catch {
-          /* ignore */
-        }
-        aiLibraryProcess = null;
-        await new Promise((r) => setTimeout(r, 800));
-      }
-      await startAiLibraryBackend();
+      aiLibraryProcess = null;
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    await startAiLibraryBackend();
 
-      const gwProc = octGatewayProcess;
-      const hadGateway = !!(gwProc && !gwProc.killed);
-      if (hadGateway && gwProc) {
-        expectOctGatewayProcessExit = true;
-        try {
-          gwProc.kill('SIGTERM');
-        } catch {
-          /* ignore */
-        }
-        octGatewayProcess = null;
-        await new Promise((r) => setTimeout(r, 1200));
-        const inUse = await isPortInUse(GATEWAY_PORT);
-        if (inUse) await forceKillPort(GATEWAY_PORT);
+    const gwProc = octGatewayProcess;
+    const hadGateway = !!(gwProc && !gwProc.killed);
+    if (hadGateway && gwProc) {
+      (globalThis as any).expectOctGatewayProcessExit = true;
+      try {
+        gwProc.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
+      octGatewayProcess = null;
+      (globalThis as any).octGatewayProcess = null;
+      await new Promise((r) => setTimeout(r, 1200));
+      const inUse = await isPortInUse(GATEWAY_PORT);
+      if (inUse) await forceKillPort(GATEWAY_PORT);
+      await new Promise((r) => setTimeout(r, 400));
+      const octResult = await startOctGateway();
+      if (octResult.success) {
+        (globalThis as any).reconnectRetryCount = 0;
         await new Promise((r) => setTimeout(r, 400));
-        const octResult = await startOctGateway();
-        if (octResult.success) {
-          reconnectRetryCount = 0;
-          await new Promise((r) => setTimeout(r, 400));
-          connectOpenClaw();
-        }
-        mainWindow?.webContents.send('openclaw-log-lines', [
-          '[AI.library] 配置已保存，Gateway 已重启以应用知识库地址',
-        ]);
+        connectOpenClaw();
       }
-
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e?.message || String(e) };
+      mainWindow?.webContents.send('openclaw-log-lines', [
+        '[AI.library] 配置已保存，Gateway 已重启以应用知识库地址',
+      ]);
     }
-  }
-);
 
-ipcMain.handle('get-memory-summarizer-config', async () => {
-  try {
-    const cfg = readAppConfig();
-    return {
-      success: true,
-      data: buildMemorySummarizerConfigData(cfg),
-    };
+    return { success: true };
   } catch (e: any) {
     return { success: false, error: e?.message || String(e) };
   }
-});
+}
 
-ipcMain.handle(
-  'save-memory-summarizer-config',
-  async (
-    _,
-    payload: MemorySummarizerPayload
-  ) => {
-    try {
-      ensureConfigFile();
-      const cfg = applyMemorySummarizerConfig(readAppConfig(), payload);
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
-      loadOpenClawConfig();
 
-      const hadGateway = !!(octGatewayProcess && !octGatewayProcess.killed);
-      if (hadGateway && octGatewayProcess) {
-        expectOctGatewayProcessExit = true;
-        try {
-          octGatewayProcess.kill('SIGTERM');
-        } catch {
-          /* ignore */
-        }
-        octGatewayProcess = null;
-        mainWindow?.webContents.send('openclaw-log-lines', ['[记忆系统] 摘要模型配置已保存，正在重启 Gateway...']);
-        await waitForPortRelease(GATEWAY_PORT, 5000);
-        await new Promise((r) => setTimeout(r, 500));
-        const octResult = await startOctGateway();
-        if (octResult.success) {
-          reconnectRetryCount = 0;
-          await new Promise((r) => setTimeout(r, 500));
-          connectOpenClaw();
-        }
-      }
 
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e?.message || String(e) };
-    }
-  }
-);
 
-ipcMain.handle('get-memory-vector-recall-config', async () => {
-  try {
-    const cfg = readAppConfig();
-    return {
-      success: true,
-      data: buildMemoryVectorRecallConfigData(cfg),
-    };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle(
-  'save-memory-vector-recall-config',
-  async (
-    _,
-    payload: MemoryVectorRecallPayload
-  ) => {
-    try {
-      ensureConfigFile();
-      const cfg = applyMemoryVectorRecallConfig(readAppConfig(), payload);
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
-      loadOpenClawConfig();
-
-      const hadGateway = !!(octGatewayProcess && !octGatewayProcess.killed);
-      if (hadGateway && octGatewayProcess) {
-        expectOctGatewayProcessExit = true;
-        try {
-          octGatewayProcess.kill('SIGTERM');
-        } catch {
-          /* ignore */
-        }
-        octGatewayProcess = null;
-        mainWindow?.webContents.send('openclaw-log-lines', ['[记忆系统] 向量召回配置已保存，正在重启 Gateway...']);
-        await waitForPortRelease(GATEWAY_PORT, 5000);
-        await new Promise((r) => setTimeout(r, 500));
-        const octResult = await startOctGateway();
-        if (octResult.success) {
-          reconnectRetryCount = 0;
-          await new Promise((r) => setTimeout(r, 500));
-          connectOpenClaw();
-        }
-      }
-
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e?.message || String(e) };
-    }
-  }
-);
-
-/** MCP Server 管理 IPC */
-ipcMain.handle('mcp-get-status', async () => {
-  try {
-    const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/status`);
-    return await res.json();
-  } catch { return {}; }
-});
-
-ipcMain.handle('mcp-add-server', async (_, name: string, cfg: any) => {
-  try {
-    // 与 oct-gateway POST /mcp/server 一致：扁平字段 name + command + args + env（勿包在 config 里）
-    const body = {
-      name,
-      command: cfg?.command,
-      args: cfg?.args,
-      env: cfg?.env && typeof cfg.env === 'object' ? cfg.env : {},
-    };
-    const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/server`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return await res.json();
-  } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
-});
-
-ipcMain.handle('mcp-remove-server', async (_, name: string) => {
-  try {
-    const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT + 1}/mcp/server/${name}`, {
-      method: 'DELETE',
-    });
-    return await res.json();
-  } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
-});
 
 function getLocalIP(): string {
   const interfaces = os.networkInterfaces();
@@ -2783,219 +2257,14 @@ async function checkPortListening(port: number, timeoutMs = 5000): Promise<boole
   });
 }
 
-ipcMain.handle('start-gateway', async () => {
-  // 清理端口
-  if (await isPortInUse(GATEWAY_PORT)) {
-    await killPortProcess(GATEWAY_PORT);
-    await new Promise(r => setTimeout(r, 1500));
-  }
-  // 启动 OCT Gateway
-  const result = await startOctGateway();
-  if (result.success) {
-    mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已启动 ✅']);
-    suppressAutoReconnect = false;
-    reconnectRetryCount = 0;
-    await new Promise((r) => setTimeout(r, 800));
-    connectOpenClaw();
-  }
-  return result;
-});
 
-ipcMain.handle('stop-gateway', () => {
-  // 停止 OCT Gateway
-  if (octGatewayProcess && !octGatewayProcess.killed) {
-    expectOctGatewayProcessExit = true;
-    octGatewayProcess.kill();
-    octGatewayProcess = null;
-  }
-  if (gatewayProcess && !gatewayProcess.killed) {
-    gatewayProcess.kill();
-    gatewayProcess = null;
-  }
-  mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
-  mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 已停止']);
-  return { success: true };
-});
 
-ipcMain.handle('gateway-restart', async () => {
-  if (octGatewayProcess && !octGatewayProcess.killed) {
-    expectOctGatewayProcessExit = true;
-    octGatewayProcess.kill();
-    octGatewayProcess = null;
-  }
-  if (gatewayProcess && !gatewayProcess.killed) {
-    gatewayProcess.kill();
-    gatewayProcess = null;
-  }
-  mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
-  mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 正在重启...']);
-  // 强制清理 18789 端口，避免 EADDRINUSE（旧进程未及时释放端口）
-  await killPortProcess(GATEWAY_PORT);
-  await new Promise(r => setTimeout(r, 2500));
-  const octEntry = getOctGatewayEntry();
-  if (octEntry) {
-    const octResult = await startOctGateway();
-    if (octResult.success) {
-      await new Promise(r => setTimeout(r, 1500));
-      mainWindow?.webContents.send('gateway-status', { running: true, managed: true });
-      mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 已启动']);
-      if (openclawWs) { openclawWs.close(); openclawWs = null; }
-      suppressAutoReconnect = false;
-      reconnectRetryCount = 0;
-      connectOpenClaw();
-      return { success: true };
-    }
-  }
-  mainWindow?.webContents.send('openclaw-log-lines', ['[Gateway] 重启失败']);
-  return { success: false, error: 'OCT Gateway 启动失败' };
-});
 
-ipcMain.handle('kill-port-18789', async () => {
-  const { execSync } = await import('child_process');
-  try {
-    const port = 18789;
-    const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf-8', windowsHide: true });
-    const lines = out.trim().split(/\r?\n/);
-    for (const line of lines) {
-      const m = line.trim().match(/\s+(\d+)\s*$/);
-      if (m) {
-        const pid = parseInt(m[1], 10);
-        if (pid > 0) {
-          execSync(`taskkill /F /PID ${pid}`, { encoding: 'utf-8', windowsHide: true });
-          mainWindow?.webContents.send('openclaw-log-lines', [`[System] 已终止 PID ${pid} (端口 ${port})`]);
-          return { success: true };
-        }
-      }
-    }
-    mainWindow?.webContents.send('openclaw-log-lines', [`[System] 端口 ${port} 无占用进程`]);
-    return { success: true };
-  } catch (e: any) {
-    mainWindow?.webContents.send('openclaw-log-lines', [`[System] 清理失败: ${e?.message || String(e)}`]);
-    return { success: false, error: e?.message };
-  }
-});
 
 /** 清理 18789 端口上所有进程并启动 OCT Gateway（解决 ECONNRESET：端口被其他程序占用） */
-ipcMain.handle('gateway-clear-port-and-start', async () => {
-  mainWindow?.webContents.send('openclaw-log-lines', ['[System] 正在清理 18789 端口并启动 OCT Gateway...']);
-  if (octGatewayProcess && !octGatewayProcess.killed) {
-    expectOctGatewayProcessExit = true;
-    octGatewayProcess.kill();
-    octGatewayProcess = null;
-  }
-  if (gatewayProcess && !gatewayProcess.killed) {
-    gatewayProcess.kill();
-    gatewayProcess = null;
-  }
-  const { execSync } = await import('child_process');
-  const port = GATEWAY_PORT;
-  try {
-    const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf-8', windowsHide: true });
-    const lines = out.trim().split(/\r?\n/);
-    const pidsToKill = new Set<number>();
-    for (const line of lines) {
-      if (!/LISTENING/i.test(line)) continue;
-      const m = line.trim().match(/\s+(\d+)\s*$/);
-      if (m) {
-        const pid = parseInt(m[1], 10);
-        if (pid > 0) pidsToKill.add(pid);
-      }
-    }
-    for (const pid of pidsToKill) {
-      try {
-        execSync(`taskkill /F /PID ${pid}`, { encoding: 'utf-8', windowsHide: true });
-        mainWindow?.webContents.send('openclaw-log-lines', [`[System] 已终止监听端口 ${port} 的进程 PID ${pid}`]);
-      } catch (_) {}
-    }
-    if (pidsToKill.size === 0) {
-      mainWindow?.webContents.send('openclaw-log-lines', ['[System] 端口 18789 当前无进程监听']);
-    }
-  } catch (_) {
-    mainWindow?.webContents.send('openclaw-log-lines', ['[System] 端口 18789 当前无进程监听']);
-  }
-  mainWindow?.webContents.send('gateway-status', { running: false, managed: false });
-  await new Promise(r => setTimeout(r, 2000));
-  const octEntry = getOctGatewayEntry();
-  if (!octEntry) {
-    mainWindow?.webContents.send('openclaw-log-lines', ['[System] 未找到 oct-gateway，无法启动']);
-    return { success: false, error: 'OCT Gateway 未找到' };
-  }
-  const octResult = await startOctGateway();
-  if (!octResult.success) {
-    mainWindow?.webContents.send('openclaw-log-lines', [`[System] 启动失败: ${octResult.error}`]);
-    return { success: false, error: octResult.error };
-  }
-  mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已启动，等待就绪...']);
-  await new Promise(r => setTimeout(r, 1500));
-  mainWindow?.webContents.send('gateway-status', { running: true, managed: true });
-  mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已启动 ✅', '[连接] 正在连接...']);
-  if (openclawWs) {
-    openclawWs.close();
-    openclawWs = null;
-  }
-  suppressAutoReconnect = false;
-  reconnectRetryCount = 0;
-  connectOpenClaw();
-  return { success: true };
-});
 
-ipcMain.handle('gateway-status', async () => {
-  const octRunning = !!(octGatewayProcess && !octGatewayProcess.killed);
-  const portInUse = await isPortInUse(GATEWAY_PORT);
-  return {
-    running: octRunning || portInUse,
-    managed: octRunning,
-    portInUse,
-    engine: octRunning ? 'oct-gateway' : portInUse ? 'external' : 'none',
-  };
-});
 
-ipcMain.handle('omniroute-status', async () => {
-  const statusUrl = `http://127.0.0.1:${GATEWAY_PORT + 1}/omniroute/status`;
-  try {
-    const res = await fetch(statusUrl, { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) {
-      return {
-        success: false,
-        error: `HTTP Error ${res.status}`,
-        status: res.status,
-        checkedUrl: statusUrl,
-      };
-    }
-    const data = await res.json();
-    return {
-      success: true,
-      data,
-      checkedUrl: statusUrl,
-    };
-  } catch (e: any) {
-    return {
-      success: false,
-      error: e?.message || '无法连接 Gateway 后台服务',
-      checkedUrl: statusUrl,
-    };
-  }
-});
 
-ipcMain.handle('get-env', (_, key: string) => process.env[key] || '');
-
-/** 调用 oct-gateway 的工具执行接口（用于保险箱等） */
-ipcMain.handle('invoke-gateway-tool', async (_, toolName: string, args: any) => {
-  const toolPort = GATEWAY_PORT + 1;
-  try {
-    const res = await fetch(`http://127.0.0.1:${toolPort}/tool`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tool: toolName, args: args || {} }),
-      signal: AbortSignal.timeout(10000),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || '工具执行失败');
-    return data.result;
-  } catch (e: any) {
-    throw new Error(e?.message || 'Gateway 工具调用失败');
-  }
-});
 
 type OctGatewayConfigAgentPerms = {
   normalizeAgentPermissions: (input: unknown) => Record<string, boolean>;
@@ -3013,49 +2282,7 @@ function getOctGatewayConfigAgentPerms(): OctGatewayConfigAgentPerms {
   return _octGatewayConfigAgentPerms;
 }
 
-ipcMain.handle('get-agent-permissions', async () => {
-  try {
-    const { normalizeAgentPermissions, DEFAULT_AGENT_PERMISSIONS } = getOctGatewayConfigAgentPerms();
-    ensureConfigFile();
-    let cfg: Record<string, any> = {};
-    if (fs.existsSync(CONFIG_FILE)) {
-      try {
-        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      } catch {}
-    }
-    const permissions = normalizeAgentPermissions(cfg.AGENT_PERMISSIONS || DEFAULT_AGENT_PERMISSIONS);
-    return { success: true, data: permissions };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
 
-ipcMain.handle('save-agent-permissions', async (_, permissions: {
-  shellCommands?: boolean;
-  fileWrite?: boolean;
-  networkRequests?: boolean;
-  softwareInstall?: boolean;
-  systemConfig?: boolean;
-}) => {
-  try {
-    const { normalizeAgentPermissions, DEFAULT_AGENT_PERMISSIONS } = getOctGatewayConfigAgentPerms();
-    ensureConfigFile();
-    let cfg: Record<string, any> = {};
-    if (fs.existsSync(CONFIG_FILE)) {
-      try {
-        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      } catch {}
-    }
-    cfg.AGENT_PERMISSIONS = normalizeAgentPermissions({
-      ...(cfg.AGENT_PERMISSIONS || DEFAULT_AGENT_PERMISSIONS),
-      ...(permissions || {}),
-    });
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
-    return { success: true, data: cfg.AGENT_PERMISSIONS };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
 
 function syncExternalOmniRouteVault(cfg: Record<string, any>): void {
   try {
@@ -3072,380 +2299,21 @@ function syncExternalOmniRouteVault(cfg: Record<string, any>): void {
 }
 
 // API Key 配置管理：config.json 优先（与 save-api-keys 写入一致，保证回填）
-ipcMain.handle('get-api-keys', async () => {
-  try {
-    const envFilePath = path.join(__dirname, '..', '.env');
-    const envObj: Record<string, string> = fs.existsSync(envFilePath)
-      ? parseEnvContent(fs.readFileSync(envFilePath, 'utf-8'))
-      : {};
-    const cfg: Record<string, unknown> = fs.existsSync(CONFIG_FILE)
-      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
-      : {};
-    return {
-      success: true,
-      data: buildApiKeysData(cfg, envObj, {
-        OPENCLAW_WS_URL: DEFAULT_CONFIG.OPENCLAW_WS_URL,
-        TTS_MINIMAX_VOICE_ID: DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
-      }),
-    };
-  } catch (e: any) {
-    console.error('[API Keys] Failed to read:', e.message);
-    return { success: false, error: e.message };
-  }
-});
 
-ipcMain.handle('save-api-keys', async (_, keys: ApiKeyPayload) => {
-  try {
-    // 先写 userData/config.json（主要存储，renderer 读取来源）
-    ensureConfigFile();
-    let existingConfig: Record<string, string> = {};
-    if (fs.existsSync(CONFIG_FILE)) {
-      try {
-        existingConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      } catch {}
-    }
-    const { cfg, previousCfg } = applyApiKeyUpdates(existingConfig, keys, {
-      OPENCLAW_WS_URL: DEFAULT_CONFIG.OPENCLAW_WS_URL,
-      TTS_MINIMAX_VOICE_ID: DEFAULT_CONFIG.TTS_MINIMAX_VOICE_ID,
-    });
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
-    syncExternalOmniRouteVault(cfg);
 
-    // 验证回读
-    let verified: Record<string, string> = {};
-    try {
-      verified = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-    } catch {}
-    const expectBrave = (keys.BRAVE_SEARCH_API_KEY || '').trim();
-    const expectTavily = (keys.TAVILY_API_KEY || '').trim();
-    if (expectBrave && !(verified.BRAVE_SEARCH_API_KEY || '').trim()) {
-      return { success: false, error: 'Brave Search API Key 保存验证失败，请重试' };
-    }
-    if (expectTavily && !(verified.TAVILY_API_KEY || '').trim()) {
-      return { success: false, error: 'Tavily API Key 保存验证失败，请重试' };
-    }
 
-    loadOpenClawConfig();
-    mainWindow?.webContents.send('openclaw-log-lines', ['[连接] 保存配置完成，检查 Gateway...']);
-    // AI 配置或搜索引擎 Key 变更需重启 Gateway 才能生效
-    const aiConfigChanged = didApiConfigChange(previousCfg, cfg);
-    const connectionChanged = didConnectionConfigChange(previousCfg, cfg);
-    if (connectionChanged) {
-      suppressAutoReconnect = true;
-      clearReconnectTimer();
-      if (openclawWs) {
-        openclawWs.close();
-        openclawWs = null;
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    }
-    if (aiConfigChanged && octGatewayProcess && !octGatewayProcess.killed) {
-      expectOctGatewayProcessExit = true;
-      octGatewayProcess.kill();
-      octGatewayProcess = null;
-      mainWindow?.webContents.send('openclaw-log-lines', ['[系统] AI 配置已更新，正在重启 Gateway...']);
-      await waitForPortRelease(GATEWAY_PORT, 5000);
-      await new Promise(r => setTimeout(r, 500));
-    }
-    const inUse = await isPortInUse(GATEWAY_PORT);
-    if (!inUse) {
-      mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 端口 18789 空闲，正在自动启动 OCT Gateway...']);
-      const octEntry = getOctGatewayEntry();
-      if (octEntry) {
-        const octResult = await startOctGateway();
-        if (octResult.success) {
-          mainWindow?.webContents.send('openclaw-log-lines', ['[OCT Gateway] 已自动启动', '[连接] 1.5s 后发起连接']);
-          mainWindow?.webContents.send('gateway-status', { running: true, managed: true });
-          await new Promise(r => setTimeout(r, 1500));
-        } else {
-          mainWindow?.webContents.send('openclaw-log-lines', [`[系统] Gateway 启动失败: ${octResult.error}`]);
-        }
-      } else {
-        mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 未找到 oct-gateway，请手动启动 Gateway']);
-      }
-    } else {
-      mainWindow?.webContents.send('openclaw-log-lines', ['[系统] 端口 18789 已占用，直接连接']);
-    }
-    if (connectionChanged) {
-      suppressAutoReconnect = false;
-      reconnectRetryCount = 0;
-      connectOpenClaw();
-    }
-    
-    return { success: true };
-  } catch (e: any) {
-    suppressAutoReconnect = false;
-    console.error('[API Keys] Failed to save:', e.message);
-    return { success: false, error: e.message };
-  }
-});
-
-ipcMain.handle('get-persona-settings', async () => {
-  try {
-    ensureConfigFile();
-    const cfg: Record<string, string> = fs.existsSync(CONFIG_FILE)
-      ? (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; } })()
-      : {};
-    return {
-      success: true,
-      data: {
-        OCT_AI_NAME: (cfg.OCT_AI_NAME || DEFAULT_CONFIG.OCT_AI_NAME).toString(),
-        OCT_USER_NAME: (cfg.OCT_USER_NAME || DEFAULT_CONFIG.OCT_USER_NAME).toString(),
-        OCT_PERSONA_STYLE: (cfg.OCT_PERSONA_STYLE || DEFAULT_CONFIG.OCT_PERSONA_STYLE).toString(),
-      },
-    };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('save-persona-settings', async (_, payload: {
-  OCT_AI_NAME?: string;
-  OCT_USER_NAME?: string;
-  OCT_PERSONA_STYLE?: string;
-}) => {
-  try {
-    ensureConfigFile();
-    let cfg: Record<string, string> = {};
-    if (fs.existsSync(CONFIG_FILE)) {
-      try {
-        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      } catch {}
-    }
-
-    const normalizeName = (value: string | undefined, fallback: string, maxLen: number) => {
-      const trimmed = String(value || '').trim().replace(/\s+/g, ' ');
-      return (trimmed || fallback).slice(0, maxLen);
-    };
-    const normalizeStyle = (value: string | undefined) => {
-      const trimmed = String(value || '').trim();
-      return ['neutral', 'warm', 'companion'].includes(trimmed) ? trimmed : DEFAULT_CONFIG.OCT_PERSONA_STYLE;
-    };
-
-    cfg.OCT_AI_NAME = normalizeName(payload.OCT_AI_NAME, DEFAULT_CONFIG.OCT_AI_NAME, 24);
-    cfg.OCT_USER_NAME = normalizeName(payload.OCT_USER_NAME, DEFAULT_CONFIG.OCT_USER_NAME, 24);
-    cfg.OCT_PERSONA_STYLE = normalizeStyle(payload.OCT_PERSONA_STYLE);
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
 
 // Provider 列表（供 Settings UI 服务商选择器使用）
-ipcMain.handle('get-provider-list', async () => {
-  try {
-    const gatewayDir = path.dirname(getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js'));
-    const providersPath = path.join(gatewayDir, 'providers.js');
-    const { providers, error } = loadProviderList({
-      providersPath,
-      existsSync: fs.existsSync,
-      requireModule: require,
-    });
-    return { success: true, error: error || '', data: providers };
-  } catch (e: any) {
-    console.error('[get-provider-list]', e.message);
-    const { providers } = loadProviderList({
-      providersPath: '',
-      existsSync: () => false,
-      requireModule: require,
-    });
-    return { success: true, error: e.message, data: providers };
-  }
-});
 
 // 测试 AI 连接（用当前配置发一个简单请求，可传入 formConfig 覆盖已保存配置）
-ipcMain.handle('test-ai-connection', async (_, formConfig?: Record<string, string>) => {
-  try {
-    let cfg: Record<string, string> = readAppConfig();
-    if (formConfig && typeof formConfig === 'object') {
-      cfg = { ...cfg, ...formConfig };
-    }
-    const gatewayDir = path.dirname(getOctGatewayEntry() || path.join(__dirname, '..', 'oct-gateway', 'index.js'));
-    const providersPath = path.join(gatewayDir, 'providers.js');
-    const { providers } = loadProviderList({
-      providersPath,
-      existsSync: fs.existsSync,
-      requireModule: require,
-    });
-    const { providerId, baseUrl, apiKey, model } = resolveAiConnectionSettings(cfg, providers);
-    if (!baseUrl || !apiKey) {
-      return { success: false, error: '请先填写 API Key 并选择服务商' };
-    }
-    if (providerId === 'google') {
-      const googleApiMode = String(cfg.GOOGLE_API_MODE || 'native').trim().toLowerCase();
-      if (googleApiMode !== 'openai_compat') {
-        const googleNativePath = path.join(gatewayDir, 'services', 'googleNative.js');
-        const googleNative = fs.existsSync(googleNativePath) ? require(googleNativePath) : null;
-        if (!googleNative?.resolveGoogleClientConfig || !googleNative?.sanitizeGoogleModelId) {
-          return { success: false, error: 'Google 原生 SDK 未就绪，请重启应用后重试。' };
-        }
-        const clientConfig = googleNative.resolveGoogleClientConfig({
-          GOOGLE_AI_API_KEY: apiKey,
-          GOOGLE_AI_BASE_URL: baseUrl,
-          GOOGLE_API_MODE: googleApiMode,
-          GOOGLE_CLOUD_PROJECT: cfg.GOOGLE_CLOUD_PROJECT || '',
-          GOOGLE_CLOUD_LOCATION: cfg.GOOGLE_CLOUD_LOCATION || '',
-          GOOGLE_GENAI_API_VERSION: cfg.GOOGLE_GENAI_API_VERSION || '',
-        });
-        const normalizedModel = googleNative.sanitizeGoogleModelId(model);
-        const response = await clientConfig.client.models.generateContent({
-          model: normalizedModel,
-          contents: 'hi',
-        });
-        if (!response?.text && !response?.data && !response?.functionCalls) {
-          return { success: false, error: 'Google 原生连接未返回可识别内容，请检查模型和配额。' };
-        }
-        return { success: true, message: 'Google 原生连接成功' };
-      }
-    }
-    const fetchBaseUrl =
-      providerId === 'google' ? getGoogleBaseUrlHelper().sanitizeGoogleOpenAiBaseUrl(baseUrl) : baseUrl;
-    if (providerId === 'minimax' && !String(apiKey).trim().startsWith('sk-cp-')) {
-      return {
-        success: false,
-        error: 'MiniMax 现在需要 Token Plan 专属 API Key（通常以 sk-cp- 开头），普通按量计费 Key 不能直接用于 M2.7。',
-      };
-    }
-    if (providerId === 'moonshot' && String(apiKey).trim().startsWith('sk-sp-')) {
-      return {
-        success: false,
-        error: 'Kimi 官方直连接口需要 MOONSHOT_API_KEY，不能复用阿里云百炼 Coding Plan 的 sk-sp- Key。请在 Kimi 开放平台生成独立 Key。',
-      };
-    }
-    const testHeaders: Record<string, string> =
-      providerId === 'google'
-        ? { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }
-        : { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
-    const res = await fetch(`${fetchBaseUrl.replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: testHeaders,
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: 'hi' }],
-        max_tokens: 5,
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      if (providerId === 'minimax' && (res.status === 401 || res.status === 403)) {
-        return {
-          success: false,
-          error: `MiniMax 鉴权失败（${res.status}）。请确认你填写的是 Token Plan API Key（sk-cp-...），并且套餐当前包含 ${model} 的权限。`,
-        };
-      }
-      return { success: false, error: `API 返回 ${res.status}: ${errText.slice(0, 200)}` };
-    }
-    return { success: true, message: '连接成功' };
-  } catch (e: any) {
-    return { success: false, error: e?.message || String(e) };
-  }
-});
 
-ipcMain.handle('test-log-write', () => {
-  const testPath = path.join(os.homedir(), '.openclaw', 'logs', 'commands.log');
-  const dir = path.dirname(testPath);
-  try {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    const testLine = `{"timestamp":"${new Date().toISOString()}","level":"INFO","message":"Test log entry from CLAW Terminal","source":"test"}\n`;
-    fs.appendFileSync(testPath, testLine, 'utf8');
-    console.log('[LOG] Test line written to:', testPath);
-    return { success: true };
-  } catch (e: any) {
-    console.log('[LOG] Failed to write test line:', e.message);
-    return { success: false, error: e.message };
-  }
-});
 
 const CHAT_HISTORY_PATH = path.join(os.homedir(), '.openclaw', 'claw-terminal-history.json');
 const MAX_HISTORY = 100;
 
-ipcMain.handle('chat-history-load', async () => {
-  try {
-    const raw = fs.readFileSync(CHAT_HISTORY_PATH, 'utf-8');
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr.slice(-MAX_HISTORY);
-  } catch {
-    return [];
-  }
-});
 
-ipcMain.handle('chat-history-save', async (_: any, items: Array<{ role: string; content: string; timestamp: string; isSystemReply?: boolean }>) => {
-  try {
-    const dir = path.dirname(CHAT_HISTORY_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const toSave = (items || []).slice(-MAX_HISTORY).map((m) => ({
-      role: m.role,
-      content: m.content,
-      timestamp: m.timestamp || '',
-      ...(m.isSystemReply && { isSystemReply: true }),
-    }));
-    fs.writeFileSync(CHAT_HISTORY_PATH, JSON.stringify(toSave, null, 0), 'utf-8');
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e?.message };
-  }
-});
 
-ipcMain.handle('openclaw-connect', () => {
-  connectOpenClaw();
-  return { success: true };
-});
 
-ipcMain.handle('openclaw-send', (_, payload: string | {
-  content: string;
-  imageDataUrl?: string | null;
-  files?: UploadedFile[];
-  pacingMs?: number;
-  workbenchContext?: any;
-  canvasContext?: any;
-  requestId?: string;
-  projectContext?: any;
-}) => {
-  let content: string;
-  let imageDataUrl: string | null | undefined;
-  let files: UploadedFile[] | undefined;
-  let pacingMs: number | undefined;
-  let workbenchContext: any;
-  let requestId: string | undefined;
-  let projectContext: any;
-
-  if (typeof payload === 'string') {
-    content = payload;
-    imageDataUrl = null;
-    files = undefined;
-    pacingMs = undefined;
-    workbenchContext = undefined;
-    requestId = undefined;
-    projectContext = undefined;
-  } else if (payload && typeof payload === 'object') {
-    const c = payload.content;
-    content = typeof c === 'string' ? c : (c ? String(c) : '');
-    imageDataUrl = payload.imageDataUrl;
-    files = payload.files;
-    pacingMs = payload.pacingMs;
-    workbenchContext = payload.workbenchContext ?? payload.canvasContext;
-    requestId = typeof payload.requestId === 'string'
-      ? String(payload.requestId).trim()
-      : undefined;
-    projectContext = payload.projectContext ?? undefined;
-  } else {
-    content = '';
-    imageDataUrl = null;
-    files = undefined;
-    pacingMs = undefined;
-    workbenchContext = undefined;
-    requestId = undefined;
-    projectContext = undefined;
-  }
-
-  return sendChatMessage(content, imageDataUrl, files, pacingMs, workbenchContext, requestId, projectContext);
-});
 
 function sendScriptAdapterRunRequest(method: string, params: Record<string, unknown>) {
   if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
@@ -3477,469 +2345,35 @@ function sendScriptAdapterRunRequest(method: string, params: Record<string, unkn
   });
 }
 
-ipcMain.handle('script-adapter-run-start', (_event, payload: {
-  taskId: string;
-  taskTitle: string;
-  source?: string;
-  useMock?: boolean;
-  sourceText?: string;
-  config?: Record<string, unknown>;
-}) => {
-  const taskId = String(payload?.taskId || `script-adapter-${Date.now()}`);
-  return sendScriptAdapterRunRequest('scriptAdapter.run.start', {
-    taskId,
-    taskTitle: String(payload?.taskTitle || '多人演播有声书样章'),
-    source: String(payload?.source || 'content-workbench'),
-    useMock: payload?.useMock !== false,
-    sourceText: String(payload?.sourceText || ''),
-    config: payload?.config || {},
-  });
-});
 
-ipcMain.handle('script-adapter-run-cancel', (_event, payload: { taskId: string; reason?: string }) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.run.cancel', {
-    taskId: String(payload?.taskId || ''),
-    reason: String(payload?.reason || 'cancelled_by_user'),
-  });
-});
 
-ipcMain.handle('script-adapter-run-list', () => {
-  return sendScriptAdapterRunRequest('scriptAdapter.run.list', {});
-});
 
-ipcMain.handle('script-adapter-intake-start', (_event, payload: Record<string, unknown>) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.intake.start', payload || {});
-});
 
-ipcMain.handle('script-adapter-analysis-start', (_event, payload: Record<string, unknown>) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.analysis.start', payload || {});
-});
 
-ipcMain.handle('script-adapter-production-handoff', (_event, payload: Record<string, unknown>) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.production.handoff', payload || {});
-});
 
-ipcMain.handle('script-adapter-batch-start', (_event, payload: {
-  bookId: string;
-  chapterIndices: number[];
-  bookTitle?: string;
-  config?: Record<string, unknown>;
-  estimate?: Record<string, unknown>;
-}) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.start', {
-    bookId: String(payload?.bookId || ''),
-    chapterIndices: Array.isArray(payload?.chapterIndices) ? payload.chapterIndices : [],
-    bookTitle: payload?.bookTitle ? String(payload.bookTitle) : undefined,
-    config: payload?.config || {},
-    estimate: payload?.estimate || {},
-  });
-});
 
-ipcMain.handle('script-adapter-batch-status', (_event, payload: { batchId: string }) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.status', {
-    batchId: String(payload?.batchId || ''),
-  });
-});
 
-ipcMain.handle('script-adapter-batch-list', (_event, payload: { limit?: number; offset?: number } | undefined) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.list', {
-    limit: Number(payload?.limit) > 0 ? Math.floor(Number(payload?.limit)) : 20,
-    offset: Number(payload?.offset) >= 0 ? Math.floor(Number(payload?.offset)) : 0,
-  });
-});
 
-ipcMain.handle('script-adapter-batch-cancel', (_event, payload: { batchId: string }) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.cancel', {
-    batchId: String(payload?.batchId || ''),
-  });
-});
 
-ipcMain.handle('script-adapter-batch-subscribe', (_event, batchId: string) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.subscribe', {
-    batchId: String(batchId || ''),
-  });
-});
 
-ipcMain.handle('script-adapter-batch-approve-gate', (_event, payload: { batchId: string; gateId: string; reviewerNote?: string }) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.approveGate', payload || {});
-});
 
-ipcMain.handle('script-adapter-batch-reject-gate', (_event, payload: { batchId: string; gateId: string; reviewerNote?: string }) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.rejectGate', payload || {});
-});
 
-ipcMain.handle('script-adapter-batch-rerun', (_event, payload: { batchId: string; chapterIndex: number }) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.rerunChapter', {
-    batchId: String(payload?.batchId || ''),
-    chapterIndex: Number(payload?.chapterIndex),
-  });
-});
 
-ipcMain.handle('script-adapter-batch-delete', (_event, payload: { batchId: string }) => {
-  return sendScriptAdapterRunRequest('scriptAdapter.batch.delete', {
-    batchId: String(payload?.batchId || ''),
-  });
-});
 
 // ── AI.library 书库 Phase 2：Electron 原生实现（不经 Python）────────────────
-ipcMain.handle('library:list', async (_event, payload: { limit?: number; offset?: number }) => {
-  const limit = Number(payload?.limit) > 0 ? Math.floor(Number(payload.limit)) : 50;
-  const offset = Number(payload?.offset) >= 0 ? Math.floor(Number(payload.offset)) : 0;
-  try {
-    const books = listNativeLibraryBooks(limit, offset);
-    return { success: true, data: { success: true, books, total: books.length } };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `LIBRARY_LIST_FAILED: ${msg}` };
-  }
-});
 
-ipcMain.handle('library:get', async (_event, payload: { bookId: string }) => {
-  if (!payload?.bookId) return { success: false, error: 'bookId required' };
-  try {
-    const book = getNativeLibraryBook(payload.bookId);
-    if (!book) return { success: false, error: `Book ${payload.bookId} not found` };
-    return { success: true, data: { success: true, book } };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `LIBRARY_GET_FAILED: ${msg}` };
-  }
-});
 
-ipcMain.handle('library:chapters', async (_event, payload: { bookId: string }) => {
-  if (!payload?.bookId) return { success: false, error: 'bookId required' };
-  try {
-    const book = getNativeLibraryBook(payload.bookId);
-    if (!book) return { success: false, error: `Book ${payload.bookId} not found` };
-    return {
-      success: true,
-      data: { success: true, book_id: payload.bookId, chapters: listNativeLibraryChapters(payload.bookId) },
-    };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `LIBRARY_CHAPTERS_FAILED: ${msg}` };
-  }
-});
 
-ipcMain.handle('library:chapter', async (_event, payload: { bookId: string; chapterIndex: number }) => {
-  if (!payload?.bookId) return { success: false, error: 'bookId required' };
-  if (typeof payload?.chapterIndex !== 'number' || Number.isNaN(payload.chapterIndex)) {
-    return { success: false, error: 'chapterIndex required' };
-  }
-  try {
-    const data = getNativeLibraryChapterText(payload.bookId, payload.chapterIndex);
-    if (!data) return { success: false, error: `Chapter ${payload.chapterIndex} not found in book ${payload.bookId}` };
-    return { success: true, data: { success: true, book_id: payload.bookId, ...data } };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `LIBRARY_CHAPTER_FAILED: ${msg}` };
-  }
-});
 
-ipcMain.handle('library:pickFile', async () => {
-  try {
-    const result = await dialog.showOpenDialog({
-      title: '选择小说文件',
-      filters: [
-        { name: '文本文件', extensions: ['txt', 'md'] },
-        { name: '所有文件', extensions: ['*'] },
-      ],
-      properties: ['openFile'],
-    });
-    if (result.canceled || result.filePaths.length === 0) {
-      return { success: false, error: 'cancelled' };
-    }
-    return { success: true, filePath: result.filePaths[0] };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `PICK_FILE_FAILED: ${msg}` };
-  }
-});
 
-ipcMain.handle('library:upload', async (_event, payload: {
-  filePath: string;
-  title: string;
-  author?: string;
-}) => {
-  const filePath = String(payload?.filePath || '').trim();
-  const title = String(payload?.title || '').trim();
-  const author = String(payload?.author || '').trim();
 
-  if (!filePath) return { success: false, error: 'filePath required' };
-  if (!title) return { success: false, error: 'title required' };
 
-  try {
-    const data = await uploadNativeLibraryBook({ filePath, title, author });
-    return { success: true, data };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `UPLOAD_FAILED: ${msg}` };
-  }
-});
 
-ipcMain.handle('library:delete', async (_event, payload: { bookId: string }) => {
-  if (!payload?.bookId) return { success: false, error: 'bookId required' };
-  try {
-    const deleted = deleteNativeLibraryBook(payload.bookId);
-    if (!deleted) return { success: false, error: `Book ${payload.bookId} not found` };
-    return { success: true, data: { success: true, deleted: payload.bookId } };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `LIBRARY_DELETE_FAILED: ${msg}` };
-  }
-});
 
-ipcMain.handle('delivery:exportMarkdown', async (_event, payload: { filename: string; content: string }) => {
-  try {
-    const result = await dialog.showSaveDialog({
-      title: '保存交付包',
-      defaultPath: String(payload?.filename || 'delivery.md'),
-      filters: [
-        { name: 'Markdown', extensions: ['md'] },
-        { name: 'Text', extensions: ['txt'] },
-      ],
-    });
-    if (result.canceled || !result.filePath) {
-      return { success: false, error: 'cancelled' };
-    }
-    await fs.promises.writeFile(result.filePath, String(payload?.content || ''), 'utf8');
-    return { success: true, filePath: result.filePath };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `WRITE_FAILED: ${msg}` };
-  }
-});
 
-ipcMain.handle('delivery:exportDocx', async (_event, payload: {
-  filename: string;
-  documentTitle: string;
-  data: any;
-}) => {
-  try {
-    const result = await dialog.showSaveDialog({
-      title: '保存 Word 交付包',
-      defaultPath: String(payload?.filename || 'delivery.docx'),
-      filters: [
-        { name: 'Word', extensions: ['docx'] },
-      ],
-    });
-    if (result.canceled || !result.filePath) {
-      return { success: false, error: 'cancelled' };
-    }
 
-    const docxModule = await import('docx');
-    const {
-      AlignmentType,
-      BorderStyle,
-      Document,
-      HeadingLevel,
-      Packer,
-      Paragraph,
-      Table,
-      TableCell,
-      TableRow,
-      TextRun,
-      WidthType,
-    } = docxModule;
-    const sections = Array.isArray(payload?.data?.sections) ? payload.data.sections : [];
-    const metadata = Array.isArray(payload?.data?.metadata) ? payload.data.metadata : [];
-    const children: any[] = [];
 
-    children.push(new Paragraph({
-      heading: HeadingLevel.TITLE,
-      alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: String(payload?.documentTitle || '多人演播交付包'), bold: true })],
-    }));
 
-    for (const item of metadata) {
-      children.push(new Paragraph({
-        children: [
-          new TextRun({ text: `${String(item?.label || '')}：`, bold: true }),
-          new TextRun(String(item?.value || '')),
-        ],
-      }));
-    }
-
-    children.push(new Paragraph({ text: '' }));
-
-    for (const section of sections) {
-      children.push(new Paragraph({
-        heading: section.level === 1 ? HeadingLevel.HEADING_1 : section.level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
-        children: [new TextRun(String(section.title || ''))],
-      }));
-
-      for (const block of Array.isArray(section.blocks) ? section.blocks : []) {
-        if (block.type === 'paragraph') {
-          children.push(new Paragraph(String(block.text || '')));
-          continue;
-        }
-        if (block.type === 'scriptLine') {
-          children.push(new Paragraph({
-            children: [
-              new TextRun({ text: `[${String(block.speaker || '旁白')}] `, bold: true }),
-              new TextRun(String(block.text || '')),
-            ],
-          }));
-          if (block.note) {
-            children.push(new Paragraph({
-              children: [new TextRun({ text: `改编说明：${String(block.note)}`, italics: true })],
-            }));
-          }
-          continue;
-        }
-        if (block.type === 'bullet') {
-          for (const item of Array.isArray(block.items) ? block.items : []) {
-            children.push(new Paragraph({
-              text: String(item || ''),
-              bullet: { level: 0 },
-            }));
-          }
-          continue;
-        }
-        if (block.type === 'table') {
-          const rows = [];
-          rows.push(new TableRow({
-            children: (Array.isArray(block.columns) ? block.columns : []).map((column: string) => new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text: String(column || ''), bold: true })] })],
-            })),
-          }));
-          for (const row of Array.isArray(block.rows) ? block.rows : []) {
-            rows.push(new TableRow({
-              children: row.map((cell: string) => new TableCell({
-                children: [new Paragraph(String(cell || ''))],
-              })),
-            }));
-          }
-          children.push(new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows,
-            borders: {
-              top: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
-              bottom: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
-              left: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
-              right: { style: BorderStyle.SINGLE, size: 1, color: 'D9DDE3' },
-              insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: 'E6E9EF' },
-              insideVertical: { style: BorderStyle.SINGLE, size: 1, color: 'E6E9EF' },
-            },
-          }));
-        }
-      }
-
-      children.push(new Paragraph({ text: '' }));
-    }
-
-    const document = new Document({
-      sections: [{ properties: {}, children }],
-    });
-    const buffer = await Packer.toBuffer(document);
-    await fs.promises.writeFile(result.filePath, buffer);
-    return { success: true, filePath: result.filePath };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `DOCX_WRITE_FAILED: ${msg}` };
-  }
-});
-
-ipcMain.handle('image-generate', async (_event, payload: {
-  requestId: string;
-  prompt: string;
-  negativePrompt?: string;
-  aspectRatio?: string;
-  width?: number;
-  height?: number;
-  seed?: number | string;
-  promptOptimizer?: boolean;
-  aigcWatermark?: boolean;
-  stylePreset?: string;
-  quality?: string;
-}) => {
-  if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
-    return { success: false, error: 'Gateway 未连接，请先启动 Gateway' };
-  }
-
-  const requestId = payload?.requestId || `img_${Date.now()}`;
-  const msg = {
-    type: 'req',
-    id: requestId,
-    method: 'image.generate',
-    params: {
-      requestId,
-      prompt: String(payload?.prompt || ''),
-      negativePrompt: String(payload?.negativePrompt || ''),
-      aspectRatio: String(payload?.aspectRatio || ''),
-      width: payload?.width,
-      height: payload?.height,
-      seed: payload?.seed,
-      promptOptimizer: payload?.promptOptimizer === true,
-      aigcWatermark: payload?.aigcWatermark === true,
-      stylePreset: String(payload?.stylePreset || ''),
-      quality: String(payload?.quality || ''),
-    },
-  };
-
-  try {
-    openclawWs.send(JSON.stringify(msg));
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message || '发送失败' };
-  }
-});
-
-ipcMain.handle('open-external-url', async (_event, url: string) => {
-  const target = String(url || '').trim();
-  if (!target) return { success: false, error: 'URL 不能为空' };
-  await shell.openExternal(target);
-  return { success: true };
-});
-
-ipcMain.handle('download-image', async (_event, payload: { url: string; suggestedName?: string }) => {
-  const target = String(payload?.url || '').trim();
-  if (!target) return { success: false, error: '图片 URL 不能为空' };
-
-  try {
-    const ext = guessImageExtension(target);
-    const suggestedName = String(payload?.suggestedName || '').trim() || `oct-image-${Date.now()}.${ext}`;
-    const saveOptions = {
-      defaultPath: suggestedName,
-      filters: [
-        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-    };
-    const saveResult = mainWindow
-      ? await dialog.showSaveDialog(mainWindow, saveOptions)
-      : await dialog.showSaveDialog(saveOptions);
-
-    if (saveResult.canceled || !saveResult.filePath) {
-      return { success: false, error: '已取消下载' };
-    }
-
-    const res = await fetch(target, { signal: AbortSignal.timeout(60000) });
-    if (!res.ok) {
-      return { success: false, error: `下载失败：HTTP ${res.status}` };
-    }
-    const arrayBuffer = await res.arrayBuffer();
-    fs.writeFileSync(saveResult.filePath, Buffer.from(arrayBuffer));
-    return { success: true, path: saveResult.filePath };
-  } catch (err: any) {
-    return { success: false, error: err?.message || '下载图片失败' };
-  }
-});
-
-ipcMain.handle('openclaw-status', () => {
-  return {
-    connected: openclawWs?.readyState === WebSocket.OPEN,
-    sessionKey: currentSessionKey,
-    model: currentGatewayModel,
-    capabilities: currentGatewayCapabilities,
-  };
-});
-
-ipcMain.handle('show-notification', (_, { title, body }: { title: string; body: string }) => {
-  if (Notification.isSupported()) {
-    new Notification({ title, body }).show();
-  }
-});
 
 type PersistedMusicClip = {
   id: string;
@@ -4002,326 +2436,10 @@ function persistMusicClip(entry: PersistedMusicClip, audioBuffer: Buffer): void 
   }
 }
 
-ipcMain.handle('tts-speak', async (_, payload: { text: string; providerPreference?: 'auto' | 'browser' | 'dashscope' | 'minimax' }) => {
-  const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-  const providerPreference = payload?.providerPreference || 'auto';
-  if (!text) {
-    return { success: false, error: 'TTS text is empty' };
-  }
 
-  const cfg = readAppConfig();
-  const dashscopeApiKey = String(cfg.DASHSCOPE_API_KEY || process.env.DASHSCOPE_API_KEY || '').trim();
-  const minimaxApiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
-  const minimaxVoiceId = String(cfg.TTS_MINIMAX_VOICE_ID || 'male-qn-qingse').trim() || 'male-qn-qingse';
-  const dashscopeBaseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-  const { wsBase: minimaxWsUrl } = getMiniMaxEndpoints(cfg);
-  const currentProviderId = String(cfg.OCT_PROVIDER || '').trim();
 
-  const providers: Array<'minimax' | 'dashscope'> =
-    providerPreference === 'browser' ? []
-    : providerPreference === 'minimax' ? ['minimax']
-    : providerPreference === 'dashscope' ? ['dashscope']
-    : currentProviderId === 'minimax' ? ['minimax']
-    : currentProviderId === 'bailian' || currentProviderId === 'bailian-coding' ? ['dashscope']
-    : [];
 
-  const errors: string[] = [];
 
-  for (const provider of providers) {
-    try {
-      if (provider === 'minimax') {
-        if (!minimaxApiKey) {
-          errors.push('MiniMax API Key not configured');
-          continue;
-        }
-        pushUiLog(`[MiniMax TTS] start provider=MiniMax model=speech-2.8-hd voice=${minimaxVoiceId} chars=${text.length}`);
-        try {
-          const audioBuffer = await synthesizeMiniMaxViaWebSocket({
-            wsUrl: minimaxWsUrl,
-            apiKey: minimaxApiKey,
-            text,
-            voiceId: minimaxVoiceId,
-          });
-          pushUiLog(`[MiniMax TTS] success provider=MiniMax model=speech-2.8-hd voice=${minimaxVoiceId} chars=${text.length} bytes=${audioBuffer.length}`);
-          return {
-            success: true,
-            provider: 'minimax',
-            audioBase64: audioBuffer.toString('base64'),
-            mimeType: 'audio/mpeg',
-          };
-        } catch (err: any) {
-          pushUiLog(`[MiniMax TTS][ERR] ${err?.message || 'unknown error'}`);
-          errors.push(`MiniMax WebSocket TTS failed: ${err?.message || 'unknown error'}`);
-          if (providerPreference === 'minimax') {
-            break;
-          }
-          continue;
-        }
-      }
-
-      if (!dashscopeApiKey) {
-        errors.push('DashScope API Key not configured');
-        continue;
-      }
-      pushUiLog(`[DashScope TTS] start provider=DashScope voice=longxiaochun chars=${text.length}`);
-      const res = await fetch(`${dashscopeBaseUrl.replace(/\/$/, '')}/audio/speech`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${dashscopeApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'cosyvoice-v1',
-          voice: 'longxiaochun',
-          input: text,
-          response_format: 'mp3',
-        }),
-      });
-      if (!res.ok) {
-        const errText = await res.text();
-        pushUiLog(`[DashScope TTS][ERR] ${res.status} ${errText.slice(0, 160)}`);
-        errors.push(`DashScope TTS API error ${res.status}: ${errText}`);
-        continue;
-      }
-      const buf = await res.arrayBuffer();
-      pushUiLog(`[DashScope TTS] success provider=DashScope voice=longxiaochun chars=${text.length} bytes=${buf.byteLength}`);
-      return {
-        success: true,
-        provider: 'dashscope',
-        audioBase64: Buffer.from(buf).toString('base64'),
-        mimeType: 'audio/mpeg',
-      };
-    } catch (e: any) {
-      errors.push(`${provider} TTS request failed: ${e?.message || 'unknown error'}`);
-    }
-  }
-
-  return { success: false, error: errors.join(' | ') || (providerPreference === 'browser' ? 'Browser TTS handled in renderer' : 'No matching cloud TTS capability for current provider') };
-});
-
-ipcMain.handle('music-history-load', async () => {
-  try {
-    const history = readMusicHistory();
-    const clips = history.flatMap((item) => {
-      const filePath = path.join(MUSIC_STUDIO_DIR, item.filename);
-      if (!fs.existsSync(filePath)) return [];
-      return [{ ...item, filePath }];
-    });
-    return { success: true, clips };
-  } catch (e: any) {
-    return { success: false, error: e?.message || '音乐历史读取失败', clips: [] };
-  }
-});
-
-ipcMain.handle('music-history-delete', async (_, id: string) => {
-  try {
-    const history = readMusicHistory();
-    const item = history.find((h) => h.id === id);
-    if (item) {
-      const filePath = path.join(MUSIC_STUDIO_DIR, item.filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
-    writeMusicHistory(history.filter((h) => h.id !== id));
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e?.message || '删除失败' };
-  }
-});
-
-ipcMain.handle('music-generate', async (_, payload: {
-  title?: string;
-  model?: string;
-  prompt?: string;
-  lyrics?: string;
-  instrumental?: boolean;
-  lyricsOptimizer?: boolean;
-  sampleRate?: number;
-  bitrate?: number;
-  format?: 'mp3' | 'wav';
-}) => {
-  const cfg = readAppConfig();
-  const apiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
-  const baseUrl = String(cfg.MINIMAX_BASE_URL || process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1').trim().replace(/\/$/, '');
-  const model = String(payload?.model || 'music-2.6').trim() || 'music-2.6';
-  const title = String(payload?.title || '').trim();
-  const prompt = String(payload?.prompt || '').trim();
-  const lyrics = String(payload?.lyrics || '').trim();
-  const instrumental = !!payload?.instrumental;
-  const lyricsOptimizer = !!payload?.lyricsOptimizer;
-  const sampleRate = Number(payload?.sampleRate) || 44100;
-  const bitrate = Number(payload?.bitrate) || 256000;
-  const format = payload?.format === 'wav' ? 'wav' : 'mp3';
-
-  if (!apiKey) {
-    return { success: false, error: 'MiniMax API Key 未配置，请先在设置中填写 Token Plan API Key。' };
-  }
-  if (!prompt) {
-    return { success: false, error: '请先填写音乐描述。' };
-  }
-  if (!instrumental && !lyrics && !lyricsOptimizer) {
-    return { success: false, error: '当前是人声歌曲模式，请填写歌词，或开启“自动生成歌词”。' };
-  }
-
-  pushUiLog(`[MiniMax Music] start model=${model} instrumental=${instrumental} lyricsOptimizer=${lyricsOptimizer} promptChars=${prompt.length} lyricsChars=${lyrics.length}`);
-
-  try {
-    const res = await fetch(`${baseUrl}/music_generation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        prompt,
-        lyrics,
-        lyrics_optimizer: lyricsOptimizer,
-        is_instrumental: instrumental,
-        output_format: 'hex',
-        audio_setting: {
-          sample_rate: sampleRate,
-          bitrate,
-          format,
-        },
-      }),
-      signal: AbortSignal.timeout(240000),
-    });
-
-    const text = await res.text();
-    let data: any = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = null;
-    }
-
-    if (!res.ok) {
-      const errMsg = data?.base_resp?.status_msg || text || `HTTP ${res.status}`;
-      pushUiLog(`[MiniMax Music][ERR] ${res.status} ${String(errMsg).slice(0, 200)}`);
-      return { success: false, error: `MiniMax Music API 返回 ${res.status}: ${String(errMsg).slice(0, 300)}` };
-    }
-
-    const audioHex = String(data?.data?.audio || '').trim();
-    if (!audioHex) {
-      const statusMsg = data?.base_resp?.status_msg || '未返回音频数据';
-      pushUiLog(`[MiniMax Music][ERR] empty audio payload msg=${String(statusMsg).slice(0, 160)}`);
-      return { success: false, error: `MiniMax Music 未返回音频数据：${statusMsg}` };
-    }
-
-    const audioBuffer = Buffer.from(audioHex, 'hex');
-    const musicDuration = Number(data?.extra_info?.music_duration) || 0;
-    const musicSampleRate = Number(data?.extra_info?.music_sample_rate) || sampleRate;
-    const musicBitrate = Number(data?.extra_info?.bitrate) || bitrate;
-    const musicSize = Number(data?.extra_info?.music_size) || audioBuffer.length;
-    const traceId = String(data?.trace_id || '').trim();
-    const clipId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const mimeType = format === 'wav' ? 'audio/wav' : 'audio/mpeg';
-    const filename = `${clipId}.${format === 'wav' ? 'wav' : 'mp3'}`;
-
-    persistMusicClip({
-      id: clipId,
-      title: title || `track_${clipId}`,
-      prompt,
-      lyrics,
-      instrumental,
-      model,
-      traceId,
-      durationMs: musicDuration,
-      sampleRate: musicSampleRate,
-      bitrate: musicBitrate,
-      sizeBytes: musicSize,
-      mimeType,
-      filename,
-      createdAt: Date.now(),
-    }, audioBuffer);
-
-    pushUiLog(`[MiniMax Music] success model=${model} durationMs=${musicDuration} bytes=${audioBuffer.length} trace=${traceId || 'n/a'}`);
-
-    return {
-      success: true,
-      clipId,
-      filePath: path.join(MUSIC_STUDIO_DIR, filename),
-      mimeType,
-      model,
-      traceId,
-      durationMs: musicDuration,
-      sampleRate: musicSampleRate,
-      bitrate: musicBitrate,
-      sizeBytes: musicSize,
-    };
-  } catch (e: any) {
-    pushUiLog(`[MiniMax Music][ERR] ${e?.message || String(e)}`);
-    return { success: false, error: e?.message || 'MiniMax Music 请求失败' };
-  }
-});
-
-ipcMain.handle('lyrics-generate', async (_, payload: {
-  prompt?: string;
-  title?: string;
-}) => {
-  const cfg = readAppConfig();
-  const apiKey = String(cfg.MINIMAX_API_KEY || process.env.MINIMAX_API_KEY || '').trim();
-  const baseUrl = String(cfg.MINIMAX_BASE_URL || process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1').trim().replace(/\/$/, '');
-  const prompt = String(payload?.prompt || '').trim();
-  const title = String(payload?.title || '').trim();
-
-  if (!apiKey) {
-    return { success: false, error: 'MiniMax API Key 未配置，请先在设置中填写 Token Plan API Key。' };
-  }
-
-  pushUiLog(`[MiniMax Lyrics] start promptChars=${prompt.length} titleChars=${title.length}`);
-
-  try {
-    const res = await fetch(`${baseUrl}/lyrics_generation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        mode: 'write_full_song',
-        prompt,
-        ...(title ? { title } : {}),
-      }),
-      signal: AbortSignal.timeout(120000),
-    });
-
-    const text = await res.text();
-    let data: any = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = null;
-    }
-
-    if (!res.ok) {
-      const errMsg = data?.base_resp?.status_msg || text || `HTTP ${res.status}`;
-      pushUiLog(`[MiniMax Lyrics][ERR] ${res.status} ${String(errMsg).slice(0, 200)}`);
-      return { success: false, error: `MiniMax Lyrics API 返回 ${res.status}: ${String(errMsg).slice(0, 300)}` };
-    }
-
-    const generatedLyrics = String(data?.lyrics || '').trim();
-    const songTitle = String(data?.song_title || title || '').trim();
-    const styleTags = String(data?.style_tags || '').trim();
-
-    if (!generatedLyrics) {
-      const statusMsg = data?.base_resp?.status_msg || '未返回歌词';
-      pushUiLog(`[MiniMax Lyrics][ERR] empty lyrics msg=${String(statusMsg).slice(0, 160)}`);
-      return { success: false, error: `MiniMax Lyrics 未返回歌词：${statusMsg}` };
-    }
-
-    pushUiLog(`[MiniMax Lyrics] success title=${songTitle || 'n/a'} styleTagsChars=${styleTags.length} lyricsChars=${generatedLyrics.length}`);
-    return {
-      success: true,
-      title: songTitle,
-      styleTags,
-      lyrics: generatedLyrics,
-    };
-  } catch (e: any) {
-    pushUiLog(`[MiniMax Lyrics][ERR] ${e?.message || String(e)}`);
-    return { success: false, error: e?.message || 'MiniMax Lyrics 请求失败' };
-  }
-});
 
 app.whenReady().then(async () => {
   loadOpenClawConfig();
@@ -4330,6 +2448,60 @@ app.whenReady().then(async () => {
 
   // 1. 先创建窗口（显示界面，但不连接）
   createWindow();
+
+  // 将主进程函数暴露到 globalThis 供 IPC 模块调用
+  (globalThis as any).mainWindow = mainWindow;
+  (globalThis as any).floatWindow = floatWindow;
+  (globalThis as any).codeWindow = codeWindow;
+  (globalThis as any).terminalWindow = terminalWindow;
+  (globalThis as any).openclawWs = openclawWs;
+  (globalThis as any).getOpenclawWs = () => openclawWs;
+  (globalThis as any).setOpenclawWs = (ws: WebSocket | null) => { openclawWs = ws; (globalThis as any).openclawWs = ws; };
+  (globalThis as any).isPortInUse = isPortInUse;
+  (globalThis as any).killPortProcess = killPortProcess;
+  (globalThis as any).startOctGateway = startOctGateway;
+  (globalThis as any).connectOpenClaw = connectOpenClaw;
+  (globalThis as any).getOctGatewayEntry = getOctGatewayEntry;
+  (globalThis as any).waitForPortRelease = waitForPortRelease;
+  (globalThis as any).clearReconnectTimer = clearReconnectTimer;
+  (globalThis as any).loadOpenClawConfig = loadOpenClawConfig;
+  (globalThis as any).getGatewayDirForHelpers = getGatewayDirForHelpers;
+  (globalThis as any).readAppConfig = readAppConfig;
+  (globalThis as any).synthesizeMiniMaxViaWebSocket = synthesizeMiniMaxViaWebSocket;
+  (globalThis as any).sendScriptAdapterRunRequest = sendScriptAdapterRunRequest;
+
+  const ipcDeps: IpcDeps = {
+    mainWindow,
+    floatWindow,
+    codeWindow,
+    terminalWindow,
+    openclawWs,
+    getMainWindow: () => mainWindow,
+    getOpenclawWs: () => openclawWs,
+    setOpenclawWs: (ws) => {
+      openclawWs = ws as WebSocket | null;
+      (globalThis as any).openclawWs = ws;
+    },
+    getFloatWindow: () => floatWindow,
+    setFloatWindow: (win: BrowserWindow | null) => { floatWindow = win; (globalThis as any).floatWindow = win; },
+    getCodeWindow: () => codeWindow,
+    setCodeWindow: (win: BrowserWindow | null) => { codeWindow = win; (globalThis as any).codeWindow = win; },
+    getTerminalWindow: () => terminalWindow,
+    setTerminalWindow: (win: BrowserWindow | null) => { terminalWindow = win; (globalThis as any).terminalWindow = win; },
+    getTerminalPty: () => terminalPty,
+    setTerminalPty: (nextPty) => { terminalPty = nextPty as pty.IPty | null; },
+    createFloatWindow,
+    createTerminalWindow,
+    getPendingCodeWindowData: () => pendingCodeWindowData,
+    setPendingCodeWindowData: (d: { language: string; code: string } | null) => { pendingCodeWindowData = d; },
+    connectOpenClaw,
+    sendChatMessage,
+    getOpenClawStatus,
+    getAiLibraryPlugin,
+    saveAiLibraryPlugin,
+  };
+
+  registerAllIpcHandlers(ipcDeps);
 
   // 2b. AI.library 插件（可选，在 Gateway 之前启动以便注入 AI_LIBRARY_URL）
   try {
@@ -4394,16 +2566,7 @@ app.whenReady().then(async () => {
   registerScreenshotShortcut(config.screenshotShortcut);
 });
 
-ipcMain.handle('get-screenshot-shortcut', () => {
-  return loadClawConfig().screenshotShortcut;
-});
 
-ipcMain.handle('set-screenshot-shortcut', (_, shortcut: string) => {
-  const s = typeof shortcut === 'string' ? shortcut.trim() : 'Alt+A';
-  saveClawConfig({ screenshotShortcut: s });
-  registerScreenshotShortcut(s);
-  return { success: true };
-});
 
 app.on('will-quit', async () => {
   appQuitting = true;
@@ -4411,7 +2574,7 @@ app.on('will-quit', async () => {
   
   // 停止所有子进程并清理端口
   if (octGatewayProcess && !octGatewayProcess.killed) {
-    expectOctGatewayProcessExit = true;
+    (globalThis as any).expectOctGatewayProcessExit = true;
     try { octGatewayProcess.kill('SIGTERM'); } catch {}
     octGatewayProcess = null;
   }
@@ -4452,7 +2615,7 @@ app.on('before-quit', async (e) => {
   
   // 2. 停止所有子进程
   if (octGatewayProcess && !octGatewayProcess.killed) {
-    expectOctGatewayProcessExit = true;
+    (globalThis as any).expectOctGatewayProcessExit = true;
     try { octGatewayProcess.kill('SIGTERM'); } catch {}
     octGatewayProcess = null;
   }
@@ -4577,161 +2740,6 @@ function dedupeTaskItems(tasks: TaskItem[]): TaskItem[] {
   return deduped;
 }
 
-ipcMain.handle('tasks-read', async () => {
-  const filePath = path.join(app.getPath('userData'), 'tasks.json');
-  try {
-    console.log('[TasksLocal] tasks-read filePath:', filePath);
-  } catch {}
-  if (!fs.existsSync(filePath)) {
-    return { tasks: [], parking: [], intention: '', updatedAt: '' };
-  }
-  const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-  const dedupedTasks = dedupeTaskItems(raw.tasks || []);
-  try {
-    console.log('[TasksLocal] tasks-read counts:', {
-      tasks: Array.isArray(raw?.tasks) ? raw.tasks.length : 0,
-      dedupedTasks: dedupedTasks.length,
-      parking: Array.isArray(raw?.parking) ? raw.parking.length : 0,
-      updatedAt: raw?.updatedAt || '',
-    });
-  } catch {}
-  return {
-    tasks: dedupedTasks,
-    parking: raw.parking || [],
-    intention: raw.intention || '',
-    updatedAt: raw.updatedAt || '',
-  };
-});
-
-/** 写入任务数据（全量覆盖） */
-ipcMain.handle('tasks-write', async (_: Electron.IpcMainInvokeEvent, data: { tasks: TaskItem[]; parking: any[]; intention?: string }) => {
-  const filePath = path.join(app.getPath('userData'), 'tasks.json');
-  const payload = {
-    tasks: dedupeTaskItems(data.tasks || []),
-    parking: data.parking || [],
-    intention: data.intention || '',
-    updatedAt: new Date().toISOString(),
-  };
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
-  mainWindow?.webContents.send('task-board-update');
-  mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
-  return { ok: true };
-});
-
-/** 添加任务 */
-ipcMain.handle('tasks-add', async (_, { content, priority, source }: {
-  content: string;
-  priority: 'p0' | 'p1' | 'p2';
-  source: 'amy' | 'user';
-}) => {
-  const data = loadTasksData();
-  const duplicate = (data.tasks || []).find(t => !t.done && isLikelyDuplicateTaskContent(t.content, content));
-  if (duplicate) {
-    return { ok: true, taskId: duplicate.id, deduped: true };
-  }
-  const newTask: TaskItem = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    content: content.trim(),
-    priority,
-    done: false,
-    source,
-    createdAt: new Date().toISOString(),
-  };
-  data.tasks.push(newTask);
-  if (saveTasksData(data)) {
-    // 通知前端刷新
-    mainWindow?.webContents.send('task-board-update');
-    mainWindow?.webContents.executeJavaScript(
-      'window.dispatchEvent(new Event("tasks-updated"))'
-    ).catch(() => {});
-    return { ok: true, taskId: newTask.id };
-  }
-  return { ok: false, error: '保存失败' };
-});
-
-/** 更新任务（完成状态/内容/优先级） */
-ipcMain.handle('tasks-update', async (_, { taskId, updates }: {
-  taskId: string;
-  updates: Partial<Pick<TaskItem, 'done' | 'content' | 'priority'>>;
-}) => {
-  const data = loadTasksData();
-  const idx = data.tasks.findIndex(t => t.id === taskId);
-  if (idx === -1) return { ok: false, error: '任务不存在' };
-  
-  data.tasks[idx] = { ...data.tasks[idx], ...updates };
-  if (saveTasksData(data)) {
-    mainWindow?.webContents.send('task-board-update');
-    return { ok: true };
-  }
-  return { ok: false, error: '保存失败' };
-});
-
-/** 删除任务 */
-ipcMain.handle('tasks-delete', async (_, { taskId }: { taskId: string }) => {
-  const data = loadTasksData();
-  const originalLen = data.tasks.length;
-  data.tasks = data.tasks.filter(t => t.id !== taskId);
-  if (data.tasks.length === originalLen) {
-    return { ok: false, error: '任务不存在' };
-  }
-  if (saveTasksData(data)) {
-    mainWindow?.webContents.send('task-board-update');
-    return { ok: true };
-  }
-  return { ok: false, error: '保存失败' };
-});
-
-/** 清空已完成任务 */
-ipcMain.handle('tasks-clear-completed', async () => {
-  const data = loadTasksData();
-  const completedCount = data.tasks.filter(t => t.done).length;
-  data.tasks = data.tasks.filter(t => !t.done);
-  if (saveTasksData(data)) {
-    mainWindow?.webContents.send('task-board-update');
-    return { ok: true, cleared: completedCount };
-  }
-  return { ok: false, error: '保存失败' };
-});
-
-/** 设置今日意图 */
-ipcMain.handle('tasks-set-intention', async (_, { intention }: { intention: string }) => {
-  const data = loadTasksData();
-  data.intention = intention;
-  if (saveTasksData(data)) {
-    return { ok: true };
-  }
-  return { ok: false, error: '保存失败' };
-});
-
-/** 添加到停车场 */
-ipcMain.handle('tasks-parking-add', async (_, { content }: { content: string }) => {
-  const data = loadTasksData();
-  const newItem: TaskItem = {
-    id: `${Date.now()}`,
-    content: content.trim(),
-    priority: 'p2',
-    done: false,
-    source: 'amy',
-    createdAt: new Date().toISOString(),
-  };
-  data.parking.push(newItem);
-  if (saveTasksData(data)) {
-    return { ok: true, itemId: newItem.id };
-  }
-  return { ok: false, error: '保存失败' };
-});
-
-/** 从停车场移除 */
-ipcMain.handle('tasks-parking-remove', async (_, { itemId }: { itemId: string }) => {
-  const data = loadTasksData();
-  data.parking = data.parking.filter(p => p.id !== itemId);
-  if (saveTasksData(data)) {
-    return { ok: true };
-  }
-  return { ok: false, error: '保存失败' };
-});
 
 app.on('activate', () => {
   if (mainWindow === null) {

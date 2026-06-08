@@ -9,7 +9,7 @@ Phase 4 adds a provider capability layer for Render Protocol v3. Providers and m
 - Updated `oct-gateway/providers.js`.
   - Added provider defaults for `supportsStructuredOutput`, `supportsRenderBlocks`, `preferredRenderMode`, and `renderPromptProfile`.
   - Google and OpenAI prefer strict fenced `render_blocks` JSON.
-  - DeepSeek, Bailian, MiniMax, Moonshot, NewAPI, and custom providers use Gateway normalization.
+  - DeepSeek, Bailian, MiniMax, Moonshot, and custom providers use Gateway normalization.
   - Ollama remains legacy-tags first.
 - Updated `oct-gateway/config.js`.
   - Model capability normalization now merges provider render capability defaults.

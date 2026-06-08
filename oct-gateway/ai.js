@@ -34,7 +34,7 @@ const {
 // ═══════════════════════════════════════════════════════════════
 // AI 上下文截断优化
 // ═══════════════════════════════════════════════════════════════
-const MAX_TOOL_ROUNDS = 8;
+const MAX_TOOL_ROUNDS = 12;
 const MAX_IDENTICAL_TOOL_SIGNATURES = 2;
 const providerRouter = new ProviderRouter({ config });
 const pseudoToolCompat = createPseudoToolCompat({
@@ -419,9 +419,32 @@ URI 路径：core://my_user/[分类]/[具体节点]
   
   搜索使用原则：
   - 需要最新信息、网页资料、产品/新闻/文档时，优先使用 web_search
-  - 如果 web_search 返回结果较少、摘要过短或不够支撑回答，不要立刻放弃；应继续对前 1-2 个高相关结果使用 web_fetch 补充正文信息
+  - 如果 web_search 返回结果较少、摘要过短或不够支撑回答，对前 1-2 个高相关结果使用 web_fetch 补充正文信息（仅限 1-2 个）
   - 回答时尽量说明最终使用的是哪类来源（搜索摘要 / 网页正文）
-  - 不要只拿到 1 次搜索的短摘要就结束；当问题明显需要更完整资料时，应继续补抓网页内容
+  - 简单事实查询（如"XX 主题曲叫什么"、"XX 是什么"）搜索 1-2 次后直接基于已有结果回答，不要反复换关键词搜索
+  - 信息已足够回答时立刻停止工具调用，宁可标注"信息有限"也不要陷入搜索循环
+  - web_search + web_fetch 总轮次尽量控制在 3-4 轮以内，除非问题确实需要深度调研
+
+  ⚠️ 搜索退级策略（重要 — 每次收到 web_search 结果时必须检查 searchQuality.level）：
+
+  searchQuality.level = "rich"（丰度好）：
+  → 正常处理，继续回答。需要更多细节时可 web_fetch 1-2 个高相关结果。
+
+  searchQuality.level = "limited"（信息有限）：
+  → 最多再尝试 1 次不同关键词的搜索。
+  → 如果第二次仍是 limited 或 empty，立即诚实告知：
+     "抱歉，关于［主题］目前在互联网上能找到的信息非常有限。以下是我找到的少量内容：［已有结果］。这可能是因为该主题较新、信息较少，或中文资料尚未被充分收录。"
+  → 禁止换第三个关键词继续搜，禁止重复尝试。
+
+  searchQuality.level = "empty"（无结果）：
+  → 只允许再尝试 1 次（换搜索引擎或换关键词），第二次仍无结果则直接诚实告知：
+     "抱歉，我搜索了［关键词1］和［关键词2］，暂时没有找到相关内容。这可能是因为：1) 该信息较新尚未被收录；2) 话题过于小众；3) 搜索服务暂不可用。建议你提供更多线索或稍后再试。"
+  → 严禁反复换词搜索超过 2 次。
+
+  退级的核心原则：
+  - 诚实比假装有用更重要 — 宁可告诉用户"信息不够"也不要编造或用无关内容凑数
+  - 2 次搜索后仍无满意结果 = 够了，总结已有信息并诚实说明局限性
+  - 换 2 个关键词和 1 个搜索引擎就是上限，不要超过
 
   **文件工具**（谨慎使用，执行前说明意图）：
   - read_file 工具 — 读取文件
@@ -839,7 +862,7 @@ async function streamChatRaw({
       }
       const effectiveSupportsTools = canAttemptTools(caps);
       effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveSupportsTools ? 'supported' : 'unsupported');
-      effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
+      effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id, model);
       const validatedMessages = validateAndFixMessages(effectiveMessages, { logger: log });
       const droppedCount = effectiveMessages.length - validatedMessages.length;
       if (droppedCount > 0) {
@@ -865,6 +888,7 @@ async function streamChatRaw({
           GOOGLE_AI_API_KEY: apiKey,
           GOOGLE_AI_BASE_URL: baseUrl,
           GOOGLE_API_MODE: config.GOOGLE_API_MODE || 'native',
+          GOOGLE_HTTPS_PROXY: config.GOOGLE_HTTPS_PROXY || '',
           GOOGLE_CLOUD_PROJECT: config.GOOGLE_CLOUD_PROJECT || '',
           GOOGLE_CLOUD_LOCATION: config.GOOGLE_CLOUD_LOCATION || '',
           GOOGLE_GENAI_API_VERSION: config.GOOGLE_GENAI_API_VERSION || '',
@@ -978,7 +1002,7 @@ async function streamChatRaw({
     }
     const effectiveToolsSupport = caps.toolsSupport || (caps.supportsTools ? 'supported' : 'unknown');
     effectiveMessages = injectClarifyCapabilityMessage(effectiveMessages, effectiveToolsSupport);
-    effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id);
+    effectiveMessages = normalizeMessagesForProvider(effectiveMessages, provider.id, model);
     const validatedMessages = validateAndFixMessages(effectiveMessages, { logger: log });
     const droppedCount = effectiveMessages.length - validatedMessages.length;
     if (droppedCount > 0) {
@@ -1546,7 +1570,7 @@ async function streamChatRaw({
       const prevModel = config.DASHSCOPE_MODEL;
       const originalModel = model;
       const fallbackModel = 'MiniMax-M2.5';
-      config.currentProvider = 'bailian-coding';
+      config.currentProvider = 'bailian';
       config.DASHSCOPE_MODEL = fallbackModel;
       try {
         log.debug('streamChat fallback re-enter', { originalModel, fallbackModel });

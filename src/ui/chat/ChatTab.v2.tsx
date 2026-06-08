@@ -99,7 +99,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     registerPromptInjector,
     markPendingPromptOptimization,
   } = useImageStudio(messages);
-  const { onboardingDismissed, dismissOnboarding, resetOnboardingForDev } = useOnboarding();
+  const { onboardingDismissed, dismissOnboarding } = useOnboarding();
   const { permissions } = usePermissions();
   const canvasBridge = useCanvasBridge();
   const { setNodeInspectHandler } = useCanvas();
@@ -175,6 +175,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   const onQuoteQuestion = useCallback((text: string) => {
     setInjectInputText(text);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 
   // ── UI-only refs ──────────────────────────────────────────────────────────
@@ -351,18 +352,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     (window as any).electronAPI?.chatHistorySave?.([]);
   }, [inquiry, setMessages]);
 
-  /** TEMP：仅开发模式。输入框旁「欢迎页」按钮：重置首屏引导；有消息时会先问是否清空。产品化前删除。 */
-  const handleDevShowWelcomeAgain = useCallback(() => {
-    if (!import.meta.env.DEV) return;
-    if (messages.length > 0) {
-      if (!window.confirm('要先清空聊天才能显示欢迎页。确定清空全部记录吗？')) return;
-      clearProcessedMarkdownCache();
-      inquiry.reset();
-      setMessages([]);
-      void (window as any).electronAPI?.chatHistorySave?.([]);
-    }
-    resetOnboardingForDev();
-  }, [inquiry, messages.length, resetOnboardingForDev, setMessages]);
 
   // scrollManager: handleChatScroll / useLayoutEffects 已迁移到 useScrollManager hook
 
@@ -501,16 +490,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             isEmptyConversation={messages.length === 0}
             extraControls={(
               <>
-                {import.meta.env.DEV ? (
-                  <button
-                    type="button"
-                    className="attach-btn"
-                    title="开发用：重新显示首屏欢迎"
-                    onClick={handleDevShowWelcomeAgain}
-                  >
-                    欢迎页
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   className="attach-btn"

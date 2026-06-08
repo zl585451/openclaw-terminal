@@ -1,6 +1,7 @@
 'use strict';
 
 const config = require('../config');
+const { fetchWithProxyFallback } = require('../bootstrap/environment');
 
 class LlmClientTimeoutError extends Error {
   constructor(message) {
@@ -74,7 +75,7 @@ async function chatCompletionRaw({
   let usage = null;
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithProxyFallback(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

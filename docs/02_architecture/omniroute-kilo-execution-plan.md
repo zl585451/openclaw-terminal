@@ -80,7 +80,7 @@ git status --short
 
 需要列出以下字段族：
 
-- 主聊天：`OCT_PROVIDER`、`OCT_MODEL`、`DASHSCOPE_API_KEY`、`DASHSCOPE_BASE_URL`、`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`NEWAPI_API_KEY`、`NEWAPI_BASE_URL`、`CUSTOM_*`
+- 主聊天：`OCT_PROVIDER`、`OCT_MODEL`、`DASHSCOPE_API_KEY`、`DASHSCOPE_BASE_URL`、`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`CUSTOM_*`
 - Google：`GOOGLE_AI_API_KEY`、`GOOGLE_AI_BASE_URL`、`GEMINI_API_KEY`、`GOOGLE_API_MODE`、`GOOGLE_TOOLS_MODE`
 - Kimi/Moonshot：`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`
 - MiniMax：`MINIMAX_API_KEY`、`MINIMAX_BASE_URL`
@@ -153,15 +153,15 @@ const OMNI_ROUTE_CAPABILITIES = {
     tools: false,
     candidates: [
       { provider: 'current', model: 'current' },
-      { provider: 'bailian-coding', model: 'qwen3.5-plus' },
-      { provider: 'newapi', model: 'qwen3.6-plus-2026-04-02' },
+      { provider: 'bailian', model: 'qwen-plus' },
+      { provider: 'google', model: 'google/gemini-2.5-flash' },
     ],
   },
   'oct-tool-safe': {
     description: 'Strict tool calling channel.',
     tools: true,
     candidates: [
-      { provider: 'bailian-coding', model: 'qwen3.5-plus' },
+      { provider: 'bailian', model: 'qwen-plus' },
       { provider: 'openai', model: 'gpt-4o' },
     ],
   },

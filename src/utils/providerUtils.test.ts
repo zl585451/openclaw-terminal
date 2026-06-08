@@ -7,9 +7,9 @@ import { describe, it, expect } from 'vitest';
 import { inferProviderFromBaseUrl, detectProviderFromKey } from './providerUtils';
 
 describe('inferProviderFromBaseUrl', () => {
-  it('空字符串与仅空白时回退为 bailian-coding', () => {
-    expect(inferProviderFromBaseUrl('')).toBe('bailian-coding');
-    expect(inferProviderFromBaseUrl('   ')).toBe('bailian-coding');
+  it('空字符串与仅空白时回退为 bailian', () => {
+    expect(inferProviderFromBaseUrl('')).toBe('bailian');
+    expect(inferProviderFromBaseUrl('   ')).toBe('bailian');
   });
 
   it('大小写不敏感匹配子串', () => {
@@ -17,8 +17,8 @@ describe('inferProviderFromBaseUrl', () => {
     expect(inferProviderFromBaseUrl('https://GenerativeLanguage.Googleapis.Com/')).toBe('google');
   });
 
-  it('coding.dashscope 优先于 dashscope（更具体子串在前）', () => {
-    expect(inferProviderFromBaseUrl('https://coding.dashscope.aliyuncs.com')).toBe('bailian-coding');
+  it('coding.dashscope 匹配 bailian', () => {
+    expect(inferProviderFromBaseUrl('https://coding.dashscope.aliyuncs.com')).toBe('bailian');
     expect(inferProviderFromBaseUrl('https://dashscope.aliyuncs.com')).toBe('bailian');
   });
 
@@ -27,14 +27,12 @@ describe('inferProviderFromBaseUrl', () => {
     expect(inferProviderFromBaseUrl('https://api.minimaxi.com')).toBe('minimax');
     expect(inferProviderFromBaseUrl('https://api.siliconflow.cn')).toBe('siliconflow');
     expect(inferProviderFromBaseUrl('https://api.moonshot.cn')).toBe('moonshot');
-    expect(inferProviderFromBaseUrl('http://127.0.0.1:3000/v1')).toBe('newapi');
-    expect(inferProviderFromBaseUrl('https://newapi.example.com/v1')).toBe('newapi');
     expect(inferProviderFromBaseUrl('https://api.groq.com')).toBe('groq');
     expect(inferProviderFromBaseUrl('http://localhost:11434')).toBe('ollama');
   });
 
-  it('未匹配任何已知子串时回退为 bailian-coding', () => {
-    expect(inferProviderFromBaseUrl('https://example.com/v1')).toBe('bailian-coding');
+  it('未匹配任何已知子串时回退为 bailian', () => {
+    expect(inferProviderFromBaseUrl('https://example.com/v1')).toBe('bailian');
   });
 });
 
@@ -49,13 +47,6 @@ describe('detectProviderFromKey', () => {
       providerId: null,
       confidence: 'low',
       reason: '空 Key',
-    });
-  });
-
-  it('高置信度：sk-sp- 百炼 Coding', () => {
-    expect(detectProviderFromKey('sk-sp-abc')).toMatchObject({
-      providerId: 'bailian-coding',
-      confidence: 'high',
     });
   });
 

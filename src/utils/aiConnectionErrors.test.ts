@@ -30,22 +30,22 @@ describe('humanizeAiConnectionError', () => {
     expect(humanizeAiConnectionError('Token Plan only', 'openai')).toBe('Token Plan only');
     const only401 = humanizeAiConnectionError('401', 'minimax');
     expect(only401).toBe(
-      'API Key 无效或权限不足。百炼 Coding Plan 需要 sk-sp- 前缀的 Key；MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
+      'API Key 无效或权限不足。MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
     );
   });
 
   it('401 / 403 / unauthorized / forbidden（大小写不敏感）', () => {
     expect(humanizeAiConnectionError('HTTP 401')).toBe(
-      'API Key 无效或权限不足。百炼 Coding Plan 需要 sk-sp- 前缀的 Key；MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
+      'API Key 无效或权限不足。MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
     );
     expect(humanizeAiConnectionError('status 403')).toBe(
-      'API Key 无效或权限不足。百炼 Coding Plan 需要 sk-sp- 前缀的 Key；MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
+      'API Key 无效或权限不足。MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
     );
     expect(humanizeAiConnectionError('Unauthorized')).toBe(
-      'API Key 无效或权限不足。百炼 Coding Plan 需要 sk-sp- 前缀的 Key；MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
+      'API Key 无效或权限不足。MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
     );
     expect(humanizeAiConnectionError('FORBIDDEN')).toBe(
-      'API Key 无效或权限不足。百炼 Coding Plan 需要 sk-sp- 前缀的 Key；MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
+      'API Key 无效或权限不足。MiniMax 需要 sk-cp- 前缀的 Token Plan Key。',
     );
   });
 

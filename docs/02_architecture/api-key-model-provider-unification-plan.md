@@ -13,7 +13,7 @@
 
 1. **假设配置存储层走 `electron-store`**。实际上 OCT 不使用 electron-store，只有「Electron userData/config.json + 根目录 .env/.env.local + ~/.openclaw/openclaw.json」三处扁平 JSON/env，由 `oct-gateway/config.js` 的 `loadConfigFile()` 串起来。
 2. **假设 gateway 是 `child_process.fork` + `process.send` IPC**。实际上 gateway 是独立 Node 进程 + WebSocket，前端通过 `electronAPI.saveApiKeys → ipcMain('save-api-keys') → CONFIG_FILE 写入 → gateway 重启 → config.js 重新加载` 这条链路同步配置。
-3. **假设 `qwen / claude / gemini` 是一级 provider ID**。实际上的一级 provider ID 是 `bailian` / `bailian-coding` / `deepseek` / `siliconflow` / `moonshot` / `groq` / `openai` / `ollama` / `minimax` / `google` / `custom`（见 `oct-gateway/providers.js` 中的 `PROVIDERS` 表）。Qwen 系列是 `bailian*` 家族的模型，Gemini 是 `google` provider 的模型，Claude 目前只通过 `custom` 手动接入。
+3. **假设 `qwen / claude / gemini` 是一级 provider ID**。实际上的一级 provider ID 是 `bailian` / `deepseek` / `siliconflow` / `moonshot` / `groq` / `openai` / `ollama` / `minimax` / `google` / `custom`（见 `oct-gateway/providers.js` 中的 `PROVIDERS` 表）。Qwen 系列是 `bailian` provider 的模型，Gemini 是 `google` provider 的模型，Claude 目前只通过 `custom` 手动接入。
 4. **要新建存储层、重构 ipc、新增 configReceiver.js**。本版只在当前结构上叠加"Beginner 分层 + Key 嗅探 + 默认策略"，不拆已有文件、不改已有数据流。
 
 **本版方案目标 = 降低小白认知负担，同时保留现有多 Provider 能力，零破坏性变更。**
@@ -48,11 +48,10 @@ PROVIDERS[id].baseUrl / defaultModel  ← 兜底默认
 | ID | 名称 | Key 字段 | Base URL 字段 | 备注 |
 |---|---|---|---|---|
 | `bailian` | 阿里云百炼 | `DASHSCOPE_API_KEY` | `DASHSCOPE_BASE_URL` | 默认 `dashscope.aliyuncs.com` |
-| `bailian-coding` | 阿里云百炼 Coding Plan | `DASHSCOPE_API_KEY`（`sk-sp-` 前缀） | `DASHSCOPE_BASE_URL`=`coding.dashscope…` | Coding Plan 专属，当前默认 provider |
 | `deepseek` | DeepSeek 官方 | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL` | 默认 `api.deepseek.com/v1` |
 | `siliconflow` | 硅基流动 | 复用 `DASHSCOPE_API_KEY`（另写 `SILICONFLOW_API_KEY`） | 复用 `DASHSCOPE_BASE_URL` | 共用字段历史遗留 |
 | `moonshot` | Kimi 官方 | `MOONSHOT_API_KEY` / fallback `DASHSCOPE_API_KEY` | 默认 `api.moonshot.cn/v1` | |
-| `groq` | Groq | `GROQ_API_KEY` / fallback `DASHSCOPE_API_KEY` | 默认 `api.groq.com/openai/v1` | |
+| `groq` | Groq | `GROQ_API_KEY` / fallback `DASHSCOPE_API_KEY` | `GROQ_BASE_URL`，默认 `api.groq.com/openai/v1` | 官方 OpenAI-compatible 接法 |
 | `openai` | OpenAI | `OPENAI_API_KEY` / fallback `DASHSCOPE_API_KEY` | 默认 `api.openai.com/v1` | 需翻墙 |
 | `ollama` | 本地 Ollama | 固定 `ollama`（`fixedApiKey`） | `localhost:11434/v1` | 完全免费离线 |
 | `minimax` | MiniMax | `MINIMAX_API_KEY`（`sk-cp-` 前缀） | `MINIMAX_BASE_URL` | 默认 `api.minimaxi.com/v1`，需 Token Plan |
@@ -98,7 +97,7 @@ PROVIDERS[id].baseUrl / defaultModel  ← 兜底默认
 | **API Key** | 每 provider 一个输入框 | 必要 |
 | **Base URL** | 每 provider 一个输入框 | 对 90% 用户不必要 |
 | **HTTPS_PROXY / HTTP_PROXY** | 2 个输入框 | 只有 Google/OpenAI 用户偶尔需要 |
-| **`sk-sp-` vs `sk-` 前缀** | 没提示 | 百炼 vs Coding Plan 踩坑重灾区 |
+| **`sk-sp-` vs `sk-` 前缀** | 仅在不兼容 provider 中防错 | 历史 Coding Plan Key 误填到其他官方接口会触发 401 |
 | **`sk-cp-` 前缀** | 有滞后错误提示 | MiniMax Token Plan 踩坑重灾区 |
 | **Qwen/DeepSeek/GLM 分别由哪家 provider 承载** | 无提示 | 小白经常选错服务商 |
 | **`__custom__` 模型占位符** | Google / Custom 下拉里 | 反直觉概念 |
@@ -120,14 +119,14 @@ PROVIDERS[id].baseUrl / defaultModel  ← 兜底默认
 UI 折叠为 3 行：
 
 1. **一句话选择**：单选卡片（不是下拉），只有 4 个推荐选项：
-   - 阿里云百炼 Coding Plan（推荐新手）→ `bailian-coding`
+   - 阿里云百炼（推荐新手）→ `bailian`
    - DeepSeek（便宜够用）→ `deepseek`
    - MiniMax（自研 M2.7）→ `minimax`
    - 其它 / 高级 → 切到 Advanced
 
 2. **API Key 粘贴框**（**只有 1 个输入框**）：
    - 粘贴任意 Key 后，前端调用 `detectProviderFromKey(key)`（见 5.1）自动识别 provider
-   - 若命中 `bailian-coding / deepseek / minimax` 三张默认卡之一，**选卡自动跟随更新**
+   - 若命中 `bailian / deepseek / minimax` 三张默认卡之一，**选卡自动跟随更新**
    - 若命中 `google / groq / moonshot / openai / siliconflow / ollama / custom`，**不在 Beginner 内强行扩卡**，而是提示“检测到更适合在高级设置中配置”，并提供一键切到 Advanced
    - 识别成功 → 输入框下方显示"检测到：阿里云百炼 Coding Plan"
    - 识别失败 → 提示用户手动选或切 Advanced
@@ -158,7 +157,6 @@ UI 折叠为 3 行：
 
 | Provider | 第一推荐 | 第二候选 | 第三候选（便宜/快速） |
 |---|---|---|---|
-| `bailian-coding` | `qwen3.5-plus` | `qwen3-max-2026-01-23` | `qwen3-coder-next` |
 | `bailian` | `qwen-plus` | `qwen-max` | `qwen-turbo` |
 | `deepseek` | `deepseek-chat` | `deepseek-reasoner` | — |
 | `minimax` | `MiniMax-M2.7` | `MiniMax-M2.7-highspeed` | `MiniMax-M2.5` |
@@ -166,7 +164,7 @@ UI 折叠为 3 行：
 | `google` | `google/gemini-2.5-flash` | `google/gemini-2.5-pro` | `google/gemini-2.0-flash-001` |
 | `openai` | `gpt-4o-mini` | `gpt-4o` | — |
 | `moonshot` | `kimi-k2.6` | `kimi-k2.5` | `kimi-k2-turbo-preview` |
-| `groq` | `llama-3.3-70b-versatile` | `gemma2-9b-it` | — |
+| `groq` | `llama-3.3-70b-versatile` | `llama-3.1-8b-instant` | `openai/gpt-oss-120b` / `openai/gpt-oss-20b` |
 | `ollama` | `qwen2.5:7b` | — | — |
 | `custom` | 用户填 | — | — |
 
@@ -180,7 +178,7 @@ Beginner 模式下**永远不向用户展示 Base URL**。保存时：
 
 ### 4.3 首次进入判断
 
-- 无任何 Key → provider 卡默认高亮 `bailian-coding`（Coding Plan 是当前默认），但不写 `OCT_PROVIDER` 直到用户点"保存"。
+- 无任何 Key → provider 卡默认高亮 `bailian`，但不写 `OCT_PROVIDER` 直到用户点"保存"。
 - 老用户（config.json 已有 `OCT_PROVIDER` 且对应 Key 非空）→ 默认进入 Advanced 模式（尊重老用户的已有配置）。
 
 ---
@@ -202,7 +200,7 @@ export function detectProviderFromKey(raw: string): {
 
   // 高置信前缀
   if (k.startsWith('sk-sp-'))
-    return { providerId: 'bailian-coding', confidence: 'high', reason: '阿里云百炼 Coding Plan 专属前缀' };
+    return { providerId: null, confidence: 'medium', reason: '历史 Coding Plan Key，当前默认不自动切换 provider' };
   if (k.startsWith('sk-cp-'))
     return { providerId: 'minimax', confidence: 'high', reason: 'MiniMax Token Plan 前缀' };
   if (k.startsWith('gsk_'))
@@ -237,7 +235,7 @@ Beginner 卡片在粘贴时实时调用：
 
 | 错误特征 | 人话提示 |
 |---|---|
-| HTTP 401 / 403 | "API Key 无效或权限不足。百炼 Coding Plan 需要 `sk-sp-` 前缀的 Key；MiniMax 需要 `sk-cp-` 前缀的 Token Plan Key。" |
+| HTTP 401 / 403 | "API Key 无效或权限不足。MiniMax 需要 `sk-cp-` 前缀的 Token Plan Key。" |
 | 超时（fetch abort） | "连接超时。如果你使用 Google 或 OpenAI，可能需要在高级设置里填写 HTTPS 代理地址。" |
 | HTTP 404 + "model" | "模型不存在。请点击'换一个'尝试其他推荐模型。" |
 | MiniMax + 非 `sk-cp-` | "MiniMax 现在需要 Token Plan API Key（以 sk-cp- 开头），普通按量 Key 不能用。" |
@@ -314,11 +312,11 @@ Beginner 的"保存并测试连接"按钮执行顺序：
 
 ```json
 {
-  "OCT_PROVIDER": "bailian-coding",
-  "OCT_MODEL": "qwen3.5-plus",
-  "DASHSCOPE_API_KEY": "sk-sp-...",
+  "OCT_PROVIDER": "bailian",
+  "OCT_MODEL": "qwen-plus",
+  "DASHSCOPE_API_KEY": "sk-...",
   "providers": {
-    "bailian-coding": { "apiKey": "sk-sp-...", "baseUrl": "" },
+    "bailian": { "apiKey": "sk-...", "baseUrl": "" },
     "deepseek": { "apiKey": "sk-...", "baseUrl": "" }
   }
 }
@@ -408,10 +406,10 @@ Beginner 的"保存并测试连接"按钮执行顺序：
 
 - [ ] `npx tsc --noEmit` 无错
 - [ ] `npm run build` + `npm run start` 正常
-- [ ] 3 种 Beginner provider（bailian-coding / deepseek / minimax）均能通过"保存并测试连接"
+- [ ] 3 种 Beginner provider（bailian / deepseek / minimax）均能通过"保存并测试连接"
 - [ ] Advanced 模式行为与改动前一致
 - [ ] 老 `userData/config.json`（没有 `OCT_SETTINGS_MODE`）首次进入被判定为 Advanced
-- [ ] `sk-sp-` / `sk-cp-` / `gsk_` / `AQ.` / `AIza` 前缀嗅探正确
+- [ ] `sk-cp-` / `gsk_` / `AQ.` / `AIza` 前缀嗅探正确；历史 `sk-sp-` 只做误填防错
 - [ ] 通用 `sk-` 前缀不自动切卡
 
 ---

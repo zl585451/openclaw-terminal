@@ -147,8 +147,9 @@ function toActivityEntry(event: ScriptAdapterBatchEvent): BatchActivityEntry | n
     };
   }
   if (event.event === 'artifact_created') return { ...base, title: `${chapter} 已生成产物`, detail: labelAgent(event.agentId) };
-  if (event.event === 'gate_reached') return { ...base, title: `${chapter} 到达确认点`, detail: '系统正在自动确认' };
+  if (event.event === 'gate_reached') return { ...base, title: `${chapter} 到达确认点`, detail: '等待人工确认' };
   if (event.event === 'gate_updated') return { ...base, title: `${chapter} 确认点已通过` };
+  if (event.event === 'chapter_awaiting_review') return { ...base, title: `${chapter} 等待人工审核`, detail: '请展开章节产物并选择通过或退回' };
   if (event.event === 'chapter_completed') return { ...base, title: `${chapter} 制作完成` };
   if (event.event === 'chapter_failed') return { ...base, title: `${chapter} 制作失败`, detail: event.error };
   if (event.event === 'batch_paused') return { ...base, title: '批次已暂停', detail: event.error === 'one_or_more_chapters_failed' ? '有章节失败，等待修复后重跑' : event.error };

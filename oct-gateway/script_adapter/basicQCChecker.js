@@ -72,6 +72,7 @@ function checkBasicQC(params = {}) {
   checkSuspiciousInnerVoiceSpeaker(segments, issues);
   checkInnerMonologueFragment(segments, issues);
   checkForeignInnerVoiceSpeaker(segments, sourceText, issues);
+  checkDocumentReadingReview(segments, issues);
 
   return buildReport(issues);
 }
@@ -183,9 +184,21 @@ function checkForeignInnerVoiceSpeaker(segments, sourceText, issues) {
   }
 }
 
+function checkDocumentReadingReview(segments, issues) {
+  const count = segments.filter((s) => s?.type === 'document_reading').length;
+  if (count === 0) return;
+  issues.push(issue(
+    'P1',
+    'document_reading_needs_review',
+    '全局',
+    `发现 ${count} 处被阅读的文字内容，需人工确认演播声线。`,
+    '这些内容可归旁白（简单处理）或指定原作者声线（有层次感），请人工选择后在台本中修改 type 为 narration 或 dialogue。',
+  ));
+}
+
 function checkInnerMonologueActionMisclassified(segments, issues) {
   const actionPatterns = [
-    /^(他|她|宁默|王大山|狱卒|男人|女人|老人|老犯人)(撑开|睁开|闭上|皱|抬|低|走|站|坐|蹲|放|端|看|盯|伸|拿|摆|退|推|打开|弯腰|咳)/,
+    /^[\u4e00-\u9fa5]{1,4}(撑开|睁开|闭上|皱|抬|低|走|站|坐|蹲|放|端|看|盯|伸|拿|摆|退|推|打开|弯腰|咳)/,
   ];
 
   for (const segment of segments) {
@@ -345,7 +358,7 @@ function checkParseWarningHigh(parseWarnings, totalLineCount, issues) {
 
 function checkDialogueActionMisclassified(segments, issues) {
   const actionPatterns = [
-    /^[她他周佳宁母亲老人小孩孩子男人女人小姐][一-龥]{0,6}(站|走|推|拉|抬|转|伸|拿|放|捡|握|攥|打开|关|拧|插|按|摸|擦)/,
+    /^[\u4e00-\u9fa5]{1,4}(站|走|推|拉|抬|转|伸|拿|放|捡|握|攥|打开|关|拧|插|按|摸|擦)/,
   ];
 
   for (const segment of segments) {
@@ -365,11 +378,7 @@ function checkDialogueActionMisclassified(segments, issues) {
 
 function checkInnerMonologueThirdPerson(segments, issues) {
   const thirdPersonPatterns = [
-    /^她(心里|觉得|感觉|似乎|仿佛|想起|记得|意识|明白|懂得|以为|脑子里|隐约觉得)/,
-    /^他(心里|觉得|感觉|似乎|仿佛|想起|记得|意识|明白|懂得|以为|脑子里|隐约觉得)/,
-    /^周佳宁(心里|觉得|感觉|似乎|仿佛|想起|意识到|明白)/,
-    /^母亲(心里|觉得|感觉|似乎|仿佛|想起|意识到|明白)/,
-    /^老人(心里|觉得|感觉|似乎|仿佛|想起|意识到|明白)/,
+    /^[\u4e00-\u9fa5]{1,4}(心里|觉得|感觉|似乎|仿佛|想起|记得|意识到|明白|懂得|以为|脑子里|隐约觉得)/,
   ];
 
   for (const segment of segments) {

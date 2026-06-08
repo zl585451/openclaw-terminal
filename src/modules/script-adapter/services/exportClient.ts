@@ -256,6 +256,7 @@ function escapeTable(value: unknown): string {
 
 export function formatScriptSpeaker(segment: { type?: string; speaker?: string; text?: string }): string {
   if (segment?.type === 'narration') return '旁白';
+  if (segment?.type === 'document_reading') return '文献·待确认';
   if (segment?.type === 'inner_monologue') {
     const speaker = String(segment.speaker || '').trim() || '内心';
     return `${speaker}][OS`;

@@ -27,12 +27,9 @@ function buildProviderPatch(
 ): SettingsApiKeysState {
   const next = applyChatProviderSelection(prev, providerId, provider);
   if (modelId) next.OCT_MODEL = modelId;
-  if (providerId === 'deepseek') {
-    if (keyValue !== undefined) next.DEEPSEEK_API_KEY = keyValue;
-  } else if (providerId === 'minimax') {
-    if (keyValue !== undefined) next.MINIMAX_API_KEY = keyValue;
-  } else {
-    if (keyValue !== undefined) next.DASHSCOPE_API_KEY = keyValue;
+  if (keyValue !== undefined) {
+    const keyField = getChatProviderApiKeyField(providerId);
+    next[keyField] = keyValue;
   }
   return next;
 }
@@ -70,7 +67,7 @@ export function ConnectionTabViewBeginner({
   setTestConnectionStatus,
   setTestConnectionError,
 }: BeginnerProps) {
-  const initialProviderId: BeginnerProviderId = isBeginnerProviderId(currentProviderId) ? currentProviderId : 'bailian-coding';
+  const initialProviderId: BeginnerProviderId = isBeginnerProviderId(currentProviderId) ? currentProviderId : 'bailian';
   const [selectedProviderId, setSelectedProviderId] = useState<BeginnerProviderId>(initialProviderId);
   const [recommendedIndex, setRecommendedIndex] = useState(0);
   const [detectionMessage, setDetectionMessage] = useState('');

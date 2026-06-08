@@ -28,10 +28,10 @@ This document defines the provider capability fields used by Render Protocol v3 
 |---|---|---|---|
 | `google` | `render_blocks` | `strict_fenced_json` | Used to reduce Gemini Markdown shape drift. |
 | `openai` | `render_blocks` | `strict_fenced_json` | Structured prompt path preferred. |
-| `bailian` / `bailian-coding` | `gateway_normalized` | `legacy_tags_with_schema_hint` | Keep legacy compatibility while normalizing in Gateway. |
+| `bailian` | `gateway_normalized` | `legacy_tags_with_schema_hint` | Keep legacy compatibility while normalizing in Gateway. |
 | `deepseek` | `gateway_normalized` | `legacy_tags_with_schema_hint` | Avoid relying on direct strict JSON for long tasks. |
 | `minimax` / `moonshot` | `gateway_normalized` | `legacy_tags_with_schema_hint` | Stable fallback-first migration path. |
-| `newapi` / `custom` | `gateway_normalized` | `provider_unknown` | Unknown downstream model, use safe adapter path. |
+| `custom` | `gateway_normalized` | `provider_unknown` | Unknown downstream model, use safe adapter path. |
 | `ollama` | `legacy_tags` | `legacy_tags_only` | Local models remain legacy-first. |
 
 ## Runtime Flow

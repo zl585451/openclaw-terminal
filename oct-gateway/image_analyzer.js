@@ -1,6 +1,6 @@
 /**
  * 图片自动分析：支持三条路径，按优先级依次尝试：
- *   1. DashScope 云端（仅当主 provider 为 bailian/bailian-coding 时）
+ *   1. DashScope 云端（仅当主 provider 为 bailian 时）
  *   2. 视觉 API（VISION_API_KEY + VISION_BASE_URL + VISION_MODEL，独立于主 provider）
  *   3. MCP understand_image（最后兜底）
  * 支持 PNG/JPG/WebP，失败不阻塞对话。
@@ -374,7 +374,6 @@ async function analyzeImage(dataUrl, mimeType, options = {}) {
   const currentProviderBaseUrl = String(options.baseUrl || '').toLowerCase();
   const cloudCompatible =
     currentProviderId === 'bailian'
-    || currentProviderId === 'bailian-coding'
     || currentProviderBaseUrl.includes('dashscope');
   const useCloud = (provider === 'aliyun_vl' || provider === 'auto') && cloudCompatible;
 

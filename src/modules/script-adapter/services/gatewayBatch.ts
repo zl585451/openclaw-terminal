@@ -8,6 +8,7 @@ export type ScriptAdapterBatchEvent =
   | { event: 'agent_failed'; batchId: string; chapterIndex: number; runId: string; agentId: string; error: string }
   | { event: 'artifact_created'; batchId: string; chapterIndex: number; runId: string; agentId: string; artifact?: unknown }
   | { event: 'chapter_completed'; batchId: string; chapterIndex: number; runId: string; sheet: unknown }
+  | { event: 'chapter_awaiting_review'; batchId: string; chapterIndex: number; runId: string; sheet: unknown; gate?: unknown }
   | { event: 'gate_reached'; batchId: string; chapterIndex: number; runId: string; gate: unknown }
   | { event: 'gate_updated'; batchId: string; chapterIndex: number; runId: string; gate: unknown }
   | { event: 'chapter_failed'; batchId: string; chapterIndex: number; runId: string; error: string }
@@ -85,6 +86,18 @@ export async function rejectGatewayGate(batchId: string, gateId: string, reviewe
     return { success: false, error: '当前环境未暴露拒绝入口' };
   }
   return window.electronAPI.scriptAdapterBatch.rejectGate(batchId, gateId, reviewerNote);
+}
+
+export async function applyGatewayReviewDecision(
+  batchId: string,
+  gateId: string,
+  segmentId: string,
+  decision: { type: string; speaker?: string; note?: string },
+) {
+  if (!window.electronAPI?.scriptAdapterBatch?.applyReviewDecision) {
+    return { success: false, error: '当前环境未暴露审核修改入口' };
+  }
+  return window.electronAPI.scriptAdapterBatch.applyReviewDecision(batchId, gateId, segmentId, decision);
 }
 
 export async function deleteGatewayBatch(batchId: string) {

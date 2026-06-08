@@ -83,7 +83,7 @@ export interface AdaptedScriptPayload {
 
 export interface AdaptedSegment {
   segmentId: string;
-  type: 'narration' | 'dialogue' | 'inner_monologue';
+  type: 'narration' | 'dialogue' | 'inner_monologue' | 'document_reading';
   speaker?: string;
   text: string;
   rewriteNote?: string;

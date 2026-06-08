@@ -1,4 +1,5 @@
 const vault = require('../vault_manager');
+const { loadOptionalDependency } = require('./optionalDependency');
 
 function parseCredentials(raw) {
   let credentials = raw;
@@ -89,7 +90,7 @@ module.exports = {
     }
 
     try {
-      const nodemailer = require('nodemailer');
+      const nodemailer = loadOptionalDependency('nodemailer');
       const transporter = nodemailer.createTransport({
         host: smtp.host,
         port: smtp.port,
@@ -109,6 +110,9 @@ module.exports = {
       return `✅ 邮件已发送\n收件人：${to}\n主题：${subject}`;
 
     } catch (e) {
+      if (e?.code === 'OCT_OPTIONAL_DEPENDENCY_MISSING') {
+        return `❌ ${e.message}\n${e.hint}`;
+      }
       const msg = e?.message || String(e);
       if (msg.includes('auth') || msg.includes('535')) {
         return '❌ 发件认证失败：请确认使用的是 SMTP 授权码而非登录密码';

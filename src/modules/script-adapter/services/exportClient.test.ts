@@ -11,6 +11,11 @@ describe('formatScriptSpeaker', () => {
     expect(formatScriptSpeaker({ type: 'dialogue', speaker: '王大山' })).toBe('王大山');
   });
 
+  it('marks document reading segments for manual confirmation', () => {
+    expect(formatScriptSpeaker({ type: 'document_reading' })).toBe('文献·待确认');
+    expect(formatScriptSpeaker({ type: 'document_reading', speaker: '宁默' })).toBe('文献·待确认');
+  });
+
   it('renders pure sfx as SFX even if upstream labeled it system voice', () => {
     expect(formatScriptSpeaker({ type: 'dialogue', speaker: '系统音', text: '咚' })).toBe('SFX');
     expect(formatScriptSpeaker({ type: 'dialogue', speaker: '系统音', text: '滋啦……滋啦……' })).toBe('SFX');

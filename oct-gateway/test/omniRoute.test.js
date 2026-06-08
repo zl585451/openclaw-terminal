@@ -190,7 +190,7 @@ describe('OmniRoute Governance Core (Phase 5)', () => {
 
     config.DASHSCOPE_MODEL = 'local-test-model';
     config.getProviderConfig = () => ({
-      id: 'bailian-coding',
+      id: 'bailian',
       name: 'Local Provider',
       baseUrl: 'https://local-provider.test/v1',
       apiKey: 'sk-local-secret',

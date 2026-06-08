@@ -3,6 +3,7 @@ export type ProviderModelEntry = {
   label: string;
   tools?: boolean;
   thinking?: boolean;
+  vision?: boolean;
   custom?: boolean;
 };
 
@@ -21,19 +22,19 @@ export type ProviderMap = Record<string, ProviderEntry>;
 
 export function getFallbackProviders(): ProviderMap {
   return {
-    'bailian-coding': {
-      id: 'bailian-coding',
-      name: '阿里云百炼 Coding Plan',
-      baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
-      keyPlaceholder: 'sk-sp-xxxxxxxxxxxxxxxx',
+    bailian: {
+      id: 'bailian',
+      name: '阿里云百炼',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
       keyLink: 'https://bailian.console.aliyun.com/',
-      defaultModel: 'qwen3.5-plus',
+      defaultModel: 'qwen-plus',
       models: [
-        { id: 'qwen3.5-plus', label: 'Qwen 3.5 Plus（推荐）', tools: true, thinking: true },
-        { id: 'qwen3-max-2026-01-23', label: 'Qwen 3 Max（最强推理）', tools: true, thinking: false },
-        { id: 'qwen3-coder-next', label: 'Qwen 3 Coder Next（代码）', tools: true, thinking: false },
-        { id: 'kimi-k2.5', label: 'Kimi K2.5（月之暗面）', tools: true, thinking: false },
-        { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', tools: true, thinking: false },
+        { id: 'qwen3.5-plus', label: 'Qwen 3.5 Plus（最新，支持工具+思考）', tools: true, thinking: true },
+        { id: 'qwen-plus', label: 'Qwen Plus（稳定通用）', tools: true, thinking: false },
+        { id: 'qwen-max', label: 'Qwen Max（最强推理）', tools: true, thinking: false },
+        { id: 'qwen-turbo', label: 'Qwen Turbo（快速便宜）', tools: true, thinking: false },
+        { id: 'qwen-vl-max', label: 'Qwen VL Max（图片理解）', tools: false, thinking: false, vision: true },
       ],
     },
     deepseek: {
@@ -90,31 +91,6 @@ export function getFallbackProviders(): ProviderMap {
         { id: 'moonshot-v1-128k', label: 'Moonshot V1 128K（兼容）', tools: true, thinking: false },
       ],
     },
-    newapi: {
-      id: 'newapi',
-      name: 'New API 外部分发网关',
-      baseUrl: 'http://127.0.0.1:3000/v1',
-      keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
-      keyLink: 'https://docs.newapi.ai/',
-      defaultModel: '__custom__',
-      models: [
-        { id: '__custom__', label: '✏️ New API 模型 ID（后台渠道模型名）', tools: true, thinking: false, custom: true },
-        { id: 'qwen-plus', label: 'qwen-plus（百炼｜稳定通用）', tools: true, thinking: false },
-        { id: 'qwen-turbo', label: 'qwen-turbo（百炼｜低延迟）', tools: true, thinking: false },
-        { id: 'qwen-max', label: 'qwen-max（百炼｜高质量）', tools: true, thinking: false },
-        { id: 'qwen3.5-plus', label: 'qwen3.5-plus（百炼｜新一代通用）', tools: true, thinking: false },
-        { id: 'qwen3.6-flash-2026-04-16', label: 'qwen3.6-flash-2026-04-16（百炼｜高速）', tools: true, thinking: false },
-        { id: 'qwen3.6-plus-2026-04-02', label: 'qwen3.6-plus-2026-04-02（百炼｜通用增强）', tools: true, thinking: false },
-        { id: 'qwen3-coder-plus-2025-09-23', label: 'qwen3-coder-plus-2025-09-23（百炼｜代码）', tools: true, thinking: false },
-        { id: 'deepseek-v4-flash', label: 'deepseek-v4-flash（百炼｜快速）', tools: true, thinking: false },
-        { id: 'deepseek-v4-pro', label: 'deepseek-v4-pro（百炼｜高质量）', tools: true, thinking: false },
-        { id: 'doubao-seed-2-0-lite-260215', label: 'doubao-seed-2-0-lite-260215（火山｜高速）', tools: true, thinking: false },
-        { id: 'doubao-seed-2-0-pro-260215', label: 'doubao-seed-2-0-pro-260215（火山｜高质量）', tools: true, thinking: false },
-        { id: 'doubao-1-5-lite-32k-250115', label: 'doubao-1-5-lite-32k-250115（火山｜稳定）', tools: true, thinking: false },
-        { id: 'doubao-1-5-pro-32k-250115', label: 'doubao-1-5-pro-32k-250115（火山｜稳定增强）', tools: true, thinking: false },
-      ],
-      allowCustomModel: true,
-    },
     google: {
       id: 'google',
       name: 'Google Gemini（Vertex AI 原生）',
@@ -131,6 +107,21 @@ export function getFallbackProviders(): ProviderMap {
         { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（预览）', tools: true, thinking: true },
         { id: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash（兼容）', tools: true, thinking: false },
         { id: 'google/gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite（低成本）', tools: true, thinking: false },
+      ],
+    },
+    groq: {
+      id: 'groq',
+      name: 'Groq（免费极速）',
+      baseUrl: 'https://api.groq.com/openai/v1',
+      keyPlaceholder: 'gsk_xxxxxxxxxxxxxxxx',
+      keyLink: 'https://console.groq.com/',
+      defaultModel: 'llama-3.3-70b-versatile',
+      models: [
+        { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B（生产推荐）', tools: true, thinking: false },
+        { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B（低延迟）', tools: true, thinking: false },
+        { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B（推理）', tools: true, thinking: true },
+        { id: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B（高速）', tools: true, thinking: true },
+        { id: 'qwen/qwen3-32b', label: 'Qwen3 32B（预览）', tools: true, thinking: false },
       ],
     },
     custom: {
@@ -169,13 +160,16 @@ export function loadProviderList({
 }
 
 export function resolveProviderId(cfg: Record<string, string>): string {
+  if (cfg.OCT_PROVIDER && String(cfg.OCT_PROVIDER).trim()) {
+    return String(cfg.OCT_PROVIDER).trim();
+  }
+  if (cfg.GROQ_API_KEY || cfg.GROQ_BASE_URL) {
+    return 'groq';
+  }
   return (
-    (cfg.OCT_PROVIDER && String(cfg.OCT_PROVIDER).trim())
-    || (
-      (cfg.CUSTOM_BASE_URL || cfg.CUSTOM_API_KEY || cfg.CUSTOM_MODEL)
-        ? 'custom'
-        : ((cfg.DASHSCOPE_BASE_URL || '').includes('coding.dashscope') ? 'bailian-coding' : 'bailian')
-    )
+    (cfg.CUSTOM_BASE_URL || cfg.CUSTOM_API_KEY || cfg.CUSTOM_MODEL)
+      ? 'custom'
+      : 'bailian'
   );
 }
 
@@ -187,7 +181,7 @@ export function resolveProviderBaseUrl(
   return providerId === 'deepseek' ? (cfg.DEEPSEEK_BASE_URL || provider?.baseUrl || '')
     : providerId === 'minimax' ? (cfg.MINIMAX_BASE_URL || provider?.baseUrl || '')
     : providerId === 'moonshot' ? (cfg.MOONSHOT_BASE_URL || provider?.baseUrl || '')
-    : providerId === 'newapi' ? (cfg.NEWAPI_BASE_URL || provider?.baseUrl || '')
+    : providerId === 'groq' ? (cfg.GROQ_BASE_URL || ((cfg.DASHSCOPE_BASE_URL || '').includes('groq') ? cfg.DASHSCOPE_BASE_URL : '') || provider?.baseUrl || '')
     : providerId === 'custom' ? (cfg.CUSTOM_BASE_URL || provider?.baseUrl || '')
     : providerId === 'google' ? (cfg.GOOGLE_AI_BASE_URL || provider?.baseUrl || '')
     : (cfg.DASHSCOPE_BASE_URL || provider?.baseUrl || '');
@@ -197,9 +191,9 @@ export function resolveProviderApiKey(providerId: string, cfg: Record<string, st
   return providerId === 'deepseek' ? (cfg.DEEPSEEK_API_KEY || '')
     : providerId === 'minimax' ? (cfg.MINIMAX_API_KEY || '')
     : providerId === 'moonshot' ? (cfg.MOONSHOT_API_KEY || '')
-    : providerId === 'newapi' ? (cfg.NEWAPI_API_KEY || '')
     : providerId === 'custom' ? (cfg.CUSTOM_API_KEY || '')
     : providerId === 'google' ? (cfg.GOOGLE_AI_API_KEY || '')
+    : providerId === 'groq' ? (cfg.GROQ_API_KEY || cfg.DASHSCOPE_API_KEY || '')
     : (cfg.DASHSCOPE_API_KEY || '');
 }
 
@@ -214,8 +208,8 @@ export function resolveAiConnectionSettings(
   model: string;
 } {
   const providerId = resolveProviderId(cfg);
-  const provider = providers[providerId] || providers['bailian-coding'];
-  const model = providerId === 'newapi' && cfg.OCT_MODEL === '__custom__' && cfg.CUSTOM_MODEL
+  const provider = providers[providerId] || providers['bailian'];
+  const model = (providerId === 'custom' || providerId === 'google') && cfg.OCT_MODEL === '__custom__' && cfg.CUSTOM_MODEL
     ? cfg.CUSTOM_MODEL
     : (cfg.OCT_MODEL || provider?.defaultModel || 'qwen3.5-plus');
 
