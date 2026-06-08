@@ -1,6 +1,5 @@
-import { Suspense, lazy } from 'react';
-
-const EChartsRenderer = lazy(() => import('./EChartsRenderer'));
+import { Suspense } from 'react';
+import EChartsRenderer from './EChartsRenderer';
 
 export default function EChartsRendererLazy(props: { content: string }) {
   return (

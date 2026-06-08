@@ -1,6 +1,5 @@
-import { Suspense, lazy } from 'react';
-
-const ReactFlowRenderer = lazy(() => import('./ReactFlowRenderer'));
+import { Suspense } from 'react';
+import ReactFlowRenderer from './ReactFlowRenderer';
 
 export default function ReactFlowRendererLazy(props: { content: string }) {
   return (

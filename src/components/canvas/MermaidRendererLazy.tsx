@@ -1,6 +1,5 @@
-import { Suspense, lazy } from 'react';
-
-const MermaidRenderer = lazy(() => import('./MermaidRenderer'));
+import { Suspense } from 'react';
+import MermaidRenderer from './MermaidRenderer';
 
 export default function MermaidRendererLazy(props: { content: string; compact?: boolean }) {
   return (
