@@ -15,6 +15,7 @@ class ResearcherAgent extends BaseAgent {
     this.description = '负责信息调研、资料整理、对比分析、技术选型';
     this.model = null;
     this.allowedTools = [
+      'parallel_web_research', // 多维度并行搜索，优先使用
       'web_search',
       'web_fetch',
       'memory_read',
@@ -22,7 +23,7 @@ class ResearcherAgent extends BaseAgent {
       'read_document',
       'canvas',
     ];
-    this.maxTurns = 12; // 调研任务需要多轮搜索
+    this.maxTurns = 8; // 并行搜索后轮次大幅减少，8 轮已足够
     this.timeoutMs = 120000; // 调研可能较慢，放宽到 2 分钟
 
     this.systemPrompt = `你是 OCT Terminal 的信息研究专家，代号 Researcher。
@@ -70,7 +71,24 @@ class ResearcherAgent extends BaseAgent {
 - 对比多个选项时用表格呈现
 - 不确定的信息必须用"（待核实）"或"（据 X 来源）"标注
 - 不要使用绝对化表述（"肯定""一定"），改用"根据现有信息""截至当前"
-- 数字和版本号尽量精确，不用模糊表述`;
+- 数字和版本号尽量精确，不用模糊表述
+
+## 并行搜索规范（重要）
+
+### 使用规则
+- 任务需要调研 2 个以上维度/关键词时，**第一步必须使用 parallel_web_research**，一次覆盖所有维度
+- 只有单个关键词补充验证时，才用 web_search
+- parallel_web_research 耗时等同于单次搜索，但同时获取所有维度的结果
+
+### 标准流程
+1. 拆解研究问题 → 列出 2-5 个搜索维度
+2. 一次 parallel_web_research 调用覆盖全部维度
+3. （可选）对高价值 URL 用 web_fetch 深入抓取
+4. 综合所有结果输出报告
+
+### 禁止行为
+- 禁止对同一研究任务多次串行调用 web_search（用 parallel_web_research 替代）
+- 禁止对 parallel_web_research 已覆盖的维度再单独搜索`;
   }
 }
 
