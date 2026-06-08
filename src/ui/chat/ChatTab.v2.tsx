@@ -175,6 +175,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
 
   const onQuoteQuestion = useCallback((text: string) => {
     setInjectInputText(text);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 
   // ── UI-only refs ──────────────────────────────────────────────────────────

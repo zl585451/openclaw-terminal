@@ -976,13 +976,20 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
 
     const viewportHeight = wrap.clientHeight;
-    const realContentHeight = content.offsetHeight;
     const maxSpacerHeight = Math.round(viewportHeight * MAX_BOTTOM_SPACER_VIEWPORT_RATIO);
     const isTurnActive = awaitingResponse || isStreaming;
-    const availableHeight = Math.floor(viewportHeight - realContentHeight);
-    const nextHeight = isTurnActive
-      ? maxSpacerHeight
-      : Math.max(0, Math.min(maxSpacerHeight, availableHeight));
+    const userMsgs = content.querySelectorAll('.chat-message.user');
+    const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement | undefined;
+    const nextHeight = (() => {
+      if (isTurnActive) return maxSpacerHeight;
+      if (!lastUserMsg) return 0;
+
+      const contentRect = content.getBoundingClientRect();
+      const userRect = lastUserMsg.getBoundingClientRect();
+      const contentBelowLatestUser = Math.max(0, contentRect.bottom - userRect.top);
+      const neededHeight = Math.floor(viewportHeight - contentBelowLatestUser - 16);
+      return Math.max(0, Math.min(maxSpacerHeight, neededHeight));
+    })();
 
     setBottomSpacerHeight((current) => (
       Math.abs(current - nextHeight) <= 1 ? current : nextHeight
@@ -1048,7 +1055,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     tailMsg.role === 'assistant' &&
     !!tailMsg.isStreaming &&
     !(typeof tailMsg.content === 'string' ? tailMsg.content : '').trim();
-  const shouldHoldSendAnchorSpacer = awaitingResponse || isStreaming || tailMsg?.role === 'user';
+  const shouldHoldSendAnchorSpacer = awaitingResponse || isStreaming;
 
   return (
     <div
@@ -1168,7 +1175,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     key={i}
                     className="response-tray-inline__pill"
                     title={pill}
-                    onClick={() => quickSend(pill)}
+                    onClick={() => onQuoteQuestion(pill)}
                   >
                     {pill}
                   </button>

@@ -93,6 +93,28 @@ export function useScrollManager({
     pendingSnapMsgIdRef.current = -1;
   }, []);
 
+  const snapLatestUserMessageToTop = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return false;
+    const userMsgs = container.querySelectorAll('.chat-message.user');
+    if (userMsgs.length === 0) return false;
+
+    const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement;
+    scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
+    lastScrollTopRef.current = container.scrollTop;
+    return true;
+  }, []);
+
+  const clampScrollTop = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+    if (el.scrollTop > maxScroll) {
+      el.scrollTop = maxScroll;
+      lastScrollTopRef.current = el.scrollTop;
+    }
+  }, []);
+
   // 每帧同步 ref（供外部代码通过 ref 调用）
   useLayoutEffect(() => {
     scheduleScrollAfterLayoutRef.current = scheduleScrollAfterLayout;
@@ -102,22 +124,32 @@ export function useScrollManager({
   useEffect(() => {
     return fsm.subscribe((phase) => {
       if (phase === TurnPhase.TURN_FINISHED || phase === TurnPhase.IDLE) {
-        userScrolledUp.current = false;
         if (snapJustFiredRef.current || pendingSnapMsgIdRef.current !== null) return;
+
+        if (scrollAnchorRef.current.isLocked() && !userScrolledUp.current) {
+          requestAnimationFrame(() => {
+            snapLatestUserMessageToTop();
+            requestAnimationFrame(() => {
+              snapLatestUserMessageToTop();
+              scrollAnchorRef.current.release();
+              userScrolledUp.current = false;
+              setShowScrollBtn(false);
+              clampScrollTop();
+            });
+          });
+          return;
+        }
+
         scrollAnchorRef.current.release();
         requestAnimationFrame(() => {
           if (snapJustFiredRef.current) return;
-          const el = messagesContainerRef.current;
-          if (el) {
-            const maxScroll = el.scrollHeight - el.clientHeight;
-            if (el.scrollTop > maxScroll) {
-              el.scrollTop = maxScroll;
-            }
-          }
+          userScrolledUp.current = false;
+          setShowScrollBtn(false);
+          clampScrollTop();
         });
       }
     });
-  }, [fsm]);
+  }, [clampScrollTop, fsm, snapLatestUserMessageToTop]);
 
   // ScrollAnchor: 初始化 attach 容器
   useLayoutEffect(() => {
@@ -150,19 +182,14 @@ export function useScrollManager({
     if (pendingSnapMsgIdRef.current === null) return;
     const container = messagesContainerRef.current;
     if (!container) return;
-
-    const userMsgs = container.querySelectorAll('.chat-message.user');
-    if (userMsgs.length === 0) return;
-
-    const lastUserMsg = userMsgs[userMsgs.length - 1] as HTMLElement;
     pendingSnapMsgIdRef.current = null;
 
     snapJustFiredRef.current = true;
-    scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
+    snapLatestUserMessageToTop();
     requestAnimationFrame(() => {
-      scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
+      snapLatestUserMessageToTop();
       requestAnimationFrame(() => {
-        scrollAnchorRef.current.snapAndAnchor(lastUserMsg, 16);
+        snapLatestUserMessageToTop();
       });
     });
 
@@ -175,7 +202,7 @@ export function useScrollManager({
       }
     };
     requestAnimationFrame(checkRelease);
-  }, [messagesLength]);
+  }, [messagesLength, snapLatestUserMessageToTop]);
 
   // 消息总数变多时抬升 visibleCount 上限；若变大会在列表顶部多渲染更早的消息，需保留滚动位置
   useLayoutEffect(() => {
