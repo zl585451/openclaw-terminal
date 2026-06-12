@@ -297,26 +297,8 @@ function buildSingleDocxPayload(
     { label: '项目', value: options.bookTitle || sheet.taskTitle || '多人演播试产' },
     { label: '章节范围', value: options.chapterRange || adapted?.payload?.chapterTitle || sheet.taskTitle || '单章' },
     { label: '生成时间', value: new Date(sheet.createdAt).toLocaleString('zh-CN') },
-    { label: '执行方式', value: options.executionMode === 'real' ? '真实 Agent 制作' : '未启用真实 Agent' },
-    { label: 'BGM/SFX', value: includeBgmSfx ? '已启用' : '未启用' },
   ];
   const sections: Array<{ title: string; level: 1 | 2 | 3; blocks: any[] }> = [];
-  sections.push({
-    title: '一、交付摘要',
-    level: 1,
-    blocks: [{
-      type: 'bullet',
-      items: [
-        `已生成内容：${[
-          '多人演播台本',
-          deliveryOptions.voiceRegistry !== false ? '角色音表' : null,
-          deliveryOptions.qualityReview !== false ? '质检报告' : null,
-          includeCv ? 'CV 演播指导' : null,
-          includeBgmSfx ? 'BGM/SFX 建议' : null,
-        ].filter(Boolean).join(' / ')}`,
-      ],
-    }],
-  });
   if (voices?.payload?.registry?.length) {
     sections.push({
       title: '二、角色音总表',
@@ -407,28 +389,15 @@ function buildBatchDocxPayload(batch: BatchJob, chapterRuns: ChapterRunRecord[])
     { label: '项目', value: batch.bookTitle },
     { label: '章节范围', value: formatChapterRange(batch.selectedChapterIndices) },
     { label: '生成时间', value: new Date(batch.createdAt).toLocaleString('zh-CN') },
-    { label: '执行方式', value: batch.config?.executionMode === 'real' ? '真实 Agent 制作' : '未启用真实 Agent' },
-    { label: '完成情况', value: `${batch.completedChapters}/${batch.totalChapters} 完成，${batch.failedChapters} 失败` },
   ];
   const sections: Array<{ title: string; level: 1 | 2 | 3; blocks: any[] }> = [];
-  sections.push({
-    title: '一、交付摘要',
-    level: 1,
-    blocks: [{
-      type: 'bullet',
-      items: [
-        `已完成章节：${batch.completedChapters} / ${batch.totalChapters}`,
-        `已启用内容：${[
-          '多人演播台本',
-          deliveryOptions.voiceRegistry !== false ? '角色音表' : null,
-          deliveryOptions.qualityReview !== false ? '质检报告' : null,
-          deliveryOptions.cvDirections ? 'CV 演播指导' : null,
-          deliveryOptions.bgmSfx ? 'BGM/SFX 建议' : null,
-        ].filter(Boolean).join(' / ')}`,
-        failedRuns.length > 0 ? `失败章节：${failedRuns.map((run) => run.chapterTitle || `第 ${run.chapterIndex + 1} 章`).join(' / ')}` : '失败章节：无',
-      ],
-    }],
-  });
+  if (failedRuns.length > 0) {
+    sections.push({
+      title: '⚠️ 以下章节处理失败',
+      level: 1,
+      blocks: [{ type: 'bullet', items: failedRuns.map((run) => `${run.chapterTitle || `第 ${run.chapterIndex + 1} 章`}：${run.errorMessage || '未知错误'}`) }],
+    });
+  }
   const voiceRegistry = batch.config?.sharedContext?.voiceRegistry || [];
   if (voiceRegistry.length > 0) {
     sections.push({
@@ -503,13 +472,6 @@ function buildBatchDocxPayload(batch: BatchJob, chapterRuns: ChapterRunRecord[])
         ],
       });
     }
-  }
-  if (failedRuns.length > 0) {
-    sections.push({
-      title: '失败 / 跳过章节',
-      level: 1,
-      blocks: [{ type: 'bullet', items: failedRuns.map((run) => `${run.chapterTitle || `第 ${run.chapterIndex + 1} 章`}：${run.errorMessage || '未知错误'}`) }],
-    });
   }
   return {
     documentTitle: `${batch.bookTitle} 多人演播试产交付包`,

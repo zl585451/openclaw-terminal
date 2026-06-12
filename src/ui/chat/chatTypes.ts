@@ -50,5 +50,5 @@ export interface ChatTabProps {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   getNextMessageId: () => number;
   onStatusChange?: (wsConnected: boolean, isStreaming: boolean, modelName?: string, tokenIn?: number | null, tokenOut?: number | null, ctxUsed?: number | null, ctxMax?: number | null) => void;
-  onSwitchTab?: (tab: 'chat' | 'sound' | 'reaper') => void;
+  onSwitchTab?: (tab: 'chat') => void;
 }

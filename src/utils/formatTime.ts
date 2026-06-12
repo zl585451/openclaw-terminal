@@ -25,7 +25,7 @@ export const formatTimestamp = (ts: number): string => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 };
 
-/** TaskBoard 用的日期显示 (YYYY-MM-DD 周X) */
+/** 日期显示 (YYYY-MM-DD 周X) */
 export const formatDateDisplay = (dateStr: string): string => {
   const d = new Date(dateStr);
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];

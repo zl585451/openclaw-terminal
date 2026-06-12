@@ -1,6 +1,5 @@
 import React, { useState, startTransition } from 'react';
 import type { UseGatewayReturn } from '../../hooks/useGateway';
-import TaskBoard from '../../components/TaskBoard';
 import LogPanel from '../../components/LogPanel';
 
 const ipcRenderer =
@@ -21,7 +20,6 @@ export interface ChatTabRightPanelProps {
   tokenIn: number | null;
   ctxUsed: number | null;
   ctxMax: number | null;
-  pauseSidePanelsDuringStream: boolean;
   localTime: string;
   localDate: string;
 }
@@ -80,7 +78,6 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   tokenIn,
   ctxUsed,
   ctxMax,
-  pauseSidePanelsDuringStream,
   localTime,
   localDate,
 }) => {
@@ -356,10 +353,6 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
           </button>
         </div>
 
-        <div className="task-board-section">
-          <TaskBoard compact visible={!pauseSidePanelsDuringStream} />
-        </div>
-
         <div className="gateway-log-section">
           <LogPanel
             title="Gateway 日志"
@@ -385,7 +378,6 @@ const ChatTabRightPanel = React.memo(ChatTabRightPanelComponent, (prev, next) =>
     prev.tokenIn === next.tokenIn &&
     prev.ctxUsed === next.ctxUsed &&
     prev.ctxMax === next.ctxMax &&
-    prev.pauseSidePanelsDuringStream === next.pauseSidePanelsDuringStream &&
     prev.localTime === next.localTime &&
     prev.localDate === next.localDate &&
     prev.gateway.gatewayRunning === next.gateway.gatewayRunning &&

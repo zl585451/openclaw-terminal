@@ -516,7 +516,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         tokenIn={msgs.tokenIn}
         ctxUsed={msgs.ctxUsed}
         ctxMax={msgs.ctxMax}
-        pauseSidePanelsDuringStream={isStreamingUiPause}
         localTime={timers.localTime}
         localDate={timers.localDate}
       />

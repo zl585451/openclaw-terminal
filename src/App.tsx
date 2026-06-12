@@ -7,13 +7,11 @@ import FirstLaunchSetup from './components/FirstLaunchSetup';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { WorkbenchProvider } from './workbench/WorkbenchContext';
 import ChatTab from './ui/chat/ChatTab.v2';
-import SoundTab from './components/SoundTab';
-import ReaperTab from './components/ReaperTab';
 import SettingsPanel from './ui/settings/SettingsPanel';
 import { ScriptAdapterApp } from './modules/script-adapter';
 import './styles/App.css';
 
-export type TabType = 'chat' | 'sound' | 'reaper';
+export type TabType = 'chat';
 type AppView = 'chat' | 'script-adapter';
 type ScriptAdapterEntry = 'home' | 'workspace' | 'library';
 
@@ -21,8 +19,6 @@ const App: React.FC = () => {
   const [appView, setAppView] = useState<AppView>('chat');
   const [scriptAdapterEntry, setScriptAdapterEntry] = useState<ScriptAdapterEntry>('home');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
-  const [vaultOpen, setVaultOpen] = useState(false);
-  const [vaultUnlocked, setVaultUnlocked] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [showFirstLaunchSetup, setShowFirstLaunchSetup] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -135,10 +131,6 @@ const App: React.FC = () => {
               <TabBar
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
-                vaultOpen={vaultOpen}
-                setVaultOpen={setVaultOpen}
-                vaultUnlocked={vaultUnlocked}
-                onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
               />
               <div className="app-shell-actions">
                 <button
@@ -169,22 +161,14 @@ const App: React.FC = () => {
         <div className="content-area">
           {appView === 'chat' ? (
             <>
-              {activeTab === 'chat' && (
-                <Suspense fallback={null}>
-                  <ChatTab
-                    messages={messages}
-                    setMessages={setMessages}
-                    getNextMessageId={getNextMessageId}
-                    onStatusChange={() => {}}
-                    onSwitchTab={setActiveTab}
-                  />
-                </Suspense>
-              )}
               <Suspense fallback={null}>
-                {activeTab === 'sound' && <SoundTab />}
-              </Suspense>
-              <Suspense fallback={null}>
-                {activeTab === 'reaper' && <ReaperTab />}
+                <ChatTab
+                  messages={messages}
+                  setMessages={setMessages}
+                  getNextMessageId={getNextMessageId}
+                  onStatusChange={() => {}}
+                  onSwitchTab={setActiveTab}
+                />
               </Suspense>
             </>
           ) : (

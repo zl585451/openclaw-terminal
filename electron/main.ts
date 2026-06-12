@@ -1490,9 +1490,6 @@ function handleMessage(msg: any) {
     case 'event':
       if (msg.event === 'connect.challenge') {
         sendOctConnectRequest();
-      } else if (msg.event === 'task-board-update') {
-        mainWindow?.webContents.send('task-board-update');
-        mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
       } else if (msg.event === 'script-adapter') {
         sendScriptAdapterEvent(msg.payload || {});
       } else if (msg.event === 'tool' || msg.event === 'agent-phase') {
@@ -2038,8 +2035,6 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   }
 
   const promptsDir = getPromptsDir();
-  const tasksPath = path.join(app.getPath('userData'), 'tasks.json');
-  const vaultPath = path.join(app.getPath('userData'), 'vault.enc');
   const runtimeCommand = app.isPackaged ? process.execPath : 'node';
   const runtimeArgs = [entry];
   const gatewayConfigFile = resolveGatewayConfigFileForSpawn(entry);
@@ -2064,8 +2059,6 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         OCT_PROMPTS_DIR: promptsDir,
         OCT_CONFIG_FILE: gatewayConfigFile,
         OCT_GATEWAY_TOKEN: (process.env.OCT_GATEWAY_TOKEN || OPENCLAW_TOKEN || '').trim(),
-        OPENCLAW_TASKS_PATH: tasksPath,
-        OCT_VAULT_PATH: vaultPath,
         ...(resolvedAiLibraryUrlForGateway && !(process.env.AI_LIBRARY_URL || '').trim()
           ? { AI_LIBRARY_URL: resolvedAiLibraryUrlForGateway }
           : {}),
