@@ -39,7 +39,6 @@ export function useStreamPainting(
   }
   const {
     scrollReconcile,
-    streamSpeedMsRef,
     typingSound,
     typingSoundVolume,
     fullTextRef,
@@ -47,7 +46,6 @@ export function useStreamPainting(
     onVisibleText,
     finalizeStreamingAssistantMessage,
     pendingStreamFinalizeRef,
-    lastStreamReconcileMsRef,
     publishDomTextToReact = false,
   } = ctx;
 
@@ -70,7 +68,7 @@ export function useStreamPainting(
     const now = performance.now();
     if (!streamPaintLastTsRef.current) streamPaintLastTsRef.current = now;
     const dt = Math.min(80, now - streamPaintLastTsRef.current);
-    if (dt < 24 && !pendingStreamFinalizeRef.current) {
+    if (dt < 16 && !pendingStreamFinalizeRef.current) {
       streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
       return;
     }
@@ -88,19 +86,9 @@ export function useStreamPainting(
 
     if (!el) {
       if (behind > 0) {
-        let effectiveMs = Math.max(6, streamSpeedMsRef.current);
-        if (!pendingStreamFinalizeRef.current && behind > 80) effectiveMs *= 0.85;
-        if (pendingStreamFinalizeRef.current) effectiveMs = Math.max(6, effectiveMs * 0.75);
-        streamPaintBudgetRef.current += dt / effectiveMs;
-        let step = Math.floor(streamPaintBudgetRef.current);
-        if (step <= 0 && streamPaintBudgetRef.current >= 0.82) step = 1;
-        step = Math.min(behind, Math.max(0, Math.min(step, 4)));
-        if (step > 0) {
-          streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
-          shown = Math.min(targetLen, shown + step);
-          streamPaintShownLenRef.current = shown;
-          publishVisibleText(main.slice(0, shown));
-        }
+        shown = targetLen;
+        streamPaintShownLenRef.current = shown;
+        publishVisibleText(main);
         streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
         return;
       }
@@ -114,50 +102,14 @@ export function useStreamPainting(
     }
 
     if (behind > 0) {
-      // effectiveMs: controls chars/sec via budget accumulation.
-      // Deliberately avoid large catch-up multipliers — they make text
-      // feel like it "dumps all at once" when the model responds fast.
-      let effectiveMs = Math.max(6, streamSpeedMsRef.current);
-      // Mild catch-up when far behind (still streaming): slightly faster
-      if (!pendingStreamFinalizeRef.current && behind > 80) effectiveMs *= 0.85;
-      // After stream ends: finish at a capped speed, not an instant dump
-      if (pendingStreamFinalizeRef.current) effectiveMs = Math.max(6, effectiveMs * 0.75);
-
-      streamPaintBudgetRef.current += dt / effectiveMs;
-      let step = Math.floor(streamPaintBudgetRef.current);
-      if (step <= 0 && streamPaintBudgetRef.current >= 0.82) {
-        step = 1;
-      }
-      // Step cap: 4 chars/tick max — keeps animation visible at any speed setting
-      step = Math.min(behind, Math.max(0, Math.min(step, 4)));
-
-      if (step > 0) {
-        streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
-        shown = Math.min(targetLen, shown + step);
-        streamPaintShownLenRef.current = shown;
-        const visibleText = main.slice(0, shown);
-        el.textContent = visibleText;
-        if (publishDomTextToReact) publishVisibleText(visibleText);
-        if (typingSound !== 'off') {
-          for (let i = 0; i < step; i++) {
-            playClickSound(typingSound, typingSoundVolume);
-          }
-        }
-      }
+      shown = targetLen;
+      streamPaintShownLenRef.current = shown;
+      el.textContent = main;
+      if (publishDomTextToReact) publishVisibleText(main);
+      if (typingSound !== 'off') playClickSound(typingSound, typingSoundVolume);
     } else if (targetLen > 0) {
       el.textContent = main;
       if (publishDomTextToReact) publishVisibleText(main);
-    }
-
-    try {
-      const t = performance.now();
-      // 略拉长间隔，减轻与 textContent 触发布局在同一帧内叠 getBoundingClientRect 的「拖住」感
-      if (t - lastStreamReconcileMsRef.current >= 120) {
-        lastStreamReconcileMsRef.current = t;
-        scrollReconcile();
-      }
-    } catch {
-      /* ignore */
     }
 
     const rawEnd = fullTextRef.current;
@@ -181,6 +133,18 @@ export function useStreamPainting(
       }
     }
   };
+
+  // 用 ResizeObserver 监听流式元素高度变化来触发滚动对齐，
+  // 避免在 RAF 循环里定时调用 getBoundingClientRect 造成 layout thrashing。
+  useEffect(() => {
+    const el = streamingDomRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      try { scrollReconcile(); } catch { /* ignore */ }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
 
   const startPainting = useCallback(() => {
     if (streamPaintRafRef.current != null) return;
