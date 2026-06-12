@@ -10,6 +10,7 @@
   overflow: visible;
   position: relative;
   z-index: auto;
+  animation: optionFadeIn 0.18s ease both;
 }
 
 .option-checkbox-list {
@@ -182,6 +183,11 @@
   cursor: not-allowed;
 }
 
+@keyframes optionFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Pill 模式（≤4个选项）：单击直接发送 ── */
 .option-pills {
   display: flex;
@@ -196,6 +202,7 @@
   position: relative;
   z-index: auto;
   contain: layout paint;
+  animation: optionFadeIn 0.18s ease both;
 }
 
 .option-pill {
