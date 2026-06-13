@@ -212,6 +212,8 @@ async function loadSystemPrompt(promptsDir) {
       'core://agent/rules/output_format',
       'core://agent/rules/dispatch',
       'core://agent/rules/emotion',
+      'core://agent/corrections',
+      'core://agent/corrections/projects',
     ];
 
     let bootMemory = await memory.loadBootMemory(coreUris);
