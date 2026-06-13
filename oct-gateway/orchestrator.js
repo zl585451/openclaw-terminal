@@ -138,8 +138,14 @@ const INTENT_RULES = [
   {
     intent: 'research',
     agent: 'Researcher',
-    keywords: ['调研', '整理资料', '帮我找', '搜集', '分析一下',
-               '对比', '总结一下', '报告'],
+    keywords: [
+      '调研', '整理资料', '帮我找', '搜集', '分析一下',
+      '对比', '总结一下', '报告',
+      // 自然语言搜索 + 整理类请求
+      '帮我搜', '搜一下', '搜索一下', '查最新', '最新动态',
+      '整理成', '整理要点', '整理成要点', '汇总', '新闻整理',
+      'AI新闻', '整理一下', '归纳',
+    ],
     description: '信息研究任务'
   }
 ];
@@ -147,7 +153,7 @@ const INTENT_RULES = [
 // 简单对话判断（这些直接跳过分析，AMY 自己回复）
 const DIRECT_PATTERNS = [
   /^(你好|hi|hello|在吗|早|晚安|累了|谢谢|好的|嗯|哦|明白|知道了)/i,
-  /^.{0,15}$/, // 15字以内的短消息，直接对话
+  /^.{0,5}$/, // 5字以内的极短消息（单字/感叹词），直接对话
 ];
 
 const CANVAS_TRIGGER_RULES = [
@@ -188,40 +194,149 @@ const CANVAS_TRIGGER_RULES = [
   },
 ];
 
+// ── LLM 语义路由（关键词未命中时的兜底） ─────────────────────────────
+
+const LLM_ROUTER_PROMPT = `你是任务路由器。分析用户消息，严格输出一行 JSON，不加任何额外文字或代码块。
+
+格式：{"intent":"<chat|code|research|write>","complexity":"<simple|complex>","agent":"<AMY|Coder|Researcher|Writer>","reason":"<10字以内>"}
+
+判断规则：
+- chat    → 打招呼/闲聊/简单问答，agent=AMY，complexity=simple
+- code    → 写代码/调试/实现功能，agent=Coder，complexity=complex
+- research→ 搜索/调研/新闻/分析/汇总/整理资料，agent=Researcher，complexity=complex
+- write   → 写文章/文案/脚本/小红书，agent=Writer，complexity=complex
+- simple  的非 chat 任务（如"解释一下 Python"）→ agent=AMY，complexity=simple
+
+用户消息：`;
+
+async function analyzeIntentWithLLM(userMessage) {
+  try {
+    // 优先走 OmniRoute（与主聊天同一通道），降级到原始 provider 配置
+    let baseUrl, apiKey, model;
+    try {
+      const externalOmniRoute = require('./runtime/externalOmniRoute');
+      const resolved = externalOmniRoute.resolveCapabilityTarget('default');
+      if (resolved) {
+        baseUrl = resolved.baseUrl;
+        apiKey  = resolved.apiKey;
+        model   = resolved.model;
+      }
+    } catch (_) {}
+
+    if (!baseUrl) {
+      const pc = config.getProviderConfig();
+      baseUrl = pc.baseUrl;
+      apiKey  = pc.apiKey;
+      model   = pc.model;
+    }
+
+    if (!baseUrl || !apiKey) throw new Error('provider 未配置');
+
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+    if (baseUrl.includes('generativelanguage.googleapis.com') || baseUrl.includes('aiplatform.googleapis.com')) {
+      headers['x-goog-api-key'] = apiKey;
+      delete headers['Authorization'];
+    }
+
+    let resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: LLM_ROUTER_PROMPT + userMessage }],
+        stream: false,
+        max_tokens: 80,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    // 主 provider 鉴权失败时降级到 MiniMax（备用 key 始终可用）
+    if (resp.status === 401 || resp.status === 403) {
+      const minimaxKey = config.getEnvOrConfig?.('MINIMAX_API_KEY') || config.MINIMAX_API_KEY;
+      if (minimaxKey) {
+        resp = await fetch('https://api.minimaxi.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${minimaxKey}` },
+          body: JSON.stringify({
+            model: 'MiniMax-M2.5',
+            messages: [{ role: 'user', content: LLM_ROUTER_PROMPT + userMessage }],
+            stream: false,
+            max_tokens: 600, // 留够思考链 + JSON 的空间
+            temperature: 0,
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+      }
+    }
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const data  = await resp.json();
+    const raw   = (data.choices?.[0]?.message?.content || '').trim();
+    // 去除 <think>...</think> 推理块（MiniMax/DeepSeek 思考模型会输出这个）
+    const text  = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    // 去除可能的 markdown fences
+    const clean = text.replace(/^```[a-z]*\n?/i, '').replace(/```$/,'').trim();
+    const parsed = JSON.parse(clean);
+
+    const AGENT_MAP = { AMY: null, Coder: 'Coder', Researcher: 'Researcher', Writer: 'Writer' };
+    const agent        = AGENT_MAP[parsed.agent] ?? null;
+    const shouldDelegate = parsed.complexity === 'complex' && agent !== null;
+
+    console.log(`[Orchestrator] LLM 路由 → intent=${parsed.intent} complexity=${parsed.complexity} agent=${parsed.agent || 'AMY'} reason=${parsed.reason}`);
+
+    return {
+      intent:         parsed.intent   || 'general',
+      agent:          agent           || 'AMY',
+      shouldDelegate,
+      complexity:     parsed.complexity,
+      description:    parsed.reason   || 'LLM 路由',
+      source:         'llm',
+    };
+  } catch (err) {
+    console.warn('[Orchestrator] LLM 路由失败，降级到 AMY:', err.message);
+    return { intent: 'general', agent: 'AMY', shouldDelegate: false, source: 'fallback' };
+  }
+}
+
+// ── 意图分析主入口（关键词快速路径 → LLM 语义兜底） ──────────────────
+
 /**
  * 分析用户消息意图
- * @returns { intent, agent, shouldDelegate, description }
+ * @returns {Promise<{ intent, agent, shouldDelegate, description, source }>}
  */
-function analyzeIntent(userMessage) {
+async function analyzeIntent(userMessage) {
   if (!userMessage || typeof userMessage !== 'string') {
-    return { intent: 'chat', agent: 'AMY', shouldDelegate: false };
+    return { intent: 'chat', agent: 'AMY', shouldDelegate: false, source: 'keyword' };
   }
 
   const msg = userMessage.trim();
 
-  // 短消息或对话模式 → 直接回复
-  for (const pattern of DIRECT_PATTERNS) {
-    if (pattern.test(msg)) {
-      return { intent: 'chat', agent: 'AMY', shouldDelegate: false };
-    }
-  }
-
-  // 关键词匹配专业任务
+  // 1. 关键词快速路径（0ms，优先于短消息过滤）
   for (const rule of INTENT_RULES) {
     for (const keyword of rule.keywords) {
       if (msg.includes(keyword)) {
         return {
-          intent: rule.intent,
-          agent: rule.agent,
+          intent:        rule.intent,
+          agent:         rule.agent,
           shouldDelegate: true,
-          description: rule.description
+          description:   rule.description,
+          source:        'keyword',
         };
       }
     }
   }
 
-  // 默认：AMY 直接处理
-  return { intent: 'general', agent: 'AMY', shouldDelegate: false };
+  // 2. 明确的短对话模式 → 不走 LLM，直接回复
+  for (const pattern of DIRECT_PATTERNS) {
+    if (pattern.test(msg)) {
+      return { intent: 'chat', agent: 'AMY', shouldDelegate: false, source: 'pattern' };
+    }
+  }
+
+  // 3. 关键词未命中 → LLM 语义路由（~500ms）
+  return analyzeIntentWithLLM(msg);
 }
 
 function analyzeCanvasIntent(userMessage) {
@@ -299,7 +414,7 @@ async function runDelegatedAgent(agentName, task, onEvent) {
  *   - { result, turnsUsed, tokensUsed }：Agent 执行完成，调用方应将 result 作为回复内容注入
  */
 async function dispatch(userMessage, sessionKey, onToolEvent) {
-  const analysis = analyzeIntent(userMessage);
+  const analysis = await analyzeIntent(userMessage);
   const canvasIntent = analyzeCanvasIntent(userMessage);
 
   // 默认禁用”后台派子任务”链路，避免主会话出现”已派出但无下文”。
