@@ -273,129 +273,123 @@ export const deepspaceTheme: ThemeDefinition = {
 };
 
 // ============================================================
-// 棕黑 Claude Dark — 深色温暖棕黑
+// 深夜工作室 Night Studio — 深棕黑 + 哑光琥珀金
 // ============================================================
 export const claudeDarkTheme: ThemeDefinition = {
   id: "claude-dark",
-  name: "棕黑 Claude Dark",
-  description: "温暖棕黑深色主题，适合夜间阅读（Noto Sans SC 优先）",
+  name: "深夜工作室",
+  description: "深棕黑底色，哑光琥珀金主色，沉稳精致的夜间创作氛围",
   isDark: true,
-  // 按设计稿（Claude 网页版深色）配色
-  preview: { bg: "#2B2A27", accent: "#D4764E", text: "#E8E4DD" },
+  preview: { bg: "#100e0a", accent: "#c4963a", text: "#d4c9b0" },
   vars: {
-    "--bg-base":        "#2B2A27",
-    "--bg-panel":       "#353430",
-    "--bg-surface":     "#3D3C37",
-    "--bg-elevated":    "#454440",
-    "--bg-hover":       "#4A4944",
-    "--bg-active":      "#53524D",
-    "--bg-sidebar":     "#252420",
-    "--bg-input":       "#353430",
-    "--bg-code":        "#1E1D1A",
-    "--bg-code-header": "#2B2A27",
-    "--bg-user-msg":    "#3D3B35",
-    "--bg-tooltip":     "#1E1D1A",
-    "--bg-overlay":     "rgba(0, 0, 0, 0.5)",
+    "--bg-base":        "#100e0a",
+    "--bg-panel":       "#141109",
+    "--bg-surface":     "#1a1710",
+    "--bg-elevated":    "#211c12",
+    "--bg-hover":       "#261f14",
+    "--bg-active":      "#2e2618",
+    "--bg-sidebar":     "#0c0b07",
+    "--bg-input":       "#141109",
+    "--bg-code":        "#0a0807",
+    "--bg-code-header": "#141109",
+    "--bg-user-msg":    "#1c1608",
+    "--bg-tooltip":     "#211c12",
+    "--bg-overlay":     "rgba(0, 0, 0, 0.6)",
 
-    "--text-primary":     "#E8E4DD",
-    "--text-secondary":   "#A9A49C",
-    "--text-tertiary":    "#7A7670",
-    "--text-inverse":     "#2B2A27",
-    "--text-code-color":  "#D4D0C8",
-    "--text-link":        "#E8956A",
-    "--text-placeholder": "#6A6660",
+    "--text-primary":     "#d4c9b0",
+    "--text-secondary":   "#8a7e6a",
+    "--text-tertiary":    "#5a5040",
+    "--text-inverse":     "#100e0a",
+    "--text-code-color":  "#c8bfaa",
+    "--text-link":        "#d4a84a",
+    "--text-placeholder": "#4a4030",
 
-    "--accent-primary":       "#D4764E",
-    "--accent-primary-hover":  "#C46A44",
-    "--accent-primary-muted":  "rgba(212, 118, 78, 0.15)",
-    "--accent-primary-glow":   "rgba(212, 118, 78, 0.10)",
+    "--accent-primary":       "#c4963a",
+    "--accent-primary-hover":  "#d4a642",
+    "--accent-primary-muted":  "rgba(196, 150, 58, 0.15)",
+    "--accent-primary-glow":   "rgba(196, 150, 58, 0.10)",
 
-    "--status-success":     "#8FBC8F",
-    "--status-success-bg":  "rgba(143, 188, 143, 0.12)",
-    "--status-warning":     "#D4A95A",
-    "--status-warning-bg":  "rgba(212, 169, 90, 0.12)",
-    "--status-error":       "#D47B6A",
-    "--status-error-bg":    "rgba(212, 123, 106, 0.12)",
-    "--status-info":        "#7AACCF",
-    "--status-info-bg":     "rgba(122, 172, 207, 0.12)",
+    "--status-success":     "#7aaa6a",
+    "--status-success-bg":  "rgba(122, 170, 106, 0.12)",
+    "--status-warning":     "#c4963a",
+    "--status-warning-bg":  "rgba(196, 150, 58, 0.12)",
+    "--status-error":       "#c46a4a",
+    "--status-error-bg":    "rgba(196, 106, 74, 0.12)",
+    "--status-info":        "#6a9ec4",
+    "--status-info-bg":     "rgba(106, 158, 196, 0.12)",
 
-    "--priority-p0": "#D47B6A",
-    "--priority-p1": "#D4A95A",
-    "--priority-p2": "#7EBF8E",
+    "--priority-p0": "#c46a4a",
+    "--priority-p1": "#c4963a",
+    "--priority-p2": "#7aaa6a",
 
-    "--border-subtle":  "rgba(255, 255, 255, 0.06)",
-    "--border-light":   "rgba(255, 255, 255, 0.10)",
-    "--border-medium":  "rgba(255, 255, 255, 0.15)",
-    "--border-focus":   "#D4764E",
-    "--border-primary": "#D4764E",
+    "--border-subtle":  "rgba(255, 255, 255, 0.05)",
+    "--border-light":   "rgba(255, 255, 255, 0.08)",
+    "--border-medium":  "rgba(255, 255, 255, 0.13)",
+    "--border-focus":   "#c4963a",
+    "--border-primary": "#c4963a",
 
     // Mermaid
-    "--mermaid-card-bg":        "#262320",
-    "--mermaid-card-header":    "#2F2A26",
-    "--mermaid-card-border":    "rgba(212, 118, 78, 0.26)",
-    "--mermaid-stage-bg":       "#1F1B18",
-    "--mermaid-stage-border":   "rgba(212, 118, 78, 0.20)",
-    "--mermaid-node-fill":      "#6C4C3B",
-    "--mermaid-node-text":      "#FFF6ED",
-    "--mermaid-node-border":    "#E8956A",
-    "--mermaid-cluster-fill":   "#3F3B36",
-    "--mermaid-cluster-text":   "#F1E7DB",
-    "--mermaid-cluster-border": "rgba(232, 149, 106, 0.42)",
-    "--mermaid-line":           "#E8956A",
-    "--mermaid-edge-label-bg":  "#353430",
+    "--mermaid-card-bg":        "#171410",
+    "--mermaid-card-header":    "#1e1a12",
+    "--mermaid-card-border":    "rgba(196, 150, 58, 0.26)",
+    "--mermaid-stage-bg":       "#11100c",
+    "--mermaid-stage-border":   "rgba(196, 150, 58, 0.18)",
+    "--mermaid-node-fill":      "#3a2e18",
+    "--mermaid-node-text":      "#f5e8c8",
+    "--mermaid-node-border":    "#c4963a",
+    "--mermaid-cluster-fill":   "#231e14",
+    "--mermaid-cluster-text":   "#d4c9b0",
+    "--mermaid-cluster-border": "rgba(196, 150, 58, 0.40)",
+    "--mermaid-line":            "#c4963a",
+    "--mermaid-edge-label-bg":  "#141109",
     "--mermaid-font-family":    "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    // Mermaid pie chart — 哑光色板（暖棕黑风）
-    "--mermaid-pie-1": "#b86840",  // 哑光赭橙（近 accent 低饱和版）
-    "--mermaid-pie-2": "#3f9090",  // 青瓷
-    "--mermaid-pie-3": "#b09040",  // 暖金
-    "--mermaid-pie-4": "#806890",  // 烟紫
-    "--mermaid-pie-5": "#4e9258",  // 鼠尾草绿
-    "--mermaid-pie-6": "#a05870",  // 玫瑰棕
-    "--mermaid-pie-7": "#4878a0",  // 铁蓝
-    "--mermaid-pie-8": "#8a7840",  // 苔绿金
+    "--mermaid-pie-1": "#a07828",
+    "--mermaid-pie-2": "#3a8888",
+    "--mermaid-pie-3": "#7a9040",
+    "--mermaid-pie-4": "#7060a0",
+    "--mermaid-pie-5": "#488068",
+    "--mermaid-pie-6": "#904860",
+    "--mermaid-pie-7": "#406890",
+    "--mermaid-pie-8": "#7a6830",
 
-    "--radius-sm":   "8px",
-    "--radius-md":   "12px",
-    "--radius-lg":   "16px",
-    "--radius-xl":   "20px",
+    "--radius-sm":   "6px",
+    "--radius-md":   "10px",
+    "--radius-lg":   "14px",
+    "--radius-xl":   "18px",
     "--radius-pill":  "9999px",
 
-    "--shadow-sm":   "0 1px 3px rgba(0, 0, 0, 0.2)",
-    "--shadow-md":   "0 2px 8px rgba(0, 0, 0, 0.25)",
-    "--shadow-lg":   "0 4px 16px rgba(0, 0, 0, 0.3)",
+    "--shadow-sm":   "0 1px 3px rgba(0, 0, 0, 0.3)",
+    "--shadow-md":   "0 2px 8px rgba(0, 0, 0, 0.4)",
+    "--shadow-lg":   "0 4px 16px rgba(0, 0, 0, 0.5)",
     "--shadow-glow": "none",
 
-    // 字体: Inter (英文) + Noto Sans SC (中文) + SF Mono/JetBrains Mono (代码)
     "--font-sans":    "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     "--font-mono":    "'SF Mono', 'JetBrains Mono', 'Fira Code', monospace",
     "--font-display": "'Inter', 'Noto Sans SC', -apple-system, sans-serif",
 
-    // 字号（优化后的分级）
-    "--text-xs":   "11px",   // 时间戳、极小标注
-    "--text-sm":   "12px",   // 状态标签、代码块头、辅助信息
-    "--text-base": "13px",   // 代码块内容、等宽场景
-    "--text-md":   "15px",   // ★ 正文/对话消息（核心阅读尺寸）
-    "--text-lg":   "17px",   // 区块标题、侧边栏标题
-    "--text-xl":   "20px",   // 页面标题
-    "--text-2xl":  "24px",   // 大标题
-    "--text-3xl":  "30px",   // 特大标题
+    "--text-xs":   "11px",
+    "--text-sm":   "12px",
+    "--text-base": "13px",
+    "--text-md":   "15px",
+    "--text-lg":   "17px",
+    "--text-xl":   "20px",
+    "--text-2xl":  "24px",
+    "--text-3xl":  "30px",
 
-    // 代码专用字号
-    "--text-code":    "13px",  // 代码块内容
-    "--text-code-sm": "12px",  // 代码块头部语言标签
+    "--text-code":    "13px",
+    "--text-code-sm": "12px",
 
-    // 行高
-    "--leading-tight":   "1.4",  // 代码、紧凑场景
-    "--leading-normal":  "1.7",  // 正文（英文为主）
-    "--leading-relaxed": "1.8",  // 正文（中文混排）
-    "--leading-loose":   "2.0",  // 大标题
+    "--leading-tight":   "1.4",
+    "--leading-normal":  "1.7",
+    "--leading-relaxed": "1.8",
+    "--leading-loose":   "2.0",
 
-    "--scrollbar-track":       "#2B2A27",
-    "--scrollbar-thumb":       "#4A4944",
-    "--scrollbar-thumb-hover": "#5A5955",
+    "--scrollbar-track":       "#100e0a",
+    "--scrollbar-thumb":       "#2e2618",
+    "--scrollbar-thumb-hover": "#3a3020",
 
-    "--selection-bg":   "rgba(212, 118, 78, 0.25)",
-    "--selection-text":  "#E8E4DD",
+    "--selection-bg":   "rgba(196, 150, 58, 0.25)",
+    "--selection-text":  "#d4c9b0",
   },
 };
 
@@ -408,5 +402,5 @@ export const allThemes: Record<string, ThemeDefinition> = {
   "claude-dark": claudeDarkTheme,
 };
 
-export const defaultThemeId = "terminal";
+export const defaultThemeId = "claude-dark";
 export type ThemeId = keyof typeof allThemes;

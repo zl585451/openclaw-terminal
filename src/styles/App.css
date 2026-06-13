@@ -45,40 +45,6 @@ body {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.app-shell-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-right: 12px;
-}
-
-.script-adapter-entry-button {
-  padding: 7px 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  background: rgba(55, 138, 221, 0.08);
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease;
-}
-
-.script-adapter-entry-button:hover {
-  border-color: rgba(55, 138, 221, 0.36);
-  background: rgba(55, 138, 221, 0.14);
-}
-
-.script-adapter-entry-button[data-entry-tone="library"] {
-  background: rgba(30, 117, 91, 0.1);
-  border-color: rgba(30, 117, 91, 0.2);
-}
-
-.script-adapter-entry-button[data-entry-tone="library"]:hover {
-  border-color: rgba(30, 117, 91, 0.34);
-  background: rgba(30, 117, 91, 0.16);
-}
-
 .app-shell-module-title {
   padding: 10px 14px;
   color: var(--text-primary);

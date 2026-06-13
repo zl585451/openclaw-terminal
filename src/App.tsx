@@ -11,13 +11,9 @@ import SettingsPanel from './ui/settings/SettingsPanel';
 import { ScriptAdapterApp } from './modules/script-adapter';
 import './styles/App.css';
 
-export type TabType = 'chat';
-type AppView = 'chat' | 'script-adapter';
-type ScriptAdapterEntry = 'home' | 'workspace' | 'library';
+export type TabType = 'chat' | 'workspace' | 'library';
 
 const App: React.FC = () => {
-  const [appView, setAppView] = useState<AppView>('chat');
-  const [scriptAdapterEntry, setScriptAdapterEntry] = useState<ScriptAdapterEntry>('home');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [showFirstLaunchSetup, setShowFirstLaunchSetup] = useState(false);
@@ -103,11 +99,6 @@ const App: React.FC = () => {
 
   const getNextMessageId = () => ++messageIdRef.current;
 
-  const openScriptAdapter = (entry: ScriptAdapterEntry) => {
-    setScriptAdapterEntry(entry);
-    setAppView('script-adapter');
-  };
-
   return (
     <ThemeProvider>
       <WorkbenchProvider>
@@ -126,57 +117,29 @@ const App: React.FC = () => {
         
         {/* 标签栏 + 右侧 portal 插槽 */}
         <div className="app-shell-bar">
-          {appView === 'chat' ? (
-            <>
-              <TabBar
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
-              />
-              <div className="app-shell-actions">
-                <button
-                  type="button"
-                  className="script-adapter-entry-button"
-                  data-entry-tone="library"
-                  onClick={() => openScriptAdapter('library')}
-                >
-                  📚 项目素材库
-                </button>
-                <button
-                  type="button"
-                  className="script-adapter-entry-button"
-                  data-temp-entry="script-adapter"
-                  onClick={() => openScriptAdapter('home')}
-                >
-                  内容制作工作台
-                </button>
-                <div id="chat-header-portal" />
-              </div>
-            </>
-          ) : (
-            <div className="app-shell-module-title">内容创作</div>
-          )}
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <div id="chat-header-portal" />
         </div>
 
         {/* 内容区域 */}
         <div className="content-area">
-          {appView === 'chat' ? (
-            <>
-              <Suspense fallback={null}>
-                <ChatTab
-                  messages={messages}
-                  setMessages={setMessages}
-                  getNextMessageId={getNextMessageId}
-                  onStatusChange={() => {}}
-                  onSwitchTab={setActiveTab}
-                />
-              </Suspense>
-            </>
-          ) : (
-            <Suspense fallback={<div className="script-adapter-loading">正在加载内容制作工作台...</div>}>
+          {activeTab === 'chat' && (
+            <Suspense fallback={null}>
+              <ChatTab
+                messages={messages}
+                setMessages={setMessages}
+                getNextMessageId={getNextMessageId}
+                onStatusChange={() => {}}
+                onSwitchTab={(tab) => setActiveTab(tab)}
+              />
+            </Suspense>
+          )}
+          {(activeTab === 'library' || activeTab === 'workspace') && (
+            <Suspense fallback={<div className="script-adapter-loading">正在加载...</div>}>
               <ScriptAdapterApp
-                key={scriptAdapterEntry}
-                initialScreen={scriptAdapterEntry}
-                onBack={() => setAppView('chat')}
+                key={activeTab}
+                initialScreen={activeTab === 'library' ? 'library' : 'home'}
+                onBack={() => setActiveTab('chat')}
               />
             </Suspense>
           )}
