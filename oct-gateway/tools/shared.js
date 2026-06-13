@@ -136,12 +136,24 @@ async function writeWithTimeout(uri, content, priority, disclosure) {
         if (exists.ok && exists.data) {
           const r = await memory.writeMemory(targetUri, targetContent, targetPriority, targetDisclosure);
           clearTimeout(timer);
-          resolve({ ...r, updated: r.ok });
+          resolve({
+            ...r,
+            updated: r.ok,
+            governor_decision: routed.decision,
+            actual_uri: routed.uri,
+            governor_reason: routed.reason,
+          });
         } else {
           await memoryHistory.ensurePathExists(domain, pathPart);
           const r = await memory.createMemory(targetUri, targetContent, targetPriority, targetDisclosure);
           clearTimeout(timer);
-          resolve({ ...r, created: r.ok });
+          resolve({
+            ...r,
+            created: r.ok,
+            governor_decision: routed.decision,
+            actual_uri: routed.uri,
+            governor_reason: routed.reason,
+          });
         }
       } catch (e) {
         clearTimeout(timer);
