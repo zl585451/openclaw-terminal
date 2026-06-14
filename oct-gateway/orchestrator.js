@@ -156,6 +156,31 @@ const DIRECT_PATTERNS = [
   /^.{0,5}$/, // 5字以内的极短消息（单字/感叹词），直接对话
 ];
 
+// ── 情绪 / 倾诉信号优先（必须早于 INTENT_RULES） ──────────────────────
+// 例：「这个 bug 把我搞崩溃了想放弃」既含 'bug' 又含情绪，应先安抚而非派给 Coder。
+// 词表聚焦“倾诉自身状态”的表达（多带第一人称或程度副词），降低与任务请求的混淆。
+const EMOTIONAL_TRIGGERS = [
+  '郁闷', '心情不好', '心情差', '心情很糟', '心里堵', '心里难受', '心里不舒服',
+  '好难受', '难受死', '想哭', '好想哭', '好累', '太累了', '累死了',
+  '撑不住', '撑不下去', '扛不住', '快崩溃', '要崩溃', '搞崩溃', '我崩溃',
+  '好烦', '烦死', '好焦虑', '焦虑死', '好委屈', '好孤独', '好沮丧', '好绝望',
+  '好低落', '难过', '压力好大', '压力太大',
+  '我不行', '我没用', '我好失败', '我很失败', '我太失败', '我好差劲', '我什么都做不好',
+  '不想活', '活着没意思', '活着没意义', '想解脱',
+  '我想聊聊', '陪我说说话', '陪我聊聊', '想找人说说', '安慰我', '抱抱我', '安慰一下',
+];
+
+// 明确的创作 / 任务请求 → 即使带情绪词也不抢，交给正常路由（避免“帮我写一篇关于焦虑的文章”被当成情绪）
+const TASK_OVERRIDE_SIGNALS = [
+  '帮我写', '写一篇', '写个', '写一个', '写段', '写代码', '帮我做个',
+  '生成', '调研', '整理成', '搜一下', '搜索一下',
+];
+
+function detectEmotionalSupport(msg) {
+  if (TASK_OVERRIDE_SIGNALS.some(t => msg.includes(t))) return false;
+  return EMOTIONAL_TRIGGERS.some(t => msg.includes(t));
+}
+
 const CANVAS_TRIGGER_RULES = [
   {
     artifactType: 'echart',
@@ -251,8 +276,8 @@ async function analyzeIntentWithLLM(userMessage) {
       signal: AbortSignal.timeout(5000),
     });
 
-    // 主 provider 鉴权失败时降级到 MiniMax（备用 key 始终可用）
-    if (resp.status === 401 || resp.status === 403) {
+    // 主 provider 鉴权/格式错误时降级到 MiniMax（400: stream:false 不支持；401/403: 鉴权失败）
+    if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
       const minimaxKey = config.getEnvOrConfig?.('MINIMAX_API_KEY') || config.MINIMAX_API_KEY;
       if (minimaxKey) {
         resp = await fetch('https://api.minimaxi.com/v1/chat/completions', {
@@ -312,6 +337,13 @@ async function analyzeIntent(userMessage) {
   }
 
   const msg = userMessage.trim();
+
+  // 0. 情绪优先：检测到情绪低落 / 倾诉 / 主动召唤 → 直接归 AMY 做情感陪伴
+  //    必须早于关键词匹配，避免「这个 bug 把我搞崩溃了想放弃」被误派给 Coder
+  if (detectEmotionalSupport(msg)) {
+    console.log('[Orchestrator] 情绪信号命中 → AMY 情感陪伴（不派发任务）');
+    return { intent: 'chat', agent: 'AMY', shouldDelegate: false, source: 'emotion' };
+  }
 
   // 1. 关键词快速路径（0ms，优先于短消息过滤）
   for (const rule of INTENT_RULES) {

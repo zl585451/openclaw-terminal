@@ -277,6 +277,7 @@ ${bootMemory}
   });
   const files = [
     'SOUL.md',
+    'EMOTIONAL_CARE.md',
     'AGENTS.md',
     'USER.md',
     'OCT_PROTOCOL.md',
@@ -350,6 +351,11 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
     '人格与风格规范（注入）',
     readTextIfExists(promptsDir ? path.join(promptsDir, 'SOUL.md') : ''),
     5000
+  );
+  const emotionalCare = clampPromptBlock(
+    '情感关怀协议（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'EMOTIONAL_CARE.md') : ''),
+    6000
   );
   const agents = clampPromptBlock(
     '任务与交互规范（注入）',
@@ -546,6 +552,7 @@ AI · Cursor · Claude 三角协作：
     identityContract,
     '\n\n---\n\n',
     soul ? soul + '\n\n---\n\n' : '',
+    emotionalCare ? emotionalCare + '\n\n---\n\n' : '',
     agents ? agents + '\n\n---\n\n' : '',
     memoryContent,
     '\n\n---\n\n',
