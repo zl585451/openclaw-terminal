@@ -14,7 +14,7 @@ import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTy
 import type { RenderBlock } from '../types/renderProtocol';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, normalizeAssistantTranscriptContent } from '../utils/cotExtract';
-import { emptyTurnSegmentState, reduceSegmentEvent, type SegmentEvent, type TurnSegmentState } from '../core/turnSegments';
+import { emptyTurnSegmentState, reduceSegmentEvent, type SegmentEvent, type TurnSegment, type TurnSegmentState } from '../core/turnSegments';
 import { parseSystemReplyStatus } from '../utils/systemReplyParser';
 import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
@@ -219,10 +219,12 @@ export function useMessages({
   const finalizeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const pendingClarifyOpenRef = useRef(false);
-  // B2: 段协议影子状态——按 turnId 累积段，暂不渲染（B3 起接管显示）。
+  // B2/B3: 段协议状态——按 turnId 累积段。B3 起接管显示。
   const turnSegmentsRef = useRef<{ turnId?: string; state: TurnSegmentState }>({
     state: emptyTurnSegmentState(),
   });
+  // B3: 当前回合是否有段事件到达（有则以段驱动显示，无则兜底走旧扁平流路径）。
+  const segProtocolActiveRef = useRef(false);
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
   const roundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -414,7 +416,47 @@ export function useMessages({
         slot.state = emptyTurnSegmentState();
       }
       slot.state = reduceSegmentEvent(slot.state, seg as unknown as SegmentEvent);
-      // B2 影子阶段：仅累积，不改显示。B3 起据此渲染。
+
+      // ── B3 渲染切换 ────────────────────────────────────────────────────────
+      const s = seg as unknown as SegmentEvent;
+
+      // 新文本段开启：段协议激活 + 如果已有旧文本段则清空显示（自动 reset）
+      if (s.op === 'open' && s.type === 'text') {
+        segProtocolActiveRef.current = true;
+        const newSegId = s.segId;
+        const hasOlderTextSeg = slot.state.order
+          .filter((id) => id !== newSegId)
+          .some((id) => (slot.state.segments[id] as TurnSegment | undefined)?.type === 'text');
+        if (hasOlderTextSeg) {
+          // 工具调用后新一轮文字段开始——清空流式气泡正文，等最终答案填充
+          streamingMessageRef.current = '';
+          fullTextRef.current = '';
+          systemReplyBufferRef.current = '';
+          setStreamingRenderText('');
+          if (streamingDomRef.current) {
+            try { streamingDomRef.current.textContent = ''; } catch {}
+          }
+          setMessages((prev) => clearStreamingBubbleContent(prev));
+        }
+      }
+
+      // 文本段增量：用段内容驱动 fullTextRef（跨段永不拼接）
+      if (s.op === 'delta') {
+        const activeSeg = slot.state.segments[s.segId] as TurnSegment | undefined;
+        if (activeSeg && activeSeg.type === 'text') {
+          setAwaitingResponse(false);
+          setAgentPhase('typing');
+          // 只取本段内容——不跨段累加，这正是根治重复的关键
+          fullTextRef.current = activeSeg.content;
+          streamingMessageRef.current = activeSeg.content;
+          scheduleCotSyncFromFullText(fullTextRef.current);
+          if (oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
+            try { oct.fsm.onToken(); } catch {}
+          }
+          startPainting();
+          ensureStreamingAssistantMessage();
+        }
+      }
     },
     onChatReset: (turnId) => {
       const currentTurnId = lastSentRequestId.current;
@@ -434,6 +476,9 @@ export function useMessages({
       const currentTurnId = lastSentRequestId.current;
       if (turnId && currentTurnId && turnId !== currentTurnId) return;
       if (!content) return;
+      // B3：段协议激活时，文字增量由 onChatSeg 驱动，跳过扁平流处理（防双写）。
+      // done=false 的 delta 跳过；done=true（最终文本快照）仍走下面 onChatDone 处理。
+      if (!isSystemReply && isDelta && segProtocolActiveRef.current) return;
       if (!isSystemReply) {
         setAwaitingResponse(false);
         if (isDelta) setAgentPhase('typing');
@@ -503,7 +548,11 @@ export function useMessages({
           return;
         }
         const fallbackText = normalizeAssistantTranscriptContent(String(content || '').trim());
-        const finalText = preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
+        // B3：段协议激活时信任 fullTextRef（段派生，仅含最终答案段）。
+        // 旧路径的 done.content 是所有轮次正文的拼接，用它覆盖会把工具前正文带回来。
+        const finalText = segProtocolActiveRef.current
+          ? (fullTextRef.current || fallbackText)
+          : preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
         if (finalText !== fullTextRef.current) {
           streamingMessageRef.current = finalText;
           fullTextRef.current = finalText;
@@ -788,6 +837,7 @@ export function useMessages({
     } = options;
 
     lastSentRequestId.current = newRequestId;
+    segProtocolActiveRef.current = false; // B3：新回合重置，等第一个 seg 事件激活
     const thinkCmdMatch = text.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
     if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
     pendingSystemReplyMap.current.set(newRequestId, isSystem);

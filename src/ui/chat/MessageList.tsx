@@ -429,6 +429,8 @@ type AssistantMessageBodyProps = Pick<
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   usePlainStreamingText?: boolean;
   useStructuredStreamingMarkdown?: boolean;
+  /** 工具调用结束后、最终文字还未到达时显示「正在生成回答…」 */
+  awaitingFinalAnswer?: boolean;
 };
 
 const AssistantMessageBody = memo(function AssistantMessageBody({
@@ -451,6 +453,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   streamingDomRef,
   usePlainStreamingText = false,
   useStructuredStreamingMarkdown = false,
+  awaitingFinalAnswer = false,
   markdownComponents,
 }: AssistantMessageBodyProps & { markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] }) {
   // Layout Lock：流式开始时记录高度并锁定 minHeight，防止结束时收缩跳动
@@ -490,6 +493,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         className="msg-assistant-body"
         style={{ display: 'flex', flexDirection: 'column' }}
       >
+        {awaitingFinalAnswer && (
+          <div className="msg-generating-hint">正在生成回答…</div>
+        )}
         {/* 正文由 useMessages 的 RAF 写 textContent，避免每帧 React 协调整棵 ChatTab */}
         <pre
           ref={streamingDomRef as React.LegacyRef<HTMLPreElement> | undefined}
@@ -507,6 +513,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         className="msg-assistant-body"
         style={{ display: 'flex', flexDirection: 'column' }}
       >
+        {awaitingFinalAnswer && (
+          <div className="msg-generating-hint">正在生成回答…</div>
+        )}
         <StreamingMarkdownContent content={textToShow || raw || ''} />
         <TypewriterCursor show />
       </div>
@@ -779,6 +788,12 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     inlineThinkingPlaceholder = false,
   } = props;
 
+  const awaitingFinalAnswer =
+    isStreamingMsg &&
+    agentPhase !== 'typing' &&
+    (msg.toolEvents?.length ?? 0) > 0 &&
+    (msg.toolEvents?.every((t) => t.state !== 'executing') ?? false);
+
   const showCotInline = msg.role === 'assistant' && !isStreamingMsg && (cotContent != null || cotStarted);
   const showCotStreaming = msg.role === 'assistant' && isStreamingMsg && (!!cotStreaming || cotStarted);
   const showLightweightThinkingBadge =
@@ -837,6 +852,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             streamingDomRef={streamingDomRef}
             usePlainStreamingText={usePlainStreamingText}
             useStructuredStreamingMarkdown={useStructuredStreamingMarkdown}
+            awaitingFinalAnswer={awaitingFinalAnswer}
             markdownComponents={markdownComponents}
           />
         ) : (

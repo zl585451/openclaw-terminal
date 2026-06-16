@@ -1495,6 +1495,11 @@ function handleMessage(msg: any) {
       } else if (msg.event === 'tool' || msg.event === 'agent-phase') {
         // 工具调用事件和 agent 阶段事件：直接透传，不经过 forwardChatToFrontend（避免 state:'done' 被误判为 chat done）
         sendMessage(msg);
+      } else if (msg.event === 'chat' && msg.payload && (msg.payload.seg !== undefined || msg.payload.reset === true)) {
+        // 段协议(seg)/续轮重置(reset)事件：原样透传。
+        // 这些事件没有 state:'delta'/done 字段，若走 forwardChatToFrontend 会被默认判成空 done，
+        // 导致每个段事件触发一次 finalize → 流式气泡碎片化；reset 字段也会被剥离。
+        sendMessage(msg);
       } else if (msg.event === 'chat' && msg.payload) {
         const isDelta = msg.payload?.state === 'delta';
         forwardChatToFrontend(msg.payload, msg.event, isDelta);

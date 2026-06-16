@@ -1259,6 +1259,15 @@
   animation: blink 1s step-end infinite;
 }
 
+.msg-generating-hint {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-style: italic;
+  opacity: 0.75;
+  padding-bottom: 4px;
+  animation: blink 1.2s ease-in-out infinite;
+}
+
 /* 聊天输入区 */
 .chat-input-area {
   display: flex;
