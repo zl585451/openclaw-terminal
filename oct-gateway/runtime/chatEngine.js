@@ -1,4 +1,5 @@
 const StreamController = require('./streamController');
+const { TurnSegmentTracker } = require('./turnSegmentTracker');
 
 class ChatEngine {
   constructor({
@@ -21,6 +22,14 @@ class ChatEngine {
 
   async execute(request, emitter) {
     const streamCtrl = this.streamControllerFactory(emitter, request.options?.pacingMs);
+    // B1: 段追踪器——把文本/工具/终止信号翻译为段事件，与旧 delta 双发（前端先忽略）。
+    const segments = new TurnSegmentTracker({
+      turnId: request.turnId,
+      emit: (seg) => { try { emitter.onSegment?.(seg); } catch { /* 双发失败不影响主流 */ } },
+    });
+    if (typeof streamCtrl.attachSegmentTracker === 'function') {
+      streamCtrl.attachSegmentTracker(segments);
+    }
     const smoother = streamCtrl.createSmoother();
     emitter.onStart?.(streamCtrl);
 
@@ -30,7 +39,12 @@ class ChatEngine {
       turnId: request.turnId,
       capability: request.capability,
       onDelta: smoother.feed,
-      onToolEvent: (evt) => emitter.onToolEvent(evt),
+      onToolEvent: (evt) => {
+        // 段边界：工具开始→闭文本段开 tool_use 段；工具结束→闭 tool_use 段。
+        if (evt?.type === 'tool_call') segments.toolOpen(evt.tool, evt.callId);
+        else if (evt?.type === 'tool_result') segments.toolResult();
+        emitter.onToolEvent(evt);
+      },
       onRoundReset: () => {
         // 进入下一轮工具续写前，清空上一轮已输出的正文（后端缓冲 + 前端气泡），
         // 确保最终答案只保留最后一轮，杜绝跨轮累加导致的重复输出。
@@ -43,6 +57,8 @@ class ChatEngine {
 
         emitter.onBeforeDone?.();
         streamCtrl.flush();
+        // B1: 闭合最后一段并发 finish（stopReason 显式枚举；B1 先用 end_turn）。
+        segments.finish('end_turn');
 
         const finalizedReply = streamCtrl.getFullReply() || _text || '';
         let sanitizedReply = this.sanitizeAssistantReply(finalizedReply);

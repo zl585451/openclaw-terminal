@@ -204,6 +204,15 @@ function createChatRequestHandler({
         });
       },
       onToolEvent: sendToolEvent,
+      onSegment: (seg) => {
+        // B1: 段协议双发（与裸 delta 并行）。前端在 B2 前忽略，仅作影子观测。
+        if (cancelled || !connection.isOpen() || !seg) return;
+        connection.send({
+          type: 'event',
+          event: 'chat',
+          payload: { turnId, seg },
+        });
+      },
       onAnswerReset: () => {
         // 工具续轮：通知前端清空当前流式气泡的正文（保留气泡与工具卡片），
         // 等下一轮最终答案重新填充，避免上一轮正文与最终答案重复堆叠。

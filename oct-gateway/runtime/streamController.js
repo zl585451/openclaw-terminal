@@ -6,6 +6,12 @@ class StreamController {
     this.cancelled = false;
     this.fullReply = '';
     this.smoother = null;
+    this.segments = null; // B1: TurnSegmentTracker，按段双发；未挂载时退化为纯旧路径
+  }
+
+  // B1: 挂载段追踪器，让平滑后的文本 chunk 同步翻译为 text 段事件。
+  attachSegmentTracker(tracker) {
+    this.segments = tracker || null;
   }
 
   createSmoother() {
@@ -13,6 +19,9 @@ class StreamController {
       if (this.cancelled) return;
       this.fullReply += chunk;
       this.emitter.onDelta(chunk);
+      if (this.segments) {
+        try { this.segments.text(chunk); } catch { /* 段双发失败不影响主流 */ }
+      }
     }, this.pacingMs);
     return this.smoother;
   }

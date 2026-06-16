@@ -95,6 +95,54 @@ describe('ChatEngine capability parameter passthrough', () => {
     expect(answerResetCount).toBe(1);
   });
 
+  it('4. emits segment events (open/delta/finish) alongside legacy delta (B1 dual-emit)', async () => {
+    // 用真实 StreamController 让 smoother chunk 驱动段事件
+    const StreamController = require('../runtime/streamController');
+    const { createStreamSmoother } = require('../runtime/streamUtils');
+    const segs = [];
+
+    const streamChat = async (options) => {
+      options.onDelta('报告正文');
+      options.onDone('报告正文', {}, 'model');
+    };
+
+    const engine = new ChatEngine({
+      streamChat,
+      session: { addMessage: () => {} },
+      postProcessor: mockPostProcessor,
+      sanitizeAssistantReply: (text) => text,
+      streamControllerFactory: (emitter, pacingMs) => new StreamController({
+        emitter,
+        smootherFactory: createStreamSmoother,
+        pacingMs: pacingMs ?? 1,
+      }),
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+
+    const emitter = {
+      onStart: () => {},
+      onDelta: () => {},
+      onToolEvent: () => {},
+      onBeforeDone: () => {},
+      onDone: () => {},
+      onSegment: (seg) => segs.push(seg),
+    };
+
+    await engine.execute({
+      messages: [{ role: 'user', content: 'hi' }],
+      turnId: 'turn-seg',
+      sessionKey: 'sess-seg',
+    }, emitter);
+
+    // 至少有一个 open(text) 段、对应 delta、以及 finish
+    const open = segs.find((s) => s.op === 'open' && s.type === 'text');
+    const finish = segs.find((s) => s.op === 'finish');
+    expect(open).toBeDefined();
+    expect(open.segId).toBe('turn-seg:s0');
+    expect(finish).toBeDefined();
+    expect(finish.stopReason).toBe('end_turn');
+  });
+
   it('2. leaves capability as undefined/unset when not present in request', async () => {
     let passedOptions = null;
     const streamChat = async (options) => {

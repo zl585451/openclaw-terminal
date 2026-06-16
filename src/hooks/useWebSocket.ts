@@ -206,6 +206,12 @@ export function useWebSocket(options: UseWebSocketOptions) {
         }
       }
 
+      // B1 \u6BB5\u534F\u8BAE\uFF08\u5F71\u5B50\uFF09\uFF1A\u6BB5\u4E8B\u4EF6\u4E0E\u88F8 delta \u53CC\u53D1\uFF0C\u524D\u7AEF\u5728 B2 \u63A5\u7BA1\u524D\u5148\u5FFD\u7565\uFF0C
+      // \u907F\u514D\u88AB\u5F53\u6210"\u7A7A\u5185\u5BB9 chat \u4E8B\u4EF6"\u8BEF\u62A5\u3002\u89C1 chat-streaming-block-protocol-plan.md\u3002
+      if (data.event === 'chat' && nestedRecord(data, 'payload')?.seg !== undefined) {
+        return;
+      }
+
       // \u5DE5\u5177\u7EED\u8F6E\u91CD\u7F6E\uFF1A\u6E05\u7A7A\u5F53\u524D\u6D41\u5F0F\u6C14\u6CE1\u6B63\u6587\uFF0C\u7B49\u4E0B\u4E00\u8F6E\u6700\u7EC8\u7B54\u6848\u91CD\u65B0\u586B\u5145
       if (data.event === 'chat') {
         const resetFlag = (data as Record<string, unknown>).reset === true
