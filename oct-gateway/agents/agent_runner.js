@@ -24,6 +24,14 @@ const { createLogger } = require('../logger');
 
 const log = createLogger('agent_runner');
 
+function isStructuredToolResult(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function shouldPauseForUserReply(result) {
+  return isStructuredToolResult(result) && result.status === 'waiting_user_reply';
+}
+
 // ─────────────────────────────────────────────────────────────────
 // 内部工具：解析 provider 配置
 // ─────────────────────────────────────────────────────────────────
@@ -96,7 +104,7 @@ function buildToolDefinitions(allowedTools) {
  * @param {string} toolCall.function.arguments - JSON 字符串
  * @param {string[]} allowedTools - 兼容旧签名，当前不再用于二次拒绝
  * @param {Function} onEvent - 事件推送回调
- * @returns {Promise<string>} 工具返回内容（字符串化）
+ * @returns {Promise<{ content: string, pauseForUserReply: boolean }>} 工具返回内容（字符串化）与是否等待用户回复
  */
 async function executeToolCall(toolCall, allowedTools, onEvent) {
   const toolName = toolCall.function?.name;
@@ -110,13 +118,13 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
     log.error(`工具参数解析失败: ${toolName}`, { callId, error: err.message });
     const errMsg = `ERROR: Failed to parse arguments for tool "${toolName}". Details: ${err.message}`;
     onEvent({ type: 'tool_result', tool: toolName, callId, state: 'error', resultPreview: errMsg });
-    return errMsg;
+    return { content: errMsg, pauseForUserReply: false };
   }
 
   onEvent({ type: 'tool_call', tool: toolName, args, callId, state: 'executing' });
 
   try {
-    const rawResult = await toolLoader.executeTool(toolName, args);
+    const rawResult = await toolLoader.executeTool(toolName, args, { onToolEvent: onEvent });
     // 统一序列化为字符串
     const resultStr = typeof rawResult === 'string'
       ? rawResult
@@ -125,12 +133,15 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
     const preview = resultStr.length > 200 ? resultStr.slice(0, 200) + '...' : resultStr;
     onEvent({ type: 'tool_result', tool: toolName, callId, state: 'done', resultPreview: preview });
 
-    return resultStr;
+    return {
+      content: resultStr,
+      pauseForUserReply: shouldPauseForUserReply(rawResult),
+    };
   } catch (err) {
     const errMsg = err?.message || String(err);
     log.error(`工具执行失败: ${toolName}`, { callId, error: errMsg });
     onEvent({ type: 'tool_result', tool: toolName, callId, state: 'error', resultPreview: errMsg });
-    return `ERROR: ${errMsg}`;
+    return { content: `ERROR: ${errMsg}`, pauseForUserReply: false };
   }
 }
 
@@ -322,13 +333,24 @@ async function runAgent({ agent, task, onAgentEvent }) {
         tools: toolCalls.map((tc) => tc.function?.name),
       });
 
+      let shouldStopForUserReply = false;
       for (const toolCall of toolCalls) {
         const toolResult = await executeToolCall(toolCall, mergedAllowedTools, onEvent);
+        if (toolResult.pauseForUserReply) {
+          finalResult = '';
+          log.info(`[${agentName}] request_clarify 等待用户回复，停止续轮`, { taskId, callId: toolCall.id });
+          shouldStopForUserReply = true;
+          break;
+        }
         messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
-          content: toolResult,
+          content: toolResult.content,
         });
+      }
+
+      if (shouldStopForUserReply) {
+        break;
       }
 
       // ── 6c. 超过最大轮次 → 强制结束 ──────────────────────────

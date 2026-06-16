@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preferDoneTextWhenMoreComplete } from '../useMessages';
+import { preferDoneTextWhenMoreComplete, shouldSuppressAssistantTextForClarify } from '../useMessages';
 import { normalizeAssistantTranscriptContent } from '../../utils/cotExtract';
 
 describe('preferDoneTextWhenMoreComplete', () => {
@@ -11,6 +11,20 @@ describe('preferDoneTextWhenMoreComplete', () => {
 
   it('keeps current text when done text is empty', () => {
     expect(preferDoneTextWhenMoreComplete('已经流式收到的正文', '')).toBe('已经流式收到的正文');
+  });
+});
+
+describe('shouldSuppressAssistantTextForClarify', () => {
+  it('suppresses residual streamed text when clarify card already opened and done text is empty', () => {
+    expect(shouldSuppressAssistantTextForClarify(true, '')).toBe(true);
+  });
+
+  it('does not suppress when clarify was not opened', () => {
+    expect(shouldSuppressAssistantTextForClarify(false, '')).toBe(false);
+  });
+
+  it('does not suppress when a visible done text exists', () => {
+    expect(shouldSuppressAssistantTextForClarify(true, '最终正文')).toBe(false);
   });
 });
 

@@ -62,6 +62,10 @@ export function preferDoneTextWhenMoreComplete(currentRaw: string, doneText: str
   return current;
 }
 
+export function shouldSuppressAssistantTextForClarify(pendingClarifyOpen: boolean, doneText: string): boolean {
+  return pendingClarifyOpen && !String(doneText || '').trim();
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface ActiveTool {
   callId: string;
@@ -199,6 +203,7 @@ export function useMessages({
   const pendingStreamFinalizeRef = useRef(false);
   const finalizeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
+  const pendingClarifyOpenRef = useRef(false);
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
   const roundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -431,6 +436,27 @@ export function useMessages({
       }
 
       if (!systemReply) {
+        const shouldSuppressClarifyText = shouldSuppressAssistantTextForClarify(
+          pendingClarifyOpenRef.current,
+          content,
+        );
+        pendingClarifyOpenRef.current = false;
+        if (shouldSuppressClarifyText) {
+          streamingMessageRef.current = '';
+          fullTextRef.current = '';
+          setStreamingRenderText('');
+          pendingStreamFinalizeRef.current = false;
+          stopPainting();
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant' && last.isStreaming) {
+              return prev.slice(0, -1);
+            }
+            return prev;
+          });
+          recoverOctStreamFromEndFailure(oct);
+          return;
+        }
         const fallbackText = normalizeAssistantTranscriptContent(String(content || '').trim());
         const finalText = preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
         if (finalText !== fullTextRef.current) {
@@ -582,6 +608,7 @@ export function useMessages({
     },
 
     onClarifyOpen: (spec) => {
+      pendingClarifyOpenRef.current = true;
       onClarifyOpen?.(spec);
     },
 

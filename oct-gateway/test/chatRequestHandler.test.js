@@ -224,9 +224,69 @@ async function testAgentShortcut() {
   });
 }
 
+async function testClarifyEventForwarding() {
+  const connection = createConnection();
+  const handler = createChatRequestHandler({
+    orchestrator: {
+      dispatch: async () => ({ canvasIntent: { shouldUseCanvas: false } }),
+    },
+    contextBuilder: {
+      build: async () => ({
+        messages: [{ role: 'user', content: 'hello' }],
+        history: [],
+      }),
+    },
+    chatEngine: {
+      execute: async (_request, handlers) => {
+        handlers.onStart({ cancel() {} });
+        handlers.onToolEvent({
+          type: 'clarify_open',
+          payload: {
+            spec: {
+              title: '开始写作前',
+              fields: [
+                { id: 'genre', label: '想写什么类型？', type: 'single', options: ['小说', '专栏'] },
+              ],
+            },
+          },
+        });
+        handlers.onBeforeDone();
+        handlers.onDone({
+          reply: '',
+          usage: { total_tokens: 3 },
+          model: 'test-model',
+          turnId: 'clarify-turn',
+        });
+      },
+    },
+    systemPromptReady: Promise.resolve('system prompt'),
+    session: { addMessage() {} },
+    normalizeAssistantText: (raw) => String(raw).trim(),
+    sendCanvasTransportEvent: () => {},
+    logger: createLogger(),
+  });
+
+  await handler({ id: 'turn-clarify', params: { sessionKey: 's1', message: 'hello' } }, connection);
+
+  const clarifyEvent = connection.sent.find((item) => item.event === 'clarify');
+  assert.deepEqual(clarifyEvent, {
+    type: 'event',
+    event: 'clarify',
+    payload: {
+      spec: {
+        title: '开始写作前',
+        fields: [
+          { id: 'genre', label: '想写什么类型？', type: 'single', options: ['小说', '专栏'] },
+        ],
+      },
+    },
+  });
+}
+
 async function main() {
   await testNormalChatLifecycle();
   await testAgentShortcut();
+  await testClarifyEventForwarding();
   console.log('PASS chat request handler lifecycle is isolated');
 }
 
