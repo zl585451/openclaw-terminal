@@ -350,7 +350,14 @@ async function runAgent({ agent, task, onAgentEvent }) {
       }
 
       if (shouldStopForUserReply) {
-        break;
+        clearTimeout(timeoutHandle);
+        onEvent({ type: 'agent_status', agent: agentName, status: 'done', taskId });
+        return {
+          status: 'waiting_user_reply',
+          result: '',
+          turnsUsed,
+          tokensUsed,
+        };
       }
 
       // ── 6c. 超过最大轮次 → 强制结束 ──────────────────────────
@@ -376,6 +383,7 @@ async function runAgent({ agent, task, onAgentEvent }) {
   onEvent({ type: 'agent_status', agent: agentName, status: 'done', taskId });
 
   return {
+    status: 'completed',
     result: finalResult,
     turnsUsed,
     tokensUsed,

@@ -78,6 +78,7 @@ async function testRequestClarifyStopsAgentLoopAndForwardsClarifyEvent() {
     });
 
     assert.equal(fetchCount, 1);
+    assert.equal(result.status, 'waiting_user_reply');
     assert.equal(result.result, '');
     assert.equal(typeof receivedContext?.onToolEvent, 'function');
     assert(events.some((event) => event.type === 'clarify_open'));

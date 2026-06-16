@@ -81,14 +81,33 @@ function createChatRequestHandler({
 
     const orchResult = await orchestrator.dispatch(userMessage, sessionKey, sendToolEvent);
 
-    // ── Agent 短路：专职 Agent 执行完成，直接发结果给用户，跳过 AMY streamChat ──
-    if (orchResult.agentResult && orchResult.agentResult.result) {
-      const agentReply = normalizeReply(orchResult.agentResult.result);
+    // ── Agent 短路：专职 Agent 已完成（含 clarify 暂停），直接终止，跳过 AMY streamChat ──
+    if (orchResult.agentResult) {
+      const ar = orchResult.agentResult;
       const agentName = orchResult.agent || 'Agent';
+
+      // 通知前端：agent 阶段结束
+      connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
+
+      if (ar.status === 'waiting_user_reply') {
+        // request_clarify 暂停：clarify 事件已由 sendToolEvent 推送，此处只发空 done 供前端触发抑制
+        log.info('agent_clarify_pause', { agent: agentName, turnsUsed: ar.turnsUsed });
+        try { session.addMessage(sessionKey, 'user', userMessage); } catch {}
+        connection.send({
+          type: 'event',
+          event: 'chat',
+          payload: { text: '', state: 'done', done: true, turnId, agentName },
+        });
+        stopKeepalive?.();
+        return;
+      }
+
+      // 正常完成（status === 'completed' 或旧格式无 status）
+      const agentReply = normalizeReply(ar.result || '');
       log.info('agent_result_shortcut', {
         agent: agentName,
-        turnsUsed: orchResult.agentResult.turnsUsed,
-        tokensUsed: orchResult.agentResult.tokensUsed,
+        turnsUsed: ar.turnsUsed,
+        tokensUsed: ar.tokensUsed,
         replyLen: agentReply.length,
       });
 
@@ -98,8 +117,6 @@ function createChatRequestHandler({
         try { session.addMessage(sessionKey, 'assistant', agentReply); } catch {}
       }
 
-      // 通知前端：agent 阶段结束
-      connection.send({ type: 'event', event: 'agent-phase', phase: 'idle' });
       // 推送 agent_status done 事件
       connection.send({
         type: 'event',
@@ -116,7 +133,7 @@ function createChatRequestHandler({
           done: true,
           turnId,
           agentName,
-          tokensUsed: orchResult.agentResult.tokensUsed,
+          tokensUsed: ar.tokensUsed,
         },
       });
 
