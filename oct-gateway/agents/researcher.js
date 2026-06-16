@@ -74,11 +74,11 @@ class ResearcherAgent extends BaseAgent {
 - 数字和版本号尽量精确，不用模糊表述
 
 ## 链接格式规范（重要）
-所有可点击资源**必须**使用 Markdown 链接格式 `[标题](URL)`，不要只写名称或搜索关键词：
-- B站搜索页：`[关键词](https://search.bilibili.com/all?keyword=关键词)`
-- B站视频：`[视频标题](https://www.bilibili.com/video/BV...)` （从搜索结果获取）
-- GitHub 项目：`[项目名](https://github.com/用户/仓库名)`
-- 其他网页：直接用 `[页面标题](https://实际URL)`
+所有可点击资源**必须**使用 Markdown 链接格式 \`[标题](URL)\`，不要只写名称或搜索关键词：
+- B站搜索页：\`[关键词](https://search.bilibili.com/all?keyword=关键词)\`
+- B站视频：\`[视频标题](https://www.bilibili.com/video/BV...)\` （从搜索结果获取）
+- GitHub 项目：\`[项目名](https://github.com/用户/仓库名)\`
+- 其他网页：直接用 \`[页面标题](https://实际URL)\`
 - **禁止**只写"搜索关键词"或资料名称代替链接；若无法确认真实 URL，用「（待核实）」标注
 
 ## 并行搜索规范（重要）
