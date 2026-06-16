@@ -52,6 +52,49 @@ describe('ChatEngine capability parameter passthrough', () => {
     expect(passedOptions.toolChoice).toBe('auto');
   });
 
+  it('3. onRoundReset resets fullReply and notifies emitter.onAnswerReset', async () => {
+    const resetCalls = [];
+    const resettableController = {
+      createSmoother: () => ({ feed: () => {} }),
+      isCancelled: () => false,
+      flush: () => {},
+      getFullReply: () => 'final round only',
+      resetReply: () => { resetCalls.push('controller'); },
+    };
+
+    let answerResetCount = 0;
+    const streamChat = async (options) => {
+      // 模拟工具续轮：在最终 onDone 之前触发一次 onRoundReset
+      options.onRoundReset();
+      options.onDone('reply', {}, 'model');
+    };
+
+    const engine = new ChatEngine({
+      streamChat,
+      session: mockSession,
+      postProcessor: mockPostProcessor,
+      sanitizeAssistantReply: (text) => text,
+      streamControllerFactory: () => resettableController,
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+
+    const emitter = {
+      onStart: () => {},
+      onBeforeDone: () => {},
+      onDone: () => {},
+      onAnswerReset: () => { answerResetCount += 1; },
+    };
+
+    await engine.execute({
+      messages: [{ role: 'user', content: 'hi' }],
+      turnId: 'turn-reset',
+      sessionKey: 'sess-reset',
+    }, emitter);
+
+    expect(resetCalls).toContain('controller');
+    expect(answerResetCount).toBe(1);
+  });
+
   it('2. leaves capability as undefined/unset when not present in request', async () => {
     let passedOptions = null;
     const streamChat = async (options) => {

@@ -27,6 +27,7 @@ const ipcRenderer: IpcRendererLike = typeof window !== 'undefined' && typeof win
 
 interface UseWebSocketOptions {
   onChatDelta: (content: string, isDelta: boolean, isSystemReply: boolean, turnId?: string) => void;
+  onChatReset?: (turnId?: string) => void;
   onChatDone: (content: string, isSystemReply: boolean, turnId?: string, renderBlocks?: RenderBlock[]) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: GatewayToolPayload) => void;
@@ -202,6 +203,22 @@ export function useWebSocket(options: UseWebSocketOptions) {
         opt.onUsage(embeddedUsage, true);
         if (embeddedUsage.model != null) {
           opt.onModelName(String(embeddedUsage.model));
+        }
+      }
+
+      // \u5DE5\u5177\u7EED\u8F6E\u91CD\u7F6E\uFF1A\u6E05\u7A7A\u5F53\u524D\u6D41\u5F0F\u6C14\u6CE1\u6B63\u6587\uFF0C\u7B49\u4E0B\u4E00\u8F6E\u6700\u7EC8\u7B54\u6848\u91CD\u65B0\u586B\u5145
+      if (data.event === 'chat') {
+        const resetFlag = (data as Record<string, unknown>).reset === true
+          || nestedRecord(data, 'payload')?.reset === true;
+        if (resetFlag) {
+          const resetTurnId = (() => {
+            const raw = data.turnId ?? nestedRecord(data, 'payload')?.turnId;
+            if (raw == null) return undefined;
+            const normalized = String(raw).trim();
+            return normalized || undefined;
+          })();
+          opt.onChatReset?.(resetTurnId);
+          return;
         }
       }
 

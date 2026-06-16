@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preferDoneTextWhenMoreComplete, shouldSuppressAssistantTextForClarify } from '../useMessages';
+import { clearStreamingBubbleContent, preferDoneTextWhenMoreComplete, shouldSuppressAssistantTextForClarify } from '../useMessages';
 import { normalizeAssistantTranscriptContent } from '../../utils/cotExtract';
 
 describe('preferDoneTextWhenMoreComplete', () => {
@@ -25,6 +25,28 @@ describe('shouldSuppressAssistantTextForClarify', () => {
 
   it('does not suppress when a visible done text exists', () => {
     expect(shouldSuppressAssistantTextForClarify(true, '最终正文')).toBe(false);
+  });
+});
+
+describe('clearStreamingBubbleContent', () => {
+  it('clears the last streaming assistant bubble content but keeps the bubble and tool cards', () => {
+    const input = [
+      { role: 'user', content: '帮我调研一下' },
+      { role: 'assistant', content: '上一轮残留的初稿正文', isStreaming: true, toolEvents: [{ tool: 'web_search' }] },
+    ];
+    const out = clearStreamingBubbleContent(input as any) as any[];
+    expect(out[1].content).toBe('');
+    expect(out[1].isStreaming).toBe(true);
+    expect(out[1].toolEvents).toEqual([{ tool: 'web_search' }]);
+    expect(out[0]).toBe(input[0]); // 其他消息引用不变
+  });
+
+  it('does nothing when the last message is not a streaming assistant bubble', () => {
+    const input = [
+      { role: 'assistant', content: '已完成的回复', isStreaming: false },
+    ];
+    const out = clearStreamingBubbleContent(input as any);
+    expect(out).toBe(input);
   });
 });
 

@@ -29,6 +29,15 @@ class StreamController {
     return this.fullReply;
   }
 
+  // 工具续轮时清空：丢弃上一轮已累积的正文（含 smoother 未输出缓冲），
+  // 使最终回复只保留最后一轮内容，对齐专职 Agent 的非累加行为。
+  resetReply() {
+    this.fullReply = '';
+    if (this.smoother && typeof this.smoother.reset === 'function') {
+      this.smoother.reset();
+    }
+  }
+
   flush() {
     if (this.smoother?.flush) {
       this.smoother.flush();

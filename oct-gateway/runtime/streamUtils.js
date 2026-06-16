@@ -69,7 +69,13 @@ function createStreamSmoother(onChunk, pacingMs = 4) {
     if (timer) { clearInterval(timer); timer = null; }
   }
 
-  return { feed, end, flush };
+  // 丢弃尚未输出的缓冲内容（不触发 onChunk），用于工具续轮时清空上一轮残留正文。
+  function reset() {
+    buffer.length = 0;
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  return { feed, end, flush, reset };
 }
 
 /** 流式合并：微批量发送，保持打字机流畅度的同时减少 WebSocket 帧数 */

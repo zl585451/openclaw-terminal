@@ -31,6 +31,13 @@ class ChatEngine {
       capability: request.capability,
       onDelta: smoother.feed,
       onToolEvent: (evt) => emitter.onToolEvent(evt),
+      onRoundReset: () => {
+        // 进入下一轮工具续写前，清空上一轮已输出的正文（后端缓冲 + 前端气泡），
+        // 确保最终答案只保留最后一轮，杜绝跨轮累加导致的重复输出。
+        if (streamCtrl.isCancelled()) return;
+        streamCtrl.resetReply();
+        emitter.onAnswerReset?.();
+      },
       onDone: (_text, usage, responseModel) => {
         if (streamCtrl.isCancelled()) return;
 

@@ -70,6 +70,7 @@ class ToolLoop {
     onDone,
     onError,
     onToolEvent,
+    onRoundReset,
     flushThinkAtEnd,
     turnId,
     _omniRouteResolved,
@@ -353,12 +354,18 @@ class ToolLoop {
       assistantToolMessage,
       ...toolResults,
     ];
+    // 进入下一轮续写前清空上一轮已输出的正文：续写轮会重新生成完整答案，
+    // 若不清空，上一轮正文会与最终答案在同一气泡里累加，造成内容重复输出。
+    if (typeof onRoundReset === 'function') {
+      try { onRoundReset(); } catch {}
+    }
     await this.streamChat({
       messages: continuedMessages,
       onDelta,
       onDone,
       onError,
       onToolEvent,
+      onRoundReset,
       preserveToolChain: true,
       toolRound: toolRound + 1,
       toolSignatures: [...toolSignatures, toolSignature].slice(-8),
