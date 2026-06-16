@@ -14,6 +14,7 @@ import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTy
 import type { RenderBlock } from '../types/renderProtocol';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, normalizeAssistantTranscriptContent } from '../utils/cotExtract';
+import { emptyTurnSegmentState, reduceSegmentEvent, type SegmentEvent, type TurnSegmentState } from '../core/turnSegments';
 import { parseSystemReplyStatus } from '../utils/systemReplyParser';
 import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
@@ -218,6 +219,10 @@ export function useMessages({
   const finalizeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const pendingClarifyOpenRef = useRef(false);
+  // B2: 段协议影子状态——按 turnId 累积段，暂不渲染（B3 起接管显示）。
+  const turnSegmentsRef = useRef<{ turnId?: string; state: TurnSegmentState }>({
+    state: emptyTurnSegmentState(),
+  });
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
   const roundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -399,6 +404,18 @@ export function useMessages({
 
   // ── useWebSocket ──────────────────────────────────────────────────────────
   const ws = useWebSocket({
+    onChatSeg: (seg, turnId) => {
+      const currentTurnId = lastSentRequestId.current;
+      if (turnId && currentTurnId && turnId !== currentTurnId) return;
+      // 新回合：重置段状态
+      const slot = turnSegmentsRef.current;
+      if (turnId && slot.turnId !== turnId) {
+        slot.turnId = turnId;
+        slot.state = emptyTurnSegmentState();
+      }
+      slot.state = reduceSegmentEvent(slot.state, seg as unknown as SegmentEvent);
+      // B2 影子阶段：仅累积，不改显示。B3 起据此渲染。
+    },
     onChatReset: (turnId) => {
       const currentTurnId = lastSentRequestId.current;
       if (turnId && currentTurnId && turnId !== currentTurnId) return;
