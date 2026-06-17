@@ -232,7 +232,7 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 | B4 双 FSM 边界收口 | ☑ | 生产 `ChatTab`/`useMessages` 运行时只持有 `TurnFSM`；`StreamRouter` 不再接收生产 token 或驱动收尾，仅作为隔离核心模块与测试保留 |
 | B5 影子推完/回滚 | ☑ | `turnSegments` 已是正文段事实源，`turnUiState` 驱动 UI 状态投影；删除 `StreamRouter`/`BlockIngest` 生产分支并更新头注 |
 | C2 记忆工具去重 | ☑ | `memory_vector_search` / `memory_recall` 合并进 `memory_search` 的 `mode=vector/date`；ToolLoader 不再暴露旧工具名，伪工具与直接执行保留兼容别名；回归测试锁定暴露面与旧名改写 |
-| C3 搜索空结果处理 | ☐ | |
+| C3 搜索空结果处理 | ☑ | `web_search` 已有弱结果 message；补齐 `parallel_web_research` 聚合退级信号，全部为空或整体弱时顶层 `message/hint` 明确禁止无新线索重复搜索；新增离线回归测试 |
 | C4 工具卡片渲染对齐 | ☐ | |
 | B2 防重复机制对齐 | ☐ | |
 | B3 路由判据文档化 | ☐ | |

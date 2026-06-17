@@ -24,6 +24,68 @@ function makeSemaphore(limit) {
   return { acquire, release };
 }
 
+function buildParallelSearchQuality(groups) {
+  const totalResults = groups.reduce((n, item) => n + (item.results?.length || 0), 0);
+  const weakGroups = groups.filter((item) => {
+    const level = item.searchQuality?.level || (item.results?.length ? 'rich' : 'empty');
+    return !item.success || level === 'empty' || level === 'limited' || (item.results?.length || 0) === 0;
+  });
+
+  if (totalResults === 0) {
+    return {
+      level: 'empty',
+      totalResults,
+      weakQueries: weakGroups.length,
+      reason: '所有并行查询都没有返回可用网页结果',
+    };
+  }
+
+  if (weakGroups.length === groups.length || totalResults <= groups.length) {
+    return {
+      level: 'limited',
+      totalResults,
+      weakQueries: weakGroups.length,
+      reason: `并行查询整体信息有限：${groups.length} 个查询共 ${totalResults} 条结果`,
+    };
+  }
+
+  return {
+    level: 'rich',
+    totalResults,
+    weakQueries: weakGroups.length,
+    reason: `并行查询返回 ${totalResults} 条结果`,
+  };
+}
+
+function buildParallelSearchMessage(groups, quality) {
+  if (!quality || quality.level === 'rich') return null;
+  const lines = [];
+  lines.push('══════════════════════════════════════');
+  lines.push('搜索退级警告：并行搜索结果不足');
+  lines.push('══════════════════════════════════════');
+  lines.push(`质量: ${quality.level}`);
+  lines.push(`原因: ${quality.reason}`);
+  lines.push('');
+  lines.push('【各查询结果】');
+  for (const group of groups) {
+    const level = group.searchQuality?.level || (group.results?.length ? 'unknown' : 'empty');
+    lines.push(`- ${group.query}: ${group.success ? level : 'failed'}，结果 ${group.results?.length || 0} 条`);
+    if (group.error) lines.push(`  错误: ${group.error}`);
+    for (const item of (group.results || []).slice(0, 2)) {
+      lines.push(`  • ${item.title || '(无标题)'}`);
+      if (item.url) lines.push(`    ${item.url}`);
+      if (item.snippet) lines.push(`    ${String(item.snippet).slice(0, 180)}`);
+    }
+  }
+  lines.push('');
+  lines.push('【退级决策】');
+  lines.push('如果这是本任务第一轮搜索，可以最多换一组更具体关键词再搜一次。');
+  lines.push('如果已经补搜过，或下一轮仍是弱结果，请停止搜索，基于已知结果诚实说明信息不足。');
+  lines.push('不要在没有新关键词或新线索时继续重复 web_search / parallel_web_research。');
+  lines.push('══════════════════════════════════════');
+  return lines.join('\n');
+}
+
 module.exports = {
   name: 'parallel_web_research',
   timeoutMs: 60000,
@@ -134,16 +196,22 @@ module.exports = {
     });
 
     const successCount = data.filter((s) => s.success).length;
+    const parallelSearchQuality = buildParallelSearchQuality(data);
+    const message = buildParallelSearchMessage(data, parallelSearchQuality);
 
     return {
       success: successCount > 0,
+      searchQuality: parallelSearchQuality,
       parallelSearchSummary: {
         queriesRequested: queries.length,
         queriesSucceeded: successCount,
         totalResultsReturned: data.reduce((n, s) => n + s.results.length, 0),
         elapsedMs,
+        weakQueries: parallelSearchQuality.weakQueries,
       },
       data,
+      ...(message ? { message } : {}),
+      ...(message ? { hint: '搜索结果不足时不要空转；最多补搜一次，仍弱则诚实收尾' } : {}),
       ...(successCount === 0 ? { error: '所有并行查询均失败' } : {}),
     };
   },
