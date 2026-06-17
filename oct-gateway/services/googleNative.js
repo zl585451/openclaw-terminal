@@ -27,6 +27,7 @@ function sanitizeGoogleModelId(modelId) {
     'gemini-2.5-flash-image-preview': 'gemini-2.5-flash-image',
     'gemini-2.0-flash-001': 'gemini-2.0-flash',
     'gemini-3-pro-preview': 'gemini-3.1-pro-preview',
+    'gemini-3.1-flash-lite-preview': 'gemini-3.1-flash-lite',
   };
   return aliasMap[withoutPrefix] || withoutPrefix;
 }
@@ -53,6 +54,8 @@ function isImagenModel(modelId) {
 function resolveGoogleProxyUrl(rawConfig = {}) {
   return String(
     rawConfig.GOOGLE_HTTPS_PROXY
+    || rawConfig.ALL_PROXY
+    || rawConfig.all_proxy
     || rawConfig.HTTPS_PROXY
     || rawConfig.https_proxy
     || rawConfig.HTTP_PROXY

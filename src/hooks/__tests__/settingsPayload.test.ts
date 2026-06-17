@@ -74,7 +74,7 @@ describe('settings gateway payload boundary', () => {
       baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/test/locations/us-central1/endpoints/openapi',
       keyLink: '',
       keyPlaceholder: '',
-      defaultModel: 'google/gemini-2.5-flash',
+      defaultModel: 'google/gemini-3.5-flash',
       models: [],
     };
 
@@ -111,7 +111,7 @@ describe('settings gateway payload boundary', () => {
       baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/test/locations/us-central1/endpoints/openapi',
       keyLink: '',
       keyPlaceholder: '',
-      defaultModel: 'google/gemini-2.5-flash',
+      defaultModel: 'google/gemini-3.5-flash',
       models: [],
     };
 
@@ -119,7 +119,7 @@ describe('settings gateway payload boundary', () => {
       baseApiKeys({
         GOOGLE_AI_API_KEY: 'AQ.test',
         GOOGLE_AI_BASE_URL: provider.baseUrl,
-        OCT_MODEL: 'google/gemini-2.5-flash',
+        OCT_MODEL: 'google/gemini-3.5-flash',
         DASHSCOPE_BASE_URL: 'https://should-not-leak.example/v1',
       }),
       'google',
@@ -142,7 +142,7 @@ describe('settings gateway payload boundary', () => {
       baseUrl: 'https://aiplatform.googleapis.com/v1beta1/projects/test/locations/us-central1/endpoints/openapi',
       keyLink: '',
       keyPlaceholder: '',
-      defaultModel: 'google/gemini-2.5-flash',
+      defaultModel: 'google/gemini-3.5-flash',
       models: [],
     };
 

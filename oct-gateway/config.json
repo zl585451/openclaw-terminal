@@ -59,6 +59,6 @@
     "api_key": ""
   },
   "OCT_PROVIDER": "google",
-  "OCT_MODEL": "google/gemini-3.1-flash-lite-preview",
+  "OCT_MODEL": "google/gemini-3.5-flash",
   "CUSTOM_MODEL": ""
 }

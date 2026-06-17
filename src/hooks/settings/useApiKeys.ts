@@ -94,7 +94,7 @@ const EMERGENCY_FALLBACK_PROVIDERS: ProvidersState = {
     'https://aiplatform.googleapis.com/v1beta1/projects/YOUR_PROJECT_ID/locations/us-central1/endpoints/openapi',
     'AQ.xxxxx 或绑定 Vertex 的 API Key',
     'https://console.cloud.google.com/vertex-ai/studio/settings/api-keys',
-    'google/gemini-2.5-flash',
+    'google/gemini-3.5-flash',
     true,
   ),
   custom: emergencyProvider('custom', '自定义 OpenAI 兼容服务', '', 'your-api-key', '', '__custom__', true),
@@ -224,6 +224,24 @@ function hasConfiguredKey(data: Partial<ApiKeysState>, providerId: string): bool
   return !!String(data.DASHSCOPE_API_KEY || '').trim();
 }
 
+function normalizeGoogleSettingsModel(modelId: string, knownModels: Set<string>): string {
+  const raw = String(modelId || '').trim();
+  if (!raw) return '';
+  const withoutProviderPrefix = raw.toLowerCase().startsWith('google/')
+    ? raw.slice('google/'.length)
+    : raw;
+  const aliasMap: Record<string, string> = {
+    'gemini-2.5-pro-preview-03-25': 'gemini-2.5-pro',
+    'gemini-2.5-flash-preview-04-17': 'gemini-2.5-flash',
+    'gemini-2.0-flash-001': 'gemini-2.0-flash',
+    'gemini-3-pro-preview': 'gemini-3.1-pro-preview',
+    'gemini-3.1-flash-lite-preview': 'gemini-3.1-flash-lite',
+  };
+  const normalized = aliasMap[withoutProviderPrefix] || withoutProviderPrefix;
+  if (knownModels.has(`google/${normalized}`)) return `google/${normalized}`;
+  return knownModels.has(normalized) ? normalized : raw;
+}
+
 function normalizeLoadedApiKeys(
   data: Partial<ApiKeysState>,
   providerId: string,
@@ -246,13 +264,17 @@ function normalizeLoadedApiKeys(
   const knownModels = new Set((provider?.models || []).map((model) => model.id));
 
   if (providerId === 'google' && configuredModel) {
+    const normalizedGoogleModel = normalizeGoogleSettingsModel(configuredModel, knownModels);
+    if (normalizedGoogleModel !== configuredModel) {
+      nextApiKeys.OCT_MODEL = normalizedGoogleModel;
+    }
     const shouldUseCustomMode =
-      configuredModel !== '__custom__'
-      && !knownModels.has(configuredModel)
-      && (!customModel || customModel === configuredModel);
+      nextApiKeys.OCT_MODEL !== '__custom__'
+      && !knownModels.has(nextApiKeys.OCT_MODEL)
+      && (!customModel || customModel === configuredModel || customModel === nextApiKeys.OCT_MODEL);
     if (shouldUseCustomMode) {
       nextApiKeys.OCT_MODEL = '__custom__';
-      nextApiKeys.CUSTOM_MODEL = configuredModel;
+      nextApiKeys.CUSTOM_MODEL = normalizeGoogleSettingsModel(configuredModel, knownModels);
     }
   }
 

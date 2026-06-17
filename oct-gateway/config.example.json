@@ -1,6 +1,6 @@
 {
   "OCT_PROVIDER": "google",
-  "OCT_MODEL": "google/gemini-2.5-flash",
+  "OCT_MODEL": "google/gemini-3.5-flash",
   "MINIMAX_TEMPERATURE": 0.7,
   "memory": {
     "backend": "file",
