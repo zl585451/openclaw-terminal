@@ -20,6 +20,7 @@ import type { ActivityEntry } from '../../hooks/useMessages';
 import type { TurnUiPhase, TurnUiState } from '../../core/turnUiState';
 import StreamingMarkdownContent from './StreamingMarkdownContent';
 import { useMsgParse } from '../../hooks/useMsgParse';
+import { filterActivityEntriesForInlineTools } from './activityTimelineFilters';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
 
@@ -1041,13 +1042,14 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
   const shouldShowActivityPanel = msg.role === 'assistant' && !!isLastAssistant;
   // B3 inline：工具卡片已穿插进正文流时，把工具从顶部活动面板剔除（只留思考/CoT），避免重复展示。
   const inlineToolsActive = Array.isArray(msg.turnSegments) && msg.turnSegments.some((s) => s.type === 'tool_use');
-  const dropToolEntries = (entries: ActivityEntry[]) =>
-    inlineToolsActive ? entries.filter((e) => e.type !== 'tool_call' && e.type !== 'tool_result') : entries;
   const finalizedTimeline = shouldShowActivityPanel && !isStreamingMsg
-    ? dropToolEntries(buildFinalizedTimeline(msg, showCotInline ? (cotContent ?? '') : null))
+    ? filterActivityEntriesForInlineTools(
+        buildFinalizedTimeline(msg, showCotInline ? (cotContent ?? '') : null),
+        inlineToolsActive,
+      )
     : [];
   const streamingTimeline = shouldShowActivityPanel && isStreamingMsg
-    ? dropToolEntries(activityTimeline)
+    ? filterActivityEntriesForInlineTools(activityTimeline, inlineToolsActive)
     : [];
   const panelStreamingFlag = shouldShowActivityPanel
     ? (isStreamingMsg && (showCotStreaming || showLightweightThinkingBadge || inlineThinkingPlaceholder || isTurnUiActivityStreaming(turnUiState.phase)))

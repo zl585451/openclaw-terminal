@@ -233,7 +233,7 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 | B5 影子推完/回滚 | ☑ | `turnSegments` 已是正文段事实源，`turnUiState` 驱动 UI 状态投影；删除 `StreamRouter`/`BlockIngest` 生产分支并更新头注 |
 | C2 记忆工具去重 | ☑ | `memory_vector_search` / `memory_recall` 合并进 `memory_search` 的 `mode=vector/date`；ToolLoader 不再暴露旧工具名，伪工具与直接执行保留兼容别名；回归测试锁定暴露面与旧名改写 |
 | C3 搜索空结果处理 | ☑ | `web_search` 已有弱结果 message；补齐 `parallel_web_research` 聚合退级信号，全部为空或整体弱时顶层 `message/hint` 明确禁止无新线索重复搜索；新增离线回归测试 |
-| C4 工具卡片渲染对齐 | ☐ | |
+| C4 工具卡片渲染对齐 | ☑ | `turnSegments` 中的 `tool_use` 段由 `MessageList` 内联 `ToolGroup` 渲染；ActivityPanel 在内联工具存在时通过 `filterActivityEntriesForInlineTools` 过滤 `tool_call/tool_result`，保留 CoT/keepalive；后台 Agent 仅透传模型自带短 preamble，不再生成工具兜底文案 |
 | B2 防重复机制对齐 | ☐ | |
 | B3 路由判据文档化 | ☐ | |
 | D1–D5 死链清理 | ☐ | |
