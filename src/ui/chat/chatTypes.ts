@@ -2,6 +2,7 @@
 
 import type React from 'react';
 import type { RenderBlock } from '../../types/renderProtocol';
+import type { ConversationMeta } from '../../types/electronAPI';
 
 export type { RenderBlock, RenderBlockItem } from '../../types/renderProtocol';
 
@@ -63,4 +64,10 @@ export interface ChatTabProps {
   getNextMessageId: () => number;
   onStatusChange?: (wsConnected: boolean, isStreaming: boolean, modelName?: string, tokenIn?: number | null, tokenOut?: number | null, ctxUsed?: number | null, ctxMax?: number | null) => void;
   onSwitchTab?: (tab: 'chat') => void;
+  // 多对话
+  conversations?: ConversationMeta[];
+  activeConversationId?: string;
+  onNewConversation?: () => void;
+  onSwitchConversation?: (id: string) => void;
+  onDeleteConversation?: (id: string) => void;
 }

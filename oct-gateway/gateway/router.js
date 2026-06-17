@@ -26,6 +26,20 @@ class MessageRouter {
       return true;
     }
 
+    if (method === 'chat.cancel') {
+      connection.abortCurrent?.();
+      connection.setAbort?.(null);
+      connection.stopThinkingPulse?.();
+      connection.send?.({ type: 'event', event: 'agent-phase', phase: 'idle' });
+      connection.send?.({
+        type: 'res',
+        id,
+        ok: true,
+        payload: { cancelled: true },
+      });
+      return true;
+    }
+
     if (method === 'sessions.list') {
       connection.send({
         type: 'res',

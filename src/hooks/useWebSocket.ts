@@ -363,11 +363,22 @@ export function useWebSocket(options: UseWebSocketOptions) {
     }
   }, []);
 
+  const cancel = useCallback(async (): Promise<GatewaySendResult> => {
+    try {
+      const result = await ipcRenderer.invoke<GatewaySendResult>('openclaw-cancel');
+      return result || {};
+    } catch (error) {
+      console.error('[useWebSocket] cancel error:', error);
+      return {};
+    }
+  }, []);
+
   return useMemo(() => ({
     wsConnected,
     wsReconnecting,
     wsError,
     memoryOnline,
     send,
-  }), [memoryOnline, send, wsConnected, wsError, wsReconnecting]);
+    cancel,
+  }), [cancel, memoryOnline, send, wsConnected, wsError, wsReconnecting]);
 }

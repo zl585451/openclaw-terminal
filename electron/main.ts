@@ -1742,6 +1742,29 @@ function sendChatMessage(
   }
 }
 
+function cancelChatMessage(): { success: boolean; error?: string } {
+  if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
+    return { success: false, error: 'WebSocket not connected' };
+  }
+
+  const cancelMsg = {
+    type: 'req',
+    id: generateId(),
+    method: 'chat.cancel',
+    params: {
+      sessionKey: currentSessionKey,
+      reason: 'user_stop',
+    },
+  };
+
+  try {
+    openclawWs.send(JSON.stringify(cancelMsg));
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || String(err) };
+  }
+}
+
 function getOpenClawStatus() {
   return {
     connected: openclawWs?.readyState === WebSocket.OPEN,
@@ -2494,6 +2517,11 @@ app.whenReady().then(async () => {
     setPendingCodeWindowData: (d: { language: string; code: string } | null) => { pendingCodeWindowData = d; },
     connectOpenClaw,
     sendChatMessage,
+    cancelChatMessage,
+    setSessionKey: (key: string) => {
+      currentSessionKey = key || 'main';
+      saveSessionState({ ...(lastSessionState || {}), sessionKey: currentSessionKey });
+    },
     getOpenClawStatus,
     getAiLibraryPlugin,
     saveAiLibraryPlugin,

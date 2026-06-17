@@ -82,6 +82,28 @@ async function main() {
     const connection = createConnection();
     const handled = await router.handleRequest({
       type: 'req',
+      id: 'cancel-1',
+      method: 'chat.cancel',
+      params: { reason: 'user_stop' },
+    }, connection);
+
+    assert.equal(handled, true);
+    assert.equal(connection.abortCalls, 1);
+    assert.equal(connection.abortValue, null);
+    assert.equal(connection.stopThinkingCalls, 1);
+    assert.deepEqual(connection.sent[0], { type: 'event', event: 'agent-phase', phase: 'idle' });
+    assert.deepEqual(connection.sent[1], {
+      type: 'res',
+      id: 'cancel-1',
+      ok: true,
+      payload: { cancelled: true },
+    });
+  }
+
+  {
+    const connection = createConnection();
+    const handled = await router.handleRequest({
+      type: 'req',
       id: 'sessions-1',
       method: 'sessions.list',
       params: {},

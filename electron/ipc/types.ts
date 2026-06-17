@@ -44,6 +44,8 @@ export interface IpcDeps {
     requestId?: string,
     projectContext?: unknown
   ) => { success: boolean; error?: string };
+  cancelChatMessage: () => { success: boolean; error?: string };
+  setSessionKey?: (sessionKey: string) => void;
   getOpenClawStatus: () => OpenClawStatus;
   getAiLibraryPlugin: () => Promise<unknown>;
   saveAiLibraryPlugin: (payload: AiLibraryPluginPayload) => Promise<unknown>;
@@ -159,6 +161,13 @@ export interface ChatHistoryItem {
   content: string;
   timestamp: string;
   isSystemReply?: boolean;
+}
+
+export interface ConversationMeta {
+  id: string;
+  title: string;
+  updatedAt: number;
+  preview?: string;
 }
 
 export interface ScriptAdapterBatchStartPayload {

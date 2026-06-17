@@ -32,6 +32,20 @@ function shouldPauseForUserReply(result) {
   return isStructuredToolResult(result) && result.status === 'waiting_user_reply';
 }
 
+/**
+ * 从一轮 assistant content 中提取「工具前的过渡句」——只取首行短句。
+ * 防止模型把完整报告草稿塞进工具轮的 content 时，被整段发成 text 段，
+ * 导致前端逐轮重复渲染整篇报告。完整报告由结尾的 final 段统一给。
+ */
+function extractToolPreamble(content) {
+  const trimmed = (typeof content === 'string' ? content : '').trim();
+  if (!trimmed) return '';
+  const firstBlock = trimmed.split(/\n\n+/)[0];
+  const firstLine = firstBlock.split(/\n/)[0].trim();
+  if (firstLine.length > 120) return firstLine.slice(0, 120) + '…';
+  return firstLine;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // 内部工具：解析 provider 配置
 // ─────────────────────────────────────────────────────────────────
@@ -371,7 +385,7 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
 
       // B3：模型在调工具前主动说的话（content 非空）作为 text 段发出，成为工具组之间的叙述。
       // 不再兜底生成 preamble——"干了啥"由前端工具组摘要承担，避免重复。
-      const preambleText = typeof assistantMsg.content === 'string' ? assistantMsg.content.trim() : '';
+      const preambleText = extractToolPreamble(assistantMsg.content);
       if (emitSeg && preambleText) {
         closeOpenSeg();
         const preambleSegId = openSeg('text');
@@ -448,6 +462,29 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
   }
 
   clearTimeout(timeoutHandle);
+
+  // 收尾保障：从任何路径退出循环后，若 finalResult 过短（像半截过渡句而非结论，
+  // 例如模型在最后一轮恰好 stop 且只回了一句"我再查查"），补发一次不带工具的收尾
+  // 请求，强制模型基于已有信息给出完整结论或如实说明；仍为空则给诚实兜底文案。
+  if (finalResult.trim().length < 100 && !controller.signal.aborted) {
+    try {
+      messages.push({
+        role: 'user',
+        content: '请基于以上已获取的全部信息，直接输出完整的最终结论。若信息不足以下结论，就如实说明你查到了什么、还缺什么、建议怎么办——不要再调用工具，不要只回一句过渡句。',
+      });
+      const wrapResp = await callApi({ baseUrl, apiKey, model, messages, tools: [], signal: controller.signal });
+      if (wrapResp.usage) tokensUsed += wrapResp.usage.total_tokens || 0;
+      const wc = wrapResp.choices?.[0]?.message?.content;
+      if (typeof wc === 'string' && wc.trim().length > finalResult.trim().length) {
+        finalResult = wc;
+      }
+    } catch (e) {
+      log.warn(`[${agentName}] 收尾保障请求失败`, { taskId, error: e?.message });
+    }
+  }
+  if (!finalResult || finalResult.trim().length < 20) {
+    finalResult = '抱歉，这个主题我查证了多轮，但没找到足够可靠的信息来形成完整结论。可以换个说法或补充线索，我再帮你查。';
+  }
 
   // B3 段事件：最终答案作为 final 段一次性发出（agent 非流式，没有逐字 delta）。
   // 这给前端 inline 渲染提供"最终文字段"锚点，让 lastTextIdx 切分正确。

@@ -155,6 +155,7 @@ export interface UseMessagesReturn {
   streamingDomRef: MutableRefObject<HTMLPreElement | null>;
   sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[], workbenchContext?: WorkbenchRoundtripContext) => Promise<void>;
   quickSend: (content: string) => void;
+  stopCurrentResponse: () => Promise<void>;
 }
 
 export function useMessages({
@@ -868,6 +869,46 @@ export function useMessages({
     };
   }, [stopPainting]);
 
+  const stopCurrentResponse = useCallback(async () => {
+    clearRoundTimeout();
+    reduceTurnUiRef({ kind: 'cancel' });
+    setAwaitingResponse(false);
+    setAgentPhase('idle');
+    setActiveTools([]);
+    removeTimelineTypes(['keepalive_hint', 'thinking_placeholder']);
+    stopPainting();
+    pendingStreamFinalizeRef.current = false;
+    if (finalizeFallbackTimerRef.current != null) {
+      clearTimeout(finalizeFallbackTimerRef.current);
+      finalizeFallbackTimerRef.current = null;
+    }
+    try {
+      oct.stream.abortToIdle();
+      if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
+        oct.fsm.onCancel();
+      }
+    } catch (e) {
+      console.warn('[useMessages] stopCurrentResponse local cleanup', e);
+      try { oct.fsm.resetToIdle(); } catch {}
+    }
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (!(last?.role === 'assistant' && last.isStreaming)) return prev;
+      const content = typeof last.content === 'string' && last.content.trim()
+        ? last.content
+        : '已停止当前任务。';
+      return prev.map((msg, idx) =>
+        idx === prev.length - 1
+          ? { ...msg, content, isStreaming: false, isStreamingRaw: false }
+          : msg,
+      );
+    });
+    const result = await ws.cancel();
+    if (!result?.success) {
+      console.warn('[useMessages] cancel failed:', result);
+    }
+  }, [clearRoundTimeout, oct, reduceTurnUiRef, removeTimelineTypes, setMessages, stopPainting, ws]);
+
   async function _sendMessageCore(options: {
     text: string;
     displayContent: string;
@@ -1066,5 +1107,6 @@ export function useMessages({
     streamingDomRef,
     sendMessage,
     quickSend,
+    stopCurrentResponse,
   };
 }

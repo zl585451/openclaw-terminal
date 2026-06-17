@@ -88,6 +88,15 @@ const electronAPI = {
   chatHistoryLoad: () => ipcRenderer.invoke('chat-history-load'),
   chatHistorySave: (items: Array<{ role: string; content: string; timestamp: string }>) =>
     ipcRenderer.invoke('chat-history-save', items),
+  // 多对话
+  conversationsLoad: () => ipcRenderer.invoke('conversations-load'),
+  conversationsSave: (index: Array<{ id: string; title: string; updatedAt: number; preview?: string }>) =>
+    ipcRenderer.invoke('conversations-save', index),
+  conversationMessagesLoad: (id: string) => ipcRenderer.invoke('conversation-messages-load', id),
+  conversationMessagesSave: (id: string, items: Array<{ role: string; content: string; timestamp: string; isSystemReply?: boolean }>) =>
+    ipcRenderer.invoke('conversation-messages-save', { id, items }),
+  conversationDelete: (id: string) => ipcRenderer.invoke('conversation-delete', id),
+  setSession: (sessionKey: string) => ipcRenderer.invoke('openclaw-set-session', sessionKey),
   openCodeWindow: (payload: { language?: string; code?: string }) =>
     ipcRenderer.invoke('open-code-window', payload),
   openTerminalWindow: () => ipcRenderer.invoke('open-terminal-window'),

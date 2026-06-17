@@ -1,6 +1,8 @@
 import React, { useState, startTransition } from 'react';
 import type { UseGatewayReturn } from '../../hooks/useGateway';
 import LogPanel from '../../components/LogPanel';
+import ConversationList from './ConversationList';
+import type { ConversationMeta } from '../../types/electronAPI';
 
 const ipcRenderer =
   typeof window !== 'undefined' && typeof (window as any).require === 'function'
@@ -20,8 +22,12 @@ export interface ChatTabRightPanelProps {
   tokenIn: number | null;
   ctxUsed: number | null;
   ctxMax: number | null;
-  localTime: string;
-  localDate: string;
+  conversations?: ConversationMeta[];
+  activeConversationId?: string;
+  onNewConversation?: () => void;
+  onSwitchConversation?: (id: string) => void;
+  onDeleteConversation?: (id: string) => void;
+  onOpenSettings?: () => void;
 }
 
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
@@ -78,8 +84,12 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   tokenIn,
   ctxUsed,
   ctxMax,
-  localTime,
-  localDate,
+  conversations,
+  activeConversationId,
+  onNewConversation,
+  onSwitchConversation,
+  onDeleteConversation,
+  onOpenSettings,
 }) => {
   /** P0-4：默认折叠；仅当用户曾展开过并写入 oct.devpanel.expanded=1 时首次展开 */
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -110,6 +120,22 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
     });
   };
 
+  // 「系统 / 日志」抽屉：默认折叠，让对话列表占满，贴近 Claude 的干净侧栏
+  const [devExpanded, setDevExpanded] = useState(() => {
+    try {
+      return localStorage.getItem('oct.devtools.expanded') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleDev = () => {
+    setDevExpanded((v) => {
+      const next = !v;
+      try { localStorage.setItem('oct.devtools.expanded', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
   return (
     <div className={`right-panel ${sidebarCollapsed ? 'right-panel--collapsed' : ''}`}>
       <button
@@ -121,100 +147,30 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
         {sidebarCollapsed ? '\u203A' : '\u2039'}
       </button>
       <div className={`right-panel-inner ${sidebarCollapsed ? 'is-hidden' : ''}`}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '8px 12px',
-            borderBottom: '1px solid var(--border-subtle)',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <div
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: wsConnected ? 'var(--status-success)' : 'var(--status-error)',
-                animation: wsConnected ? 'pulse-green 2s infinite' : 'pulse-red 1s infinite',
-              }}
-            />
-            <span
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-tertiary)',
-                fontFamily: 'var(--font-sans)',
-              }}
-            >
-              GW
+        <ConversationList
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onNewConversation={onNewConversation}
+          onSwitchConversation={onSwitchConversation}
+          onDeleteConversation={onDeleteConversation}
+        />
+        {/* 常显：连接状态圆点 + 展开「系统 / 日志」抽屉 */}
+        <button type="button" className="panel-dev-toggle" onClick={toggleDev} title={devExpanded ? '收起系统与日志' : '展开系统与日志'}>
+          <span className="panel-dev-dots">
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: wsConnected ? 'var(--status-success)' : 'var(--status-error)', animation: wsConnected ? 'pulse-green 2s infinite' : 'pulse-red 1s infinite' }} />
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>GW</span>
             </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <div
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: memoryOnline ? 'var(--status-info)' : 'var(--status-error)',
-                animation: memoryOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite',
-              }}
-            />
-            <span
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-tertiary)',
-                fontFamily: 'var(--font-sans)',
-              }}
-            >
-              MEM
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: memoryOnline ? 'var(--status-info)' : 'var(--status-error)', animation: memoryOnline ? 'pulse-blue 3s infinite' : 'pulse-red 1s infinite' }} />
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>MEM</span>
             </span>
-          </div>
+          </span>
+          <span className="panel-dev-label">系统 · 日志 {devExpanded ? '▾' : '▸'}</span>
+        </button>
 
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              gap: '8px',
-            }}
-          >
-            <div
-              style={{
-                fontSize: 'var(--text-3xl)',
-                color: 'var(--text-primary)',
-                fontFamily: 'var(--font-mono)',
-                fontWeight: 500,
-                letterSpacing: '1px',
-                lineHeight: 1,
-              }}
-            >
-              {localTime || '--:--'}
-            </div>
-            <div
-              style={{
-                width: '1px',
-                height: '16px',
-                background: 'var(--border-subtle)',
-              }}
-            />
-            <div
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-secondary)',
-                fontFamily: 'var(--font-sans)',
-                letterSpacing: '0.5px',
-                lineHeight: 1,
-              }}
-            >
-              {localDate || ''}
-            </div>
-          </div>
-        </div>
-
+        {devExpanded ? (
+        <div className="panel-dev-body">
         <div
           style={{
             display: 'flex',
@@ -365,6 +321,18 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
             onClear={gateway.clearLogs}
           />
         </div>
+        </div>
+        ) : null}
+
+        <button
+          type="button"
+          className="panel-settings-btn"
+          onClick={() => onOpenSettings?.()}
+          title="设置"
+        >
+          <span className="panel-settings-gear">⚙</span>
+          <span>设置</span>
+        </button>
       </div>
     </div>
   );
@@ -378,8 +346,12 @@ const ChatTabRightPanel = React.memo(ChatTabRightPanelComponent, (prev, next) =>
     prev.tokenIn === next.tokenIn &&
     prev.ctxUsed === next.ctxUsed &&
     prev.ctxMax === next.ctxMax &&
-    prev.localTime === next.localTime &&
-    prev.localDate === next.localDate &&
+    prev.conversations === next.conversations &&
+    prev.activeConversationId === next.activeConversationId &&
+    prev.onNewConversation === next.onNewConversation &&
+    prev.onSwitchConversation === next.onSwitchConversation &&
+    prev.onDeleteConversation === next.onDeleteConversation &&
+    prev.onOpenSettings === next.onOpenSettings &&
     prev.gateway.gatewayRunning === next.gateway.gatewayRunning &&
     prev.gateway.gatewayManaged === next.gateway.gatewayManaged &&
     prev.gateway.gatewayPortInUse === next.gateway.gatewayPortInUse &&
