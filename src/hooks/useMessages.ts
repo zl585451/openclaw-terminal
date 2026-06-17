@@ -22,6 +22,7 @@ import { useTokenUsage } from './useTokenUsage';
 import { useActivityTimeline } from './useActivityTimeline';
 import { useStreamPainting } from './useStreamPainting';
 import type { ActivityEntry } from './useActivityTimeline';
+import { emptyTurnUiState, reduceTurnUi, type TurnUiEvent, type TurnUiState } from '../core/turnUiState';
 export type { ActivityEntryType, ActivityEntry } from './useActivityTimeline';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
@@ -223,6 +224,8 @@ export function useMessages({
   const turnSegmentsRef = useRef<{ turnId?: string; state: TurnSegmentState }>({
     state: emptyTurnSegmentState(),
   });
+  // Phase 1: UI-facing turn state projection in shadow mode. This is not rendered yet.
+  const turnUiStateRef = useRef<TurnUiState>(emptyTurnUiState());
   // B3: 当前回合是否有段事件到达（有则以段驱动显示，无则兜底走旧扁平流路径）。
   const segProtocolActiveRef = useRef(false);
   const lastSentRequestId = useRef<string>('');
@@ -359,10 +362,15 @@ export function useMessages({
     }
   }, []);
 
+  const reduceTurnUiRef = useCallback((event: TurnUiEvent) => {
+    turnUiStateRef.current = reduceTurnUi(turnUiStateRef.current, event);
+  }, []);
+
   const startRoundTimeout = useCallback(() => {
     clearRoundTimeout();
     roundTimeoutRef.current = setTimeout(() => {
       roundTimeoutRef.current = null;
+      reduceTurnUiRef({ kind: 'error', message: 'Round timed out' });
       setAwaitingResponse(false);
       setAgentPhase('idle');
       setActiveTools([]);
@@ -402,7 +410,7 @@ export function useMessages({
         recoverOctStreamFromEndFailure(oct);
       } catch {}
     }, ROUND_TIMEOUT_MS);
-  }, [ROUND_TIMEOUT_MS, clearRoundTimeout, getNextMessageId, oct, setMessages]);
+  }, [ROUND_TIMEOUT_MS, clearRoundTimeout, getNextMessageId, oct, reduceTurnUiRef, setMessages]);
 
   // ── useWebSocket ──────────────────────────────────────────────────────────
   const ws = useWebSocket({
@@ -419,6 +427,12 @@ export function useMessages({
 
       // ── B3 渲染切换 ────────────────────────────────────────────────────────
       const s = seg as unknown as SegmentEvent;
+      if (s.op === 'delta') {
+        const activeSeg = slot.state.segments[s.segId] as TurnSegment | undefined;
+        if (activeSeg && (activeSeg.type === 'text' || activeSeg.type === 'final')) {
+          reduceTurnUiRef({ kind: 'seg_text_delta' });
+        }
+      }
 
       // 新文本段开启：段协议激活 + 如果已有旧文本段则清空显示（自动 reset）
       if (s.op === 'open' && s.type === 'text') {
@@ -481,6 +495,7 @@ export function useMessages({
     onChatReset: (turnId) => {
       const currentTurnId = lastSentRequestId.current;
       if (turnId && currentTurnId && turnId !== currentTurnId) return;
+      reduceTurnUiRef({ kind: 'reset' });
       // 工具续轮：清空当前流式气泡正文（保留气泡与工具卡片），等最终答案重新填充。
       // 不移除气泡、不停止绘制循环——下一轮 delta 会继续填充同一个气泡。
       streamingMessageRef.current = '';
@@ -500,6 +515,7 @@ export function useMessages({
       // done=false 的 delta 跳过；done=true（最终文本快照）仍走下面 onChatDone 处理。
       if (!isSystemReply && isDelta && segProtocolActiveRef.current) return;
       if (!isSystemReply) {
+        if (isDelta) reduceTurnUiRef({ kind: 'seg_text_delta' });
         setAwaitingResponse(false);
         if (isDelta) setAgentPhase('typing');
       }
@@ -539,6 +555,7 @@ export function useMessages({
       pendingSystemReplyMap.current.delete(systemReplyKey);
 
       if (!systemReply) {
+        reduceTurnUiRef({ kind: 'done' });
         setAwaitingResponse(false);
         setAgentPhase('idle');
         setActiveTools([]);
@@ -660,6 +677,7 @@ export function useMessages({
     },
 
     onAgentPhase: (phase, elapsed) => {
+      reduceTurnUiRef({ kind: 'agent_phase', phase });
       setAgentPhase(phase);
       if (phase === 'thinking' && elapsed != null) setThinkingElapsed(elapsed);
       if (phase === 'idle' || phase === 'typing') setThinkingElapsed(0);
@@ -667,6 +685,7 @@ export function useMessages({
 
     onToolEvent: (payload) => {
       if (payload.type === 'tool_call') {
+        reduceTurnUiRef({ kind: 'tool_call' });
         setActiveTools((prev) => {
           const next = [
             ...prev,
@@ -694,6 +713,11 @@ export function useMessages({
         onToolEventTimeline(payload);
       } else if (payload.type === 'tool_result') {
         const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
+        reduceTurnUiRef(
+          finalState === 'error'
+            ? { kind: 'error', message: payload.error || 'Tool failed' }
+            : { kind: 'tool_result' },
+        );
         setActiveTools((prev) =>
           prev.map((t) =>
             t.callId === payload.callId
@@ -722,11 +746,13 @@ export function useMessages({
     },
 
     onClarifyOpen: (spec) => {
+      reduceTurnUiRef({ kind: 'clarify' });
       pendingClarifyOpenRef.current = true;
       onClarifyOpen?.(spec);
     },
 
     onKeepalive: (payload) => {
+      reduceTurnUiRef({ kind: 'keepalive', phase: payload?.phase });
       onKeepaliveTimeline(payload);
     },
 
@@ -857,6 +883,7 @@ export function useMessages({
     } = options;
 
     lastSentRequestId.current = newRequestId;
+    reduceTurnUiRef({ kind: 'submit', turnId: newRequestId });
     segProtocolActiveRef.current = false; // B3：新回合重置，等第一个 seg 事件激活
     const thinkCmdMatch = text.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
     if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
@@ -937,6 +964,7 @@ export function useMessages({
     );
     if (!result?.success && !isSystem) {
       clearRoundTimeout();
+      reduceTurnUiRef({ kind: 'error', message: result?.error || 'Send failed' });
       setAwaitingResponse(false);
       console.warn('[useMessages] Send failed:', result);
       try {
