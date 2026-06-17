@@ -23,6 +23,7 @@ import { useActivityTimeline } from './useActivityTimeline';
 import { useStreamPainting } from './useStreamPainting';
 import type { ActivityEntry } from './useActivityTimeline';
 import { emptyTurnUiState, reduceTurnUi, type TurnUiEvent, type TurnUiState } from '../core/turnUiState';
+export type { TurnUiPhase, TurnUiState } from '../core/turnUiState';
 export type { ActivityEntryType, ActivityEntry } from './useActivityTimeline';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
@@ -136,6 +137,7 @@ export interface UseMessagesReturn {
   isStreaming: boolean;
   awaitingResponse: boolean;
   agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+  turnUiState: TurnUiState;
   thinkingElapsed: number;
   activeTools: ActiveTool[];
   activityTimeline: ActivityEntry[];
@@ -178,6 +180,7 @@ export function useMessages({
   // ── State ─────────────────────────────────────────────────────────────────
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
+  const [turnUiState, setTurnUiState] = useState<TurnUiState>(() => emptyTurnUiState());
   const [activeTools, setActiveTools] = useState<ActiveTool[]>([]);
   const [gatewayCapabilities, setGatewayCapabilities] = useState<GatewayCapabilities | null>(null);
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
@@ -363,7 +366,11 @@ export function useMessages({
   }, []);
 
   const reduceTurnUiRef = useCallback((event: TurnUiEvent) => {
-    turnUiStateRef.current = reduceTurnUi(turnUiStateRef.current, event);
+    setTurnUiState((current) => {
+      const next = reduceTurnUi(current, event);
+      turnUiStateRef.current = next;
+      return next;
+    });
   }, []);
 
   const startRoundTimeout = useCallback(() => {
@@ -1041,6 +1048,7 @@ export function useMessages({
     isStreaming,
     awaitingResponse,
     agentPhase,
+    turnUiState,
     thinkingElapsed,
     activeTools,
     activityTimeline,

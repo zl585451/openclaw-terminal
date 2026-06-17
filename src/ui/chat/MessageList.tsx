@@ -17,6 +17,7 @@ import { getCachedPreprocessedMarkdown, stabilizeStreamingMarkdown } from '../..
 import { formatTime, formatFullTime } from '../../utils/formatTime';
 import type { ChatMessage, ToolEventItem, TurnSegmentLite } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
+import type { TurnUiPhase, TurnUiState } from '../../core/turnUiState';
 import StreamingMarkdownContent from './StreamingMarkdownContent';
 import { useMsgParse } from '../../hooks/useMsgParse';
 
@@ -68,6 +69,44 @@ function buildFinalizedTimeline(
   }
 
   return entries;
+}
+
+function getTurnUiBadgeLabel(phase: TurnUiPhase): string | null {
+  switch (phase) {
+    case 'submitted':
+    case 'thinking':
+      return '思考中';
+    case 'tool_running':
+      return '调用工具中';
+    case 'waiting_continuation':
+    case 'finalizing':
+      return '整理中';
+    case 'answering':
+      return '输出中';
+    case 'awaiting_user':
+      return '等你回复';
+    case 'error':
+      return '出错';
+    case 'cancelled':
+      return '已取消';
+    default:
+      return null;
+  }
+}
+
+function isTurnUiActivityStreaming(phase: TurnUiPhase): boolean {
+  return (
+    phase === 'submitted' ||
+    phase === 'thinking' ||
+    phase === 'tool_running' ||
+    phase === 'waiting_continuation' ||
+    phase === 'answering' ||
+    phase === 'finalizing'
+  );
+}
+
+function isTurnUiThinking(phase: TurnUiPhase): boolean {
+  return phase === 'submitted' || phase === 'thinking';
 }
 
 // ── 原子组件 ─────────────────────────────────────────────────────────────
@@ -409,7 +448,7 @@ export interface ChatMessageItemProps {
   currentPage: number;
   onPageChange: (msgId: number, page: number) => void;
   isStreamingMsg: boolean;
-  agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+  turnUiState: TurnUiState;
   speakingMessageId: number | null;
   wsConnected: boolean;
   quickSend: (text: string) => void;
@@ -474,21 +513,22 @@ const MessageHeader = memo(
   function MessageHeader({
     msg,
     isStreamingMsg,
-    agentPhase,
+    turnUiState,
     suppressPhaseBadge,
     assistantName,
   }: {
     msg: ChatMessage;
     isStreamingMsg: boolean;
-    agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+    turnUiState: TurnUiState;
     /** 与头部带内 CoT 并存且 phase 为 thinking 时隐藏，避免与 CoT 标题双「思考中」 */
     suppressPhaseBadge?: boolean;
     assistantName: string;
   }) {
+    const badgeLabel = getTurnUiBadgeLabel(turnUiState.phase);
     const showBadge =
       isStreamingMsg &&
-      agentPhase !== 'idle' &&
-      !(suppressPhaseBadge && agentPhase === 'thinking');
+      badgeLabel != null &&
+      !(suppressPhaseBadge && isTurnUiThinking(turnUiState.phase));
     return (
       <div className="msg-header">
         {msg.role === 'user' ? (
@@ -508,7 +548,7 @@ const MessageHeader = memo(
             </span>
             <span className={`agent-status-slot ${showBadge ? 'is-visible' : ''}`} aria-hidden={!showBadge}>
               <span className="agent-status-badge">
-                {agentPhase === 'thinking' ? '思考中' : agentPhase === 'tool_executing' ? '调用工具中' : '打字中'}
+                {badgeLabel}
               </span>
             </span>
           </div>
@@ -521,7 +561,7 @@ const MessageHeader = memo(
     a.msg.role === b.msg.role &&
     !!a.msg.isStreaming === !!b.msg.isStreaming &&
     a.isStreamingMsg === b.isStreamingMsg &&
-    a.agentPhase === b.agentPhase &&
+    a.turnUiState === b.turnUiState &&
     !!a.suppressPhaseBadge === !!b.suppressPhaseBadge &&
     a.assistantName === b.assistantName
 );
@@ -629,7 +669,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         style={{ display: 'flex', flexDirection: 'column' }}
       >
         {awaitingFinalAnswer && (
-          <div className="msg-generating-hint">正在生成回答…</div>
+          <div className="msg-generating-hint">正在整理结论…</div>
         )}
         {/* 正文由 useMessages 的 RAF 写 textContent，避免每帧 React 协调整棵 ChatTab */}
         <pre
@@ -649,7 +689,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         style={{ display: 'flex', flexDirection: 'column' }}
       >
         {awaitingFinalAnswer && (
-          <div className="msg-generating-hint">正在生成回答…</div>
+          <div className="msg-generating-hint">正在整理结论…</div>
         )}
         <StreamingMarkdownContent content={textToShow || raw || ''} />
         <TypewriterCursor show />
@@ -912,6 +952,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
     // B3 inline：段快照/工具事件变化时需重渲染，驱动 inline 卡片更新
     prev.msg.turnSegments === next.msg.turnSegments &&
     prev.msg.toolEvents === next.msg.toolEvents &&
+    prev.awaitingFinalAnswer === next.awaitingFinalAnswer &&
     prev.getToolDisplayName === next.getToolDisplayName
 );
 
@@ -964,7 +1005,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     currentPage,
     onPageChange,
     isStreamingMsg,
-    agentPhase,
+    turnUiState,
     speakingMessageId,
     wsConnected,
     quickSend,
@@ -986,9 +1027,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
 
   const awaitingFinalAnswer =
     isStreamingMsg &&
-    agentPhase !== 'typing' &&
-    (msg.toolEvents?.length ?? 0) > 0 &&
-    (msg.toolEvents?.every((t) => t.state !== 'executing') ?? false);
+    turnUiState.phase === 'waiting_continuation';
 
   const showCotInline = msg.role === 'assistant' && !isStreamingMsg && (cotContent != null || cotStarted);
   const showCotStreaming = msg.role === 'assistant' && isStreamingMsg && (!!cotStreaming || cotStarted);
@@ -997,7 +1036,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     isStreamingMsg &&
     !inlineThinkingPlaceholder &&
     !showCotStreaming &&
-    agentPhase === 'thinking';
+    isTurnUiThinking(turnUiState.phase);
 
   const shouldShowActivityPanel = msg.role === 'assistant' && !!isLastAssistant;
   // B3 inline：工具卡片已穿插进正文流时，把工具从顶部活动面板剔除（只留思考/CoT），避免重复展示。
@@ -1011,7 +1050,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     ? dropToolEntries(activityTimeline)
     : [];
   const panelStreamingFlag = shouldShowActivityPanel
-    ? (isStreamingMsg && (showCotStreaming || showLightweightThinkingBadge || inlineThinkingPlaceholder || agentPhase !== 'idle'))
+    ? (isStreamingMsg && (showCotStreaming || showLightweightThinkingBadge || inlineThinkingPlaceholder || isTurnUiActivityStreaming(turnUiState.phase)))
     : false;
 
   return (
@@ -1022,7 +1061,12 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
       isStreamingMsg={isStreamingMsg}
       onContextMenu={onContextMenu}
     >
-      <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} assistantName={assistantName} />
+      <MessageHeader
+        msg={msg}
+        isStreamingMsg={isStreamingMsg}
+        turnUiState={turnUiState}
+        assistantName={assistantName}
+      />
       {shouldShowActivityPanel && (
         <ActivityPanel
           timeline={isStreamingMsg ? streamingTimeline : finalizedTimeline}
@@ -1075,7 +1119,7 @@ export interface ChatMessageListProps {
   streamingContent: string;
   displayedText: string;
   speakingMessageId: number | null;
-  agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+  turnUiState: TurnUiState;
   thinkingElapsed: number;
   wsConnected: boolean;
   quickSend: (text: string) => void;
@@ -1120,7 +1164,7 @@ function areChatMessageListPropsEqual(prev: ChatMessageListProps, next: ChatMess
     prev.streamingContent === next.streamingContent &&
     prev.displayedText === next.displayedText &&
     prev.speakingMessageId === next.speakingMessageId &&
-    prev.agentPhase === next.agentPhase &&
+    prev.turnUiState === next.turnUiState &&
     prev.thinkingElapsed === next.thinkingElapsed &&
     prev.wsConnected === next.wsConnected &&
     prev.quickSend === next.quickSend &&
@@ -1150,7 +1194,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   streamingContent,
   displayedText,
   speakingMessageId,
-  agentPhase,
+  turnUiState,
   thinkingElapsed: _thinkingElapsed, // 不再使用，因为 CoTBlock 有自己的计时器
   wsConnected,
   quickSend,
@@ -1292,7 +1336,7 @@ export const ChatMessageList = memo(function ChatMessageList({
             )
           )}
           {showTypingIndicator && !emptyStreamingAssistantTail && (
-            agentPhase === 'thinking' ? (
+            isTurnUiThinking(turnUiState.phase) ? (
               // 思考阶段：用 CoTBlock 占位面板替代 chat-thinking 条（无末条空 assistant 时）
               <div className="cot-stream-wrapper">
                 <CoTBlock
@@ -1305,8 +1349,9 @@ export const ChatMessageList = memo(function ChatMessageList({
               // 其他等待阶段（typing / tool_executing）：保持原有样式
               <div className="chat-thinking">
                 <span className="msg-label">◆ {assistantName}</span>
-                {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
-                {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
+                {getTurnUiBadgeLabel(turnUiState.phase) && (
+                  <span className="agent-status-badge">{getTurnUiBadgeLabel(turnUiState.phase)}</span>
+                )}
                 <span className="processing-blocks typing-dots">
                   <span className="block" />
                   <span className="block" />
@@ -1345,7 +1390,7 @@ export const ChatMessageList = memo(function ChatMessageList({
           msg.id === lastAssistantId &&
           isStreamingMsg &&
           !raw.trim() &&
-          agentPhase === 'thinking';
+          isTurnUiThinking(turnUiState.phase);
         return (
           <React.Fragment key={msg.id}>
             <ChatMessageItem
@@ -1363,7 +1408,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               currentPage={pageByMsgId[msg.id] ?? 1}
               onPageChange={handlePageChange}
               isStreamingMsg={!!msg.isStreaming}
-              agentPhase={agentPhase}
+              turnUiState={turnUiState}
               speakingMessageId={speakingMessageId}
               wsConnected={wsConnected}
               quickSend={quickSend}
