@@ -17,15 +17,16 @@ Memory v2 的搜索范围：
 
 当前实现直接走 Memory v2 的本地 notes 与 raw turn 搜索。
 
-## 4.2 语义搜索
+## 4.2 语义与日期搜索
 
-显式工具 `memory_vector_search` 用于语义检索向量记忆库中的历史原始对话片段，适合“之前关于这个主题聊过什么”这类问题。
+显式工具 `memory_search` 是统一检索入口：
 
-与 `memory_search` 的区别：
-
-- `memory_search` 查显式 notes 和轻量 raw-turn 文本候选。
-- `memory_vector_search` 查 embedding 后的历史对话内容。
+- `mode=keyword` 查显式 notes 和轻量 raw-turn 文本候选。
+- `mode=vector` 查 embedding 后的历史对话内容，适合“之前关于这个主题聊过什么”这类问题。
+- `mode=date` 按 `YYYY-MM-DD` 检索原始对话日志，可配合 `keyword` 过滤。
 - 自动向量注入只接受高置信整轮历史；手动工具可以返回低置信候选，但 AMY 必须先核对再使用。
+
+旧的 `memory_vector_search` / `memory_recall` 名称只作为兼容别名保留，不再作为模型可选工具暴露。
 
 ## 4.3 启动加载
 

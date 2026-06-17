@@ -110,7 +110,7 @@ function hasUnverifiedExecutionNarrative(text) {
 
   const patterns = [
     /我(去|来)?查(一下|下)?/i,
-    /我(将|会|正在|先)?调用(工具|搜索|查询|检索|web_search|read_file|memory_search|memory_vector_search)/i,
+    /我(将|会|正在|先)?调用(工具|搜索|查询|检索|web_search|read_file|memory_search)/i,
     /正在(调用工具|搜索|查询|检索|联网查)/i,
     /已(调用|执行)(了)?(工具|搜索|查询|检索)/i,
     /\b(let me|i('| wi)?ll|i am)\s+(search|look up|call|use)\b/i,

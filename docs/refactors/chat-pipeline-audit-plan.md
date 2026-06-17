@@ -231,7 +231,7 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 | A3 删 optionBox 桥 | ◐ | `src/core/blockIngest.ts` 已无生产引用并删除；整组删除门槛仍未满足：`useMsgParse`、`MessageList`、`useTypewriter`、`QuestionCards`/`OptionBox`/`TaskList` 仍有生产引用，暂保留 legacy option/task 渲染 |
 | B4 双 FSM 边界收口 | ☑ | 生产 `ChatTab`/`useMessages` 运行时只持有 `TurnFSM`；`StreamRouter` 不再接收生产 token 或驱动收尾，仅作为隔离核心模块与测试保留 |
 | B5 影子推完/回滚 | ☑ | `turnSegments` 已是正文段事实源，`turnUiState` 驱动 UI 状态投影；删除 `StreamRouter`/`BlockIngest` 生产分支并更新头注 |
-| C2 记忆工具去重 | ☐ | |
+| C2 记忆工具去重 | ☑ | `memory_vector_search` / `memory_recall` 合并进 `memory_search` 的 `mode=vector/date`；ToolLoader 不再暴露旧工具名，伪工具与直接执行保留兼容别名；回归测试锁定暴露面与旧名改写 |
 | C3 搜索空结果处理 | ☐ | |
 | C4 工具卡片渲染对齐 | ☐ | |
 | B2 防重复机制对齐 | ☐ | |

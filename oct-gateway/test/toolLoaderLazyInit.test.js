@@ -42,6 +42,28 @@ function testFirstDefinitionsCallLoadsStaticToolsOnce() {
   }
 }
 
+function testMemorySearchIsSingleExposedRecallTool() {
+  const { toolLoader, restore } = freshToolLoaderWithCapturedLogs();
+  try {
+    const names = toolLoader.getDefinitions()
+      .map((def) => def?.function?.name)
+      .filter(Boolean);
+    assert(names.includes('memory_search'));
+    assert(names.includes('memory_read'));
+    assert.equal(names.includes('memory_vector_search'), false);
+    assert.equal(names.includes('memory_recall'), false);
+
+    const memorySearch = toolLoader.getDefinitions()
+      .find((def) => def?.function?.name === 'memory_search');
+    const props = memorySearch?.function?.parameters?.properties || {};
+    assert.deepEqual(props.mode.enum, ['keyword', 'vector', 'date', 'auto']);
+    assert.equal(typeof props.date.description, 'string');
+    assert.equal(typeof props.threshold.description, 'string');
+  } finally {
+    restore();
+  }
+}
+
 function testOptionalToolDependenciesStayOutOfCoreGateway() {
   const gatewayPackage = require('../package.json');
   const optionalToolsPackage = require('../optional-tools/package.json');
@@ -77,6 +99,7 @@ function testMissingOptionalDependencyMessageIsActionable() {
 
 testRequireDoesNotLoadStaticTools();
 testFirstDefinitionsCallLoadsStaticToolsOnce();
+testMemorySearchIsSingleExposedRecallTool();
 testOptionalToolDependenciesStayOutOfCoreGateway();
 testMissingOptionalDependencyMessageIsActionable();
 console.log('PASS ToolLoader defers static tool loading until first use');
