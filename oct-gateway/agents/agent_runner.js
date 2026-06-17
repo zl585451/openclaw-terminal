@@ -349,6 +349,16 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
         finalResult = typeof assistantMsg.content === 'string'
           ? assistantMsg.content
           : JSON.stringify(assistantMsg.content);
+        // 兜底：当最终回复过短（< 200 字）时，强制再走一轮，要求 LLM 出完整报告。
+        // 这能挡掉"模型把过渡句当 final 输出"的 prompt 失控场景。
+        if (turn + 1 < agent.maxTurns && finalResult.trim().length < 200) {
+          log.warn(`[${agentName}] 最终回复过短(${finalResult.trim().length}字)，强制继续要求完整报告`, { taskId, turnsUsed });
+          messages.push({
+            role: 'user',
+            content: '请直接输出完整的最终报告，不要再写过渡句、不要再调工具。这是收尾轮，content 字段就是用户看到的最终内容。',
+          });
+          continue;
+        }
         log.info(`[${agentName}] 完成`, { taskId, turnsUsed, tokensUsed, finishReason });
         break;
       }
@@ -358,6 +368,18 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
         taskId,
         tools: toolCalls.map((tc) => tc.function?.name),
       });
+
+      // B3：模型在调工具前主动说的话（content 非空）作为 text 段发出，成为工具组之间的叙述。
+      // 不再兜底生成 preamble——"干了啥"由前端工具组摘要承担，避免重复。
+      const preambleText = typeof assistantMsg.content === 'string' ? assistantMsg.content.trim() : '';
+      if (emitSeg && preambleText) {
+        closeOpenSeg();
+        const preambleSegId = openSeg('text');
+        if (preambleSegId) {
+          emitSeg({ op: 'delta', segId: preambleSegId, text: preambleText });
+        }
+        closeOpenSeg();
+      }
 
       let shouldStopForUserReply = false;
       for (const toolCall of toolCalls) {
@@ -392,13 +414,27 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
         };
       }
 
-      // ── 6c. 超过最大轮次 → 强制结束 ──────────────────────────
+      // ── 6c. 超过最大轮次 → 发不带工具的收尾请求，强制出报告 ──────────
+      // 否则模型可能用满轮次都在调工具、从没机会出报告，finalResult 只剩一句过渡句。
       if (turn + 1 >= agent.maxTurns) {
-        log.warn(`[${agentName}] 达到 maxTurns(${agent.maxTurns})，强制结束`, { taskId });
-        // 取最后一条 assistant 文本作为结果（可能为空）
-        finalResult = typeof assistantMsg.content === 'string'
-          ? assistantMsg.content
-          : `[已达最大工具循环轮次 ${agent.maxTurns}，任务可能未完整完成]`;
+        log.warn(`[${agentName}] 达到 maxTurns(${agent.maxTurns})，发收尾请求强制出报告`, { taskId });
+        try {
+          messages.push({
+            role: 'user',
+            content: '已达工具调用上限。现在请立即基于以上已获取的全部信息，输出完整的最终报告——不要再调用任何工具、不要再写过渡句，content 直接就是用户看到的最终内容。',
+          });
+          const wrapResp = await callApi({ baseUrl, apiKey, model, messages, tools: [], signal: controller.signal });
+          if (wrapResp.usage) tokensUsed += wrapResp.usage.total_tokens || 0;
+          const wrapContent = wrapResp.choices?.[0]?.message?.content;
+          finalResult = typeof wrapContent === 'string' && wrapContent.trim()
+            ? wrapContent
+            : `[已达最大工具循环轮次 ${agent.maxTurns}，未能生成报告]`;
+        } catch (e) {
+          log.warn(`[${agentName}] 收尾请求失败，回退到最后一条文本`, { taskId, error: e?.message });
+          finalResult = typeof assistantMsg.content === 'string' && assistantMsg.content.trim()
+            ? assistantMsg.content
+            : `[已达最大工具循环轮次 ${agent.maxTurns}，任务可能未完整完成]`;
+        }
         break;
       }
     }

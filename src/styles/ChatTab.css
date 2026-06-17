@@ -1320,6 +1320,53 @@
 .inline-tool__error { margin-top: 4px; color: var(--status-error, #e24b4a); }
 .inline-preamble { opacity: 0.88; }
 
+/* B3 工具组：连续工具收进可折叠组（对齐 Claude Code） */
+.tool-group {
+  margin: 6px 0;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  background: var(--bg-panel, rgba(255, 255, 255, 0.02));
+  overflow: hidden;
+}
+.tool-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 11px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-align: left;
+}
+.tool-group__status { display: inline-flex; width: 14px; justify-content: center; }
+.tool-group--done .tool-group__status { color: var(--status-success, #3ba55d); }
+.tool-group--error .tool-group__status { color: var(--status-error, #e24b4a); }
+.tool-group__summary { font-weight: 500; }
+.tool-group__chevron { margin-left: auto; color: var(--text-secondary); opacity: 0.6; }
+.tool-group__spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--accent-primary);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: inline-tool-spin 0.7s linear infinite;
+}
+.tool-group__body {
+  padding: 2px 8px 8px 8px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+.tool-group__body .inline-tool {
+  margin: 4px 0;
+  border-color: transparent;
+  background: transparent;
+}
+.tool-group__body .inline-tool__head { padding: 3px 6px; }
+
 /* 聊天输入区 */
 .chat-input-area {
   display: flex;

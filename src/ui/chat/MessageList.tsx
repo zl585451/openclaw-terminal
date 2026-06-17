@@ -15,7 +15,7 @@ import AmyAvatar from '../../components/AmyAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown, stabilizeStreamingMarkdown } from '../../utils/markdownPreprocess';
 import { formatTime, formatFullTime } from '../../utils/formatTime';
-import type { ChatMessage, ToolEventItem } from './chatTypes';
+import type { ChatMessage, ToolEventItem, TurnSegmentLite } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
 import StreamingMarkdownContent from './StreamingMarkdownContent';
 import { useMsgParse } from '../../hooks/useMsgParse';
@@ -139,6 +139,86 @@ const InlineToolCard = memo(function InlineToolCard({
           {event?.resultPreview && !event?.error && (
             <div className="inline-tool__result">{event.resultPreview}</div>
           )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+/** B3 工具组：按组内工具类型计数，生成一行中文摘要标题。 */
+function buildToolGroupSummary(
+  segs: TurnSegmentLite[],
+  getToolDisplayName: (tool: string) => string,
+): string {
+  const order: string[] = [];
+  const counts = new Map<string, number>();
+  for (const s of segs) {
+    const name = s.meta?.tool || 'tool';
+    if (!counts.has(name)) order.push(name);
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const phrase = (name: string, n: number): string => {
+    switch (name) {
+      case 'time_inject': return '确认时间';
+      case 'exec_command': return `执行 ${n} 条命令`;
+      case 'read_file': return `读取 ${n} 个文件`;
+      case 'web_search': return `搜索 ${n} 次`;
+      case 'parallel_web_research': return '并行调研';
+      case 'web_fetch': return `抓取 ${n} 个页面`;
+      default: return `${getToolDisplayName(name)} ${n} 次`;
+    }
+  };
+  return order.map((name) => phrase(name, counts.get(name) || 1)).join(' · ');
+}
+
+/** B3 工具组：连续工具调用收进一个可折叠组，对齐 Claude Code 的「摘要 + 子项」结构。 */
+const ToolGroup = memo(function ToolGroup({
+  segs,
+  toolEvents,
+  getToolDisplayName,
+}: {
+  segs: TurnSegmentLite[];
+  toolEvents?: ToolEventItem[];
+  getToolDisplayName: (tool: string) => string;
+}) {
+  const events = segs.map((s) => toolEvents?.find((t) => t.callId === s.meta?.callId));
+  const running = events.some((e) => !e || e.state === 'executing');
+  const hasError = events.some((e) => e?.state === 'error');
+
+  const [open, setOpen] = useState(running);
+  const userTouched = useRef(false);
+  useEffect(() => {
+    if (!userTouched.current) setOpen(running);
+  }, [running]);
+
+  const summary = buildToolGroupSummary(segs, getToolDisplayName);
+
+  return (
+    <div className={`tool-group ${running ? 'tool-group--running' : 'tool-group--done'} ${hasError ? 'tool-group--error' : ''}`}>
+      <button
+        type="button"
+        className="tool-group__head"
+        onClick={() => { userTouched.current = true; setOpen((o) => !o); }}
+      >
+        <span className="tool-group__status" aria-hidden>
+          {running ? <span className="tool-group__spinner" /> : hasError ? '✗' : '✓'}
+        </span>
+        <span className="tool-group__summary">{summary}</span>
+        <span className="tool-group__chevron">{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div className="tool-group__body">
+          {segs.map((seg) => {
+            const ev = toolEvents?.find((t) => t.callId === seg.meta?.callId);
+            return (
+              <InlineToolCard
+                key={seg.segId}
+                event={ev}
+                toolName={seg.meta?.tool || ev?.tool || ''}
+                getToolDisplayName={getToolDisplayName}
+              />
+            );
+          })}
         </div>
       )}
     </div>
@@ -589,21 +669,33 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   }
   const renderInlineRange = (from: number, to: number) => {
     if (!inlineActive || !turnSegs) return null;
-    return turnSegs.slice(from, to).map((seg) => {
+    const slice = turnSegs.slice(from, to);
+    const out: React.ReactNode[] = [];
+    let toolBuffer: TurnSegmentLite[] = [];
+
+    const flushTools = () => {
+      if (toolBuffer.length === 0) return;
+      const groupSegs = toolBuffer;
+      toolBuffer = [];
+      out.push(
+        <ToolGroup
+          key={`tg-${groupSegs[0].segId}`}
+          segs={groupSegs}
+          toolEvents={msg.toolEvents}
+          getToolDisplayName={getToolDisplayName}
+        />,
+      );
+    };
+
+    for (const seg of slice) {
       if (seg.type === 'tool_use') {
-        const ev = msg.toolEvents?.find((t) => t.callId === seg.meta?.callId);
-        return (
-          <InlineToolCard
-            key={seg.segId}
-            event={ev}
-            toolName={seg.meta?.tool || ev?.tool || ''}
-            getToolDisplayName={getToolDisplayName}
-          />
-        );
+        toolBuffer.push(seg);
+        continue;
       }
+      flushTools();
       const c = getAssistantVisibleMain(seg.content || '').trim();
-      if (!c) return null;
-      return (
+      if (!c) continue;
+      out.push(
         <div key={seg.segId} className="inline-preamble">
           <FinalizedMarkdownContent
             messageId={msg.id}
@@ -612,9 +704,11 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
             markdownComponents={markdownComponents}
             streaming
           />
-        </div>
+        </div>,
       );
-    });
+    }
+    flushTools();
+    return out;
   };
   const prefixEnd = lastTextIdx < 0 ? (turnSegs?.length ?? 0) : lastTextIdx;
 
