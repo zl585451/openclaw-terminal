@@ -400,7 +400,7 @@ describe('ToolAdapter format governance and safe parsing', () => {
           choices: [{
             message: {
               role: 'assistant',
-              content: 'done'
+              content: 'done: registered tool execution completed and the final answer is intentionally long enough to stay outside final-answer guard coverage.'
             },
             finish_reason: 'stop'
           }],
@@ -426,7 +426,7 @@ describe('ToolAdapter format governance and safe parsing', () => {
       });
 
       expect(executeToolCalled).toBe(true);
-      expect(result.result).toBe('done');
+      expect(result.result).toContain('registered tool execution completed');
     } finally {
       toolLoader.executeTool = originalExecuteTool;
       globalThis.fetch = originalFetch;

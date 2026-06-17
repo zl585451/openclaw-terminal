@@ -223,9 +223,9 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 
 | 任务 | 状态 | 说明 / 提交 |
 |---|---|---|
-| 阶段 0 trace 探路 | ☐ | |
-| B1 统一收尾兜底 | ☐ | |
-| C1 时间注入修复 | ☐ | |
+| 阶段 0 trace 探路 | ☑ | `docs/refactors/chat-pipeline-phase0-trace.md`；deterministic harness 已覆盖纯聊天 / 主对话工具续轮 / 后台 Agent，可启动阶段 1；删除前仍需 live UI trace |
+| B1 统一收尾兜底 | ☑ | 新增 `oct-gateway/runtime/finalAnswerGuard.js`，主对话与后台 Agent 共用短收尾判定；新增 `oct-gateway/test/finalAnswerGuard.test.js` 覆盖工具后短过渡句强制收尾、纯聊天短答不误伤 |
+| C1 时间注入修复 | ☑ | `ContextBuilder` 注入 `[权威当前日期]`，明确相对日期以系统注入日期为准；回归测试覆盖当前日期提示存在 |
 | A1 确定事实源 | ☐ | |
 | A2 收口 delta/segment 双发 | ☐ | |
 | A3 删 optionBox 桥 | ☐ | |

@@ -21,6 +21,10 @@
 const config = require('../config');
 const toolLoader = require('../tool_loader');
 const { createLogger } = require('../logger');
+const {
+  buildFinalAnswerInstruction,
+  isSuspiciouslyShortFinal,
+} = require('../runtime/finalAnswerGuard');
 
 const log = createLogger('agent_runner');
 
@@ -365,11 +369,11 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
           : JSON.stringify(assistantMsg.content);
         // 兜底：当最终回复过短（< 200 字）时，强制再走一轮，要求 LLM 出完整报告。
         // 这能挡掉"模型把过渡句当 final 输出"的 prompt 失控场景。
-        if (turn + 1 < agent.maxTurns && finalResult.trim().length < 200) {
+        if (turn + 1 < agent.maxTurns && isSuspiciouslyShortFinal(finalResult, 200)) {
           log.warn(`[${agentName}] 最终回复过短(${finalResult.trim().length}字)，强制继续要求完整报告`, { taskId, turnsUsed });
           messages.push({
             role: 'user',
-            content: '请直接输出完整的最终报告，不要再写过渡句、不要再调工具。这是收尾轮，content 字段就是用户看到的最终内容。',
+            content: buildFinalAnswerInstruction(),
           });
           continue;
         }
@@ -466,11 +470,11 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
   // 收尾保障：从任何路径退出循环后，若 finalResult 过短（像半截过渡句而非结论，
   // 例如模型在最后一轮恰好 stop 且只回了一句"我再查查"），补发一次不带工具的收尾
   // 请求，强制模型基于已有信息给出完整结论或如实说明；仍为空则给诚实兜底文案。
-  if (finalResult.trim().length < 100 && !controller.signal.aborted) {
+  if (isSuspiciouslyShortFinal(finalResult, 100) && !controller.signal.aborted) {
     try {
       messages.push({
         role: 'user',
-        content: '请基于以上已获取的全部信息，直接输出完整的最终结论。若信息不足以下结论，就如实说明你查到了什么、还缺什么、建议怎么办——不要再调用工具，不要只回一句过渡句。',
+        content: buildFinalAnswerInstruction(),
       });
       const wrapResp = await callApi({ baseUrl, apiKey, model, messages, tools: [], signal: controller.signal });
       if (wrapResp.usage) tokensUsed += wrapResp.usage.total_tokens || 0;

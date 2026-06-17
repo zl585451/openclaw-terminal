@@ -50,6 +50,7 @@ class ChatEngine {
         // 确保最终答案只保留最后一轮，杜绝跨轮累加导致的重复输出。
         if (streamCtrl.isCancelled()) return;
         streamCtrl.resetReply();
+        segments.closeCurrent();
         emitter.onAnswerReset?.();
       },
       onDone: (_text, usage, responseModel) => {

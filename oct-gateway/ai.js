@@ -9,6 +9,10 @@ const log = createLogger('ai');
 const ProviderRouter = require('./runtime/providerRouter');
 const ToolLoop = require('./runtime/toolLoop');
 const {
+  evaluateFinalAnswerGuard,
+  appendFinalAnswerInstruction,
+} = require('./runtime/finalAnswerGuard');
+const {
   validateAndFixMessages,
   truncateHistory,
   getContextUsageRatio,
@@ -1422,14 +1426,26 @@ async function streamChatRaw({
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
 
-    if (!String(fullText || '').trim() && hasToolEvidence && toolChoice !== 'none' && !_forcedFinalAttempt) {
-      log.warn('empty final answer after tool rounds, retrying once with tool_choice=none', {
+    const finalGuard = evaluateFinalAnswerGuard({
+      text: fullText,
+      hasToolEvidence: hasToolEvidence || preserveToolChain || Number(toolRound) > 0,
+      toolChoice,
+      forcedFinalAttempt: _forcedFinalAttempt,
+    });
+    if (finalGuard.shouldForce) {
+      log.warn('weak final answer after tool rounds, retrying once with tool_choice=none', {
         turnId: turnId || null,
         model: responseModel || model,
         toolRound,
+        reason: finalGuard.reason,
+        outputLen: finalGuard.length,
+        minChars: finalGuard.minChars,
       });
+      if (finalGuard.length > 0 && typeof onRoundReset === 'function') {
+        try { onRoundReset(); } catch {}
+      }
       return await streamChatRaw({
-        messages: effectiveMessages,
+        messages: appendFinalAnswerInstruction(effectiveMessages),
         onDelta,
         onDone,
         onError,
