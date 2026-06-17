@@ -408,7 +408,7 @@ function analyzeCanvasIntent(userMessage) {
  * @param {Function} onEvent  - WebSocket 事件推送回调
  * @returns {Promise<{ result: string, turnsUsed: number, tokensUsed: number } | null>}
  */
-async function runDelegatedAgent(agentName, task, onEvent) {
+async function runDelegatedAgent(agentName, task, onEvent, onSegment, turnId) {
   const registry = getAgentRegistry();
   const runner = getAgentRunner();
 
@@ -419,7 +419,7 @@ async function runDelegatedAgent(agentName, task, onEvent) {
 
   const agent = registry[agentName];
   if (!agent) {
-    console.warn(`[Orchestrator] Agent “${agentName}” 未在注册表中，跳过`);
+    console.warn(`[Orchestrator] Agent "${agentName}" 未在注册表中，跳过`);
     return null;
   }
 
@@ -429,6 +429,8 @@ async function runDelegatedAgent(agentName, task, onEvent) {
       agent,
       task,
       onAgentEvent: onEvent,
+      onSegment,
+      turnId,
     });
     console.log(`[Orchestrator] ${agentName} 完成，用了 ${agentResult.turnsUsed} 轮`);
     return agentResult;
@@ -445,7 +447,7 @@ async function runDelegatedAgent(agentName, task, onEvent) {
  *   - null：未派发给专职 Agent（AMY 直接处理）
  *   - { result, turnsUsed, tokensUsed }：Agent 执行完成，调用方应将 result 作为回复内容注入
  */
-async function dispatch(userMessage, sessionKey, onToolEvent) {
+async function dispatch(userMessage, sessionKey, onToolEvent, onSegment, turnId) {
   const analysis = await analyzeIntent(userMessage);
   const canvasIntent = analyzeCanvasIntent(userMessage);
 
@@ -472,7 +474,9 @@ async function dispatch(userMessage, sessionKey, onToolEvent) {
         userContext: userMessage,
         sessionKey,
       },
-      onToolEvent || (() => {})
+      onToolEvent || (() => {}),
+      onSegment,
+      turnId
     );
 
     if (agentResult) {

@@ -219,14 +219,40 @@ async function callApi({ baseUrl, apiKey, model, messages, tools, signal }) {
  * @param {string} [opts.task.sessionKey]             - 来源 session key
  * @param {string[]} [opts.task.allowedTools]         - 可在调用时追加/覆盖工具白名单
  * @param {Function} [opts.onAgentEvent]              - 事件回调 (event) => void
+ * @param {Function} [opts.onSegment]                 - B3 段事件回调 (seg) => void（用于前端 inline 渲染）
+ * @param {string}   [opts.turnId]                    - 回合 ID（用于段 segId 编址，与 AMY 路径同形）
  * @returns {Promise<{ result: string, turnsUsed: number, tokensUsed: number }>}
  */
-async function runAgent({ agent, task, onAgentEvent }) {
+async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
   const taskId = task.taskId || `agent_${Date.now()}`;
   const agentName = agent.name || 'UnnamedAgent';
 
   // 空操作兜底，避免调用方未传 onAgentEvent 时崩溃
   const onEvent = typeof onAgentEvent === 'function' ? onAgentEvent : () => {};
+
+  // B3 段事件双发：与 onEvent 平行（不替换、不影响），驱动前端 inline 渲染。
+  // turnId 缺失时仍构造稳定 segId，但前端会按 turnId 隔离，所以缺失时段事件会被前端忽略——这是预期的兜底。
+  const emitSeg = typeof onSegment === 'function' ? onSegment : null;
+  const segTurnId = turnId || taskId;
+  let segIndex = -1;
+  let openSegId = null;
+  const openSeg = (type, meta) => {
+    if (!emitSeg) return null;
+    segIndex += 1;
+    openSegId = `${segTurnId}:s${segIndex}`;
+    emitSeg({ op: 'open', segId: openSegId, index: segIndex, type, ...(meta ? { meta } : {}) });
+    return openSegId;
+  };
+  const closeOpenSeg = () => {
+    if (!emitSeg || !openSegId) return;
+    emitSeg({ op: 'close', segId: openSegId });
+    openSegId = null;
+  };
+  const finishSeg = (stopReason) => {
+    if (!emitSeg) return;
+    closeOpenSeg();
+    emitSeg({ op: 'finish', stopReason: stopReason || 'end_turn' });
+  };
 
   onEvent({ type: 'agent_status', agent: agentName, status: 'running', taskId });
 
@@ -335,7 +361,12 @@ async function runAgent({ agent, task, onAgentEvent }) {
 
       let shouldStopForUserReply = false;
       for (const toolCall of toolCalls) {
+        // B3 段事件：闭合上段，开 tool_use 段（与 AMY 路径同形）
+        closeOpenSeg();
+        openSeg('tool_use', { tool: toolCall.function?.name || null, callId: toolCall.id || null });
         const toolResult = await executeToolCall(toolCall, mergedAllowedTools, onEvent);
+        // 工具完成（或失败）→ 闭 tool_use 段；下一个工具会再开新段
+        closeOpenSeg();
         if (toolResult.pauseForUserReply) {
           finalResult = '';
           log.info(`[${agentName}] request_clarify 等待用户回复，停止续轮`, { taskId, callId: toolCall.id });
@@ -351,6 +382,7 @@ async function runAgent({ agent, task, onAgentEvent }) {
 
       if (shouldStopForUserReply) {
         clearTimeout(timeoutHandle);
+        finishSeg('awaiting_user');
         onEvent({ type: 'agent_status', agent: agentName, status: 'done', taskId });
         return {
           status: 'waiting_user_reply',
@@ -372,6 +404,7 @@ async function runAgent({ agent, task, onAgentEvent }) {
     }
   } catch (err) {
     clearTimeout(timeoutHandle);
+    finishSeg('error');
     const errMsg = err?.message || String(err);
     log.error(`[${agentName}] 执行异常`, { taskId, error: errMsg });
     onEvent({ type: 'agent_status', agent: agentName, status: 'error', taskId, message: errMsg });
@@ -379,6 +412,17 @@ async function runAgent({ agent, task, onAgentEvent }) {
   }
 
   clearTimeout(timeoutHandle);
+
+  // B3 段事件：最终答案作为 final 段一次性发出（agent 非流式，没有逐字 delta）。
+  // 这给前端 inline 渲染提供"最终文字段"锚点，让 lastTextIdx 切分正确。
+  if (emitSeg && finalResult && finalResult.trim()) {
+    closeOpenSeg();
+    const finalSegId = openSeg('final');
+    if (finalSegId) {
+      emitSeg({ op: 'delta', segId: finalSegId, text: finalResult });
+    }
+  }
+  finishSeg('end_turn');
 
   onEvent({ type: 'agent_status', agent: agentName, status: 'done', taskId });
 

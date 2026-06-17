@@ -79,7 +79,17 @@ function createChatRequestHandler({
       }
     };
 
-    const orchResult = await orchestrator.dispatch(userMessage, sessionKey, sendToolEvent);
+    // B3 inline：Agent 段事件（与 AMY 路径同形），前端 onChatSeg 据此渲染 inline 工具卡片
+    const sendAgentSegment = (seg) => {
+      if (!connection.isOpen() || !seg) return;
+      connection.send({
+        type: 'event',
+        event: 'chat',
+        payload: { turnId, seg },
+      });
+    };
+
+    const orchResult = await orchestrator.dispatch(userMessage, sessionKey, sendToolEvent, sendAgentSegment, turnId);
 
     // ── Agent 短路：专职 Agent 已完成（含 clarify 暂停），直接终止，跳过 AMY streamChat ──
     if (orchResult.agentResult) {
