@@ -13,8 +13,6 @@ import { ContextMenu } from '../../components/ContextMenu';
 import SettingsPanel from '../settings/SettingsPanel';
 import SetupGuide from '../onboarding/SetupGuide';
 import { TurnFSM } from '../../core/turnFSM';
-import { StreamRouter } from '../../core/streamRouter';
-import { BlockIngest } from '../../core/blockIngest';
 import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { useCanvasBridge } from '../../hooks/useCanvasBridge';
@@ -109,10 +107,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     [canvasBridge.openCanvas]
   );
 
-  const octRuntimeRef = useRef<{ fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest } | null>(null);
+  const octRuntimeRef = useRef<{ fsm: TurnFSM } | null>(null);
   if (!octRuntimeRef.current) {
     const fsm = new TurnFSM();
-    octRuntimeRef.current = { fsm, stream: new StreamRouter(fsm), ingest: new BlockIngest() };
+    octRuntimeRef.current = { fsm };
   }
   const oct = octRuntimeRef.current;
 
@@ -125,7 +123,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // console.log('[MSG-FINALIZE] finalText length:', finalText?.length, 'preview:', finalText?.slice(0, 200));
       const finalRaw = stripThinkModeMarker(finalText || '');
       try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[ChatTab.v2] fsm.onTurnFinish', e); }
-      oct.ingest.reset();
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last.isStreaming) {

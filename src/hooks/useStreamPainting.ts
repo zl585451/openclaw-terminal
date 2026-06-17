@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type React from 'react';
 import type { TurnFSM } from '../core/turnFSM';
-import type { StreamRouter } from '../core/streamRouter';
 import { getAssistantVisibleMain } from '../utils/cotExtract';
 import { playClickSound, type TypingSoundMode } from '../utils/clickSound';
 
-type OctRuntimeLike = { fsm: TurnFSM; stream: StreamRouter };
+type OctRuntimeLike = { fsm: TurnFSM };
 
 type StreamPaintingContext = {
   scrollReconcile: () => void;

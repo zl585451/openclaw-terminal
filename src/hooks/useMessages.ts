@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import { TurnFSM, deriveLegacyFlags, TurnPhase } from '../core/turnFSM';
-import { StreamRouter, StreamState } from '../core/streamRouter';
-import { BlockIngest } from '../core/blockIngest';
 import { useWebSocket } from './useWebSocket';
 import type { WorkbenchRoundtripContext } from '../workbench/types';
 import { workbenchBus } from '../workbench/WorkbenchBus';
@@ -32,18 +30,15 @@ function isSystemCommand(text: string): boolean {
   return /^\/\w/.test(t);
 }
 
-function recoverOctStreamFromEndFailure(oct: { stream: StreamRouter; fsm: TurnFSM }): void {
-  try {
-    oct.stream.abortToIdle();
-  } catch {
-    /* ignore */
-  }
+function recoverOctStreamFromEndFailure(oct: { fsm: TurnFSM }): void {
   try {
     if (oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
       oct.fsm.onToken();                  // → STREAMING
     }
-    if (oct.fsm.getPhase() === TurnPhase.STREAMING ||
-        oct.fsm.getPhase() === TurnPhase.STREAM_PAUSED) {
+    if (oct.fsm.getPhase() === TurnPhase.STREAM_PAUSED) {
+      oct.fsm.onStreamResume();            // → STREAMING
+    }
+    if (oct.fsm.getPhase() === TurnPhase.STREAMING) {
       oct.fsm.onStreamEnd();              // → STREAM_COMPLETE
     }
     if (oct.fsm.getPhase() === TurnPhase.STREAM_COMPLETE) {
@@ -103,7 +98,7 @@ export interface GatewayCapabilities {
 }
 
 export interface UseMessagesOptions {
-  oct: { fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest };
+  oct: { fsm: TurnFSM };
   typewriter: UseTypewriterReturn;
   scroll: {
     reconcile: () => void;
@@ -228,9 +223,9 @@ export function useMessages({
   const turnSegmentsRef = useRef<{ turnId?: string; state: TurnSegmentState }>({
     state: emptyTurnSegmentState(),
   });
-  // Phase 1: UI-facing turn state projection in shadow mode. This is not rendered yet.
+  // UI-facing projection for activity/status badges; turnFSM owns lifecycle.
   const turnUiStateRef = useRef<TurnUiState>(emptyTurnUiState());
-  // B3: 当前回合是否有段事件到达（有则以段驱动显示，无则兜底走旧扁平流路径）。
+  // 当前回合是否有段事件到达（有则以段驱动显示，无则兜底走旧扁平流路径）。
   const segProtocolActiveRef = useRef(false);
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
@@ -257,8 +252,13 @@ export function useMessages({
     // then complete the turn. If anything throws, force-reset to IDLE so the
     // next turn can start cleanly.
     try {
-      const p = oct.fsm.getPhase();
-      if (p === TurnPhase.STREAMING || p === TurnPhase.STREAM_PAUSED) {
+      if (oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
+        oct.fsm.onToken();        // → STREAMING
+      }
+      if (oct.fsm.getPhase() === TurnPhase.STREAM_PAUSED) {
+        oct.fsm.onStreamResume(); // → STREAMING
+      }
+      if (oct.fsm.getPhase() === TurnPhase.STREAMING) {
         oct.fsm.onStreamEnd();    // → STREAM_COMPLETE
       }
       if (oct.fsm.getPhase() === TurnPhase.STREAM_COMPLETE) {
@@ -269,7 +269,6 @@ export function useMessages({
       console.warn('[useMessages] fsm.onTurnFinish error, force-resetting to IDLE:', e);
       oct.fsm.resetToIdle();
     }
-    oct.ingest.reset();
     setMessages((prev) => {
       const last = prev[prev.length - 1];
       if (last?.role === 'assistant' && last.isStreaming) {
@@ -411,9 +410,6 @@ export function useMessages({
           },
         ];
       });
-      try {
-        oct.stream.abortToIdle();
-      } catch {}
       try {
         recoverOctStreamFromEndFailure(oct);
       } catch {}
@@ -606,22 +602,9 @@ export function useMessages({
           fullTextRef.current = finalText;
           ensureStreamingAssistantMessage();
         }
-        try {
-          oct.stream.end();
-          scheduleFinalizeFallback(finalText);
-        } catch {
-          recoverOctStreamFromEndFailure(oct);
-          const fb = finalText;
-          if (fb) {
-            streamingMessageRef.current = fb;
-            fullTextRef.current = fb;
-            pendingStreamFinalizeRef.current = true;
-            stopPainting();
-            ensureStreamingAssistantMessage();
-          } else {
-            scheduleFinalizeFallback('');
-          }
-        }
+        pendingStreamFinalizeRef.current = true;
+        stopPainting();
+        scheduleFinalizeFallback(finalText);
         return;
       }
 
@@ -789,64 +772,6 @@ export function useMessages({
     });
   }, [oct.fsm]);
 
-  // ── OCT stream subscription ───────────────────────────────────────────────
-  useEffect(() => {
-    const { stream, ingest } = oct;
-
-    const applyRawToMessages = () => {
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          return prev.map((m, idx) =>
-            idx === prev.length - 1
-              ? (
-                  m.isStreamingRaw
-                    ? m
-                    : { ...m, isStreamingRaw: true }
-                )
-              : m
-          );
-        }
-        return [
-          ...prev,
-          {
-            id: getNextMessageId(),
-            role: 'assistant' as const,
-            content: '',
-            isStreaming: true,
-            isStreamingRaw: true,
-            timestamp: Date.now(),
-          },
-        ];
-      });
-    };
-
-    const unsubscribe = stream.subscribe((event) => {
-      if (event.type === 'tokens') {
-        ingest.ingest(event.payload.batch);
-        const raw = ingest.getAccumulatedRaw();
-        streamingMessageRef.current = raw;
-        fullTextRef.current = raw;
-        applyRawToMessages();
-        startPainting();
-      }
-        if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
-        queueMicrotask(() => {
-          // 取消 fallback 定时器：流式结束，由 runStreamPaintTick 负责终止，不需要 fallback 抢先
-          if (finalizeFallbackTimerRef.current != null) {
-            clearTimeout(finalizeFallbackTimerRef.current);
-            finalizeFallbackTimerRef.current = null;
-          }
-          pendingStreamFinalizeRef.current = true;
-          stopPainting();
-          try { stream.close(); } catch (e) { console.warn('[useMessages] stream.close', e); }
-        });
-      }
-    });
-
-    return () => { unsubscribe(); };
-  }, [oct, getNextMessageId, setMessages, startPainting, stopPainting]);
-
   // ── pendingPills: reset on messages change ────────────────────────────────
   useEffect(() => {
     setPendingPills(null);
@@ -886,7 +811,6 @@ export function useMessages({
       finalizeFallbackTimerRef.current = null;
     }
     try {
-      oct.stream.abortToIdle();
       if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
         oct.fsm.onCancel();
       }
@@ -952,7 +876,6 @@ export function useMessages({
     }
     typewriter.reset();
     resetSoundCounter();
-    oct.ingest.reset();
     if (!isSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
@@ -989,15 +912,13 @@ export function useMessages({
 
     if (!isSystem) {
       try {
-        oct.stream.abortToIdle();
         if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
           oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
         }
         oct.fsm.onUserTyping();
         oct.fsm.onUserSubmit();
         oct.fsm.onRequestStart();
-        oct.ingest.reset();
-        oct.stream.open();
+        oct.fsm.onStreamOpen();
       } catch (e) {
         console.warn('[useMessages] oct runtime (_sendMessageCore)', e);
       }
@@ -1019,10 +940,12 @@ export function useMessages({
       setAwaitingResponse(false);
       console.warn('[useMessages] Send failed:', result);
       try {
-        oct.stream.abortToIdle();
-        recoverOctStreamFromEndFailure(oct);
+        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
+          oct.fsm.onError();
+        }
       } catch (e) {
         console.warn('[useMessages] send failed cleanup', e);
+        recoverOctStreamFromEndFailure(oct);
       }
     }
   }

@@ -12,14 +12,14 @@
 **涉及文件**：
 
 - `src/ui/chat/ChatInput.tsx` — 发送按钮与输入内容提交  
-- `src/hooks/useMessages.ts` — 发起到网关、TurnFSM/StreamRouter/BlockIngest 编排、流式全文与收尾  
+- `src/hooks/useMessages.ts` — 发起到网关、TurnFSM/turnSegments/turnUiState 编排、流式全文与收尾
 - `src/hooks/useWebSocket.ts` — IPC 发送与 chat 增量/结束事件解析  
-- `src/core/turnFSM/`、`src/core/streamRouter/`、`src/core/blockIngest.ts` — 状态与缓冲、块桥接  
+- `src/core/turnFSM/`、`src/core/turnSegments.ts`、`src/core/turnUiState.ts` — 生命周期、正文段事实源与 UI 状态投影
 - `src/hooks/useStreamPainting.ts` — RAF 将可视正文写入流式 DOM  
 - `src/hooks/useScrollManager.ts` — 列表滚动与锚点  
 - `src/ui/chat/MessageList.tsx` — 消息列表与流式气泡挂载  
 
-**改动入口**：改链路行为优先 `useMessages.ts`；只改输入交互从 `ChatInput.tsx`；只改「字冒出来」的节奏从 `useStreamPainting.ts` 与 `streamRouter`。
+**改动入口**：改链路行为优先 `useMessages.ts`；只改输入交互从 `ChatInput.tsx`；只改「字冒出来」的节奏从 `useStreamPainting.ts`。
 
 ---
 

@@ -129,8 +129,8 @@
 **前端「Router / Adapter」角色说明（避免与网关混淆）：**
 
 - **`blockRouter`（`src/core/blockRouter.ts`）**：把已收到的 Markdown 字符串切成 text / code 块，用于渲染管道，**不是**请求路由。
-- **`blockAdapter`（`src/core/blockAdapter.ts`）** + **`BlockIngest`（`src/core/blockIngest.ts`）**：流式累积正文时，把代码块桥成可给 `parseOptionBox` 用的文本。
-- **`StreamRouter`（`src/core/streamRouter/streamRouter.ts`）** + **`TurnFSM` / `turnAdapter`（`src/core/turnFSM/*`）**：控制前端流式状态机与「思考 / 打字中」等 UI 标志（`deriveLegacyFlags` 在 `turnAdapter.ts`）。
+- **`blockAdapter`（`src/core/blockAdapter.ts`）**：legacy option/task 解析辅助；`BlockIngest` 已从生产链路移除并删除。
+- **`TurnFSM` / `turnAdapter`（`src/core/turnFSM/*`）** + **`turnSegments` / `turnUiState`**：分别控制回合生命周期、assistant 正文段事实源与「思考 / 打字中」等 UI 状态；`StreamRouter` 当前不挂在生产聊天主链路。
 
 **网关侧「调度核心」命名：**
 
@@ -158,8 +158,8 @@
 - **上下文组装**：`oct-gateway/runtime/contextBuilder.js`
 - **对话执行**：`oct-gateway/runtime/chatEngine.js`、`oct-gateway/ai.js`
 - **工具循环**：`oct-gateway/runtime/toolLoop.js`
-- **前端流式与回合状态**：`src/hooks/useMessages.ts`、`src/core/streamRouter/streamRouter.ts`、`src/core/turnFSM/turnFSM.ts`、`src/core/turnFSM/turnAdapter.ts`
-- **渲染用块切分**：`src/core/blockRouter.ts`、`src/core/blockAdapter.ts`、`src/core/blockIngest.ts`
+- **前端流式与回合状态**：`src/hooks/useMessages.ts`、`src/core/turnFSM/turnFSM.ts`、`src/core/turnFSM/turnAdapter.ts`、`src/core/turnSegments.ts`、`src/core/turnUiState.ts`
+- **渲染用块切分**：`src/core/blockRouter.ts`、`src/core/blockAdapter.ts`
 
 ### 3. 功能定义（注册位置）
 

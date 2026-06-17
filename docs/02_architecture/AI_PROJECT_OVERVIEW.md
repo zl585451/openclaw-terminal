@@ -7,7 +7,7 @@
 
 ## 1. 系统架构与数据流（Mermaid）
 
-以下为逻辑视图；真实 IPC 与网关端口见 `AGENTS.md`。流式返回在代码里由 `useMessages` 订阅 `StreamRouter` 事件并驱动 `useStreamPainting`，图中将 Router 与 Hook 画在一起权作「缓冲 → 绘制」两段。
+以下为逻辑视图；真实 IPC 与网关端口见 `AGENTS.md`。流式返回在代码里由 `useMessages` 消费 `chat.seg` 段事件并驱动 `useStreamPainting`，图中将段状态与 Hook 画在一起权作「段归约 → 绘制」两段。
 
 ```mermaid
 graph TD
@@ -19,13 +19,13 @@ graph TD
   AI --> GW
   GW --> UW
   UW --> UM
-  UM --> SR[StreamRouter]
-  SR -->|batch 事件| UM
+  UM --> TS[turnSegments]
+  TS -->|text/final 段正文| UM
   UM --> USP[useStreamPainting]
   USP --> DOM[流式 pre / DOM]
 ```
 
-**文字补充**：出站由 `send` 经主进程与网关对话；入站增量在 `useMessages` 内推入 `StreamRouter`，TurnFSM 与 flush 语义对齐；完整正文 ref 由 RAF 在 `useStreamPainting` 落屏。`BlockIngest` 并行累积 raw 并产出 bridged 文本供解析（与流式展示同轮）。
+**文字补充**：出站由 `send` 经主进程与网关对话；入站段事件在 `useMessages` 内归约为 `turnSegments`，text/final 段更新完整正文 ref，再由 RAF 在 `useStreamPainting` 落屏。TurnFSM 负责回合生命周期，`turnUiState` 负责 UI 状态呈现。
 
 ---
 
@@ -34,9 +34,10 @@ graph TD
 | 模块 | 位置 | 职责 | 高风险 |
 |------|------|------|--------|
 | TurnFSM | `src/core/turnFSM/` | 显式边会话状态机：从用户输入到流结束、渲染完成、回合结束回到 IDLE | ⚠️ |
-| StreamRouter | `src/core/streamRouter/` | 缓冲 token、定时小批量 flush、与 FSM 的流结束/渲染完成信号对齐 | ⚠️ |
-| BlockIngest | `src/core/blockIngest.ts` | 累积流式 batch 的 raw，经块管线得到 bridged 文本 | |
-| blockRouter | `src/core/blockRouter.ts` | 将增量/全文切成 code/text 等块，供 Ingest / 渲染 | |
+| turnSegments | `src/core/turnSegments.ts` | 归约网关段事件，维护助手可见正文的 text/final 段事实源 | ⚠️ |
+| turnUiState | `src/core/turnUiState.ts` | UI 状态/活动投影，避免把展示状态混进生命周期 FSM | |
+| StreamRouter | `src/core/streamRouter/` | 隔离核心模块：缓冲 token、定时 flush；当前不挂在生产聊天主链路 | |
+| blockRouter | `src/core/blockRouter.ts` | 将 Markdown 字符串切成 code/text 等块，供 legacy option/task 解析与相关测试 | |
 | ScrollAnchor | `src/core/viewport/` | 消息列表锚点、用户上滑检测、reconcile | |
 | useMessages | `src/hooks/useMessages.ts` | 回合编排、网关事件分发、消息列表与工具/活动时间线、 sendMessage | ⚠️ |
 | useWebSocket | `src/hooks/useWebSocket.ts` | `openclaw-send` 与事件解析；连接/重试/Memory v2 状态 | |

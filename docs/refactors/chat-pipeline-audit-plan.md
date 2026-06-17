@@ -96,7 +96,7 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 | 1 | 原始 delta 文本流 | `oct-gateway/runtime/streamController.js`、`onDelta` 回调 | 仅保留为内部 chunk 信号，不再对外作为正文渲染流 |
 | 2 | 段协议 segment（open/delta/close/finish） | `oct-gateway/runtime/turnSegmentTracker.js` → `src/core/turnSegments.ts` | 对外正文流事实源 |
 | 3 | 结构化 render blocks v3 | `src/types/renderProtocol.ts` | 最终消息用 |
-| 4 | optionBox 解析段 | `src/core/blockRouter.ts` + `blockAdapter.ts` + `blockIngest.ts` + `src/utils/optionBoxParser` | 旧桥接 |
+| 4 | optionBox 解析段 | `src/core/blockRouter.ts` + `blockAdapter.ts` + `src/utils/optionBoxParser` | legacy option/task 解析；流式 BlockIngest 桥已删 |
 
 ### 任务 A1 —— 确定唯一渲染事实源
 - **决策建议**：以**段协议 segment（#2）**为唯一渲染事实源。理由：它结构上"跨段永不拼接"（`turnSegments.ts` 头注：不同 segId 永不拼接），从机制上根治跨轮/跨段重复。
@@ -110,8 +110,8 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 - **验收**：trace 显示渲染只来自一条路径；样本 BUG 的"重复两次"在该用例下不再出现。
 
 ### 任务 A3 —— 清理 optionBox 旧桥（#4）
-- 确认 `blockRouter / blockAdapter / blockIngest / optionBoxParser` 是否仍被 `src/ui/chat/MessageList.tsx` 实际使用。
-- `代码证据` `src/core/blockIngest.ts` 当前把 raw → blockRouter → blocksToSegments 再拼回字符串，属于"为了喂老解析器"的桥接；若段协议接管则整组可删。
+- 确认 `blockRouter / blockAdapter / optionBoxParser` 是否仍被 `src/ui/chat/MessageList.tsx` 实际使用。
+- `代码证据` `src/core/blockIngest.ts` 已无生产引用并删除；`blockRouter / blockAdapter / optionBoxParser` 仍服务 legacy option/task 渲染，暂不整组删除。
 - **验收**：grep 全仓无生产代码引用（测试除外）→ 整组删除（含对应 test）→ `npm test` 与 tsc 全绿。
 
 ---
@@ -147,16 +147,16 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 - **验收**：写出路由判据表；调研类请求的归属可预测、可测试。
 
 ### 4.2 前端主链路
-`src/hooks/useWebSocket.ts` → `src/hooks/useMessages.ts` → `turnFSM` + `streamRouter` + `turnSegments` + `turnUiState` → `src/ui/chat/MessageList.tsx`
+`src/hooks/useWebSocket.ts` → `src/hooks/useMessages.ts` → `turnFSM` + `turnSegments` + `turnUiState` → `src/ui/chat/MessageList.tsx`
 
 ### 任务 B4 ⭐ —— 两个状态机并存的边界收口
 - `代码证据` 存在两套 FSM：`src/core/turnFSM/turnFSM.ts`（回合生命周期，USER_TYPING→…→STREAM_COMPLETE）与 `src/core/streamRouter/streamRouter.ts`（流状态 IDLE→OPENING→…→CLOSED）。
 - **审查**：两者职责边界、转移表是否有重叠/矛盾；谁是权威。
-- **做法**：明确分层（建议 turnFSM 管"回合"、streamRouter 管"单次流"），消除重叠转移；若其一已被 turnUiState 取代则按 B5 处理。
-- **验收**：两 FSM 职责文档化、无重叠转移；`turnFSM.test`、`streamRouter.test` 覆盖边界并全绿。
+- **做法**：明确分层：生产聊天链路由 `turnFSM` 管"回合/流式生命周期"，`turnSegments` 管正文段事实源，`turnUiState` 管 UI 状态投影；`StreamRouter` 不再挂在生产 `useMessages` 编排中。
+- **验收**：职责文档化、生产链路无重叠转移；`turnFSM.test`、`streamRouter.test`、`turnSegments.test`、`turnUiState.test` 覆盖边界并全绿。
 
 ### 任务 B5 ⭐ —— 影子投影的"推完或回滚"
-- `代码证据` `src/core/turnUiState.ts` 头注："read-only UI-facing projection … does not replace turnFSM"；`src/core/turnSegments.ts` 头注："B2 阶段只构建状态（影子），B3 起接管渲染"。
+- `代码证据` `src/core/turnUiState.ts` 头注已改为 UI presentation projection；`src/core/turnSegments.ts` 头注已改为 assistant 可见正文事实源。
 - **风险**：影子与本体长期并存会持续 drift（两份状态算出不同结果）。
 - **做法**：用阶段 0 的 trace 确认 UI 究竟消费哪一份。
   - 若已切到新投影 → **删除被取代的旧渲染分支**（这正是 `chat-streaming-block-protocol-plan.md` 里挂起未做的 **B4「删补丁」**）。
@@ -228,9 +228,9 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 | C1 时间注入修复 | ☑ | `ContextBuilder` 注入 `[权威当前日期]`，明确相对日期以系统注入日期为准；回归测试覆盖当前日期提示存在 |
 | A1 确定事实源 | ☑ | 第 9 节已填写内容表示法归属表：segment 是对外正文流事实源；delta 降级为内部 chunk；render blocks 为 final structured payload；optionBox 暂保留为 legacy parser |
 | A2 收口 delta/segment 双发 | ☑ | `chatRequestHandler` 不再外发正文 `payload.delta`；Phase 0 trace 复跑显示 pure/tool 主聊天 `chat.delta` 为 0，正文只来自 `chat.seg` + `chat.done` |
-| A3 删 optionBox 桥 | ☐ | 删除门槛未满足：`useMsgParse`、`MessageList`、`useTypewriter`、`QuestionCards`/`OptionBox`/`TaskList` 仍有生产引用；暂不删除，避免破坏 legacy option/task 渲染 |
-| B4 双 FSM 边界收口 | ☐ | |
-| B5 影子推完/回滚 | ☐ | |
+| A3 删 optionBox 桥 | ◐ | `src/core/blockIngest.ts` 已无生产引用并删除；整组删除门槛仍未满足：`useMsgParse`、`MessageList`、`useTypewriter`、`QuestionCards`/`OptionBox`/`TaskList` 仍有生产引用，暂保留 legacy option/task 渲染 |
+| B4 双 FSM 边界收口 | ☑ | 生产 `ChatTab`/`useMessages` 运行时只持有 `TurnFSM`；`StreamRouter` 不再接收生产 token 或驱动收尾，仅作为隔离核心模块与测试保留 |
+| B5 影子推完/回滚 | ☑ | `turnSegments` 已是正文段事实源，`turnUiState` 驱动 UI 状态投影；删除 `StreamRouter`/`BlockIngest` 生产分支并更新头注 |
 | C2 记忆工具去重 | ☐ | |
 | C3 搜索空结果处理 | ☐ | |
 | C4 工具卡片渲染对齐 | ☐ | |

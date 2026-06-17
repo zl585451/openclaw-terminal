@@ -5,11 +5,11 @@
 
 ## useMessages
 
-**职责**：编排单轮对话生命周期（TurnFSM / StreamRouter / BlockIngest）、汇总网关 WebSocket 事件、维护消息列表与发送入口。
+**职责**：编排单轮对话生命周期（TurnFSM / turnSegments / turnUiState）、汇总网关 WebSocket 事件、维护消息列表与发送入口。
 
 **输入参数**（`UseMessagesOptions` 摘要）：
 
-- `oct`: `{ fsm, stream, ingest }` — 核心运行时实例  
+- `oct`: `{ fsm }` — 核心运行时实例
 - `typewriter`: 打字机 Hook 返回值 — 非流式或收尾展示  
 - `scroll`: `reconcile`、`scrollAfterUserSend` — 与滚动管理协同  
 - `getNextMessageId` / `messages` / `setMessages` — 消息列表  

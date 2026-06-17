@@ -1,8 +1,8 @@
 /**
  * Turn Segment 前端状态 —— 把 gateway 的段事件（open/delta/close/finish）
- * 归约成"一回合 = 有序内容段列表"。见 docs/refactors/chat-streaming-block-protocol-plan.md（B2）。
+ * 归约成"一回合 = 有序内容段列表"，并作为 assistant 可见正文的事实源。
  *
- * 纯函数 reducer，无副作用，便于单测。B2 阶段只构建状态（影子），B3 起接管渲染。
+ * 纯函数 reducer，无副作用，便于单测。
  * 跨段永不拼接：工具前正文段与最终答案段是不同 segId，结构上消除跨轮重复。
  */
 

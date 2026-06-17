@@ -25,7 +25,7 @@ OCT 是基于 **Electron** 的 **AI 桌面助手**：用户在本机通过聊天
 | 目录 | 职责 |
 |------|------|
 | `src/hooks/` | 业务 Hook：消息生命周期、WebSocket、流式绘制、Token 用量、活动时间线、TTS、ImageStudio、引导等 |
-| `src/core/` | 与 React 解耦的运行时核心：会话状态机 `turnFSM`、流缓冲路由 `streamRouter`、块解析桥接 `blockIngest` 等 |
+| `src/core/` | 与 React 解耦的运行时核心：会话状态机 `turnFSM`、段状态 `turnSegments`、UI 投影 `turnUiState`、块解析工具等 |
 | `src/ui/chat/` | 主聊天界面：`ChatTab.v2.tsx` 组合各 Hook 与列表/输入区 |
 | `oct-gateway/` | Node 网关：会话、路由、调用 `streamChat` / 工具与内存相关模块，对上游 AI 转发请求与流式结果 |
 | `resources/system_prompts/` | **运行时**提示词镜像（只读；维护单一事实源请改 `docs/01_system_prompts/`，再按需同步产物） |
@@ -38,8 +38,8 @@ OCT 是基于 **Electron** 的 **AI 桌面助手**：用户在本机通过聊天
 
 1. **`useMessages`** 驱动 **TurnFSM** 的阶段推进（从用户提交、请求发出、到流打开、流中、流结束、渲染完成、回合结束回到 IDLE），并负责 **WebSocket** 收发与消息列表更新； **`useTokenUsage`**、**`useActivityTimeline`** 等在同一编排中消费网关事件。
 2. 消息经 **WebSocket** 发到 **`oct-gateway`**；网关 **转发到当前配置的 AI 服务**，并将 **流式 token** 推回前端。
-3. **`StreamRouter`** 对到达的增量做 **缓冲**，按定时 flush **小批量合并**（控制下发节奏），并通过事件把 batch 交给上层；与 TurnFSM 在「流结束 / 渲染完成」等语义上对齐。**`BlockIngest`** 在旁路累积 raw 并产出 bridged 文本供解析（如选项框等结构）。
-4. **`useStreamPainting`** 内 **`requestAnimationFrame` 循环**按可视正文长度逐段写入流式 **`pre`/DOM**（并节制滚动和解、打字音效等），避免一次性_dump_。
+3. **`useMessages`** 通过 `chat.seg` 维护 **`turnSegments`**，以 text/final 段作为助手可见正文事实源；`turnUiState` 只负责状态/活动呈现，TurnFSM 继续负责生命周期。
+4. **`useStreamPainting`** 内 **`requestAnimationFrame` 循环**按可视正文长度逐段写入流式 **`pre`/DOM**（并节制滚动和打字音效等），避免一次性_dump_。
 5. 流式展示收尾后 **TurnFSM** 完成 **STREAM_COMPLETE → RENDER_COMPLETE → TURN_FINISHED → IDLE**，**`useMessages`** 侧对助手消息 **finalize**，对话回合闭合。
 
 专项细节、边界与故障排查可继续读 `chat-stream-entry.md` 等入口文档。

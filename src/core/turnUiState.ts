@@ -1,8 +1,8 @@
 /**
  * Turn UI State projection.
  *
- * This reducer is a read-only UI-facing projection over existing chat events.
- * It does not replace turnFSM; turnFSM still owns the transport/render lifecycle.
+ * This reducer is the UI-facing projection over existing chat events.
+ * It owns status/activity presentation; turnFSM owns the transport/render lifecycle.
  */
 
 export type TurnUiPhase =
