@@ -97,6 +97,7 @@ async function main() {
     assert.equal(connection.sent[0].payload.isSystemReply, true);
     assert.match(connection.sent[0].payload.text, /OCT Gateway 命令/);
     assert.match(connection.sent[0].payload.text, /\/status/);
+    assert.match(connection.sent[0].payload.text, /\/new\s+— 保存并清空当前会话/);
   }
 
   {

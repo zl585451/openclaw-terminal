@@ -218,17 +218,6 @@ function createChatRequestHandler({
           payload: { turnId, seg },
         });
       },
-      onAnswerReset: () => {
-        // 工具续轮：通知前端清空当前流式气泡的正文（保留气泡与工具卡片），
-        // 等下一轮最终答案重新填充，避免上一轮正文与最终答案重复堆叠。
-        if (cancelled || !connection.isOpen()) return;
-        if (keepalivePhase === 'streaming') keepalivePhase = 'waiting_continuation';
-        connection.send({
-          type: 'event',
-          event: 'chat',
-          payload: { reset: true, state: 'reset', done: false, turnId },
-        });
-      },
       onBeforeDone: () => {
         connection.setAbort?.(null);
         connection.stopThinkingPulse?.();

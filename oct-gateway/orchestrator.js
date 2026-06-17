@@ -123,8 +123,8 @@ const INTENT_RULES = [
   {
     intent: 'code',
     agent: 'Coder',
-    keywords: ['写代码', '帮我写', 'cursor提示词', 'bug', '报错', '怎么实现',
-               '代码', '函数', '接口', '组件', '脚本', 'python', 'javascript',
+    keywords: ['写代码', '帮我写代码', 'cursor提示词', 'bug', '报错', '怎么实现',
+               '代码', '函数', '接口', '组件', 'python', 'javascript',
                'typescript', '修复', '重构'],
     description: '代码生成/调试任务'
   },

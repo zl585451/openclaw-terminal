@@ -22,6 +22,7 @@ export default defineConfig({
       'oct-gateway/test/llmClient.test.js',
       'oct-gateway/test/chatEngine.test.js',
       'oct-gateway/test/finalAnswerGuard.test.js',
+      'oct-gateway/test/orchestratorRouting.test.js',
       'oct-gateway/test/omniRoute.test.js',
       'oct-gateway/test/externalOmniRoute.test.js',
       'oct-gateway/test/toolAdapter.test.js',

@@ -64,8 +64,8 @@ export function shouldSuppressAssistantTextForClarify(pendingClarifyOpen: boolea
   return pendingClarifyOpen && !String(doneText || '').trim();
 }
 
-// 工具续轮重置：清空最后一个流式 assistant 气泡的正文（保留气泡本身与工具卡片）。
-// 用于下一轮最终答案重新填充，避免上一轮正文与最终答案在同一气泡里累加重复。
+// 段协议内部重置：新正文段接管显示时清空最后一个流式 assistant 气泡正文。
+// 仍保留气泡本身、工具卡片和段快照，避免上一轮正文与最终答案在同一气泡里累加重复。
 export function clearStreamingBubbleContent<T extends { role: string; isStreaming?: boolean; content?: string }>(
   messages: T[],
 ): T[] {
@@ -498,21 +498,6 @@ export function useMessages({
           );
         });
       }
-    },
-    onChatReset: (turnId) => {
-      const currentTurnId = lastSentRequestId.current;
-      if (turnId && currentTurnId && turnId !== currentTurnId) return;
-      reduceTurnUiRef({ kind: 'reset' });
-      // 工具续轮：清空当前流式气泡正文（保留气泡与工具卡片），等最终答案重新填充。
-      // 不移除气泡、不停止绘制循环——下一轮 delta 会继续填充同一个气泡。
-      streamingMessageRef.current = '';
-      fullTextRef.current = '';
-      systemReplyBufferRef.current = '';
-      setStreamingRenderText('');
-      if (streamingDomRef.current) {
-        try { streamingDomRef.current.textContent = ''; } catch {}
-      }
-      setMessages((prev) => clearStreamingBubbleContent(prev));
     },
     onChatDelta: (content, isDelta, isSystemReply, turnId) => {
       const currentTurnId = lastSentRequestId.current;

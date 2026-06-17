@@ -328,7 +328,7 @@ class SlashHandler {
         '  /task done [序号] — 标记任务完成',
         '  /task list — 列出今日任务',
         '  /task clear — 清空已完成任务',
-        '  /new      — 重置当前会话',
+        '  /new      — 保存并清空当前会话',
         '  /help     — 显示此帮助',
       ].join('\n'));
       return;

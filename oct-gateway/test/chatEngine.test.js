@@ -52,7 +52,7 @@ describe('ChatEngine capability parameter passthrough', () => {
     expect(passedOptions.toolChoice).toBe('auto');
   });
 
-  it('3. onRoundReset resets fullReply and notifies emitter.onAnswerReset', async () => {
+  it('3. onRoundReset resets backend reply without notifying a frontend reset', async () => {
     const resetCalls = [];
     const resettableController = {
       createSmoother: () => ({ feed: () => {} }),
@@ -92,7 +92,7 @@ describe('ChatEngine capability parameter passthrough', () => {
     }, emitter);
 
     expect(resetCalls).toContain('controller');
-    expect(answerResetCount).toBe(1);
+    expect(answerResetCount).toBe(0);
   });
 
   it('4. emits segment events (open/delta/finish) from internal text chunks', async () => {

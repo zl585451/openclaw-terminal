@@ -234,9 +234,9 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 | C2 记忆工具去重 | ☑ | `memory_vector_search` / `memory_recall` 合并进 `memory_search` 的 `mode=vector/date`；ToolLoader 不再暴露旧工具名，伪工具与直接执行保留兼容别名；回归测试锁定暴露面与旧名改写 |
 | C3 搜索空结果处理 | ☑ | `web_search` 已有弱结果 message；补齐 `parallel_web_research` 聚合退级信号，全部为空或整体弱时顶层 `message/hint` 明确禁止无新线索重复搜索；新增离线回归测试 |
 | C4 工具卡片渲染对齐 | ☑ | `turnSegments` 中的 `tool_use` 段由 `MessageList` 内联 `ToolGroup` 渲染；ActivityPanel 在内联工具存在时通过 `filterActivityEntriesForInlineTools` 过滤 `tool_call/tool_result`，保留 CoT/keepalive；后台 Agent 仅透传模型自带短 preamble，不再生成工具兜底文案 |
-| B2 防重复机制对齐 | ☐ | |
-| B3 路由判据文档化 | ☐ | |
-| D1–D5 死链清理 | ☐ | |
+| B2 防重复机制对齐 | ☑ | 显式 `chat.reset` 前端清空链路已退役：`onRoundReset` 只重置后端 `StreamController` 缓冲并闭合当前段，不再发送 `payload.reset`；前端只保留段协议新 `text/final` 段接管显示时的内部清空。`chatEngine.test` 断言不通知前端 reset，Phase 0 trace 复跑无 `gateway.chat.reset` |
+| B3 路由判据文档化 | ☑ | 第 10 节新增主对话 vs Agent 路由判据表；新增 `oct-gateway/test/orchestratorRouting.test.js` 覆盖 Researcher/Coder/Writer、情绪优先、短对话直回 |
+| D1–D5 死链清理 | ☑ | 第 11 节完成候选判定：D3 冗余记忆工具已删；D4 `/new` 保留为当前会话保存+清空语义并更新 help；D5 注释扫描后只删除本计划相关 reset 链，其余兼容注释标记为非聊天主链路边界 |
 
 ---
 
@@ -248,3 +248,29 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 | segment 段协议 | 保留，作为对外正文流事实源 | `turnSegments` 明确跨段不拼接；Phase 0 trace 复跑显示主聊天 pure/tool 场景正文只外发 `chat.seg`；前端 `onChatSeg` 已驱动 `text`/`final` 可见正文 | `oct-gateway/runtime/turnSegmentTracker.js`, `src/core/turnSegments.ts`, `src/hooks/useMessages.ts`, `src/ui/chat/MessageList.tsx` |
 | render blocks v3 | 保留为最终消息结构化载荷 | 只在 `chat.done` 后由 `normalizeRenderBlocks` 生成 `renderBlocks`，用于最终消息的 pills/markdown 等结构化渲染；不再作为 streaming 正文事实源 | `oct-gateway/runtime/chatRequestHandler.js`, `src/types/renderProtocol.ts`, `src/ui/chat/renderBlocksAdapter.ts`, `src/hooks/useMsgParse.ts` |
 | optionBox 桥 | 暂保留，不能删除 | 删除门槛未满足：生产代码仍通过 `useMsgParse`/`MessageList`/`useTypewriter` 和 option/task 组件消费 `parseOptionBox`；`blockRouter`/`blockAdapter` 仍参与 legacy 文本解析。后续只能在 render blocks 覆盖所有 option/task 场景后再删 | `src/utils/optionBoxParser.ts`, `src/hooks/useMsgParse.ts`, `src/ui/chat/MessageList.tsx`, `src/core/blockRouter.ts`, `src/core/blockAdapter.ts` |
+
+---
+
+## 10. 附：主对话 vs Agent 路由判据表（任务 B3 产出）
+
+| 请求类型 | 判据 | 归属 | 说明 / 测试 |
+|---|---|---|---|
+| 情绪倾诉 / 陪伴 | 命中 `EMOTIONAL_TRIGGERS`，且没有明确任务 override | AMY 主对话 | 优先级高于代码/调研关键词，避免“bug 把我搞崩溃”误派 Coder；`orchestratorRouting.test.js` 覆盖 |
+| 极短寒暄 / 简单确认 | 命中 `DIRECT_PATTERNS` | AMY 主对话 | 不走 LLM 路由；`orchestratorRouting.test.js` 覆盖 |
+| 代码实现 / 调试 | 命中 code 关键词，如“写代码”“bug”“typescript”“重构” | Coder Agent | `ENABLE_AGENT_DISPATCH=false` 时只记录建议并回落主对话；`orchestratorRouting.test.js` 覆盖 |
+| 内容创作 | 命中 write 关键词，如“帮我写一篇”“视频脚本”“文案” | Writer Agent | 明确创作请求不被情绪词抢占；`orchestratorRouting.test.js` 覆盖 |
+| 搜索 / 调研 / 汇总 | 命中 research 关键词，如“调研”“帮我搜”“搜索一下”“查最新”“整理成要点”“报告” | Researcher Agent | 样本类调研请求归属可预测；即使 Agent 调度关闭，B1 已保证主对话工具后短过渡句不会直接收尾 |
+| 关键词未命中但可能复杂 | 快速路径均未命中 | LLM 语义路由 | LLM 返回 complex + Agent 才委派；LLM 失败则回落 AMY |
+| 后台异步任务 | `ENABLE_BACKGROUND_TASK_DISPATCH=true` 且命中后台触发词 | task_queue/worker | 默认关闭，和 Agent 路由分离，避免“已派出但无下文” |
+
+---
+
+## 11. 附：D1-D5 死链判定表
+
+| 项 | 判定 | 处理 |
+|---|---|---|
+| D1 表示法死链 | 部分删除、部分保留 | 对外正文 `payload.delta` 已退役；`segment` 为 streaming 事实源；`renderBlocks` 保留为最终结构化载荷；`optionBox` 仍有生产引用，按 A3 标记为暂保留 |
+| D2 旧渲染/FSM 分支 | 已收口 | 生产 `ChatTab`/`useMessages` 不再持有 `StreamRouter`/`BlockIngest`；`turnFSM` 管生命周期，`turnSegments` 管正文事实源，`turnUiState` 管 UI 投影 |
+| D3 记忆工具重复 | 已删除 | `memory_vector_search` / `memory_recall` 合并进 `memory_search` 的 `mode=vector/date`，旧名只保留伪工具兼容改写 |
+| D4 `/new` slash 旧逻辑 | 保留并改清语义 | `slash.js` 的 `/new`/`/reset` 已按 `sessionKey` 保存并清空当前会话，不是全局多会话 flush；help 文案改为“保存并清空当前会话” |
+| D5 过渡注释扫描 | 已判定 | 扫描 `oct-gateway/` 与 `src/` 注释中的“旧/兼容/deprecated/shadow/先忽略”；本计划相关的显式 reset 链已删除，其余为 provider/vault/theme/memory history/legacy option parser 等非聊天主链路兼容边界，暂不在本轮删除 |
