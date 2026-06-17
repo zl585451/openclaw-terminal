@@ -93,8 +93,8 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 
 | # | 表示法 | 关键文件 | 现状 |
 |---|---|---|---|
-| 1 | 原始 delta 文本流 | `oct-gateway/runtime/streamController.js`、`onDelta` 回调 | 旧，活跃 |
-| 2 | 段协议 segment（open/delta/close/finish） | `oct-gateway/runtime/turnSegmentTracker.js` → `src/core/turnSegments.ts` | 新，"B3 起接管渲染" |
+| 1 | 原始 delta 文本流 | `oct-gateway/runtime/streamController.js`、`onDelta` 回调 | 仅保留为内部 chunk 信号，不再对外作为正文渲染流 |
+| 2 | 段协议 segment（open/delta/close/finish） | `oct-gateway/runtime/turnSegmentTracker.js` → `src/core/turnSegments.ts` | 对外正文流事实源 |
 | 3 | 结构化 render blocks v3 | `src/types/renderProtocol.ts` | 最终消息用 |
 | 4 | optionBox 解析段 | `src/core/blockRouter.ts` + `blockAdapter.ts` + `blockIngest.ts` + `src/utils/optionBoxParser` | 旧桥接 |
 
@@ -104,7 +104,7 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 - **验收**：写出一页《内容表示法归属表》，明确每套的"保留 / 降级 / 删除"去向 + 理由，落入本文档第 9 节。
 
 ### 任务 A2 —— 收口 "delta + segment 双发"
-- `代码证据` `oct-gateway/runtime/chatEngine.js:26-32` 在主流之外平行发段事件（`emitter.onSegment`），注释明确"与旧 delta 双发，前端先忽略 / 失败不影响主流"。
+- `代码证据` `oct-gateway/runtime/chatEngine.js` 在内部把 smoothed text chunk 交给 `TurnSegmentTracker`，由段事件外发；`chatRequestHandler` 不再把 `onDelta` chunk 包成外部 `payload.delta`。
 - 用阶段 0 的 trace 确认前端渲染到底用 delta 还是 segment（见 `src/hooks/useMessages.ts` 的 `onChatSeg` / `segProtocolActiveRef`）。
 - **若 segment 已接管**：删除前端 delta 渲染分支，后端保留 delta 仅作为段事件的内部输入，不再对外双发。
 - **验收**：trace 显示渲染只来自一条路径；样本 BUG 的"重复两次"在该用例下不再出现。
@@ -226,9 +226,9 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 | 阶段 0 trace 探路 | ☑ | `docs/refactors/chat-pipeline-phase0-trace.md`；deterministic harness 已覆盖纯聊天 / 主对话工具续轮 / 后台 Agent，可启动阶段 1；删除前仍需 live UI trace |
 | B1 统一收尾兜底 | ☑ | 新增 `oct-gateway/runtime/finalAnswerGuard.js`，主对话与后台 Agent 共用短收尾判定；新增 `oct-gateway/test/finalAnswerGuard.test.js` 覆盖工具后短过渡句强制收尾、纯聊天短答不误伤 |
 | C1 时间注入修复 | ☑ | `ContextBuilder` 注入 `[权威当前日期]`，明确相对日期以系统注入日期为准；回归测试覆盖当前日期提示存在 |
-| A1 确定事实源 | ☐ | |
-| A2 收口 delta/segment 双发 | ☐ | |
-| A3 删 optionBox 桥 | ☐ | |
+| A1 确定事实源 | ☑ | 第 9 节已填写内容表示法归属表：segment 是对外正文流事实源；delta 降级为内部 chunk；render blocks 为 final structured payload；optionBox 暂保留为 legacy parser |
+| A2 收口 delta/segment 双发 | ☑ | `chatRequestHandler` 不再外发正文 `payload.delta`；Phase 0 trace 复跑显示 pure/tool 主聊天 `chat.delta` 为 0，正文只来自 `chat.seg` + `chat.done` |
+| A3 删 optionBox 桥 | ☐ | 删除门槛未满足：`useMsgParse`、`MessageList`、`useTypewriter`、`QuestionCards`/`OptionBox`/`TaskList` 仍有生产引用；暂不删除，避免破坏 legacy option/task 渲染 |
 | B4 双 FSM 边界收口 | ☐ | |
 | B5 影子推完/回滚 | ☐ | |
 | C2 记忆工具去重 | ☐ | |
@@ -244,7 +244,7 @@ npx -p typescript tsc --noEmit -p tsconfig.electron.json
 
 | 表示法 | 保留 / 降级 / 删除 | 理由 | 影响文件 |
 |---|---|---|---|
-| delta 文本流 | | | |
-| segment 段协议 | | | |
-| render blocks v3 | | | |
-| optionBox 桥 | | | |
+| delta 文本流 | 降级为内部输入 | `StreamController` 仍用 `onDelta` chunk 累积 `fullReply` 并驱动 `TurnSegmentTracker`；`chatRequestHandler` 不再外发正文 `payload.delta`，避免前端双写 | `oct-gateway/runtime/streamController.js`, `oct-gateway/runtime/chatEngine.js`, `oct-gateway/runtime/chatRequestHandler.js` |
+| segment 段协议 | 保留，作为对外正文流事实源 | `turnSegments` 明确跨段不拼接；Phase 0 trace 复跑显示主聊天 pure/tool 场景正文只外发 `chat.seg`；前端 `onChatSeg` 已驱动 `text`/`final` 可见正文 | `oct-gateway/runtime/turnSegmentTracker.js`, `src/core/turnSegments.ts`, `src/hooks/useMessages.ts`, `src/ui/chat/MessageList.tsx` |
+| render blocks v3 | 保留为最终消息结构化载荷 | 只在 `chat.done` 后由 `normalizeRenderBlocks` 生成 `renderBlocks`，用于最终消息的 pills/markdown 等结构化渲染；不再作为 streaming 正文事实源 | `oct-gateway/runtime/chatRequestHandler.js`, `src/types/renderProtocol.ts`, `src/ui/chat/renderBlocksAdapter.ts`, `src/hooks/useMsgParse.ts` |
+| optionBox 桥 | 暂保留，不能删除 | 删除门槛未满足：生产代码仍通过 `useMsgParse`/`MessageList`/`useTypewriter` 和 option/task 组件消费 `parseOptionBox`；`blockRouter`/`blockAdapter` 仍参与 legacy 文本解析。后续只能在 render blocks 覆盖所有 option/task 场景后再删 | `src/utils/optionBoxParser.ts`, `src/hooks/useMsgParse.ts`, `src/ui/chat/MessageList.tsx`, `src/core/blockRouter.ts`, `src/core/blockAdapter.ts` |

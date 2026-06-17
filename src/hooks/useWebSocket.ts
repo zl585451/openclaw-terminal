@@ -207,8 +207,8 @@ export function useWebSocket(options: UseWebSocketOptions) {
         }
       }
 
-      // B2 \u6BB5\u534F\u8BAE\uFF08\u5F71\u5B50\u63A5\u5165\uFF09\uFF1A\u628A\u6BB5\u4E8B\u4EF6\u5F52\u7EA6\u8FDB\u6BB5\u72B6\u6001\uFF0C\u4F46\u6682\u4E0D\u6539\u663E\u793A\uFF08\u4ECD\u4EE5\u65E7\u6C14\u6CE1\u4E3A\u51C6\uFF09\u3002
-      // \u6BB5\u4E8B\u4EF6\u4E0E\u88F8 delta \u53CC\u53D1\uFF0C\u4E0D\u80FD\u518D\u5F53\u6210"\u7A7A\u5185\u5BB9 chat \u4E8B\u4EF6"\u8BEF\u62A5\u3002
+      // Segment events are the primary assistant text stream. They must not fall through
+      // to the legacy empty-content chat warning path.
       if (data.event === 'chat' && nestedRecord(data, 'payload')?.seg !== undefined) {
         const payload = nestedRecord(data, 'payload');
         const seg = payload?.seg as Record<string, unknown> | undefined;

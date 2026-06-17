@@ -442,13 +442,16 @@ export function useMessages({
         }
       }
 
-      // 新文本段开启：段协议激活 + 如果已有旧文本段则清空显示（自动 reset）
-      if (s.op === 'open' && s.type === 'text') {
+      // 新可见正文段开启：段协议激活 + 如果已有旧正文段则清空显示（自动 reset）
+      if (s.op === 'open' && (s.type === 'text' || s.type === 'final')) {
         segProtocolActiveRef.current = true;
         const newSegId = s.segId;
         const hasOlderTextSeg = slot.state.order
           .filter((id) => id !== newSegId)
-          .some((id) => (slot.state.segments[id] as TurnSegment | undefined)?.type === 'text');
+          .some((id) => {
+            const prior = slot.state.segments[id] as TurnSegment | undefined;
+            return prior?.type === 'text' || prior?.type === 'final';
+          });
         if (hasOlderTextSeg) {
           // 工具调用后新一轮文字段开始——清空流式气泡正文，等最终答案填充
           streamingMessageRef.current = '';
@@ -462,10 +465,10 @@ export function useMessages({
         }
       }
 
-      // 文本段增量：用段内容驱动 fullTextRef（跨段永不拼接）
+      // 正文段增量：用段内容驱动 fullTextRef（跨段永不拼接）
       if (s.op === 'delta') {
         const activeSeg = slot.state.segments[s.segId] as TurnSegment | undefined;
-        if (activeSeg && activeSeg.type === 'text') {
+        if (activeSeg && (activeSeg.type === 'text' || activeSeg.type === 'final')) {
           setAwaitingResponse(false);
           setAgentPhase('typing');
           // 只取本段内容——不跨段累加，这正是根治重复的关键

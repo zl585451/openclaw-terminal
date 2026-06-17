@@ -14,8 +14,8 @@
  * 段事件通过构造时传入的 emit(seg) 流出（最终由 chatRequestHandler 发到前端）。
  * 每段 segId = `${turnId}:s${index}`，对齐 Claude content_block 的 index 寻址。
  *
- * B1 阶段：与旧的裸 delta 双发；前端先忽略段事件（影子）。跨段永不拼接，
- * 故工具调用前正文段与最终答案段天然分离，结构上消除跨轮重复。
+ * A2 起：segment 是对外正文流事实源；裸 delta 仅作为内部 chunk 信号。
+ * 跨段永不拼接，故工具调用前正文段与最终答案段天然分离，结构上消除跨轮重复。
  */
 class TurnSegmentTracker {
   constructor({ turnId, emit } = {}) {

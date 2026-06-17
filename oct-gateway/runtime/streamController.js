@@ -6,10 +6,10 @@ class StreamController {
     this.cancelled = false;
     this.fullReply = '';
     this.smoother = null;
-    this.segments = null; // B1: TurnSegmentTracker，按段双发；未挂载时退化为纯旧路径
+    this.segments = null; // TurnSegmentTracker maps internal text chunks to outward segment events.
   }
 
-  // B1: 挂载段追踪器，让平滑后的文本 chunk 同步翻译为 text 段事件。
+  // Attach a segment tracker so smoothed text chunks become text segment events.
   attachSegmentTracker(tracker) {
     this.segments = tracker || null;
   }
@@ -20,7 +20,7 @@ class StreamController {
       this.fullReply += chunk;
       this.emitter.onDelta(chunk);
       if (this.segments) {
-        try { this.segments.text(chunk); } catch { /* 段双发失败不影响主流 */ }
+        try { this.segments.text(chunk); } catch { /* segment emission must not break the stream */ }
       }
     }, this.pacingMs);
     return this.smoother;

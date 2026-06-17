@@ -65,6 +65,9 @@ async function testNormalChatLifecycle() {
         executeArgs = request;
         handlers.onStart({ cancel() {} });
         handlers.onDelta('hi');
+        handlers.onSegment({ op: 'open', segId: 'turn-1:s0', index: 0, type: 'text' });
+        handlers.onSegment({ op: 'delta', segId: 'turn-1:s0', text: 'hi' });
+        handlers.onSegment({ op: 'close', segId: 'turn-1:s0' });
         handlers.onToolEvent({ type: 'tool_call', tool: 'read_file' });
         handlers.onToolEvent({ type: 'tool_result', tool: 'read_file' });
         handlers.onToolEvent({ type: 'workbench', action: 'open', payload: { id: 'canvas-1' } });
@@ -118,11 +121,10 @@ async function testNormalChatLifecycle() {
   assert.equal(connection.abortCalls, 1);
   assert.equal(connection.stopPulseCalls, 1);
   assert.equal(connection.sent[0].event, 'agent-phase');
-  assert.deepEqual(connection.sent.find((item) => item.event === 'chat' && item.payload.delta === 'hi').payload, {
-    delta: 'hi',
-    state: 'delta',
-    done: false,
+  assert.equal(connection.sent.some((item) => item.event === 'chat' && item.payload.delta === 'hi'), false);
+  assert.deepEqual(connection.sent.find((item) => item.event === 'chat' && item.payload.seg?.op === 'delta').payload, {
     turnId: 'turn-1',
+    seg: { op: 'delta', segId: 'turn-1:s0', text: 'hi' },
   });
   assert(connection.sent.some((item) => item.event === 'tool' && item.payload.type === 'tool_call'));
   assert(connection.sent.some((item) => item.event === 'agent-phase' && item.phase === 'tool_executing'));

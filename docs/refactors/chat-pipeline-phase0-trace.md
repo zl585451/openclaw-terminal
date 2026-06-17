@@ -25,9 +25,9 @@ Scope:
 |---|---:|---:|---:|---|
 | `orchestrator.dispatch` | yes | yes | n/a in direct agent harness | handler trace event |
 | `contextBuilder.build` | yes | yes | no | handler trace event; Agent path bypasses main context |
-| `ChatEngine.execute` / `StreamController` | yes | yes | no | `chat.delta`, `chat.seg`, `stream done` |
-| Gateway `delta` event | yes | yes | no | `chat.delta` count: pure 1, tool 2 |
-| Gateway segment event | yes | yes | yes | `chat.seg` count: pure 4, tool 9, agent 9 |
+| `ChatEngine.execute` / `StreamController` | yes | yes | no | internal delta drives `chat.seg`, plus `stream done` |
+| Gateway `delta` event | no | no | no | A2: external `chat.delta` removed; pure/tool traces emit zero delta events |
+| Gateway segment event | yes | yes | yes | `chat.seg` emitted for pure/tool/agent paths; exact delta chunk count can vary with smoothing |
 | `ToolLoop.handleToolCalls` | no | yes | no | `tool_calls`, `tool_call`, `tool_result` |
 | `onRoundReset` / `chat.reset` | no | yes | no | tool trace has one `chat.reset` after tool result |
 | `agent_runner` tool loop | no | no | yes | Agent trace emitted `tool_call`, `tool_result`, final segment |
@@ -35,15 +35,15 @@ Scope:
 
 ## Runtime Findings
 
-1. Main chat still emits both old `delta` and new `seg` events. Code evidence:
-   - `oct-gateway/runtime/chatRequestHandler.js:207` sends `delta`.
-   - `oct-gateway/runtime/chatRequestHandler.js:217` sends `seg`.
-   - `oct-gateway/runtime/chatEngine.js:25` attaches `TurnSegmentTracker` beside the old stream.
+1. Main chat now emits visible assistant text through `seg` events, with `chat.done` as the final snapshot. Code evidence:
+   - `oct-gateway/runtime/chatRequestHandler.js` no longer forwards `onDelta` chunks as `payload.delta`.
+   - `oct-gateway/runtime/chatRequestHandler.js` forwards `payload.seg`.
+   - `oct-gateway/runtime/chatEngine.js` attaches `TurnSegmentTracker` to translate internal text chunks into segments.
 
 2. Segment protocol is active enough to drive rendering, not just backend shadow. Code evidence:
    - `src/hooks/useMessages.ts:425` handles `onChatSeg`.
    - `src/hooks/useMessages.ts:447` sets `segProtocolActiveRef.current = true` on a text segment.
-   - `src/hooks/useMessages.ts:522` skips old delta writes after segment protocol is active.
+   - `src/hooks/useMessages.ts` skips old delta writes after segment protocol is active; this is now a fallback guard rather than the main path.
 
 3. Main tool continuation still uses two anti-duplication mechanisms:
    - Segment boundaries (`text -> tool_use -> text/final`).

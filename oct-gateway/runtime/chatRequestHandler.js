@@ -207,15 +207,10 @@ function createChatRequestHandler({
       onDelta: (chunk) => {
         if (cancelled || !connection.isOpen()) return;
         if (keepalivePhase === 'waiting_first_token') keepalivePhase = 'streaming';
-        connection.send({
-          type: 'event',
-          event: 'chat',
-          payload: { delta: chunk, state: 'delta', done: false, turnId },
-        });
       },
       onToolEvent: sendToolEvent,
       onSegment: (seg) => {
-        // B1: 段协议双发（与裸 delta 并行）。前端在 B2 前忽略，仅作影子观测。
+        // A2: 对外正文流以 segment 为事实源；delta 只保留在 ChatEngine 内部驱动平滑与段追踪。
         if (cancelled || !connection.isOpen() || !seg) return;
         connection.send({
           type: 'event',

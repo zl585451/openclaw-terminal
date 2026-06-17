@@ -95,7 +95,7 @@ describe('ChatEngine capability parameter passthrough', () => {
     expect(answerResetCount).toBe(1);
   });
 
-  it('4. emits segment events (open/delta/finish) alongside legacy delta (B1 dual-emit)', async () => {
+  it('4. emits segment events (open/delta/finish) from internal text chunks', async () => {
     // 用真实 StreamController 让 smoother chunk 驱动段事件
     const StreamController = require('../runtime/streamController');
     const { createStreamSmoother } = require('../runtime/streamUtils');

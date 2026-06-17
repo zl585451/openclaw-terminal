@@ -22,10 +22,10 @@ class ChatEngine {
 
   async execute(request, emitter) {
     const streamCtrl = this.streamControllerFactory(emitter, request.options?.pacingMs);
-    // B1: 段追踪器——把文本/工具/终止信号翻译为段事件，与旧 delta 双发（前端先忽略）。
+    // 段追踪器：把内部文本 delta、工具、终止信号翻译为对外 segment 事件。
     const segments = new TurnSegmentTracker({
       turnId: request.turnId,
-      emit: (seg) => { try { emitter.onSegment?.(seg); } catch { /* 双发失败不影响主流 */ } },
+      emit: (seg) => { try { emitter.onSegment?.(seg); } catch { /* segment emission must not break the stream */ } },
     });
     if (typeof streamCtrl.attachSegmentTracker === 'function') {
       streamCtrl.attachSegmentTracker(segments);
