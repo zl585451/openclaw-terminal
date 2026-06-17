@@ -1268,6 +1268,58 @@
   animation: blink 1.2s ease-in-out infinite;
 }
 
+/* B3 inline：正文流中的工具卡片（对齐 Claude Code） */
+.inline-tool {
+  margin: 6px 0;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  background: var(--bg-panel, rgba(255, 255, 255, 0.02));
+  overflow: hidden;
+}
+.inline-tool__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-align: left;
+}
+.inline-tool__head:disabled { cursor: default; }
+.inline-tool__status { display: inline-flex; width: 14px; justify-content: center; }
+.inline-tool--done .inline-tool__status { color: var(--status-success, #3ba55d); }
+.inline-tool--error .inline-tool__status { color: var(--status-error, #e24b4a); }
+.inline-tool__name { color: var(--text-primary); font-weight: 500; }
+.inline-tool__time { color: var(--text-secondary); opacity: 0.7; margin-left: 2px; }
+.inline-tool__chevron { margin-left: auto; color: var(--text-secondary); opacity: 0.6; }
+.inline-tool__spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--accent-primary);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: inline-tool-spin 0.7s linear infinite;
+}
+@keyframes inline-tool-spin { to { transform: rotate(360deg); } }
+.inline-tool__body {
+  padding: 6px 10px 8px 32px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+.inline-tool__args { opacity: 0.85; }
+.inline-tool__result { margin-top: 4px; opacity: 0.7; white-space: pre-wrap; }
+.inline-tool__error { margin-top: 4px; color: var(--status-error, #e24b4a); }
+.inline-preamble { opacity: 0.88; }
+
 /* 聊天输入区 */
 .chat-input-area {
   display: flex;

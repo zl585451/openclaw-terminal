@@ -14,7 +14,7 @@ import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTy
 import type { RenderBlock } from '../types/renderProtocol';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, normalizeAssistantTranscriptContent } from '../utils/cotExtract';
-import { emptyTurnSegmentState, reduceSegmentEvent, type SegmentEvent, type TurnSegment, type TurnSegmentState } from '../core/turnSegments';
+import { emptyTurnSegmentState, orderedSegments, reduceSegmentEvent, type SegmentEvent, type TurnSegment, type TurnSegmentState } from '../core/turnSegments';
 import { parseSystemReplyStatus } from '../utils/systemReplyParser';
 import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
@@ -456,6 +456,26 @@ export function useMessages({
           startPainting();
           ensureStreamingAssistantMessage();
         }
+      }
+
+      // ── B3 inline：段边界（开/合）时把有序段快照挂到流式气泡 ───────────────
+      // 仅在结构变化时更新（非每字），驱动 inline 工具卡片在正文流中按序渲染。
+      if (s.op === 'open' || s.op === 'close') {
+        const snapshot = orderedSegments(slot.state).map((seg2) => ({
+          segId: seg2.segId,
+          index: seg2.index,
+          type: seg2.type,
+          content: seg2.content,
+          open: seg2.open,
+          ...(seg2.meta ? { meta: seg2.meta } : {}),
+        }));
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (!(last?.role === 'assistant' && last.isStreaming)) return prev;
+          return prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, turnSegments: snapshot } : m,
+          );
+        });
       }
     },
     onChatReset: (turnId) => {

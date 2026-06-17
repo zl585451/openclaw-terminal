@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
-import { hasAssistantCotMarkers } from '../../utils/cotExtract';
+import { hasAssistantCotMarkers, getAssistantVisibleMain } from '../../utils/cotExtract';
 // removed imports
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
@@ -15,7 +15,7 @@ import AmyAvatar from '../../components/AmyAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown, stabilizeStreamingMarkdown } from '../../utils/markdownPreprocess';
 import { formatTime, formatFullTime } from '../../utils/formatTime';
-import type { ChatMessage } from './chatTypes';
+import type { ChatMessage, ToolEventItem } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
 import StreamingMarkdownContent from './StreamingMarkdownContent';
 import { useMsgParse } from '../../hooks/useMsgParse';
@@ -92,6 +92,57 @@ function MsgCopyButton({ text }: { text: string }) {
 const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolean }) {
   if (!show) return null;
   return <span className="cursor-blink">▋</span>;
+});
+
+/** B3 inline：正文流中的工具卡片（默认折叠一行，可展开看入参/结果），对齐 Claude Code 结构 */
+const InlineToolCard = memo(function InlineToolCard({
+  event,
+  toolName,
+  getToolDisplayName,
+}: {
+  event?: ToolEventItem;
+  toolName: string;
+  getToolDisplayName: (tool: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const state = event?.state ?? 'executing';
+  const name = getToolDisplayName(toolName || event?.tool || 'tool');
+  const elapsed = event?.elapsedMs != null ? `${(event.elapsedMs / 1000).toFixed(1)}s` : '';
+  const argsPreview = event?.args
+    ? Object.entries(event.args)
+        .map(([k, v]) => `${k}: ${typeof v === 'string' ? v.slice(0, 80) : JSON.stringify(v).slice(0, 80)}`)
+        .join(', ')
+        .slice(0, 200)
+    : '';
+  const hasDetail = !!argsPreview || !!event?.resultPreview || !!event?.error;
+  return (
+    <div className={`inline-tool inline-tool--${state}`}>
+      <button
+        type="button"
+        className="inline-tool__head"
+        onClick={() => hasDetail && setOpen((o) => !o)}
+        disabled={!hasDetail}
+      >
+        <span className="inline-tool__status" aria-hidden>
+          {state === 'executing'
+            ? <span className="inline-tool__spinner" />
+            : state === 'error' ? '✗' : '✓'}
+        </span>
+        <span className="inline-tool__name">{name}</span>
+        {elapsed && <span className="inline-tool__time">{elapsed}</span>}
+        {hasDetail && <span className="inline-tool__chevron">{open ? '▴' : '▾'}</span>}
+      </button>
+      {open && hasDetail && (
+        <div className="inline-tool__body">
+          {argsPreview && <div className="inline-tool__args">{argsPreview}</div>}
+          {event?.error && <div className="inline-tool__error">{event.error}</div>}
+          {event?.resultPreview && !event?.error && (
+            <div className="inline-tool__result">{event.resultPreview}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 });
 
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
@@ -454,8 +505,12 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   usePlainStreamingText = false,
   useStructuredStreamingMarkdown = false,
   awaitingFinalAnswer = false,
+  getToolDisplayName = (t: string) => t,
   markdownComponents,
-}: AssistantMessageBodyProps & { markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] }) {
+}: AssistantMessageBodyProps & {
+  markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
+  getToolDisplayName?: (tool: string) => string;
+}) {
   // Layout Lock：流式开始时记录高度并锁定 minHeight，防止结束时收缩跳动
   const bubbleRef = useRef<HTMLDivElement>(null);
   const lockedHeightRef = useRef<number>(0);
@@ -522,12 +577,54 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
     );
   }
 
+  // ── B3 inline：工具卡片按段序穿插进正文流（对齐 Claude Code 结构）──────────
+  // 前缀(最后文本段之前的 preamble + 工具) → 主体(最后文本段=最终答案) → 后缀(执行中的工具)
+  const turnSegs = msg.turnSegments;
+  const inlineActive = Array.isArray(turnSegs) && turnSegs.some((s) => s.type === 'tool_use');
+  let lastTextIdx = -1;
+  if (inlineActive && turnSegs) {
+    for (let i = turnSegs.length - 1; i >= 0; i -= 1) {
+      if (turnSegs[i].type === 'text' || turnSegs[i].type === 'final') { lastTextIdx = i; break; }
+    }
+  }
+  const renderInlineRange = (from: number, to: number) => {
+    if (!inlineActive || !turnSegs) return null;
+    return turnSegs.slice(from, to).map((seg) => {
+      if (seg.type === 'tool_use') {
+        const ev = msg.toolEvents?.find((t) => t.callId === seg.meta?.callId);
+        return (
+          <InlineToolCard
+            key={seg.segId}
+            event={ev}
+            toolName={seg.meta?.tool || ev?.tool || ''}
+            getToolDisplayName={getToolDisplayName}
+          />
+        );
+      }
+      const c = getAssistantVisibleMain(seg.content || '').trim();
+      if (!c) return null;
+      return (
+        <div key={seg.segId} className="inline-preamble">
+          <FinalizedMarkdownContent
+            messageId={msg.id}
+            segmentKey={`pre-${seg.segId}`}
+            content={c}
+            markdownComponents={markdownComponents}
+            streaming
+          />
+        </div>
+      );
+    });
+  };
+  const prefixEnd = lastTextIdx < 0 ? (turnSegs?.length ?? 0) : lastTextIdx;
+
   return (
     <div
       ref={bubbleRef}
       className="msg-assistant-body"
-      style={isStreamingMsg ? { display: 'flex', flexDirection: 'column' } : undefined}
+      style={isStreamingMsg || inlineActive ? { display: 'flex', flexDirection: 'column' } : undefined}
     >
+      {inlineActive && renderInlineRange(0, prefixEnd)}
       {segments && segments.length > 0 ? (
         <>
           {(() => {
@@ -705,6 +802,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
           )}
         </>
       )}
+      {inlineActive && lastTextIdx >= 0 && turnSegs && renderInlineRange(lastTextIdx + 1, turnSegs.length)}
       {isStreamingMsg && <TypewriterCursor show />}
     </div>
   );
@@ -716,7 +814,11 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
     prev.isLastAssistant === next.isLastAssistant &&
     prev.markdownComponents === next.markdownComponents &&
     prev.segments === next.segments &&
-    prev.optionsToShow === next.optionsToShow
+    prev.optionsToShow === next.optionsToShow &&
+    // B3 inline：段快照/工具事件变化时需重渲染，驱动 inline 卡片更新
+    prev.msg.turnSegments === next.msg.turnSegments &&
+    prev.msg.toolEvents === next.msg.toolEvents &&
+    prev.getToolDisplayName === next.getToolDisplayName
 );
 
 /** 单行消息外壳（不设 memo：子树由 ChatMessageItem 控制） */
@@ -804,11 +906,15 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     agentPhase === 'thinking';
 
   const shouldShowActivityPanel = msg.role === 'assistant' && !!isLastAssistant;
+  // B3 inline：工具卡片已穿插进正文流时，把工具从顶部活动面板剔除（只留思考/CoT），避免重复展示。
+  const inlineToolsActive = Array.isArray(msg.turnSegments) && msg.turnSegments.some((s) => s.type === 'tool_use');
+  const dropToolEntries = (entries: ActivityEntry[]) =>
+    inlineToolsActive ? entries.filter((e) => e.type !== 'tool_call' && e.type !== 'tool_result') : entries;
   const finalizedTimeline = shouldShowActivityPanel && !isStreamingMsg
-    ? buildFinalizedTimeline(msg, showCotInline ? (cotContent ?? '') : null)
+    ? dropToolEntries(buildFinalizedTimeline(msg, showCotInline ? (cotContent ?? '') : null))
     : [];
   const streamingTimeline = shouldShowActivityPanel && isStreamingMsg
-    ? activityTimeline
+    ? dropToolEntries(activityTimeline)
     : [];
   const panelStreamingFlag = shouldShowActivityPanel
     ? (isStreamingMsg && (showCotStreaming || showLightweightThinkingBadge || inlineThinkingPlaceholder || agentPhase !== 'idle'))
@@ -853,6 +959,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             usePlainStreamingText={usePlainStreamingText}
             useStructuredStreamingMarkdown={useStructuredStreamingMarkdown}
             awaitingFinalAnswer={awaitingFinalAnswer}
+            getToolDisplayName={getToolDisplayName}
             markdownComponents={markdownComponents}
           />
         ) : (
