@@ -68,6 +68,7 @@ function scorePromotion(record = {}) {
   if (/(决定|规范|约定|架构|项目|发布|完成)/.test(userMsg)) score += 2;
   if (uri.startsWith('project://')) score += 2;
   if (uri.startsWith('core://my_user/preferences') || uri.startsWith('core://my_user/profile')) score += 2;
+  if (uri.startsWith('core://my_user/projects')) score += 3;
   if (uri.startsWith('core://agent/')) score += 1;
   if (content.length > 0 && content.length <= 80) score += 1;
   if (disclosure) score += 1;
@@ -184,12 +185,26 @@ function buildReviewQueueRecord(record = {}, options = {}) {
   return JSON.stringify(payload, null, 2);
 }
 
+const CORRECTION_SEMANTIC_RE = /(不是|并非|不要再?(说|提|混淆|当成)|别再?(说|提)|没有这).{0,40}(项目|书|小说|名字|叫做?|创作|作品)|(清理|清除|删除|忘记|更新|修正|纠正).{0,15}(记忆|记录|内容|信息)|(搞错|弄错|搞混|混淆)了/;
+
 function routeRecord(record = {}) {
   const sanitized = sanitizeRecord(record);
-  const layer = classifyRecord(sanitized);
-  const uri = String(sanitized.uri || '');
+  let uri = String(sanitized.uri || '');
   const content = String(sanitized.content || '');
+  const userMsg = String(sanitized.userMsg || '');
   const source = String(sanitized.source || '');
+
+  if (uri && !uri.startsWith('core://agent/corrections') && !uri.startsWith('core://agent/review_queue')) {
+    const probe = `${userMsg}\n${content}`;
+    if (CORRECTION_SEMANTIC_RE.test(probe)) {
+      const redirected = `core://agent/corrections/${slugify(uri)}`;
+      log.info('routeRecord redirect_to_corrections', { source, from: uri, to: redirected });
+      sanitized.uri = redirected;
+      uri = redirected;
+    }
+  }
+
+  let layer = classifyRecord(sanitized);
 
   if (!uri || !content) {
     const result = { decision: 'reject', reason: 'missing_uri_or_content', layer };

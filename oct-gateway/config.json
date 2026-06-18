@@ -1,7 +1,7 @@
 {
   "GOOGLE_AI_API_KEY": "",
   "GOOGLE_AI_BASE_URL": "https://aiplatform.googleapis.com/v1beta1/projects/gemini-key-493216/locations/us-central1/endpoints/openapi",
-  "GOOGLE_HTTPS_PROXY": "http://127.0.0.1:10808",
+  "GOOGLE_HTTPS_PROXY": "http://127.0.0.1:7897",
   "GOOGLE_TOOLS_MODE": "on",
   "CUSTOM_MODEL_SUPPORTS_TOOLS": true,
   "MINIMAX_TEMPERATURE": 0.7,
@@ -59,6 +59,6 @@
     "api_key": ""
   },
   "OCT_PROVIDER": "google",
-  "OCT_MODEL": "google/gemini-3.1-flash-lite-preview",
+  "OCT_MODEL": "google/gemini-3.5-flash",
   "CUSTOM_MODEL": ""
 }

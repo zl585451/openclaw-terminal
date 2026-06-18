@@ -376,10 +376,66 @@ const MODEL_REGISTRY = {
     maxTokens: 4096,
   },
   // ─── Google Gemini（OpenAI 兼容端点 generativelanguage…/v1beta/openai）───
+  'gemini-3.5-flash': {
+    provider: 'google',
+    label: 'Gemini 3.5 Flash',
+    supportsTools: true,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 65535,
+  },
+  'gemini-3.1-pro-preview': {
+    provider: 'google',
+    label: 'Gemini 3.1 Pro Preview',
+    supportsTools: true,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 65536,
+  },
+  'gemini-3.1-pro-preview-customtools': {
+    provider: 'google',
+    label: 'Gemini 3.1 Pro Preview Custom Tools',
+    supportsTools: true,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 65536,
+  },
+  'gemini-3-flash-preview': {
+    provider: 'google',
+    label: 'Gemini 3 Flash Preview',
+    supportsTools: true,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 65536,
+  },
+  'gemini-3.1-flash-lite': {
+    provider: 'google',
+    label: 'Gemini 3.1 Flash-Lite',
+    supportsTools: true,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 65535,
+  },
+  'gemini-3.1-flash-lite-preview': {
+    provider: 'google',
+    label: 'Gemini 3.1 Flash-Lite Preview',
+    supportsTools: true,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 65535,
+  },
+  'gemini-2.5-pro': {
+    provider: 'google',
+    label: 'Gemini 2.5 Pro',
+    supportsTools: true,
+    supportsStreamOptions: false,
+    supportsThinking: true,
+    maxTokens: 8192,
+  },
   'gemini-2.5-flash': {
     provider: 'google',
     label: 'Gemini 2.5 Flash',
-    supportsTools: false,
+    supportsTools: true,
     supportsStreamOptions: false,
     supportsThinking: true,
     maxTokens: 8192,
@@ -387,63 +443,7 @@ const MODEL_REGISTRY = {
   'gemini-2.5-flash-lite': {
     provider: 'google',
     label: 'Gemini 2.5 Flash-Lite',
-    supportsTools: false,
-    supportsStreamOptions: false,
-    supportsThinking: true,
-    maxTokens: 8192,
-  },
-  'gemini-2.5-pro': {
-    provider: 'google',
-    label: 'Gemini 2.5 Pro',
-    supportsTools: false,
-    supportsStreamOptions: false,
-    supportsThinking: true,
-    maxTokens: 8192,
-  },
-  'gemini-3-flash-preview': {
-    provider: 'google',
-    label: 'Gemini 3 Flash Preview',
-    supportsTools: false,
-    supportsStreamOptions: false,
-    supportsThinking: true,
-    maxTokens: 8192,
-  },
-  'gemini-3.1-pro-preview': {
-    provider: 'google',
-    label: 'Gemini 3.1 Pro Preview',
-    supportsTools: false,
-    supportsStreamOptions: false,
-    supportsThinking: true,
-    maxTokens: 8192,
-  },
-  'gemini-3.1-flash-lite-preview': {
-    provider: 'google',
-    label: 'Gemini 3.1 Flash-Lite Preview',
-    supportsTools: false,
-    supportsStreamOptions: false,
-    supportsThinking: true,
-    maxTokens: 8192,
-  },
-  'gemini-3.1-flash-lite': {
-    provider: 'google',
-    label: 'Gemini 3.1 Flash-Lite',
-    supportsTools: false,
-    supportsStreamOptions: false,
-    supportsThinking: true,
-    maxTokens: 8192,
-  },
-  'gemini-3.1-flash': {
-    provider: 'google',
-    label: 'Gemini 3.1 Flash',
-    supportsTools: false,
-    supportsStreamOptions: false,
-    supportsThinking: true,
-    maxTokens: 8192,
-  },
-  'gemini-3.1-pro': {
-    provider: 'google',
-    label: 'Gemini 3.1 Pro',
-    supportsTools: false,
+    supportsTools: true,
     supportsStreamOptions: false,
     supportsThinking: true,
     maxTokens: 8192,
@@ -681,6 +681,25 @@ function detectModelFamily(modelId) {
   if (s.includes('kimi') || s.includes('moonshot')) return 'kimi';
   if (s.includes('gpt') || s.includes('o1') || s.includes('o3')) return 'openai';
   return 'unknown';
+}
+
+function normalizeGoogleProviderModelId(modelId, knownModelIds = []) {
+  const raw = String(modelId || '').trim();
+  if (!raw || raw.startsWith('__')) return raw;
+  const withoutProviderPrefix = raw.toLowerCase().startsWith('google/')
+    ? raw.slice('google/'.length)
+    : raw;
+  const aliasMap = {
+    'gemini-2.5-pro-preview-03-25': 'gemini-2.5-pro',
+    'gemini-2.5-flash-preview-04-17': 'gemini-2.5-flash',
+    'gemini-2.0-flash-001': 'gemini-2.0-flash',
+    'gemini-3-pro-preview': 'gemini-3.1-pro-preview',
+    'gemini-3.1-flash-lite-preview': 'gemini-3.1-flash-lite',
+  };
+  const normalized = aliasMap[withoutProviderPrefix] || withoutProviderPrefix;
+  const known = new Set((knownModelIds || []).map((id) => String(id || '').trim()));
+  if (known.has(`google/${normalized}`)) return `google/${normalized}`;
+  return known.has(normalized) ? normalized : raw;
 }
 
 function buildModelIdCandidates(modelId) {
@@ -943,6 +962,13 @@ function getProviderConfig() {
   }
   if (isGoogle && _currentModel === '__custom__' && _fileConfig.CUSTOM_MODEL) {
     effectiveModel = String(_fileConfig.CUSTOM_MODEL).trim();
+  }
+  if (isGoogle && effectiveModel && effectiveModel !== '__custom__') {
+    effectiveModel = normalizeGoogleProviderModelId(
+      effectiveModel,
+      (preset.models || []).map((model) => model.id),
+    );
+    _currentModel = effectiveModel;
   }
   const customModelSupportsTools = readOptionalBoolConfig('CUSTOM_MODEL_SUPPORTS_TOOLS');
 

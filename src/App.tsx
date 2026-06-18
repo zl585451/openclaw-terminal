@@ -1,33 +1,86 @@
-import React, { Suspense, useState, useEffect, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import TitleBar from './components/TitleBar';
 import TabBar from './components/TabBar';
 import type { ChatMessage } from './ui/chat/chatTypes';
+import type { ChatHistoryItem, ConversationMeta } from './types/electronAPI';
 import WorkbenchHost from './components/workbench/WorkbenchHost';
 import FirstLaunchSetup from './components/FirstLaunchSetup';
 import { ThemeProvider } from './themes/ThemeProvider';
 import { WorkbenchProvider } from './workbench/WorkbenchContext';
 import ChatTab from './ui/chat/ChatTab.v2';
-import SoundTab from './components/SoundTab';
-import ReaperTab from './components/ReaperTab';
 import SettingsPanel from './ui/settings/SettingsPanel';
 import { ScriptAdapterApp } from './modules/script-adapter';
 import './styles/App.css';
 
-export type TabType = 'chat' | 'sound' | 'reaper';
-type AppView = 'chat' | 'script-adapter';
-type ScriptAdapterEntry = 'home' | 'workspace' | 'library';
+export type TabType = 'chat' | 'workspace' | 'library';
 
 const App: React.FC = () => {
-  const [appView, setAppView] = useState<AppView>('chat');
-  const [scriptAdapterEntry, setScriptAdapterEntry] = useState<ScriptAdapterEntry>('home');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
-  const [vaultOpen, setVaultOpen] = useState(false);
-  const [vaultUnlocked, setVaultUnlocked] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [showFirstLaunchSetup, setShowFirstLaunchSetup] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const messageIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── 多对话状态 ───────────────────────────────────────────
+  const [conversations, setConversations] = useState<ConversationMeta[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string>('main');
+  const activeIdRef = useRef<string>('main');
+  const conversationsRef = useRef<ConversationMeta[]>([]);
+  // 切换/新建对话后会主动 setMessages，下一次保存副作用要跳过，避免把刚载入的消息回写错对象
+  const skipNextSaveRef = useRef(false);
+
+  const persistIndex = useCallback((next: ConversationMeta[]) => {
+    conversationsRef.current = next;
+    setConversations(next);
+    window.electronAPI?.conversationsSave?.(next);
+  }, []);
+
+  const loadConversationMessages = useCallback(async (id: string) => {
+    const items = (await window.electronAPI?.conversationMessagesLoad?.(id)) || [];
+    const msgs: ChatMessage[] = items.map((m, i) => ({
+      id: i + 1,
+      role: (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'user',
+      content: m.content || '',
+      timestamp: m.timestamp || '',
+      isSystemReply: m.isSystemReply,
+    }));
+    skipNextSaveRef.current = true;
+    setMessages(msgs);
+    messageIdRef.current = msgs.length;
+    activeIdRef.current = id;
+    setActiveConversationId(id);
+    await window.electronAPI?.setSession?.(id);
+  }, []);
+
+  const handleNewConversation = useCallback(async () => {
+    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `c${Date.now()}`;
+    const meta: ConversationMeta = { id, title: '新对话', updatedAt: Date.now(), preview: '' };
+    persistIndex([meta, ...conversationsRef.current]);
+    skipNextSaveRef.current = true;
+    setMessages([]);
+    messageIdRef.current = 0;
+    activeIdRef.current = id;
+    setActiveConversationId(id);
+    await window.electronAPI?.setSession?.(id);
+  }, [persistIndex]);
+
+  const handleSwitchConversation = useCallback(async (id: string) => {
+    if (id === activeIdRef.current) return;
+    await loadConversationMessages(id);
+  }, [loadConversationMessages]);
+
+  const handleDeleteConversation = useCallback(async (id: string) => {
+    await window.electronAPI?.conversationDelete?.(id);
+    let next = conversationsRef.current.filter((c) => c.id !== id);
+    if (next.length === 0) {
+      next = [{ id: 'main', title: '新对话', updatedAt: Date.now(), preview: '' }];
+    }
+    persistIndex(next);
+    if (id === activeIdRef.current) {
+      await loadConversationMessages(next[0].id);
+    }
+  }, [persistIndex, loadConversationMessages]);
 
   // 消息数量上限：防止 messages 数组无限膨胀，保持内存占用稳定
   const MAX_MESSAGES = 200;
@@ -41,24 +94,20 @@ const App: React.FC = () => {
     setMessages((prev) => prev.slice(firstNonStreamingIdx));
   }, [messages.length]);
 
+  // 启动：载入对话索引（首次会自动把老的单一历史迁移成「默认对话」），打开最近一条
   useEffect(() => {
-    const load = window.electronAPI?.chatHistoryLoad;
-    if (load) {
-      load().then((items: Array<{ role: string; content: string; timestamp: string; isSystemReply?: boolean }>) => {
-        if (Array.isArray(items) && items.length > 0) {
-          const msgs: ChatMessage[] = items.map((m, i) => ({
-            id: i + 1,
-            role: (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'user',
-            content: m.content || '',
-            timestamp: m.timestamp || '',
-            isSystemReply: m.isSystemReply,
-          }));
-          setMessages(msgs);
-          messageIdRef.current = msgs.length;
-        }
-      });
-    }
-  }, []);
+    const api = window.electronAPI;
+    const loadIndex = api?.conversationsLoad;
+    if (!loadIndex) return;
+    (async () => {
+      const list = (await loadIndex()) || [];
+      const sorted = [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+      const ensured = sorted.length ? sorted : [{ id: 'main', title: '新对话', updatedAt: Date.now(), preview: '' }];
+      conversationsRef.current = ensured;
+      setConversations(ensured);
+      await loadConversationMessages(ensured[0].id);
+    })();
+  }, [loadConversationMessages]);
 
   useEffect(() => {
     const dismissed = localStorage.getItem('oct-first-launch-setup-dismissed');
@@ -90,14 +139,32 @@ const App: React.FC = () => {
     setShowFirstLaunchSetup(false);
   };
 
+  // 保存当前对话消息 + 更新索引元数据（标题/预览/时间）。切换载入触发的那次跳过。
   useEffect(() => {
-    const toSave = messages
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
+    const toSave: ChatHistoryItem[] = messages
       .filter((m) => !m.isStreaming)
       .map((m) => ({ role: m.role, content: m.content, timestamp: String(m.timestamp ?? ''), isSystemReply: m.isSystemReply }));
     if (toSave.length === 0) return;
+    const id = activeIdRef.current;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      window.electronAPI?.chatHistorySave?.(toSave);
+      window.electronAPI?.conversationMessagesSave?.(id, toSave);
+      // 更新索引：标题仍为占位「新对话」时用首条用户消息生成，预览取最后一条
+      const firstUser = toSave.find((m) => m.role === 'user');
+      const lastMsg = toSave[toSave.length - 1];
+      const next = conversationsRef.current.map((c) => {
+        if (c.id !== id) return c;
+        const title = (c.title && c.title !== '新对话') ? c.title
+          : (firstUser ? String(firstUser.content).replace(/\s+/g, ' ').slice(0, 20) || '新对话' : c.title);
+        return { ...c, title, updatedAt: Date.now(), preview: lastMsg ? String(lastMsg.content).slice(0, 60) : c.preview };
+      });
+      conversationsRef.current = next;
+      setConversations(next);
+      window.electronAPI?.conversationsSave?.(next);
       saveTimerRef.current = null;
     }, 500);
     return () => {
@@ -106,11 +173,6 @@ const App: React.FC = () => {
   }, [messages]);
 
   const getNextMessageId = () => ++messageIdRef.current;
-
-  const openScriptAdapter = (entry: ScriptAdapterEntry) => {
-    setScriptAdapterEntry(entry);
-    setAppView('script-adapter');
-  };
 
   return (
     <ThemeProvider>
@@ -130,69 +192,34 @@ const App: React.FC = () => {
         
         {/* 标签栏 + 右侧 portal 插槽 */}
         <div className="app-shell-bar">
-          {appView === 'chat' ? (
-            <>
-              <TabBar
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
-                vaultOpen={vaultOpen}
-                setVaultOpen={setVaultOpen}
-                vaultUnlocked={vaultUnlocked}
-                onVaultStatusChange={(s) => setVaultUnlocked(s?.unlocked ?? false)}
-              />
-              <div className="app-shell-actions">
-                <button
-                  type="button"
-                  className="script-adapter-entry-button"
-                  data-entry-tone="library"
-                  onClick={() => openScriptAdapter('library')}
-                >
-                  📚 项目素材库
-                </button>
-                <button
-                  type="button"
-                  className="script-adapter-entry-button"
-                  data-temp-entry="script-adapter"
-                  onClick={() => openScriptAdapter('home')}
-                >
-                  内容制作工作台
-                </button>
-                <div id="chat-header-portal" />
-              </div>
-            </>
-          ) : (
-            <div className="app-shell-module-title">内容创作</div>
-          )}
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <div id="chat-header-portal" />
         </div>
 
         {/* 内容区域 */}
         <div className="content-area">
-          {appView === 'chat' ? (
-            <>
-              {activeTab === 'chat' && (
-                <Suspense fallback={null}>
-                  <ChatTab
-                    messages={messages}
-                    setMessages={setMessages}
-                    getNextMessageId={getNextMessageId}
-                    onStatusChange={() => {}}
-                    onSwitchTab={setActiveTab}
-                  />
-                </Suspense>
-              )}
-              <Suspense fallback={null}>
-                {activeTab === 'sound' && <SoundTab />}
-              </Suspense>
-              <Suspense fallback={null}>
-                {activeTab === 'reaper' && <ReaperTab />}
-              </Suspense>
-            </>
-          ) : (
-            <Suspense fallback={<div className="script-adapter-loading">正在加载内容制作工作台...</div>}>
+          {activeTab === 'chat' && (
+            <Suspense fallback={null}>
+              <ChatTab
+                messages={messages}
+                setMessages={setMessages}
+                getNextMessageId={getNextMessageId}
+                onStatusChange={() => {}}
+                onSwitchTab={(tab) => setActiveTab(tab)}
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                onNewConversation={handleNewConversation}
+                onSwitchConversation={handleSwitchConversation}
+                onDeleteConversation={handleDeleteConversation}
+              />
+            </Suspense>
+          )}
+          {(activeTab === 'library' || activeTab === 'workspace') && (
+            <Suspense fallback={<div className="script-adapter-loading">正在加载...</div>}>
               <ScriptAdapterApp
-                key={scriptAdapterEntry}
-                initialScreen={scriptAdapterEntry}
-                onBack={() => setAppView('chat')}
+                key={activeTab}
+                initialScreen={activeTab === 'library' ? 'library' : 'home'}
+                onBack={() => setActiveTab('chat')}
               />
             </Suspense>
           )}

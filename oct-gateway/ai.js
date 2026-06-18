@@ -9,6 +9,10 @@ const log = createLogger('ai');
 const ProviderRouter = require('./runtime/providerRouter');
 const ToolLoop = require('./runtime/toolLoop');
 const {
+  evaluateFinalAnswerGuard,
+  appendFinalAnswerInstruction,
+} = require('./runtime/finalAnswerGuard');
+const {
   validateAndFixMessages,
   truncateHistory,
   getContextUsageRatio,
@@ -212,6 +216,8 @@ async function loadSystemPrompt(promptsDir) {
       'core://agent/rules/output_format',
       'core://agent/rules/dispatch',
       'core://agent/rules/emotion',
+      'core://agent/corrections',
+      'core://agent/corrections/projects',
     ];
 
     let bootMemory = await memory.loadBootMemory(coreUris);
@@ -275,6 +281,7 @@ ${bootMemory}
   });
   const files = [
     'SOUL.md',
+    'EMOTIONAL_CARE.md',
     'AGENTS.md',
     'USER.md',
     'OCT_PROTOCOL.md',
@@ -349,6 +356,11 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
     readTextIfExists(promptsDir ? path.join(promptsDir, 'SOUL.md') : ''),
     5000
   );
+  const emotionalCare = clampPromptBlock(
+    '情感关怀协议（注入）',
+    readTextIfExists(promptsDir ? path.join(promptsDir, 'EMOTIONAL_CARE.md') : ''),
+    6000
+  );
   const agents = clampPromptBlock(
     '任务与交互规范（注入）',
     readTextIfExists(promptsDir ? path.join(promptsDir, 'AGENTS.md') : ''),
@@ -377,7 +389,7 @@ function buildSystemPrompt(memoryContent, source, promptsDir) {
 
 记忆系统有两条链路：
 - 自动链路：Gateway 只会在高置信时注入少量整轮历史回忆；这些内容只是候选上下文，必须和用户当前话题直接相关才可使用
-- 显式链路：当你需要主动回忆、核对或写入记忆时，应直接调用 memory_search / memory_read / memory_vector_search / memory_write 工具，不要只在正文里口头描述“我去查记忆”
+- 显式链路：当你需要主动回忆、核对或写入记忆时，应直接调用 memory_search / memory_read / memory_write 工具，不要只在正文里口头描述“我去查记忆”
 
 **写入记忆**（遇到以下情况自动触发）：
 - 用户说「记住」「记下来」「停车」→ 立即写入
@@ -398,8 +410,8 @@ URI 路径：core://my_user/[分类]/[具体节点]
 **显式工具使用规则**：
 - 当用户问“你还记得吗 / 之前说过什么 / 上次那个方案 / 我们前面怎么定的”时，优先先用 memory_search 搜关键词，不要直接猜
 - memory_search 命中后，如需核对原文或细节，再用 memory_read 读取最相关的 1-2 个节点
-- 当用户问的是“以前关于这个主题聊过哪些内容 / 你自己查一下历史相关数据”，或者只记得大概时间/大概内容/零散线索时，可优先用 memory_vector_search 做语义检索
-- memory_vector_search 返回的是历史候选，不是事实证明；低置信或文本候选必须先说明“不一定就是那条”，再结合用户确认继续
+- 当用户问的是“以前关于这个主题聊过哪些内容 / 你自己查一下历史相关数据”，或者只记得大概时间/大概内容/零散线索时，用 memory_search，mode 设为 vector；明确日期时 mode 设为 date
+- memory_search 的 vector/date 结果是历史候选，不是事实证明；低置信或文本候选必须先说明“不一定就是那条”，再结合用户确认继续
 - 当用户明确要求“记住这件事 / 以后按这个来 / 把这个偏好记下来”时，可显式使用 memory_write
 - 不要假设 Gateway 会替你完成所有显式记忆查询；需要确认时应主动调记忆工具
 - 不要先拍脑袋回答，再补查记忆；涉及“是否记得 / 之前怎么说的”时，优先查再答
@@ -544,6 +556,7 @@ AI · Cursor · Claude 三角协作：
     identityContract,
     '\n\n---\n\n',
     soul ? soul + '\n\n---\n\n' : '',
+    emotionalCare ? emotionalCare + '\n\n---\n\n' : '',
     agents ? agents + '\n\n---\n\n' : '',
     memoryContent,
     '\n\n---\n\n',
@@ -776,6 +789,7 @@ async function streamChatRaw({
   onDone,
   onError,
   onToolEvent,
+  onRoundReset = () => {},
   preserveToolChain = false,
   toolRound = 0,
   toolSignatures = [],
@@ -889,6 +903,9 @@ async function streamChatRaw({
           GOOGLE_AI_BASE_URL: baseUrl,
           GOOGLE_API_MODE: config.GOOGLE_API_MODE || 'native',
           GOOGLE_HTTPS_PROXY: config.GOOGLE_HTTPS_PROXY || '',
+          ALL_PROXY: process.env.ALL_PROXY || process.env.all_proxy || '',
+          HTTPS_PROXY: process.env.HTTPS_PROXY || process.env.https_proxy || '',
+          HTTP_PROXY: process.env.HTTP_PROXY || process.env.http_proxy || '',
           GOOGLE_CLOUD_PROJECT: config.GOOGLE_CLOUD_PROJECT || '',
           GOOGLE_CLOUD_LOCATION: config.GOOGLE_CLOUD_LOCATION || '',
           GOOGLE_GENAI_API_VERSION: config.GOOGLE_GENAI_API_VERSION || '',
@@ -1358,6 +1375,7 @@ async function streamChatRaw({
             onDone,
             onError,
             onToolEvent,
+            onRoundReset,
             flushThinkAtEnd,
             turnId,
             _omniRouteResolved: resolved,
@@ -1408,18 +1426,31 @@ async function streamChatRaw({
     stopHeartbeat();
     log.info('request done', { outputLen: (fullText || '').length, usage: totalUsage || null, responseModel: responseModel || null });
 
-    if (!String(fullText || '').trim() && hasToolEvidence && toolChoice !== 'none' && !_forcedFinalAttempt) {
-      log.warn('empty final answer after tool rounds, retrying once with tool_choice=none', {
+    const finalGuard = evaluateFinalAnswerGuard({
+      text: fullText,
+      hasToolEvidence: hasToolEvidence || preserveToolChain || Number(toolRound) > 0,
+      toolChoice,
+      forcedFinalAttempt: _forcedFinalAttempt,
+    });
+    if (finalGuard.shouldForce) {
+      log.warn('weak final answer after tool rounds, retrying once with tool_choice=none', {
         turnId: turnId || null,
         model: responseModel || model,
         toolRound,
+        reason: finalGuard.reason,
+        outputLen: finalGuard.length,
+        minChars: finalGuard.minChars,
       });
+      if (finalGuard.length > 0 && typeof onRoundReset === 'function') {
+        try { onRoundReset(); } catch {}
+      }
       return await streamChatRaw({
-        messages: effectiveMessages,
+        messages: appendFinalAnswerInstruction(effectiveMessages),
         onDelta,
         onDone,
         onError,
         onToolEvent,
+        onRoundReset,
         preserveToolChain,
         toolRound,
         toolSignatures,
@@ -1443,7 +1474,7 @@ async function streamChatRaw({
       const hasToolCallResidue =
         pseudoResidueDetected
         || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
-        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
+        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|memory_recall|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
       if (hasToolCallResidue) {
         log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
           model: responseModel || model,
@@ -1478,6 +1509,7 @@ async function streamChatRaw({
         onDone,
         onError,
         onToolEvent,
+        onRoundReset,
         flushThinkAtEnd,
         turnId,
         _omniRouteResolved: resolved,

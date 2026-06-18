@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import QuickCommandMenu from '../../components/QuickCommandMenu';
-import { useSettings } from '../../contexts/SettingsContext';
 import type { UploadedFile } from './chatTypes';
 
 const ipcRenderer =
@@ -19,6 +18,7 @@ export interface ChatInputAreaProps {
   uploadedFiles: UploadedFile[];
   setUploadedFiles: React.Dispatch<React.SetStateAction<UploadedFile[]>>;
   onSend: (text: string, imageDataUrl: string | null, files?: UploadedFile[]) => void;
+  onStop?: () => void;
   wsConnected: boolean;
   isStreaming: boolean;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -38,6 +38,7 @@ const ChatInputArea = memo(function ChatInputArea({
   uploadedFiles,
   setUploadedFiles,
   onSend,
+  onStop,
   wsConnected,
   isStreaming,
   inputRef,
@@ -49,8 +50,6 @@ const ChatInputArea = memo(function ChatInputArea({
   extraControls,
   isEmptyConversation = false,
 }: ChatInputAreaProps) {
-  const { settings } = useSettings();
-  const assistantName = settings.aiName || 'OpenClaw';
   const conversationPlaceholder = useMemo(() => {
     if (isEmptyConversation) {
       return '今天想让OCT帮你做什么？';
@@ -66,6 +65,10 @@ const ChatInputArea = memo(function ChatInputArea({
   const [inputFlash, setInputFlash] = useState(false);
 
   const handleSend = useCallback(() => {
+    if (isStreaming) {
+      onStop?.();
+      return;
+    }
     const text = inputValue.trim();
     if (!text && !imagePreview && uploadedFiles.length === 0) return;
     if (text) {
@@ -78,7 +81,7 @@ const ChatInputArea = memo(function ChatInputArea({
     setInputValue('');
     setImagePreview(null);
     setUploadedFiles([]);
-  }, [inputValue, imagePreview, uploadedFiles, wsConnected, onSend, setImagePreview, setUploadedFiles]);
+  }, [imagePreview, inputValue, isStreaming, onSend, onStop, setImagePreview, setUploadedFiles, uploadedFiles]);
 
   const handlePickFiles = async () => {
     const r = await ipcRenderer.invoke('open-file-dialog', { allowMultiple: true });
@@ -237,6 +240,7 @@ const ChatInputArea = memo(function ChatInputArea({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
+              if (isStreaming) return;
               handleSend();
               return;
             }
@@ -277,12 +281,12 @@ const ChatInputArea = memo(function ChatInputArea({
         <button type="button" className="attach-btn" title="添加附件（或拖拽文件到此处）" onClick={handlePickFiles}>📎</button>
         {extraControls}
         <button
-          className="send-btn"
+          className={`send-btn ${isStreaming ? 'send-btn--stop' : ''}`}
           onClick={handleSend}
-          disabled={isStreaming || (!inputValue.trim() && !imagePreview && uploadedFiles.length === 0)}
-          title={isStreaming ? `${assistantName} 正在回复...` : !wsConnected ? '连接..' : undefined}
+          disabled={!isStreaming && (!inputValue.trim() && !imagePreview && uploadedFiles.length === 0)}
+          title={isStreaming ? '停止当前任务' : !wsConnected ? '连接..' : undefined}
         >
-          [ SEND ] →
+          {isStreaming ? '[ STOP ] ■' : '[ SEND ] →'}
           </button>
       </div>
     </>

@@ -1,4 +1,34 @@
 function createPseudoToolCompat({ toolLoader, logger }) {
+  const legacyMemoryToolNames = new Set(['memory_vector_search', 'memory_recall']);
+
+  function normalizeLegacyMemoryToolCall(call) {
+    const toolName = String(call?.function?.name || '').trim();
+    if (!legacyMemoryToolNames.has(toolName)) return call;
+
+    let args = {};
+    try {
+      args = JSON.parse(call?.function?.arguments || '{}');
+    } catch {
+      args = {};
+    }
+
+    if (toolName === 'memory_vector_search') {
+      args.mode = 'vector';
+    } else if (toolName === 'memory_recall') {
+      args.mode = 'date';
+      if (args.keyword && !args.query) args.query = args.keyword;
+    }
+
+    return {
+      ...call,
+      function: {
+        ...(call.function || {}),
+        name: 'memory_search',
+        arguments: JSON.stringify(args),
+      },
+    };
+  }
+
   function buildToolSignature(toolCalls) {
     return JSON.stringify(
       (toolCalls || [])
@@ -199,11 +229,6 @@ function createPseudoToolCompat({ toolLoader, logger }) {
     if (!source || !/<tool_call>/i.test(source)) {
       return [];
     }
-    const knownToolNames = new Set(
-      (toolLoader.getDefinitions?.() || [])
-        .map((def) => String(def?.function?.name || '').trim())
-        .filter(Boolean)
-    );
 
     const callRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
     const calls = [];
@@ -252,7 +277,7 @@ function createPseudoToolCompat({ toolLoader, logger }) {
         let obj;
         try { obj = JSON.parse(jsonHit.jsonStr); } catch { continue; }
         const toolName = obj.name || obj.function?.name;
-        if (!toolName || !knownToolNames.has(String(toolName))) continue;
+        if (!toolName || !isRegisteredToolName(String(toolName))) continue;
 
         let args = obj.arguments ?? obj.args ?? obj.parameters ?? {};
         if (typeof args === 'string') {
@@ -293,6 +318,7 @@ function createPseudoToolCompat({ toolLoader, logger }) {
   function isRegisteredToolName(toolName) {
     const normalized = String(toolName || '').trim();
     if (!normalized) return false;
+    if (legacyMemoryToolNames.has(normalized)) return true;
     return getKnownToolNames().has(normalized);
   }
 
@@ -370,6 +396,7 @@ function createPseudoToolCompat({ toolLoader, logger }) {
       'memory_search',
       'memory_read',
       'memory_vector_search',
+      'memory_recall',
       'exec_command',
     ];
     const toolPattern = new RegExp(`(?:^|\\n|\\s)(${knownTools.join('|')})\\s*\\(`, 'g');
@@ -497,6 +524,8 @@ function createPseudoToolCompat({ toolLoader, logger }) {
       if (Object.keys(args).length === 0) {
         if (toolName === 'web_search' || toolName === 'memory_search' || toolName === 'memory_vector_search') {
           args.query = rawBody.replace(/^query\s*:\s*/i, '').trim();
+        } else if (toolName === 'memory_recall') {
+          args.date = rawBody.replace(/^date\s*:\s*/i, '').trim();
         } else if (toolName === 'web_fetch') {
           args.url = rawBody.replace(/^url\s*:\s*/i, '').trim();
         } else if (toolName === 'read_file' || toolName === 'read_document') {
@@ -541,13 +570,16 @@ function createPseudoToolCompat({ toolLoader, logger }) {
         continue;
       }
 
-      if (!isRegisteredToolName(toolName)) {
+      const normalizedCall = normalizeLegacyMemoryToolCall(call);
+      const normalizedToolName = String(normalizedCall?.function?.name || '').trim();
+
+      if (!isRegisteredToolName(normalizedToolName)) {
         logger.warn('Pseudo tool call intercepted: tool is not registered or allowed', { toolName });
         continue;
       }
 
       try {
-        const argsStr = call?.function?.arguments;
+        const argsStr = normalizedCall?.function?.arguments;
         if (typeof argsStr === 'string') {
           JSON.parse(argsStr);
         } else {
@@ -558,7 +590,7 @@ function createPseudoToolCompat({ toolLoader, logger }) {
         continue;
       }
 
-      validCalls.push(call);
+      validCalls.push(normalizedCall);
     }
 
     return validCalls;

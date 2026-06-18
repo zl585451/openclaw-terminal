@@ -14,9 +14,9 @@
 
 - `memory_read`：读取 Memory v2/legacy 记忆节点，支持 `core://...`。
 - `memory_write`：写入或更新 Memory v2/legacy 记忆节点。默认写到 `~/.openclaw/memory/notes/<domain>/<path>.md`。
-- `memory_search`：按关键词搜索显式 notes 和近 30 天 raw-turn 文本候选。
-- `memory_vector_search`：按语义搜索向量库中的历史对话片段。
-- `memory_recall`：按日期检索原始对话日志。
+- `memory_search`：统一搜索入口。`mode=keyword` 按关键词搜索显式 notes 和 raw-turn 文本候选；`mode=vector` 按语义搜索向量库历史对话片段；`mode=date` 按日期检索原始对话日志；`mode=auto` 先关键词、无命中时尝试向量。
+
+旧的 `memory_vector_search` / `memory_recall` 名称只作为兼容别名保留，不再作为模型可选工具暴露。
 
 ## Memory v2 配置
 
@@ -38,7 +38,7 @@
 自动召回与手动查询使用不同策略：
 
 - 自动召回：严格门控，只注入高置信整轮历史，避免污染当前闲聊。
-- 手动查询：`/recall query` 和 `memory_vector_search` 使用更宽阈值，允许探索低置信候选。
+- 手动查询：`/recall query` 和 `memory_search mode=vector` 使用更宽阈值，允许探索低置信候选。
 - 手动查询结果里的低置信/文本候选只适合核对，不应直接当作确定记忆。
 
 关键召回配置位于 `memory.vectorRecall.recall`：
@@ -50,7 +50,7 @@
 - `minLexicalOverlap`：自动注入所需关键词重叠比例。
 - `candidateTopK`：自动召回第一阶段候选数量。
 
-## `memory_recall` 参数
+## `memory_search mode=date` 参数
 
 - `date`：必填，`YYYY-MM-DD`。
 - `keyword`：可选，按用户消息和助手回复文本做包含匹配。

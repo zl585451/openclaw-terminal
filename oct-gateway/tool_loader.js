@@ -12,6 +12,17 @@ const META_DEFAULTS = { category: 'misc', riskLevel: 'safe' };
 const VALID_CATEGORIES = new Set(['project', 'web', 'memory', 'task', 'system', 'misc']);
 const VALID_RISK_LEVELS = new Set(['safe', 'guarded', 'dangerous']);
 
+function resolveLegacyToolAlias(name, args) {
+  const toolName = String(name || '').trim();
+  if (toolName === 'memory_vector_search') {
+    return { name: 'memory_search', args: { ...(args || {}), mode: 'vector' } };
+  }
+  if (toolName === 'memory_recall') {
+    return { name: 'memory_search', args: { ...(args || {}), mode: 'date' } };
+  }
+  return { name, args };
+}
+
 /**
  * 解析工具可选元数据；缺字段或非法值时用默认值，保证旧工具不报错。
  * @param {object} tool
@@ -124,6 +135,9 @@ function resolveToolContext(name, args) {
 
 async function executeTool(name, args, context) {
   ensureToolsLoaded();
+  const resolved = resolveLegacyToolAlias(name, args);
+  name = resolved.name;
+  args = resolved.args;
   // OCT 定位为系统管家：已注册工具默认允许执行。
   // 如需恢复历史权限闸门，可显式传入 enforceAgentPermission=true。
   if (context?.enforceAgentPermission === true && context?.skipAgentPermission !== true) {

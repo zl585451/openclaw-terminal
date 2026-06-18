@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import { TurnFSM, deriveLegacyFlags, TurnPhase } from '../core/turnFSM';
-import { StreamRouter, StreamState } from '../core/streamRouter';
-import { BlockIngest } from '../core/blockIngest';
 import { useWebSocket } from './useWebSocket';
 import type { WorkbenchRoundtripContext } from '../workbench/types';
 import { workbenchBus } from '../workbench/WorkbenchBus';
@@ -14,6 +12,7 @@ import type { ChatMessage, UploadedFile, ToolEventItem } from '../ui/chat/chatTy
 import type { RenderBlock } from '../types/renderProtocol';
 import type { ClarifyCardSpec } from '../core/clarifyCard/types';
 import { getAssistantVisibleMain, normalizeAssistantTranscriptContent } from '../utils/cotExtract';
+import { emptyTurnSegmentState, orderedSegments, reduceSegmentEvent, type SegmentEvent, type TurnSegment, type TurnSegmentState } from '../core/turnSegments';
 import { parseSystemReplyStatus } from '../utils/systemReplyParser';
 import { resetSoundCounter, type TypingSoundMode } from '../utils/clickSound';
 import { useProject } from '../contexts/ProjectContext';
@@ -21,6 +20,8 @@ import { useTokenUsage } from './useTokenUsage';
 import { useActivityTimeline } from './useActivityTimeline';
 import { useStreamPainting } from './useStreamPainting';
 import type { ActivityEntry } from './useActivityTimeline';
+import { emptyTurnUiState, reduceTurnUi, type TurnUiEvent, type TurnUiState } from '../core/turnUiState';
+export type { TurnUiPhase, TurnUiState } from '../core/turnUiState';
 export type { ActivityEntryType, ActivityEntry } from './useActivityTimeline';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
@@ -29,18 +30,15 @@ function isSystemCommand(text: string): boolean {
   return /^\/\w/.test(t);
 }
 
-function recoverOctStreamFromEndFailure(oct: { stream: StreamRouter; fsm: TurnFSM }): void {
-  try {
-    oct.stream.abortToIdle();
-  } catch {
-    /* ignore */
-  }
+function recoverOctStreamFromEndFailure(oct: { fsm: TurnFSM }): void {
   try {
     if (oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
       oct.fsm.onToken();                  // → STREAMING
     }
-    if (oct.fsm.getPhase() === TurnPhase.STREAMING ||
-        oct.fsm.getPhase() === TurnPhase.STREAM_PAUSED) {
+    if (oct.fsm.getPhase() === TurnPhase.STREAM_PAUSED) {
+      oct.fsm.onStreamResume();            // → STREAMING
+    }
+    if (oct.fsm.getPhase() === TurnPhase.STREAMING) {
       oct.fsm.onStreamEnd();              // → STREAM_COMPLETE
     }
     if (oct.fsm.getPhase() === TurnPhase.STREAM_COMPLETE) {
@@ -60,6 +58,70 @@ export function preferDoneTextWhenMoreComplete(currentRaw: string, doneText: str
   if (!current.trim()) return done;
   if (done.length > current.length) return done;
   return current;
+}
+
+export function shouldSuppressAssistantTextForClarify(pendingClarifyOpen: boolean, doneText: string): boolean {
+  return pendingClarifyOpen && !String(doneText || '').trim();
+}
+
+// 段协议内部重置：新正文段接管显示时清空最后一个流式 assistant 气泡正文。
+// 仍保留气泡本身、工具卡片和段快照，避免上一轮正文与最终答案在同一气泡里累加重复。
+export function clearStreamingBubbleContent<T extends { role: string; isStreaming?: boolean; content?: string }>(
+  messages: T[],
+): T[] {
+  const last = messages[messages.length - 1];
+  if (last?.role === 'assistant' && last.isStreaming) {
+    return messages.map((m, i) =>
+      i === messages.length - 1 ? { ...m, content: '' } : m,
+    );
+  }
+  return messages;
+}
+
+export function markExecutingToolEventsStopped(events: ToolEventItem[] | undefined, now = Date.now()): ToolEventItem[] | undefined {
+  if (!events?.length) return events;
+  let changed = false;
+  const stopped = events.map((event) => {
+    if (event.state !== 'executing') return event;
+    changed = true;
+    const elapsedMs = event.elapsedMs ?? Math.max(0, now - event.startedAt);
+    return {
+      ...event,
+      state: 'error' as const,
+      error: event.error || '任务已停止',
+      resultPreview: event.resultPreview || '已停止当前任务。',
+      elapsedMs,
+    };
+  });
+  return changed ? stopped : events;
+}
+
+export function finalizeStoppedAssistantMessage<T extends {
+  role: string;
+  content?: string;
+  isStreaming?: boolean;
+  isStreamingRaw?: boolean;
+  toolEvents?: ToolEventItem[];
+  turnSegments?: ChatMessage['turnSegments'];
+}>(messages: T[], now = Date.now()): T[] {
+  const last = messages[messages.length - 1];
+  const hasExecutingTool = !!last?.toolEvents?.some((event) => event.state === 'executing');
+  const hasOpenSegment = !!last?.turnSegments?.some((segment) => segment.open);
+  if (!(last?.role === 'assistant' && (last.isStreaming || hasExecutingTool || hasOpenSegment))) return messages;
+
+  const content = typeof last.content === 'string' && last.content.trim()
+    ? last.content
+    : '已停止当前任务。';
+  const toolEvents = markExecutingToolEventsStopped(last.toolEvents, now);
+  const turnSegments = last.turnSegments?.some((segment) => segment.open)
+    ? last.turnSegments.map((segment) => (segment.open ? { ...segment, open: false } : segment))
+    : last.turnSegments;
+
+  return messages.map((msg, idx) =>
+    idx === messages.length - 1
+      ? { ...msg, content, isStreaming: false, isStreamingRaw: false, toolEvents, turnSegments }
+      : msg,
+  );
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -82,7 +144,7 @@ export interface GatewayCapabilities {
 }
 
 export interface UseMessagesOptions {
-  oct: { fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest };
+  oct: { fsm: TurnFSM };
   typewriter: UseTypewriterReturn;
   scroll: {
     reconcile: () => void;
@@ -116,6 +178,7 @@ export interface UseMessagesReturn {
   isStreaming: boolean;
   awaitingResponse: boolean;
   agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+  turnUiState: TurnUiState;
   thinkingElapsed: number;
   activeTools: ActiveTool[];
   activityTimeline: ActivityEntry[];
@@ -133,6 +196,7 @@ export interface UseMessagesReturn {
   streamingDomRef: MutableRefObject<HTMLPreElement | null>;
   sendMessage: (text: string, imageDataUrl: string | null, files?: UploadedFile[], workbenchContext?: WorkbenchRoundtripContext) => Promise<void>;
   quickSend: (content: string) => void;
+  stopCurrentResponse: () => Promise<void>;
 }
 
 export function useMessages({
@@ -158,6 +222,7 @@ export function useMessages({
   // ── State ─────────────────────────────────────────────────────────────────
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [agentPhase, setAgentPhase] = useState<'idle' | 'thinking' | 'typing' | 'tool_executing'>('idle');
+  const [turnUiState, setTurnUiState] = useState<TurnUiState>(() => emptyTurnUiState());
   const [activeTools, setActiveTools] = useState<ActiveTool[]>([]);
   const [gatewayCapabilities, setGatewayCapabilities] = useState<GatewayCapabilities | null>(null);
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
@@ -198,7 +263,18 @@ export function useMessages({
   const pendingFullTextSyncRafRef = useRef<number | null>(null);
   const pendingStreamFinalizeRef = useRef(false);
   const finalizeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // painter 逐字揭示心跳；收尾兜底据此判断 painter 是否仍在推进，避免打断揭示动画
+  const streamPaintLastRevealTsRef = useRef(0);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
+  const pendingClarifyOpenRef = useRef(false);
+  // B2/B3: 段协议状态——按 turnId 累积段。B3 起接管显示。
+  const turnSegmentsRef = useRef<{ turnId?: string; state: TurnSegmentState }>({
+    state: emptyTurnSegmentState(),
+  });
+  // UI-facing projection for activity/status badges; turnFSM owns lifecycle.
+  const turnUiStateRef = useRef<TurnUiState>(emptyTurnUiState());
+  // 当前回合是否有段事件到达（有则以段驱动显示，无则兜底走旧扁平流路径）。
+  const segProtocolActiveRef = useRef(false);
   const lastSentRequestId = useRef<string>('');
   const systemReplyBufferRef = useRef('');
   const roundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -224,8 +300,13 @@ export function useMessages({
     // then complete the turn. If anything throws, force-reset to IDLE so the
     // next turn can start cleanly.
     try {
-      const p = oct.fsm.getPhase();
-      if (p === TurnPhase.STREAMING || p === TurnPhase.STREAM_PAUSED) {
+      if (oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
+        oct.fsm.onToken();        // → STREAMING
+      }
+      if (oct.fsm.getPhase() === TurnPhase.STREAM_PAUSED) {
+        oct.fsm.onStreamResume(); // → STREAMING
+      }
+      if (oct.fsm.getPhase() === TurnPhase.STREAMING) {
         oct.fsm.onStreamEnd();    // → STREAM_COMPLETE
       }
       if (oct.fsm.getPhase() === TurnPhase.STREAM_COMPLETE) {
@@ -236,7 +317,6 @@ export function useMessages({
       console.warn('[useMessages] fsm.onTurnFinish error, force-resetting to IDLE:', e);
       oct.fsm.resetToIdle();
     }
-    oct.ingest.reset();
     setMessages((prev) => {
       const last = prev[prev.length - 1];
       if (last?.role === 'assistant' && last.isStreaming) {
@@ -256,6 +336,12 @@ export function useMessages({
     }
     finalizeFallbackTimerRef.current = setTimeout(() => {
       finalizeFallbackTimerRef.current = null;
+      // painter 仍在逐字揭示（最近 160ms 内有揭示）→ 顺延兜底，别打断打字机动画。
+      // 仅当 painter 真正停止推进时才强制定稿。
+      if (performance.now() - streamPaintLastRevealTsRef.current < 160) {
+        scheduleFinalizeFallback(rawText);
+        return;
+      }
       const fallbackRaw = normalizeAssistantTranscriptContent(rawText ?? fullTextRef.current ?? '');
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -293,6 +379,7 @@ export function useMessages({
         finalizeStreamingAssistantMessage,
         pendingStreamFinalizeRef,
         lastStreamReconcileMsRef,
+        lastRevealTsRef: streamPaintLastRevealTsRef,
       },
     },
     setMessages,
@@ -333,10 +420,19 @@ export function useMessages({
     }
   }, []);
 
+  const reduceTurnUiRef = useCallback((event: TurnUiEvent) => {
+    setTurnUiState((current) => {
+      const next = reduceTurnUi(current, event);
+      turnUiStateRef.current = next;
+      return next;
+    });
+  }, []);
+
   const startRoundTimeout = useCallback(() => {
     clearRoundTimeout();
     roundTimeoutRef.current = setTimeout(() => {
       roundTimeoutRef.current = null;
+      reduceTurnUiRef({ kind: 'error', message: 'Round timed out' });
       setAwaitingResponse(false);
       setAgentPhase('idle');
       setActiveTools([]);
@@ -370,21 +466,103 @@ export function useMessages({
         ];
       });
       try {
-        oct.stream.abortToIdle();
-      } catch {}
-      try {
         recoverOctStreamFromEndFailure(oct);
       } catch {}
     }, ROUND_TIMEOUT_MS);
-  }, [ROUND_TIMEOUT_MS, clearRoundTimeout, getNextMessageId, oct, setMessages]);
+  }, [ROUND_TIMEOUT_MS, clearRoundTimeout, getNextMessageId, oct, reduceTurnUiRef, setMessages]);
 
   // ── useWebSocket ──────────────────────────────────────────────────────────
   const ws = useWebSocket({
+    onChatSeg: (seg, turnId) => {
+      const currentTurnId = lastSentRequestId.current;
+      if (turnId && currentTurnId && turnId !== currentTurnId) return;
+      // 新回合：重置段状态
+      const slot = turnSegmentsRef.current;
+      if (turnId && slot.turnId !== turnId) {
+        slot.turnId = turnId;
+        slot.state = emptyTurnSegmentState();
+      }
+      slot.state = reduceSegmentEvent(slot.state, seg as unknown as SegmentEvent);
+
+      // ── B3 渲染切换 ────────────────────────────────────────────────────────
+      const s = seg as unknown as SegmentEvent;
+      if (s.op === 'delta') {
+        const activeSeg = slot.state.segments[s.segId] as TurnSegment | undefined;
+        if (activeSeg && (activeSeg.type === 'text' || activeSeg.type === 'final')) {
+          reduceTurnUiRef({ kind: 'seg_text_delta' });
+        }
+      }
+
+      // 新可见正文段开启：段协议激活 + 如果已有旧正文段则清空显示（自动 reset）
+      if (s.op === 'open' && (s.type === 'text' || s.type === 'final')) {
+        segProtocolActiveRef.current = true;
+        const newSegId = s.segId;
+        const hasOlderTextSeg = slot.state.order
+          .filter((id) => id !== newSegId)
+          .some((id) => {
+            const prior = slot.state.segments[id] as TurnSegment | undefined;
+            return prior?.type === 'text' || prior?.type === 'final';
+          });
+        if (hasOlderTextSeg) {
+          // 工具调用后新一轮文字段开始——清空流式气泡正文，等最终答案填充
+          streamingMessageRef.current = '';
+          fullTextRef.current = '';
+          systemReplyBufferRef.current = '';
+          setStreamingRenderText('');
+          if (streamingDomRef.current) {
+            try { streamingDomRef.current.textContent = ''; } catch {}
+          }
+          setMessages((prev) => clearStreamingBubbleContent(prev));
+        }
+      }
+
+      // 正文段增量：用段内容驱动 fullTextRef（跨段永不拼接）
+      if (s.op === 'delta') {
+        const activeSeg = slot.state.segments[s.segId] as TurnSegment | undefined;
+        if (activeSeg && (activeSeg.type === 'text' || activeSeg.type === 'final')) {
+          setAwaitingResponse(false);
+          setAgentPhase('typing');
+          // 只取本段内容——不跨段累加，这正是根治重复的关键
+          fullTextRef.current = activeSeg.content;
+          streamingMessageRef.current = activeSeg.content;
+          scheduleCotSyncFromFullText(fullTextRef.current);
+          if (oct.fsm.getPhase() === TurnPhase.STREAM_OPEN) {
+            try { oct.fsm.onToken(); } catch {}
+          }
+          startPainting();
+          ensureStreamingAssistantMessage();
+        }
+      }
+
+      // ── B3 inline：段边界（开/合）时把有序段快照挂到流式气泡 ───────────────
+      // 仅在结构变化时更新（非每字），驱动 inline 工具卡片在正文流中按序渲染。
+      if (s.op === 'open' || s.op === 'close') {
+        const snapshot = orderedSegments(slot.state).map((seg2) => ({
+          segId: seg2.segId,
+          index: seg2.index,
+          type: seg2.type,
+          content: seg2.content,
+          open: seg2.open,
+          ...(seg2.meta ? { meta: seg2.meta } : {}),
+        }));
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (!(last?.role === 'assistant' && last.isStreaming)) return prev;
+          return prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, turnSegments: snapshot } : m,
+          );
+        });
+      }
+    },
     onChatDelta: (content, isDelta, isSystemReply, turnId) => {
       const currentTurnId = lastSentRequestId.current;
       if (turnId && currentTurnId && turnId !== currentTurnId) return;
       if (!content) return;
+      // B3：段协议激活时，文字增量由 onChatSeg 驱动，跳过扁平流处理（防双写）。
+      // done=false 的 delta 跳过；done=true（最终文本快照）仍走下面 onChatDone 处理。
+      if (!isSystemReply && isDelta && segProtocolActiveRef.current) return;
       if (!isSystemReply) {
+        if (isDelta) reduceTurnUiRef({ kind: 'seg_text_delta' });
         setAwaitingResponse(false);
         if (isDelta) setAgentPhase('typing');
       }
@@ -424,6 +602,7 @@ export function useMessages({
       pendingSystemReplyMap.current.delete(systemReplyKey);
 
       if (!systemReply) {
+        reduceTurnUiRef({ kind: 'done' });
         setAwaitingResponse(false);
         setAgentPhase('idle');
         setActiveTools([]);
@@ -431,29 +610,41 @@ export function useMessages({
       }
 
       if (!systemReply) {
+        const shouldSuppressClarifyText = shouldSuppressAssistantTextForClarify(
+          pendingClarifyOpenRef.current,
+          content,
+        );
+        pendingClarifyOpenRef.current = false;
+        if (shouldSuppressClarifyText) {
+          streamingMessageRef.current = '';
+          fullTextRef.current = '';
+          setStreamingRenderText('');
+          pendingStreamFinalizeRef.current = false;
+          stopPainting();
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant' && last.isStreaming) {
+              return prev.slice(0, -1);
+            }
+            return prev;
+          });
+          recoverOctStreamFromEndFailure(oct);
+          return;
+        }
         const fallbackText = normalizeAssistantTranscriptContent(String(content || '').trim());
-        const finalText = preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
+        // B3：段协议激活时信任 fullTextRef（段派生，仅含最终答案段）。
+        // 旧路径的 done.content 是所有轮次正文的拼接，用它覆盖会把工具前正文带回来。
+        const finalText = segProtocolActiveRef.current
+          ? (fullTextRef.current || fallbackText)
+          : preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
         if (finalText !== fullTextRef.current) {
           streamingMessageRef.current = finalText;
           fullTextRef.current = finalText;
           ensureStreamingAssistantMessage();
         }
-        try {
-          oct.stream.end();
-          scheduleFinalizeFallback(finalText);
-        } catch {
-          recoverOctStreamFromEndFailure(oct);
-          const fb = finalText;
-          if (fb) {
-            streamingMessageRef.current = fb;
-            fullTextRef.current = fb;
-            pendingStreamFinalizeRef.current = true;
-            stopPainting();
-            ensureStreamingAssistantMessage();
-          } else {
-            scheduleFinalizeFallback('');
-          }
-        }
+        pendingStreamFinalizeRef.current = true;
+        stopPainting();
+        scheduleFinalizeFallback(finalText);
         return;
       }
 
@@ -520,6 +711,7 @@ export function useMessages({
     },
 
     onAgentPhase: (phase, elapsed) => {
+      reduceTurnUiRef({ kind: 'agent_phase', phase });
       setAgentPhase(phase);
       if (phase === 'thinking' && elapsed != null) setThinkingElapsed(elapsed);
       if (phase === 'idle' || phase === 'typing') setThinkingElapsed(0);
@@ -527,6 +719,7 @@ export function useMessages({
 
     onToolEvent: (payload) => {
       if (payload.type === 'tool_call') {
+        reduceTurnUiRef({ kind: 'tool_call' });
         setActiveTools((prev) => {
           const next = [
             ...prev,
@@ -554,6 +747,11 @@ export function useMessages({
         onToolEventTimeline(payload);
       } else if (payload.type === 'tool_result') {
         const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
+        reduceTurnUiRef(
+          finalState === 'error'
+            ? { kind: 'error', message: payload.error || 'Tool failed' }
+            : { kind: 'tool_result' },
+        );
         setActiveTools((prev) =>
           prev.map((t) =>
             t.callId === payload.callId
@@ -582,10 +780,13 @@ export function useMessages({
     },
 
     onClarifyOpen: (spec) => {
+      reduceTurnUiRef({ kind: 'clarify' });
+      pendingClarifyOpenRef.current = true;
       onClarifyOpen?.(spec);
     },
 
     onKeepalive: (payload) => {
+      reduceTurnUiRef({ kind: 'keepalive', phase: payload?.phase });
       onKeepaliveTimeline(payload);
     },
 
@@ -610,64 +811,6 @@ export function useMessages({
       setFsmPhase(phase);
     });
   }, [oct.fsm]);
-
-  // ── OCT stream subscription ───────────────────────────────────────────────
-  useEffect(() => {
-    const { stream, ingest } = oct;
-
-    const applyRawToMessages = () => {
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && last?.isStreaming) {
-          return prev.map((m, idx) =>
-            idx === prev.length - 1
-              ? (
-                  m.isStreamingRaw
-                    ? m
-                    : { ...m, isStreamingRaw: true }
-                )
-              : m
-          );
-        }
-        return [
-          ...prev,
-          {
-            id: getNextMessageId(),
-            role: 'assistant' as const,
-            content: '',
-            isStreaming: true,
-            isStreamingRaw: true,
-            timestamp: Date.now(),
-          },
-        ];
-      });
-    };
-
-    const unsubscribe = stream.subscribe((event) => {
-      if (event.type === 'tokens') {
-        ingest.ingest(event.payload.batch);
-        const raw = ingest.getAccumulatedRaw();
-        streamingMessageRef.current = raw;
-        fullTextRef.current = raw;
-        applyRawToMessages();
-        startPainting();
-      }
-        if (event.type === 'state' && event.payload.state === StreamState.COMPLETED) {
-        queueMicrotask(() => {
-          // 取消 fallback 定时器：流式结束，由 runStreamPaintTick 负责终止，不需要 fallback 抢先
-          if (finalizeFallbackTimerRef.current != null) {
-            clearTimeout(finalizeFallbackTimerRef.current);
-            finalizeFallbackTimerRef.current = null;
-          }
-          pendingStreamFinalizeRef.current = true;
-          stopPainting();
-          try { stream.close(); } catch (e) { console.warn('[useMessages] stream.close', e); }
-        });
-      }
-    });
-
-    return () => { unsubscribe(); };
-  }, [oct, getNextMessageId, setMessages, startPainting, stopPainting]);
 
   // ── pendingPills: reset on messages change ────────────────────────────────
   useEffect(() => {
@@ -694,6 +837,34 @@ export function useMessages({
     };
   }, [stopPainting]);
 
+  const stopCurrentResponse = useCallback(async () => {
+    clearRoundTimeout();
+    reduceTurnUiRef({ kind: 'cancel' });
+    setAwaitingResponse(false);
+    setAgentPhase('idle');
+    setActiveTools([]);
+    removeTimelineTypes(['keepalive_hint', 'thinking_placeholder']);
+    stopPainting();
+    pendingStreamFinalizeRef.current = false;
+    if (finalizeFallbackTimerRef.current != null) {
+      clearTimeout(finalizeFallbackTimerRef.current);
+      finalizeFallbackTimerRef.current = null;
+    }
+    try {
+      if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
+        oct.fsm.onCancel();
+      }
+    } catch (e) {
+      console.warn('[useMessages] stopCurrentResponse local cleanup', e);
+      try { oct.fsm.resetToIdle(); } catch {}
+    }
+    setMessages((prev) => finalizeStoppedAssistantMessage(prev));
+    const result = await ws.cancel();
+    if (!result?.success) {
+      console.warn('[useMessages] cancel failed:', result);
+    }
+  }, [clearRoundTimeout, oct, reduceTurnUiRef, removeTimelineTypes, setMessages, stopPainting, ws]);
+
   async function _sendMessageCore(options: {
     text: string;
     displayContent: string;
@@ -716,6 +887,8 @@ export function useMessages({
     } = options;
 
     lastSentRequestId.current = newRequestId;
+    reduceTurnUiRef({ kind: 'submit', turnId: newRequestId });
+    segProtocolActiveRef.current = false; // B3：新回合重置，等第一个 seg 事件激活
     const thinkCmdMatch = text.trim().match(/^\/(?:think|cot)\s+(off|low|medium|high)\b/i);
     if (thinkCmdMatch) setThinkMode(thinkCmdMatch[1].toLowerCase());
     pendingSystemReplyMap.current.set(newRequestId, isSystem);
@@ -732,7 +905,6 @@ export function useMessages({
     }
     typewriter.reset();
     resetSoundCounter();
-    oct.ingest.reset();
     if (!isSystem) {
       setAwaitingResponse(true);
       setAgentPhase('thinking');
@@ -769,15 +941,13 @@ export function useMessages({
 
     if (!isSystem) {
       try {
-        oct.stream.abortToIdle();
         if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
           oct.fsm.onCancel();   // STREAMING/… → CANCELLED → IDLE
         }
         oct.fsm.onUserTyping();
         oct.fsm.onUserSubmit();
         oct.fsm.onRequestStart();
-        oct.ingest.reset();
-        oct.stream.open();
+        oct.fsm.onStreamOpen();
       } catch (e) {
         console.warn('[useMessages] oct runtime (_sendMessageCore)', e);
       }
@@ -795,13 +965,16 @@ export function useMessages({
     );
     if (!result?.success && !isSystem) {
       clearRoundTimeout();
+      reduceTurnUiRef({ kind: 'error', message: result?.error || 'Send failed' });
       setAwaitingResponse(false);
       console.warn('[useMessages] Send failed:', result);
       try {
-        oct.stream.abortToIdle();
-        recoverOctStreamFromEndFailure(oct);
+        if (oct.fsm.getPhase() !== TurnPhase.IDLE) {
+          oct.fsm.onError();
+        }
       } catch (e) {
         console.warn('[useMessages] send failed cleanup', e);
+        recoverOctStreamFromEndFailure(oct);
       }
     }
   }
@@ -871,6 +1044,7 @@ export function useMessages({
     isStreaming,
     awaitingResponse,
     agentPhase,
+    turnUiState,
     thinkingElapsed,
     activeTools,
     activityTimeline,
@@ -888,5 +1062,6 @@ export function useMessages({
     streamingDomRef,
     sendMessage,
     quickSend,
+    stopCurrentResponse,
   };
 }

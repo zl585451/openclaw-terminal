@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { preferDoneTextWhenMoreComplete } from '../useMessages';
+import {
+  clearStreamingBubbleContent,
+  finalizeStoppedAssistantMessage,
+  markExecutingToolEventsStopped,
+  preferDoneTextWhenMoreComplete,
+  shouldSuppressAssistantTextForClarify,
+} from '../useMessages';
 import { normalizeAssistantTranscriptContent } from '../../utils/cotExtract';
 
 describe('preferDoneTextWhenMoreComplete', () => {
@@ -11,6 +17,107 @@ describe('preferDoneTextWhenMoreComplete', () => {
 
   it('keeps current text when done text is empty', () => {
     expect(preferDoneTextWhenMoreComplete('已经流式收到的正文', '')).toBe('已经流式收到的正文');
+  });
+});
+
+describe('shouldSuppressAssistantTextForClarify', () => {
+  it('suppresses residual streamed text when clarify card already opened and done text is empty', () => {
+    expect(shouldSuppressAssistantTextForClarify(true, '')).toBe(true);
+  });
+
+  it('does not suppress when clarify was not opened', () => {
+    expect(shouldSuppressAssistantTextForClarify(false, '')).toBe(false);
+  });
+
+  it('does not suppress when a visible done text exists', () => {
+    expect(shouldSuppressAssistantTextForClarify(true, '最终正文')).toBe(false);
+  });
+});
+
+describe('clearStreamingBubbleContent', () => {
+  it('clears the last streaming assistant bubble content but keeps the bubble and tool cards', () => {
+    const input = [
+      { role: 'user', content: '帮我调研一下' },
+      { role: 'assistant', content: '上一轮残留的初稿正文', isStreaming: true, toolEvents: [{ tool: 'web_search' }] },
+    ];
+    const out = clearStreamingBubbleContent(input as any) as any[];
+    expect(out[1].content).toBe('');
+    expect(out[1].isStreaming).toBe(true);
+    expect(out[1].toolEvents).toEqual([{ tool: 'web_search' }]);
+    expect(out[0]).toBe(input[0]); // 其他消息引用不变
+  });
+
+  it('does nothing when the last message is not a streaming assistant bubble', () => {
+    const input = [
+      { role: 'assistant', content: '已完成的回复', isStreaming: false },
+    ];
+    const out = clearStreamingBubbleContent(input as any);
+    expect(out).toBe(input);
+  });
+});
+
+describe('markExecutingToolEventsStopped', () => {
+  it('turns orphaned executing tool events into a stopped terminal state', () => {
+    const out = markExecutingToolEventsStopped([
+      {
+        callId: 'call_1',
+        tool: 'web_search',
+        state: 'executing',
+        args: { query: 'brave search api' },
+        startedAt: 1_000,
+      },
+      {
+        callId: 'call_2',
+        tool: 'web_search',
+        state: 'done',
+        startedAt: 1_500,
+        resultPreview: 'ok',
+      },
+    ], 2_250);
+
+    expect(out?.[0]).toMatchObject({
+      callId: 'call_1',
+      state: 'error',
+      error: '任务已停止',
+      resultPreview: '已停止当前任务。',
+      elapsedMs: 1_250,
+    });
+    expect(out?.[1]).toMatchObject({ callId: 'call_2', state: 'done', resultPreview: 'ok' });
+  });
+});
+
+describe('finalizeStoppedAssistantMessage', () => {
+  it('stops streaming and closes inline tool segments on cancel', () => {
+    const input = [
+      { role: 'user', content: '查一下 brave' },
+      {
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+        isStreamingRaw: true,
+        toolEvents: [{
+          callId: 'call_1',
+          tool: 'web_search',
+          state: 'executing' as const,
+          startedAt: 1_000,
+        }],
+        turnSegments: [{
+          segId: 'seg_tool_1',
+          index: 0,
+          type: 'tool_use' as const,
+          content: '',
+          open: true,
+          meta: { tool: 'web_search', callId: 'call_1' },
+        }],
+      },
+    ];
+
+    const out = finalizeStoppedAssistantMessage(input, 1_500) as any[];
+    expect(out[1].content).toBe('已停止当前任务。');
+    expect(out[1].isStreaming).toBe(false);
+    expect(out[1].isStreamingRaw).toBe(false);
+    expect(out[1].toolEvents[0].state).toBe('error');
+    expect(out[1].turnSegments[0].open).toBe(false);
   });
 });
 

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type React from 'react';
 import type { TurnFSM } from '../core/turnFSM';
-import type { StreamRouter } from '../core/streamRouter';
 import { getAssistantVisibleMain } from '../utils/cotExtract';
 import { playClickSound, type TypingSoundMode } from '../utils/clickSound';
 
-type OctRuntimeLike = { fsm: TurnFSM; stream: StreamRouter };
+type OctRuntimeLike = { fsm: TurnFSM };
 
 type StreamPaintingContext = {
   scrollReconcile: () => void;
@@ -18,6 +17,9 @@ type StreamPaintingContext = {
   finalizeStreamingAssistantMessage: (rawText?: string) => void;
   pendingStreamFinalizeRef: React.MutableRefObject<boolean>;
   lastStreamReconcileMsRef: React.MutableRefObject<number>;
+  /** 逐字揭示进度心跳：painter 每帧揭示新内容时写入 performance.now()，
+   *  供收尾兜底判断"painter 是否仍在推进"，避免兜底打断揭示动画。 */
+  lastRevealTsRef?: React.MutableRefObject<number>;
   /**
    * When a streaming DOM node is available, the paint loop already writes
    * directly to textContent. Publishing the same text back to React on every
@@ -39,7 +41,6 @@ export function useStreamPainting(
   }
   const {
     scrollReconcile,
-    streamSpeedMsRef,
     typingSound,
     typingSoundVolume,
     fullTextRef,
@@ -47,7 +48,7 @@ export function useStreamPainting(
     onVisibleText,
     finalizeStreamingAssistantMessage,
     pendingStreamFinalizeRef,
-    lastStreamReconcileMsRef,
+    lastRevealTsRef,
     publishDomTextToReact = false,
   } = ctx;
 
@@ -70,7 +71,7 @@ export function useStreamPainting(
     const now = performance.now();
     if (!streamPaintLastTsRef.current) streamPaintLastTsRef.current = now;
     const dt = Math.min(80, now - streamPaintLastTsRef.current);
-    if (dt < 24 && !pendingStreamFinalizeRef.current) {
+    if (dt < 16 && !pendingStreamFinalizeRef.current) {
       streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
       return;
     }
@@ -81,94 +82,45 @@ export function useStreamPainting(
     const targetLen = main.length;
     let shown = streamPaintShownLenRef.current;
     if (shown > targetLen) {
+      // 正文变短（新段开始/续轮清空）→ 揭示进度回退到新长度，从头打字
       shown = targetLen;
-      streamPaintShownLenRef.current = shown;
-    }
-    const behind = targetLen - shown;
-
-    if (!el) {
-      if (behind > 0) {
-        let effectiveMs = Math.max(6, streamSpeedMsRef.current);
-        if (!pendingStreamFinalizeRef.current && behind > 80) effectiveMs *= 0.85;
-        if (pendingStreamFinalizeRef.current) effectiveMs = Math.max(6, effectiveMs * 0.75);
-        streamPaintBudgetRef.current += dt / effectiveMs;
-        let step = Math.floor(streamPaintBudgetRef.current);
-        if (step <= 0 && streamPaintBudgetRef.current >= 0.82) step = 1;
-        step = Math.min(behind, Math.max(0, Math.min(step, 4)));
-        if (step > 0) {
-          streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
-          shown = Math.min(targetLen, shown + step);
-          streamPaintShownLenRef.current = shown;
-          publishVisibleText(main.slice(0, shown));
-        }
-        streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-        return;
-      }
-      if (targetLen > 0) {
-        publishVisibleText(main);
-      }
-      if (pendingStreamFinalizeRef.current) {
-        finalizeStreamingAssistantMessage(raw);
-      }
-      return;
     }
 
-    if (behind > 0) {
-      // effectiveMs: controls chars/sec via budget accumulation.
-      // Deliberately avoid large catch-up multipliers — they make text
-      // feel like it "dumps all at once" when the model responds fast.
-      let effectiveMs = Math.max(6, streamSpeedMsRef.current);
-      // Mild catch-up when far behind (still streaming): slightly faster
-      if (!pendingStreamFinalizeRef.current && behind > 80) effectiveMs *= 0.85;
-      // After stream ends: finish at a capped speed, not an instant dump
-      if (pendingStreamFinalizeRef.current) effectiveMs = Math.max(6, effectiveMs * 0.75);
+    const gap = targetLen - shown;
+    if (gap > 0) {
+      // 逐字揭示：每帧只揭示间隙的一部分（下限 2 字）。
+      // 这样无论后端是逐字发，还是 Agent / 强制收尾一次性发一整段，
+      // 前端都按打字机节奏揭示——视觉流式与后端分块彻底解耦。
+      const step = Math.max(2, Math.ceil(gap / 6));
+      shown = Math.min(targetLen, shown + step);
+      if (lastRevealTsRef) lastRevealTsRef.current = now;
+    }
+    streamPaintShownLenRef.current = shown;
 
-      streamPaintBudgetRef.current += dt / effectiveMs;
-      let step = Math.floor(streamPaintBudgetRef.current);
-      if (step <= 0 && streamPaintBudgetRef.current >= 0.82) {
-        step = 1;
-      }
-      // Step cap: 4 chars/tick max — keeps animation visible at any speed setting
-      step = Math.min(behind, Math.max(0, Math.min(step, 4)));
+    const visible = shown >= targetLen ? main : main.slice(0, shown);
 
-      if (step > 0) {
-        streamPaintBudgetRef.current = Math.max(0, streamPaintBudgetRef.current - step);
-        shown = Math.min(targetLen, shown + step);
-        streamPaintShownLenRef.current = shown;
-        const visibleText = main.slice(0, shown);
-        el.textContent = visibleText;
-        if (publishDomTextToReact) publishVisibleText(visibleText);
-        if (typingSound !== 'off') {
-          for (let i = 0; i < step; i++) {
-            playClickSound(typingSound, typingSoundVolume);
-          }
-        }
-      }
-    } else if (targetLen > 0) {
-      el.textContent = main;
-      if (publishDomTextToReact) publishVisibleText(main);
+    if (el) {
+      el.textContent = visible;
+      if (publishDomTextToReact) publishVisibleText(visible);
+    } else if (targetLen > 0 || pendingStreamFinalizeRef.current) {
+      // inline 路径无 <pre> sink，正文经 React state 驱动 markdown 渲染
+      publishVisibleText(visible);
+    }
+    if (gap > 0 && typingSound !== 'off') {
+      playClickSound(typingSound, typingSoundVolume);
     }
 
-    try {
-      const t = performance.now();
-      // 略拉长间隔，减轻与 textContent 触发布局在同一帧内叠 getBoundingClientRect 的「拖住」感
-      if (t - lastStreamReconcileMsRef.current >= 120) {
-        lastStreamReconcileMsRef.current = t;
-        scrollReconcile();
-      }
-    } catch {
-      /* ignore */
-    }
-
-    const rawEnd = fullTextRef.current;
-    const mainEnd = getAssistantVisibleMain(rawEnd).length;
+    // 还没揭示到当前末尾 → 继续下一帧（间隙较大时分帧打完）
+    const mainEnd = getAssistantVisibleMain(fullTextRef.current).length;
     if (streamPaintShownLenRef.current < mainEnd) {
       streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
       return;
     }
 
+    // 已追平当前内容。若流未结束，停帧等待下一个 delta 触发 startPainting() 唤醒；
+    // 若已收到 done（pendingFinalize）则定稿。
     if (pendingStreamFinalizeRef.current) {
-      finalizeStreamingAssistantMessage(rawEnd);
+      finalizeStreamingAssistantMessage(fullTextRef.current);
       if (stopAfterFinalizeRef.current) {
         stopAfterFinalizeRef.current = false;
         if (streamPaintRafRef.current != null) {
@@ -181,6 +133,18 @@ export function useStreamPainting(
       }
     }
   };
+
+  // 用 ResizeObserver 监听流式元素高度变化来触发滚动对齐，
+  // 避免在 RAF 循环里定时调用 getBoundingClientRect 造成 layout thrashing。
+  useEffect(() => {
+    const el = streamingDomRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      try { scrollReconcile(); } catch { /* ignore */ }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
 
   const startPainting = useCallback(() => {
     if (streamPaintRafRef.current != null) return;

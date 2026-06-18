@@ -440,8 +440,10 @@ class ContextBuilder {
     });
     const parts = formatter.formatToParts(now);
     const timeMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const dateStr = `${timeMap.year}-${timeMap.month}-${timeMap.day}`;
     const timeStr = `${timeMap.year}-${timeMap.month}-${timeMap.day} ${timeMap.hour}:${timeMap.minute}:${timeMap.second}`;
-    const timeContext = `\n\n[当前时间] ${timeStr} (UTC+8 柳州)`;
+    const timeContext = `\n\n[当前时间] ${timeStr} (UTC+8 Asia/Shanghai)`
+      + `\n[权威当前日期] 今天是 ${dateStr}。涉及“今天”“最新”“昨天”“本周”等时效判断时，以本条系统注入日期为准；搜索结果中的发布日期只能作为事件日期，不得反推当前日期。`;
     const modelContext = `[当前运行模型] 你当前运行的底层大模型是：\`${this.config.DASHSCOPE_MODEL}\`。当用户问「你是什么大模型」「基于什么模型」时，必须如实回答当前模型名称，严禁说自己是 DeepSeek、GPT、Claude 或其他任何模型。\n\n`;
 
     let knowledgeContext = '';

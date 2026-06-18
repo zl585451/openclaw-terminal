@@ -21,8 +21,53 @@
 const config = require('../config');
 const toolLoader = require('../tool_loader');
 const { createLogger } = require('../logger');
+const {
+  buildFinalAnswerInstruction,
+  isSuspiciouslyShortFinal,
+} = require('../runtime/finalAnswerGuard');
 
 const log = createLogger('agent_runner');
+
+function isStructuredToolResult(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function shouldPauseForUserReply(result) {
+  return isStructuredToolResult(result) && result.status === 'waiting_user_reply';
+}
+
+/**
+ * 从一轮 assistant content 中提取「工具前的过渡句」——只取首行短句。
+ * 防止模型把完整报告草稿塞进工具轮的 content 时，被整段发成 text 段，
+ * 导致前端逐轮重复渲染整篇报告。完整报告由结尾的 final 段统一给。
+ */
+function extractToolPreamble(content) {
+  const trimmed = (typeof content === 'string' ? content : '').trim();
+  if (!trimmed) return '';
+  const firstBlock = trimmed.split(/\n\n+/)[0];
+  const firstLine = firstBlock.split(/\n/)[0].trim();
+  if (firstLine.length > 120) return firstLine.slice(0, 120) + '…';
+  return firstLine;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * 把最终报告分块、按节奏逐段发出（agent 本身非流式，一次性发整段会让前端"一次刷出"）。
+ * 复用前端"段 delta 逐步到达 → fullTextRef 增长 → 打字机揭示"这条已验证的流式路径。
+ * 长文控制在约 1s 内流完，短文按 ~16ms/块。
+ */
+async function emitFinalSegmentStreaming(emitSeg, segId, text) {
+  const total = text.length;
+  if (total === 0) return;
+  const PACE_MS = 16;
+  const targetSteps = Math.min(64, Math.max(8, Math.ceil(total / 12)));
+  const chunkLen = Math.ceil(total / targetSteps);
+  for (let i = 0; i < total; i += chunkLen) {
+    emitSeg({ op: 'delta', segId, text: text.slice(i, i + chunkLen) });
+    if (i + chunkLen < total) await sleep(PACE_MS);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────
 // 内部工具：解析 provider 配置
@@ -96,7 +141,7 @@ function buildToolDefinitions(allowedTools) {
  * @param {string} toolCall.function.arguments - JSON 字符串
  * @param {string[]} allowedTools - 兼容旧签名，当前不再用于二次拒绝
  * @param {Function} onEvent - 事件推送回调
- * @returns {Promise<string>} 工具返回内容（字符串化）
+ * @returns {Promise<{ content: string, pauseForUserReply: boolean }>} 工具返回内容（字符串化）与是否等待用户回复
  */
 async function executeToolCall(toolCall, allowedTools, onEvent) {
   const toolName = toolCall.function?.name;
@@ -110,13 +155,13 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
     log.error(`工具参数解析失败: ${toolName}`, { callId, error: err.message });
     const errMsg = `ERROR: Failed to parse arguments for tool "${toolName}". Details: ${err.message}`;
     onEvent({ type: 'tool_result', tool: toolName, callId, state: 'error', resultPreview: errMsg });
-    return errMsg;
+    return { content: errMsg, pauseForUserReply: false };
   }
 
   onEvent({ type: 'tool_call', tool: toolName, args, callId, state: 'executing' });
 
   try {
-    const rawResult = await toolLoader.executeTool(toolName, args);
+    const rawResult = await toolLoader.executeTool(toolName, args, { onToolEvent: onEvent });
     // 统一序列化为字符串
     const resultStr = typeof rawResult === 'string'
       ? rawResult
@@ -125,12 +170,15 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
     const preview = resultStr.length > 200 ? resultStr.slice(0, 200) + '...' : resultStr;
     onEvent({ type: 'tool_result', tool: toolName, callId, state: 'done', resultPreview: preview });
 
-    return resultStr;
+    return {
+      content: resultStr,
+      pauseForUserReply: shouldPauseForUserReply(rawResult),
+    };
   } catch (err) {
     const errMsg = err?.message || String(err);
     log.error(`工具执行失败: ${toolName}`, { callId, error: errMsg });
     onEvent({ type: 'tool_result', tool: toolName, callId, state: 'error', resultPreview: errMsg });
-    return `ERROR: ${errMsg}`;
+    return { content: `ERROR: ${errMsg}`, pauseForUserReply: false };
   }
 }
 
@@ -208,14 +256,40 @@ async function callApi({ baseUrl, apiKey, model, messages, tools, signal }) {
  * @param {string} [opts.task.sessionKey]             - 来源 session key
  * @param {string[]} [opts.task.allowedTools]         - 可在调用时追加/覆盖工具白名单
  * @param {Function} [opts.onAgentEvent]              - 事件回调 (event) => void
+ * @param {Function} [opts.onSegment]                 - B3 段事件回调 (seg) => void（用于前端 inline 渲染）
+ * @param {string}   [opts.turnId]                    - 回合 ID（用于段 segId 编址，与 AMY 路径同形）
  * @returns {Promise<{ result: string, turnsUsed: number, tokensUsed: number }>}
  */
-async function runAgent({ agent, task, onAgentEvent }) {
+async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
   const taskId = task.taskId || `agent_${Date.now()}`;
   const agentName = agent.name || 'UnnamedAgent';
 
   // 空操作兜底，避免调用方未传 onAgentEvent 时崩溃
   const onEvent = typeof onAgentEvent === 'function' ? onAgentEvent : () => {};
+
+  // B3 段事件双发：与 onEvent 平行（不替换、不影响），驱动前端 inline 渲染。
+  // turnId 缺失时仍构造稳定 segId，但前端会按 turnId 隔离，所以缺失时段事件会被前端忽略——这是预期的兜底。
+  const emitSeg = typeof onSegment === 'function' ? onSegment : null;
+  const segTurnId = turnId || taskId;
+  let segIndex = -1;
+  let openSegId = null;
+  const openSeg = (type, meta) => {
+    if (!emitSeg) return null;
+    segIndex += 1;
+    openSegId = `${segTurnId}:s${segIndex}`;
+    emitSeg({ op: 'open', segId: openSegId, index: segIndex, type, ...(meta ? { meta } : {}) });
+    return openSegId;
+  };
+  const closeOpenSeg = () => {
+    if (!emitSeg || !openSegId) return;
+    emitSeg({ op: 'close', segId: openSegId });
+    openSegId = null;
+  };
+  const finishSeg = (stopReason) => {
+    if (!emitSeg) return;
+    closeOpenSeg();
+    emitSeg({ op: 'finish', stopReason: stopReason || 'end_turn' });
+  };
 
   onEvent({ type: 'agent_status', agent: agentName, status: 'running', taskId });
 
@@ -312,6 +386,16 @@ async function runAgent({ agent, task, onAgentEvent }) {
         finalResult = typeof assistantMsg.content === 'string'
           ? assistantMsg.content
           : JSON.stringify(assistantMsg.content);
+        // 兜底：当最终回复过短（< 200 字）时，强制再走一轮，要求 LLM 出完整报告。
+        // 这能挡掉"模型把过渡句当 final 输出"的 prompt 失控场景。
+        if (turn + 1 < agent.maxTurns && isSuspiciouslyShortFinal(finalResult, 200)) {
+          log.warn(`[${agentName}] 最终回复过短(${finalResult.trim().length}字)，强制继续要求完整报告`, { taskId, turnsUsed });
+          messages.push({
+            role: 'user',
+            content: buildFinalAnswerInstruction(),
+          });
+          continue;
+        }
         log.info(`[${agentName}] 完成`, { taskId, turnsUsed, tokensUsed, finishReason });
         break;
       }
@@ -322,27 +406,78 @@ async function runAgent({ agent, task, onAgentEvent }) {
         tools: toolCalls.map((tc) => tc.function?.name),
       });
 
+      // B3：模型在调工具前主动说的话（content 非空）作为 text 段发出，成为工具组之间的叙述。
+      // 不再兜底生成 preamble——"干了啥"由前端工具组摘要承担，避免重复。
+      const preambleText = extractToolPreamble(assistantMsg.content);
+      if (emitSeg && preambleText) {
+        closeOpenSeg();
+        const preambleSegId = openSeg('text');
+        if (preambleSegId) {
+          emitSeg({ op: 'delta', segId: preambleSegId, text: preambleText });
+        }
+        closeOpenSeg();
+      }
+
+      let shouldStopForUserReply = false;
       for (const toolCall of toolCalls) {
+        // B3 段事件：闭合上段，开 tool_use 段（与 AMY 路径同形）
+        closeOpenSeg();
+        openSeg('tool_use', { tool: toolCall.function?.name || null, callId: toolCall.id || null });
         const toolResult = await executeToolCall(toolCall, mergedAllowedTools, onEvent);
+        // 工具完成（或失败）→ 闭 tool_use 段；下一个工具会再开新段
+        closeOpenSeg();
+        if (toolResult.pauseForUserReply) {
+          finalResult = '';
+          log.info(`[${agentName}] request_clarify 等待用户回复，停止续轮`, { taskId, callId: toolCall.id });
+          shouldStopForUserReply = true;
+          break;
+        }
         messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
-          content: toolResult,
+          content: toolResult.content,
         });
       }
 
-      // ── 6c. 超过最大轮次 → 强制结束 ──────────────────────────
+      if (shouldStopForUserReply) {
+        clearTimeout(timeoutHandle);
+        finishSeg('awaiting_user');
+        onEvent({ type: 'agent_status', agent: agentName, status: 'done', taskId });
+        return {
+          status: 'waiting_user_reply',
+          result: '',
+          turnsUsed,
+          tokensUsed,
+        };
+      }
+
+      // ── 6c. 超过最大轮次 → 发不带工具的收尾请求，强制出报告 ──────────
+      // 否则模型可能用满轮次都在调工具、从没机会出报告，finalResult 只剩一句过渡句。
       if (turn + 1 >= agent.maxTurns) {
-        log.warn(`[${agentName}] 达到 maxTurns(${agent.maxTurns})，强制结束`, { taskId });
-        // 取最后一条 assistant 文本作为结果（可能为空）
-        finalResult = typeof assistantMsg.content === 'string'
-          ? assistantMsg.content
-          : `[已达最大工具循环轮次 ${agent.maxTurns}，任务可能未完整完成]`;
+        log.warn(`[${agentName}] 达到 maxTurns(${agent.maxTurns})，发收尾请求强制出报告`, { taskId });
+        try {
+          messages.push({
+            role: 'user',
+            content: '已达工具调用上限。现在请立即基于以上已获取的全部信息，输出完整的最终报告——不要再调用任何工具、不要再写过渡句，content 直接就是用户看到的最终内容。',
+          });
+          const wrapResp = await callApi({ baseUrl, apiKey, model, messages, tools: [], signal: controller.signal });
+          if (wrapResp.usage) tokensUsed += wrapResp.usage.total_tokens || 0;
+          const wrapContent = wrapResp.choices?.[0]?.message?.content;
+          finalResult = typeof wrapContent === 'string' && wrapContent.trim()
+            ? wrapContent
+            : `[已达最大工具循环轮次 ${agent.maxTurns}，未能生成报告]`;
+        } catch (e) {
+          log.warn(`[${agentName}] 收尾请求失败，回退到最后一条文本`, { taskId, error: e?.message });
+          finalResult = typeof assistantMsg.content === 'string' && assistantMsg.content.trim()
+            ? assistantMsg.content
+            : `[已达最大工具循环轮次 ${agent.maxTurns}，任务可能未完整完成]`;
+        }
         break;
       }
     }
   } catch (err) {
     clearTimeout(timeoutHandle);
+    finishSeg('error');
     const errMsg = err?.message || String(err);
     log.error(`[${agentName}] 执行异常`, { taskId, error: errMsg });
     onEvent({ type: 'agent_status', agent: agentName, status: 'error', taskId, message: errMsg });
@@ -351,9 +486,44 @@ async function runAgent({ agent, task, onAgentEvent }) {
 
   clearTimeout(timeoutHandle);
 
+  // 收尾保障：从任何路径退出循环后，若 finalResult 过短（像半截过渡句而非结论，
+  // 例如模型在最后一轮恰好 stop 且只回了一句"我再查查"），补发一次不带工具的收尾
+  // 请求，强制模型基于已有信息给出完整结论或如实说明；仍为空则给诚实兜底文案。
+  if (isSuspiciouslyShortFinal(finalResult, 100) && !controller.signal.aborted) {
+    try {
+      messages.push({
+        role: 'user',
+        content: buildFinalAnswerInstruction(),
+      });
+      const wrapResp = await callApi({ baseUrl, apiKey, model, messages, tools: [], signal: controller.signal });
+      if (wrapResp.usage) tokensUsed += wrapResp.usage.total_tokens || 0;
+      const wc = wrapResp.choices?.[0]?.message?.content;
+      if (typeof wc === 'string' && wc.trim().length > finalResult.trim().length) {
+        finalResult = wc;
+      }
+    } catch (e) {
+      log.warn(`[${agentName}] 收尾保障请求失败`, { taskId, error: e?.message });
+    }
+  }
+  if (!finalResult || finalResult.trim().length < 20) {
+    finalResult = '抱歉，这个主题我查证了多轮，但没找到足够可靠的信息来形成完整结论。可以换个说法或补充线索，我再帮你查。';
+  }
+
+  // B3 段事件：最终答案作为 final 段流式发出（分块按节奏，避免前端一次刷出）。
+  // 这给前端 inline 渲染提供"最终文字段"锚点，让 lastTextIdx 切分正确。
+  if (emitSeg && finalResult && finalResult.trim()) {
+    closeOpenSeg();
+    const finalSegId = openSeg('final');
+    if (finalSegId) {
+      await emitFinalSegmentStreaming(emitSeg, finalSegId, finalResult);
+    }
+  }
+  finishSeg('end_turn');
+
   onEvent({ type: 'agent_status', agent: agentName, status: 'done', taskId });
 
   return {
+    status: 'completed',
     result: finalResult,
     turnsUsed,
     tokensUsed,

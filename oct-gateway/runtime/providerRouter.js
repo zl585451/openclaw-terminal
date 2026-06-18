@@ -6,25 +6,28 @@ class ProviderRouter {
   resolve(modelId = this.config.DASHSCOPE_MODEL) {
     const provider = this.config.getProviderConfig();
     const requestedModel = modelId || this.config.DASHSCOPE_MODEL;
-    // Vertex OpenAI 兼容层的 Gemini 模型通常使用 google/gemini-...。
-    // 兼容历史配置：若用户存的是 gemini-...（无前缀），自动补上 google/。
+    // Google 原生 SDK 使用 gemini-...；Vertex OpenAI 兼容层通常使用 google/gemini-...。
+    // 兼容历史配置：两种形式都能匹配同一份能力表。
     const model = (() => {
       if (provider.id !== 'google') return requestedModel;
       const raw = String(requestedModel || '').trim();
       if (!raw) return raw;
       if (raw.startsWith('__')) return raw;
-      const canonical = raw.toLowerCase().startsWith('google/')
-        ? raw
-        : raw.includes('/')
-          ? raw
-          : `google/${raw}`;
       const aliasMap = {
-        'google/gemini-2.5-pro-preview-03-25': 'google/gemini-2.5-pro',
-        'google/gemini-2.5-flash-preview-04-17': 'google/gemini-2.5-flash',
-        'google/gemini-2.0-flash-001': 'google/gemini-2.0-flash',
-        'google/gemini-3-pro-preview': 'google/gemini-3.1-pro-preview',
+        'gemini-2.5-pro-preview-03-25': 'gemini-2.5-pro',
+        'gemini-2.5-flash-preview-04-17': 'gemini-2.5-flash',
+        'gemini-2.0-flash-001': 'gemini-2.0-flash',
+        'gemini-3-pro-preview': 'gemini-3.1-pro-preview',
+        'gemini-3.1-flash-lite-preview': 'gemini-3.1-flash-lite',
       };
-      return aliasMap[canonical] || canonical;
+      const withoutPrefix = raw.toLowerCase().startsWith('google/')
+        ? raw.slice('google/'.length)
+        : raw;
+      const nativeModel = aliasMap[withoutPrefix] || withoutPrefix;
+      if (String(this.config.GOOGLE_API_MODE || 'native').toLowerCase() !== 'openai_compat') {
+        return nativeModel;
+      }
+      return nativeModel.includes('/') ? nativeModel : `google/${nativeModel}`;
     })();
     const apiKey = provider.apiKey;
     const baseUrl = provider.baseUrl;

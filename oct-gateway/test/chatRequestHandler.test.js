@@ -65,6 +65,9 @@ async function testNormalChatLifecycle() {
         executeArgs = request;
         handlers.onStart({ cancel() {} });
         handlers.onDelta('hi');
+        handlers.onSegment({ op: 'open', segId: 'turn-1:s0', index: 0, type: 'text' });
+        handlers.onSegment({ op: 'delta', segId: 'turn-1:s0', text: 'hi' });
+        handlers.onSegment({ op: 'close', segId: 'turn-1:s0' });
         handlers.onToolEvent({ type: 'tool_call', tool: 'read_file' });
         handlers.onToolEvent({ type: 'tool_result', tool: 'read_file' });
         handlers.onToolEvent({ type: 'workbench', action: 'open', payload: { id: 'canvas-1' } });
@@ -118,11 +121,10 @@ async function testNormalChatLifecycle() {
   assert.equal(connection.abortCalls, 1);
   assert.equal(connection.stopPulseCalls, 1);
   assert.equal(connection.sent[0].event, 'agent-phase');
-  assert.deepEqual(connection.sent.find((item) => item.event === 'chat' && item.payload.delta === 'hi').payload, {
-    delta: 'hi',
-    state: 'delta',
-    done: false,
+  assert.equal(connection.sent.some((item) => item.event === 'chat' && item.payload.delta === 'hi'), false);
+  assert.deepEqual(connection.sent.find((item) => item.event === 'chat' && item.payload.seg?.op === 'delta').payload, {
     turnId: 'turn-1',
+    seg: { op: 'delta', segId: 'turn-1:s0', text: 'hi' },
   });
   assert(connection.sent.some((item) => item.event === 'tool' && item.payload.type === 'tool_call'));
   assert(connection.sent.some((item) => item.event === 'agent-phase' && item.phase === 'tool_executing'));
@@ -170,6 +172,7 @@ async function testAgentShortcut() {
       dispatch: async () => ({
         agent: 'Researcher',
         agentResult: {
+          status: 'completed',
           result: '  agent answer  ',
           turnsUsed: 2,
           tokensUsed: 42,
@@ -224,9 +227,140 @@ async function testAgentShortcut() {
   });
 }
 
+async function testAgentClarifyPause() {
+  const connection = createConnection();
+  let contextBuildCalled = false;
+  let chatExecuteCalled = false;
+  const messages = [];
+  const handler = createChatRequestHandler({
+    orchestrator: {
+      dispatch: async (_message, _sessionKey, sendToolEvent) => {
+        // Agent 发出 clarify_open 事件
+        sendToolEvent({
+          type: 'clarify_open',
+          payload: {
+            spec: {
+              title: '开始写作前',
+              fields: [{ id: 'genre', label: '想写什么类型？', type: 'single', options: ['小说', '专栏'] }],
+            },
+          },
+        });
+        return {
+          agent: 'Writer',
+          agentResult: {
+            status: 'waiting_user_reply',
+            result: '',
+            turnsUsed: 1,
+            tokensUsed: 5,
+          },
+        };
+      },
+    },
+    contextBuilder: {
+      build: async () => {
+        contextBuildCalled = true;
+        return { messages: [], history: [] };
+      },
+    },
+    chatEngine: {
+      execute: async () => {
+        chatExecuteCalled = true;
+      },
+    },
+    systemPromptReady: Promise.resolve('system prompt'),
+    session: { addMessage: (...args) => messages.push(args) },
+    normalizeAssistantText: (raw) => String(raw).trim(),
+    sendCanvasTransportEvent: () => {},
+    logger: createLogger(),
+  });
+
+  await handler({ id: 'clarify-turn', params: { sessionKey: 's1', message: '帮我写一篇文案' } }, connection);
+
+  // 不得落入 AMY
+  assert.equal(contextBuildCalled, false, 'contextBuilder should NOT be called on clarify pause');
+  assert.equal(chatExecuteCalled, false, 'chatEngine should NOT be called on clarify pause');
+
+  // clarify 事件已推送
+  const clarifyEvent = connection.sent.find((item) => item.event === 'clarify');
+  assert.ok(clarifyEvent, 'clarify event must be sent');
+
+  // agent-phase idle 已推送
+  assert.ok(connection.sent.some((item) => item.event === 'agent-phase' && item.phase === 'idle'),
+    'agent-phase idle must be sent');
+
+  // chat done 已推送（text 为空，供前端 shouldSuppress 生效）
+  const chatDone = connection.sent.find((item) => item.event === 'chat' && item.payload?.done === true);
+  assert.ok(chatDone, 'chat done must be sent');
+  assert.equal(chatDone.payload.text, '', 'chat done text must be empty so frontend can suppress');
+
+  // session 仅存用户消息，不存 assistant
+  assert.deepEqual(messages, [['s1', 'user', '帮我写一篇文案']]);
+}
+
+async function testClarifyEventForwarding() {
+  const connection = createConnection();
+  const handler = createChatRequestHandler({
+    orchestrator: {
+      dispatch: async () => ({ canvasIntent: { shouldUseCanvas: false } }),
+    },
+    contextBuilder: {
+      build: async () => ({
+        messages: [{ role: 'user', content: 'hello' }],
+        history: [],
+      }),
+    },
+    chatEngine: {
+      execute: async (_request, handlers) => {
+        handlers.onStart({ cancel() {} });
+        handlers.onToolEvent({
+          type: 'clarify_open',
+          payload: {
+            spec: {
+              title: '开始写作前',
+              fields: [
+                { id: 'genre', label: '想写什么类型？', type: 'single', options: ['小说', '专栏'] },
+              ],
+            },
+          },
+        });
+        handlers.onBeforeDone();
+        handlers.onDone({
+          reply: '',
+          usage: { total_tokens: 3 },
+          model: 'test-model',
+          turnId: 'clarify-turn',
+        });
+      },
+    },
+    systemPromptReady: Promise.resolve('system prompt'),
+    session: { addMessage() {} },
+    normalizeAssistantText: (raw) => String(raw).trim(),
+    sendCanvasTransportEvent: () => {},
+    logger: createLogger(),
+  });
+
+  await handler({ id: 'turn-clarify', params: { sessionKey: 's1', message: 'hello' } }, connection);
+
+  const clarifyEvent = connection.sent.find((item) => item.event === 'clarify');
+  assert.deepEqual(clarifyEvent, {
+    type: 'event',
+    event: 'clarify',
+    payload: {
+      spec: {
+        title: '开始写作前',
+        fields: [
+          { id: 'genre', label: '想写什么类型？', type: 'single', options: ['小说', '专栏'] },
+        ],
+      },
+    },
+  });
+}
+
 async function main() {
   await testNormalChatLifecycle();
   await testAgentShortcut();
+  await testAgentClarifyPause();
+  await testClarifyEventForwarding();
   console.log('PASS chat request handler lifecycle is isolated');
 }
 

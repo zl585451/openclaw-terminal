@@ -78,6 +78,13 @@ export interface ChatHistoryItem {
   isSystemReply?: boolean;
 }
 
+export interface ConversationMeta {
+  id: string;
+  title: string;
+  updatedAt: number;
+  preview?: string;
+}
+
 export interface ImageGeneratePayload {
   requestId: string;
   prompt: string;
@@ -246,6 +253,13 @@ export interface ElectronAPI {
   };
   chatHistoryLoad?: () => Promise<ChatHistoryItem[]>;
   chatHistorySave?: (items: ChatHistoryItem[]) => Promise<void>;
+  // 多对话
+  conversationsLoad?: () => Promise<ConversationMeta[]>;
+  conversationsSave?: (index: ConversationMeta[]) => Promise<ApiResult>;
+  conversationMessagesLoad?: (id: string) => Promise<ChatHistoryItem[]>;
+  conversationMessagesSave?: (id: string, items: ChatHistoryItem[]) => Promise<ApiResult>;
+  conversationDelete?: (id: string) => Promise<ApiResult>;
+  setSession?: (sessionKey: string) => Promise<ApiResult & { sessionKey?: string }>;
   imageGenerate?: (payload: ImageGeneratePayload) => Promise<ApiResult>;
   openExternalUrl?: (url: string) => Promise<ApiResult>;
   downloadImage?: (payload: { url: string; suggestedName?: string }) => Promise<ApiResult & { path?: string }>;

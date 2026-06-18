@@ -1490,13 +1490,15 @@ function handleMessage(msg: any) {
     case 'event':
       if (msg.event === 'connect.challenge') {
         sendOctConnectRequest();
-      } else if (msg.event === 'task-board-update') {
-        mainWindow?.webContents.send('task-board-update');
-        mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("tasks-updated"))').catch(() => {});
       } else if (msg.event === 'script-adapter') {
         sendScriptAdapterEvent(msg.payload || {});
       } else if (msg.event === 'tool' || msg.event === 'agent-phase') {
         // 工具调用事件和 agent 阶段事件：直接透传，不经过 forwardChatToFrontend（避免 state:'done' 被误判为 chat done）
+        sendMessage(msg);
+      } else if (msg.event === 'chat' && msg.payload && (msg.payload.seg !== undefined || msg.payload.reset === true)) {
+        // 段协议(seg)/续轮重置(reset)事件：原样透传。
+        // 这些事件没有 state:'delta'/done 字段，若走 forwardChatToFrontend 会被默认判成空 done，
+        // 导致每个段事件触发一次 finalize → 流式气泡碎片化；reset 字段也会被剥离。
         sendMessage(msg);
       } else if (msg.event === 'chat' && msg.payload) {
         const isDelta = msg.payload?.state === 'delta';
@@ -1737,6 +1739,29 @@ function sendChatMessage(
         ? '连接已断开（如休眠/睡眠后），正在重连，请稍后再发'
         : (err?.message || String(err)),
     };
+  }
+}
+
+function cancelChatMessage(): { success: boolean; error?: string } {
+  if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN) {
+    return { success: false, error: 'WebSocket not connected' };
+  }
+
+  const cancelMsg = {
+    type: 'req',
+    id: generateId(),
+    method: 'chat.cancel',
+    params: {
+      sessionKey: currentSessionKey,
+      reason: 'user_stop',
+    },
+  };
+
+  try {
+    openclawWs.send(JSON.stringify(cancelMsg));
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || String(err) };
   }
 }
 
@@ -2038,8 +2063,6 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
   }
 
   const promptsDir = getPromptsDir();
-  const tasksPath = path.join(app.getPath('userData'), 'tasks.json');
-  const vaultPath = path.join(app.getPath('userData'), 'vault.enc');
   const runtimeCommand = app.isPackaged ? process.execPath : 'node';
   const runtimeArgs = [entry];
   const gatewayConfigFile = resolveGatewayConfigFileForSpawn(entry);
@@ -2064,8 +2087,6 @@ async function startOctGateway(): Promise<{ success: boolean; error?: string }> 
         OCT_PROMPTS_DIR: promptsDir,
         OCT_CONFIG_FILE: gatewayConfigFile,
         OCT_GATEWAY_TOKEN: (process.env.OCT_GATEWAY_TOKEN || OPENCLAW_TOKEN || '').trim(),
-        OPENCLAW_TASKS_PATH: tasksPath,
-        OCT_VAULT_PATH: vaultPath,
         ...(resolvedAiLibraryUrlForGateway && !(process.env.AI_LIBRARY_URL || '').trim()
           ? { AI_LIBRARY_URL: resolvedAiLibraryUrlForGateway }
           : {}),
@@ -2496,6 +2517,11 @@ app.whenReady().then(async () => {
     setPendingCodeWindowData: (d: { language: string; code: string } | null) => { pendingCodeWindowData = d; },
     connectOpenClaw,
     sendChatMessage,
+    cancelChatMessage,
+    setSessionKey: (key: string) => {
+      currentSessionKey = key || 'main';
+      saveSessionState({ ...(lastSessionState || {}), sessionKey: currentSessionKey });
+    },
     getOpenClawStatus,
     getAiLibraryPlugin,
     saveAiLibraryPlugin,

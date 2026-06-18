@@ -207,7 +207,7 @@ function chooseFastModel(providerId, currentModel) {
   if (provider.includes('bailian')) return 'qwen-turbo';
   if (provider.includes('deepseek')) return 'deepseek-v4-flash';
   if (provider.includes('openai')) return 'gpt-4o-mini';
-  if (provider.includes('google')) return 'google/gemini-2.5-flash';
+  if (provider.includes('google')) return 'google/gemini-3.5-flash';
   if (provider.includes('minimax')) return 'MiniMax-M2.7-highspeed';
   return currentModel || 'qwen-turbo';
 }

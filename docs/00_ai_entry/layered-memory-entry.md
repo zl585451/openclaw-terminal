@@ -14,8 +14,9 @@ Gateway 启动时，`ai.js#loadSystemPrompt()` 先通过 `memory.js` 门面加�
 
 当用户询问摘要未覆盖的历史细节时，AMY 可调用：
 
-- `memory_search`：查显式 notes 和 raw-turn 文本候选。
-- `memory_vector_search`：查语义向量候选。
-- `memory_recall`：按日期读取 L3 原始对话。
+- `memory_search`：统一查显式 notes、raw-turn 文本候选、语义向量候选和指定日期原始对话；用 `mode=keyword|vector|date|auto` 区分。
+- `memory_read`：按 URI 精确读取 Memory v2/legacy 节点。
+
+旧的 `memory_vector_search` / `memory_recall` 名称只作为兼容别名保留到工具兼容层，不再作为模型可选工具暴露。
 
 自动注入仍然是临时 system 消息，只用于当前轮回答，不进入 session history。AMY 应只在相关时自然使用，不应因为有候选就强行联想。

@@ -2,6 +2,7 @@
 
 import type React from 'react';
 import type { RenderBlock } from '../../types/renderProtocol';
+import type { ConversationMeta } from '../../types/electronAPI';
 
 export type { RenderBlock, RenderBlockItem } from '../../types/renderProtocol';
 
@@ -14,6 +15,16 @@ export interface ToolEventItem {
   error?: string;
   elapsedMs?: number;
   startedAt: number;
+}
+
+/** 流式回合的有序内容段快照（B3 inline 渲染用）。与 core/turnSegments 的 TurnSegment 同形。 */
+export interface TurnSegmentLite {
+  segId: string;
+  index: number;
+  type: 'text' | 'tool_use' | 'tool_result' | 'reasoning' | 'final';
+  content: string;
+  open: boolean;
+  meta?: { tool?: string | null; callId?: string | null };
 }
 
 export interface UploadedFile {
@@ -41,6 +52,8 @@ export interface ChatMessage {
   files?: UploadedFile[];
   /** 内联工具调用卡片数据，跟随消息持久展示 */
   toolEvents?: ToolEventItem[];
+  /** B3 inline：流式回合的有序段快照（文本/工具交错），驱动 inline 工具卡片渲染 */
+  turnSegments?: TurnSegmentLite[];
   /** Render Protocol v3 结构化渲染块 */
   renderBlocks?: RenderBlock[];
 }
@@ -50,5 +63,11 @@ export interface ChatTabProps {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   getNextMessageId: () => number;
   onStatusChange?: (wsConnected: boolean, isStreaming: boolean, modelName?: string, tokenIn?: number | null, tokenOut?: number | null, ctxUsed?: number | null, ctxMax?: number | null) => void;
-  onSwitchTab?: (tab: 'chat' | 'sound' | 'reaper') => void;
+  onSwitchTab?: (tab: 'chat') => void;
+  // 多对话
+  conversations?: ConversationMeta[];
+  activeConversationId?: string;
+  onNewConversation?: () => void;
+  onSwitchConversation?: (id: string) => void;
+  onDeleteConversation?: (id: string) => void;
 }

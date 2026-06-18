@@ -32,6 +32,8 @@ async function main() {
   assert.equal(sanitizeGoogleModelId('google/gemini-2.5-flash'), 'gemini-2.5-flash');
   assert.equal(sanitizeGoogleModelId('gemini-2.5-flash-image-preview'), 'gemini-2.5-flash-image');
   assert.equal(sanitizeGoogleModelId('google/gemini-2.0-flash-001'), 'gemini-2.0-flash');
+  assert.equal(sanitizeGoogleModelId('google/gemini-3.1-flash-lite-preview'), 'gemini-3.1-flash-lite');
+  assert.equal(sanitizeGoogleModelId('gemini-3.1-pro-preview-customtools'), 'gemini-3.1-pro-preview-customtools');
 
   const converted = convertMessagesToGoogleContents([
     { role: 'system', content: 'you are helpful' },

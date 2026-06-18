@@ -341,6 +341,36 @@ describe('ToolAdapter format governance and safe parsing', () => {
     });
   });
 
+  it('18b. extractAllPseudoToolCalls rewrites legacy memory vector pseudo calls to memory_search', () => {
+    const ai = require('../ai');
+    const extract = ai._internals.extractAllPseudoToolCalls;
+
+    const source = '[memory_vector_search] query: 之前关于书库上传的讨论 [/memory_vector_search]';
+    const calls = extract(source);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].function.name).toBe('memory_search');
+    expect(JSON.parse(calls[0].function.arguments)).toEqual({
+      query: '之前关于书库上传的讨论',
+      mode: 'vector',
+    });
+  });
+
+  it('18c. extractAllPseudoToolCalls rewrites legacy memory recall pseudo calls to date memory_search', () => {
+    const ai = require('../ai');
+    const extract = ai._internals.extractAllPseudoToolCalls;
+
+    const source = '[memory_recall] date: 2026-04-27 [/memory_recall]';
+    const calls = extract(source);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].function.name).toBe('memory_search');
+    expect(JSON.parse(calls[0].function.arguments)).toEqual({
+      date: '2026-04-27',
+      mode: 'date',
+    });
+  });
+
   it('19. stripPseudoToolResidue removes bracket tag pseudo tool markup from final reply text', () => {
     const ai = require('../ai');
     const strip = ai._internals.stripPseudoToolResidue;
@@ -400,7 +430,7 @@ describe('ToolAdapter format governance and safe parsing', () => {
           choices: [{
             message: {
               role: 'assistant',
-              content: 'done'
+              content: 'done: registered tool execution completed and the final answer is intentionally long enough to stay outside final-answer guard coverage.'
             },
             finish_reason: 'stop'
           }],
@@ -426,7 +456,7 @@ describe('ToolAdapter format governance and safe parsing', () => {
       });
 
       expect(executeToolCalled).toBe(true);
-      expect(result.result).toBe('done');
+      expect(result.result).toContain('registered tool execution completed');
     } finally {
       toolLoader.executeTool = originalExecuteTool;
       globalThis.fetch = originalFetch;

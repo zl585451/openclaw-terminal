@@ -1,36 +1,23 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import type { GatewayCapabilities } from '../../hooks/useMessages';
 
 export interface ChatHeaderPortalProps {
-  ttsPlayback: boolean;
-  onToggleTts: () => void;
   canvasOpen: boolean;
   onOpenCanvas: () => void;
   speakingMessageId: number | null | undefined;
   onStopTts: () => void;
-  ttsError: string | null | undefined;
-  wsConnected: boolean;
-  wsReconnecting: boolean;
-  wsError: string | null | undefined;
-  gatewayCapabilities: GatewayCapabilities | null;
-  onOpenSettings: () => void;
+  localTime: string;
+  localDate: string;
 }
 
 export const ChatHeaderPortal: React.FC<ChatHeaderPortalProps> = (props) => {
   const {
-    ttsPlayback,
-    onToggleTts,
     canvasOpen,
     onOpenCanvas,
     speakingMessageId,
     onStopTts,
-    ttsError,
-    wsConnected,
-    wsReconnecting,
-    wsError,
-    gatewayCapabilities,
-    onOpenSettings,
+    localTime,
+    localDate,
   } = props;
 
   const portal = typeof document !== 'undefined' ? document.getElementById('chat-header-portal') : null;
@@ -38,58 +25,35 @@ export const ChatHeaderPortal: React.FC<ChatHeaderPortalProps> = (props) => {
 
   return createPortal(
     <>
+      {/* Canvas：右上角一个小图标按钮（仿 Claude，无文字） */}
       <button
         type="button"
-        className={`voice-toggle ${ttsPlayback ? 'on' : 'off'}`}
-        onClick={onToggleTts}
-        title={ttsPlayback ? '回复朗读已开启（点击关闭）' : '点击开启回复朗读'}
-      >
-        {ttsPlayback ? '♪ VOICE ON' : '♪ VOICE OFF'}
-      </button>
-      <button
-        type="button"
-        className={`voice-toggle ${canvasOpen ? 'on' : ''}`}
+        className={`header-icon-btn ${canvasOpen ? 'on' : ''}`}
         onClick={onOpenCanvas}
         title={canvasOpen ? 'Canvas 面板已打开' : '打开 Canvas 面板'}
+        aria-label="Canvas"
       >
-        ▣ OPEN CANVAS
+        ▣
       </button>
+
+      {/* 仅在朗读进行中出现，提供一个停止入口 */}
       {speakingMessageId != null ? (
         <button
           type="button"
-          className="voice-toggle"
+          className="header-icon-btn"
           onClick={onStopTts}
           title="停止当前语音播报"
+          aria-label="停止语音"
         >
-          ■ STOP VOICE
+          ■
         </button>
       ) : null}
-      {ttsError ? (
-        <span className="ws-status disconnected" style={{ maxWidth: 320 }} title={ttsError}>
-          TTS: {ttsError}
-        </span>
-      ) : null}
-      <button
-        type="button"
-        className="voice-toggle"
-        onClick={onOpenSettings}
-        title="设置"
-      >
-        ⚙ SETTINGS
-      </button>
-      <span className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`} style={{ fontSize: '11px' }}>
-        {wsConnected && <span className="status-dot" />}
-        {wsConnected ? 'CONNECTED' : wsReconnecting ? '重连..' : wsError || 'DISCONNECTED'}
-      </span>
-      {wsConnected && (gatewayCapabilities?.toolsSupport ?? (gatewayCapabilities?.supportsTools ? 'supported' : 'unknown')) !== 'supported' ? (
-        <span
-          className="ws-status disconnected"
-          style={{ fontSize: '11px' }}
-          title={`工具能力：${gatewayCapabilities?.toolsSupport || 'unknown'} 来源：${gatewayCapabilities?.capabilitySource || 'unknown'}`}
-        >
-          {gatewayCapabilities?.toolsSupport === 'unknown' ? 'TOOL UNKNOWN' : 'NO TOOL EXEC'}
-        </span>
-      ) : null}
+
+      {/* 时钟：挪到右上角 */}
+      <div className="header-clock" title={localDate}>
+        <span className="header-clock-time">{localTime || '--:--'}</span>
+        <span className="header-clock-date">{localDate || ''}</span>
+      </div>
     </>,
     portal,
   );

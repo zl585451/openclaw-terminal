@@ -49,12 +49,29 @@ export function registerDeliveryHandlers(_deps: IpcDeps) {
         HeadingLevel,
         Packer,
         Paragraph,
+        ShadingType,
         Table,
         TableCell,
         TableRow,
         TextRun,
         WidthType,
       } = docxModule;
+
+      // 角色颜色：旁白固定灰色，其余角色循环分配暖色系
+      const NARRATOR_FILL = 'F0F0F0';
+      const CHARACTER_FILLS = ['D6E4F7', 'FDEBD0', 'D6F7E4', 'F5D6F7', 'F7F5D6', 'F7D6D6'];
+      const speakerColorMap = new Map<string, string>();
+      let colorIdx = 0;
+      const getSpeakerFill = (speaker: string): string => {
+        const name = speaker.replace(/\]\[OS$/, '').trim();
+        if (name === '旁白' || name === 'SFX') return NARRATOR_FILL;
+        if (!speakerColorMap.has(name)) {
+          speakerColorMap.set(name, CHARACTER_FILLS[colorIdx % CHARACTER_FILLS.length]);
+          colorIdx++;
+        }
+        return speakerColorMap.get(name) as string;
+      };
+
       const sections = Array.isArray(payload?.data?.sections) ? payload.data.sections : [];
       const metadata = Array.isArray(payload?.data?.metadata) ? payload.data.metadata : [];
       const children: any[] = [];
@@ -88,7 +105,9 @@ export function registerDeliveryHandlers(_deps: IpcDeps) {
             continue;
           }
           if (block.type === 'scriptLine') {
+            const fill = getSpeakerFill(String(block.speaker || '旁白'));
             children.push(new Paragraph({
+              shading: { type: ShadingType.CLEAR, color: 'auto', fill },
               children: [
                 new TextRun({ text: `[${String(block.speaker || '旁白')}] `, bold: true }),
                 new TextRun(String(block.text || '')),
@@ -96,7 +115,7 @@ export function registerDeliveryHandlers(_deps: IpcDeps) {
             }));
             if (block.note) {
               children.push(new Paragraph({
-                children: [new TextRun({ text: `改编说明：${String(block.note)}`, italics: true })],
+                children: [new TextRun({ text: `改编说明：${String(block.note)}`, italics: true, color: '888888' })],
               }));
             }
             continue;
@@ -112,14 +131,19 @@ export function registerDeliveryHandlers(_deps: IpcDeps) {
           }
           if (block.type === 'table') {
             const rows = [];
+            const isRoleTable = Array.isArray(block.columns) && block.columns[0] === '角色';
             rows.push(new TableRow({
+              tableHeader: true,
               children: (Array.isArray(block.columns) ? block.columns : []).map((column: string) => new TableCell({
+                shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'E8ECF0' },
                 children: [new Paragraph({ children: [new TextRun({ text: String(column || ''), bold: true })] })],
               })),
             }));
             for (const row of Array.isArray(block.rows) ? block.rows : []) {
+              const fill = isRoleTable ? getSpeakerFill(String(row[0] || '')) : 'FFFFFF';
               rows.push(new TableRow({
                 children: row.map((cell: string) => new TableCell({
+                  shading: { type: ShadingType.CLEAR, color: 'auto', fill },
                   children: [new Paragraph(String(cell || ''))],
                 })),
               }));

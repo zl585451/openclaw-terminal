@@ -136,12 +136,24 @@ async function writeWithTimeout(uri, content, priority, disclosure) {
         if (exists.ok && exists.data) {
           const r = await memory.writeMemory(targetUri, targetContent, targetPriority, targetDisclosure);
           clearTimeout(timer);
-          resolve({ ...r, updated: r.ok });
+          resolve({
+            ...r,
+            updated: r.ok,
+            governor_decision: routed.decision,
+            actual_uri: routed.uri,
+            governor_reason: routed.reason,
+          });
         } else {
           await memoryHistory.ensurePathExists(domain, pathPart);
           const r = await memory.createMemory(targetUri, targetContent, targetPriority, targetDisclosure);
           clearTimeout(timer);
-          resolve({ ...r, created: r.ok });
+          resolve({
+            ...r,
+            created: r.ok,
+            governor_decision: routed.decision,
+            actual_uri: routed.uri,
+            governor_reason: routed.reason,
+          });
         }
       } catch (e) {
         clearTimeout(timer);
@@ -190,8 +202,78 @@ function enqueueWrite(uri, content, priority, disclosure) {
   });
 }
 
-function proxyFetch(url, options = {}) {
-  return fetch(url, options);
+// 真正的代理 fetch。
+// 注意：Node 原生 fetch（undici）默认 **不读** HTTPS_PROXY/HTTP_PROXY 环境变量，
+// 必须显式挂 ProxyAgent dispatcher。否则像 api.search.brave.com 这种直连不通的接口
+// 会一直走直连、10 秒超时后才降级——表现为 "Brave search failed ... aborted due to timeout"。
+const maskProxy = (u) => String(u || '').replace(/\/\/[^@]*@/, '//***@');
+
+// 候选代理（去重，按优先级）。用户可能同时配了多个，且未必每个都通
+// （实测：HTTPS_PROXY 端口可能是 SOCKS/未启用而瞬间失败，HTTP_PROXY 才通）。
+function candidateProxyUrls() {
+  const urls = [
+    config.HTTPS_PROXY, config.HTTP_PROXY,
+    process.env.HTTPS_PROXY, process.env.https_proxy,
+    process.env.HTTP_PROXY, process.env.http_proxy,
+  ].filter(Boolean);
+  return [...new Set(urls)];
+}
+
+const _agentByUrl = new Map();
+function agentFor(url) {
+  if (_agentByUrl.has(url)) return _agentByUrl.get(url);
+  let agent = null;
+  try {
+    const { ProxyAgent } = require('undici');
+    agent = new ProxyAgent(url);
+  } catch (e) {
+    log.warn('proxyFetch: ProxyAgent unavailable', { error: e?.message });
+  }
+  _agentByUrl.set(url, agent);
+  return agent;
+}
+
+// 记住第一个被证实可用的代理，后续请求直接用它（避免每次重试坏代理）
+let _provenProxyUrl = null;
+
+async function proxyFetch(url, options = {}) {
+  if (options.dispatcher) return fetch(url, options);
+
+  const candidates = candidateProxyUrls();
+  if (candidates.length === 0) return fetch(url, options); // 没配代理 → 直连
+
+  // 已确认可用的代理优先
+  if (_provenProxyUrl) {
+    const agent = agentFor(_provenProxyUrl);
+    if (agent) return fetch(url, { ...options, dispatcher: agent });
+  }
+
+  // 依次尝试候选代理；连通即缓存。仅对“连接级失败（fetch failed）”降级到下一个，
+  // 真实 HTTP 响应（含 4xx/5xx）视为代理可用直接返回。
+  let lastErr;
+  for (const purl of candidates) {
+    if (purl === _provenProxyUrl) continue;
+    const agent = agentFor(purl);
+    if (!agent) continue;
+    try {
+      const res = await fetch(url, { ...options, dispatcher: agent });
+      if (_provenProxyUrl !== purl) {
+        _provenProxyUrl = purl;
+        log.info('proxyFetch: proxy confirmed working', { proxy: maskProxy(purl) });
+      }
+      return res;
+    } catch (e) {
+      lastErr = e;
+      log.warn('proxyFetch: proxy attempt failed, trying next', { proxy: maskProxy(purl), error: e?.message });
+    }
+  }
+
+  // 所有代理都失败 → 直连兜底
+  try {
+    return await fetch(url, options);
+  } catch (e) {
+    throw lastErr || e;
+  }
 }
 
 // web_fetch 缓存

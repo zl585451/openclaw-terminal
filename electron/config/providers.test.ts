@@ -11,7 +11,7 @@ describe('electron provider config helpers', () => {
     const providers = getFallbackProviders();
     expect(providers['bailian'].baseUrl).toBe('https://dashscope.aliyuncs.com/compatible-mode/v1');
     expect(Object.keys(providers)).not.toContain(['new', 'api'].join(''));
-    expect(providers.google.defaultModel).toBe('google/gemini-2.5-flash');
+    expect(providers.google.defaultModel).toBe('google/gemini-3.5-flash');
     expect(providers.groq.defaultModel).toBe('llama-3.3-70b-versatile');
     expect(providers.groq.models.map((model) => model.id)).not.toContain('mixtral-8x7b-32768');
   });

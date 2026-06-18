@@ -13,8 +13,6 @@ import { ContextMenu } from '../../components/ContextMenu';
 import SettingsPanel from '../settings/SettingsPanel';
 import SetupGuide from '../onboarding/SetupGuide';
 import { TurnFSM } from '../../core/turnFSM';
-import { StreamRouter } from '../../core/streamRouter';
-import { BlockIngest } from '../../core/blockIngest';
 import { useSettings } from '../../contexts/SettingsContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { useCanvasBridge } from '../../hooks/useCanvasBridge';
@@ -84,9 +82,9 @@ import type { ChatMessage, ChatTabProps } from './chatTypes';
 // MessageRow / ChatMessageItem / ChatMessageItemProps
 // 已全部迁移到 src/ui/chat/MessageList.tsx
 
-const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange, onSwitchTab }) => {
-  const { settings, setSettings, streamSpeedMs } = useSettings();
-  const { speakingMessageId, ttsError, playTTSForMessage, stopTts } = useTtsPlayback({
+const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange, onSwitchTab, conversations, activeConversationId, onNewConversation, onSwitchConversation, onDeleteConversation }) => {
+  const { settings, streamSpeedMs } = useSettings();
+  const { speakingMessageId, playTTSForMessage, stopTts } = useTtsPlayback({
     ttsPlayback: settings.ttsPlayback,
     ttsProvider: settings.ttsProvider,
   });
@@ -109,10 +107,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
     [canvasBridge.openCanvas]
   );
 
-  const octRuntimeRef = useRef<{ fsm: TurnFSM; stream: StreamRouter; ingest: BlockIngest } | null>(null);
+  const octRuntimeRef = useRef<{ fsm: TurnFSM } | null>(null);
   if (!octRuntimeRef.current) {
     const fsm = new TurnFSM();
-    octRuntimeRef.current = { fsm, stream: new StreamRouter(fsm), ingest: new BlockIngest() };
+    octRuntimeRef.current = { fsm };
   }
   const oct = octRuntimeRef.current;
 
@@ -125,7 +123,6 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
       // console.log('[MSG-FINALIZE] finalText length:', finalText?.length, 'preview:', finalText?.slice(0, 200));
       const finalRaw = stripThinkModeMarker(finalText || '');
       try { oct.fsm.onTurnFinish(); } catch (e) { console.warn('[ChatTab.v2] fsm.onTurnFinish', e); }
-      oct.ingest.reset();
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last.isStreaming) {
@@ -400,20 +397,14 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             }}>⬇ DROP FILES HERE</span>
           </div>
         )}
-        {/* VOICE / SETTINGS / CONNECTED 通过 portal 渲染到 TabBar 右侧 */}
+        {/* Canvas 图标 + 时钟 通过 portal 渲染到 TabBar 右侧 */}
         <ChatHeaderPortal
-          ttsPlayback={settings.ttsPlayback}
-          onToggleTts={() => setSettings((s) => ({ ...s, ttsPlayback: !s.ttsPlayback }))}
           canvasOpen={canvasBridge.isOpen}
           onOpenCanvas={canvasBridge.openPanel}
           speakingMessageId={speakingMessageId}
           onStopTts={stopTts}
-          ttsError={ttsError}
-          wsConnected={msgs.wsConnected}
-          wsReconnecting={msgs.wsReconnecting}
-          wsError={msgs.wsError}
-          gatewayCapabilities={msgs.gatewayCapabilities}
-          onOpenSettings={() => setShowSettings(true)}
+          localTime={timers.localTime}
+          localDate={timers.localDate}
         />
 
         <SetupGuide
@@ -430,10 +421,10 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
           awaitingResponse={msgs.awaitingResponse}
           streamingContent={msgs.streamingRenderText || msgs.fullTextRef.current}
           displayedText={msgs.streamingRenderText || typewriter.displayedText}
-          usePlainStreamingText={true}
+          usePlainStreamingText={false}
           useStructuredStreamingMarkdown={false}
           speakingMessageId={speakingMessageId}
-          agentPhase={msgs.agentPhase}
+          turnUiState={msgs.turnUiState}
           thinkingElapsed={msgs.thinkingElapsed}
           wsConnected={msgs.wsConnected}
           quickSend={msgs.quickSend}
@@ -480,8 +471,9 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             uploadedFiles={files.uploadedFiles}
             setUploadedFiles={files.setUploadedFiles}
             onSend={msgs.sendMessage}
+            onStop={msgs.stopCurrentResponse}
             wsConnected={msgs.wsConnected}
-            isStreaming={msgs.isStreaming}
+            isStreaming={msgs.isStreaming || msgs.awaitingResponse}
             inputRef={inputRef}
             injectInputText={injectInputText}
             onInjectConsumed={() => setInjectInputText(null)}
@@ -516,9 +508,12 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         tokenIn={msgs.tokenIn}
         ctxUsed={msgs.ctxUsed}
         ctxMax={msgs.ctxMax}
-        pauseSidePanelsDuringStream={isStreamingUiPause}
-        localTime={timers.localTime}
-        localDate={timers.localDate}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onNewConversation={onNewConversation}
+        onSwitchConversation={onSwitchConversation}
+        onDeleteConversation={onDeleteConversation}
+        onOpenSettings={() => setShowSettings(true)}
       />
       <div
         style={{

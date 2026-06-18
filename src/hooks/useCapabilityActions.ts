@@ -21,7 +21,7 @@ export interface UseCapabilityActionsOptions {
   openImageStudio: (prefill?: string) => void;
   markPendingPromptOptimization: () => void;
   dismissOnboarding: () => void;
-  onSwitchTab?: (tab: 'chat' | 'sound' | 'reaper') => void;
+  onSwitchTab?: (tab: 'chat') => void;
   setInjectInputText: React.Dispatch<React.SetStateAction<string | null>>;
   setCapBarSetupTarget: React.Dispatch<React.SetStateAction<CapabilityId | null>>;
 }
@@ -112,10 +112,7 @@ export function useCapabilityActions(options: UseCapabilityActionsOptions) {
 
       if (card.action.type === 'open_tab' && card.action.tabId === 'sound') {
         dismissOnboarding();
-        if (capabilityStatus !== 'available') {
-          appendMusicCapabilityGuideMessage();
-        }
-        onSwitchTab?.('sound');
+        appendMusicCapabilityGuideMessage();
         return;
       }
     },
@@ -151,11 +148,8 @@ export function useCapabilityActions(options: UseCapabilityActionsOptions) {
       return;
     }
     if (card.action.type === 'open_tab' && card.action.tabId === 'sound') {
-      if (capabilityStatus !== 'available') {
-        appendMusicCapabilityGuideMessage();
-        setCapBarSetupTarget('music_gen');
-      }
-      onSwitchTab?.('sound');
+      appendMusicCapabilityGuideMessage();
+      setCapBarSetupTarget('music_gen');
     }
   }, [
     appendImageCapabilityGuideMessage,

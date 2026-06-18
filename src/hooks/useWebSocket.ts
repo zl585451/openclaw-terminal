@@ -27,6 +27,7 @@ const ipcRenderer: IpcRendererLike = typeof window !== 'undefined' && typeof win
 
 interface UseWebSocketOptions {
   onChatDelta: (content: string, isDelta: boolean, isSystemReply: boolean, turnId?: string) => void;
+  onChatSeg?: (seg: Record<string, unknown>, turnId?: string) => void;
   onChatDone: (content: string, isSystemReply: boolean, turnId?: string, renderBlocks?: RenderBlock[]) => void;
   onAgentPhase: (phase: 'idle' | 'thinking' | 'typing' | 'tool_executing', elapsed?: number) => void;
   onToolEvent: (payload: GatewayToolPayload) => void;
@@ -205,6 +206,23 @@ export function useWebSocket(options: UseWebSocketOptions) {
         }
       }
 
+      // Segment events are the primary assistant text stream. They must not fall through
+      // to the legacy empty-content chat warning path.
+      if (data.event === 'chat' && nestedRecord(data, 'payload')?.seg !== undefined) {
+        const payload = nestedRecord(data, 'payload');
+        const seg = payload?.seg as Record<string, unknown> | undefined;
+        if (seg) {
+          const segTurnId = (() => {
+            const raw = data.turnId ?? payload?.turnId;
+            if (raw == null) return undefined;
+            const normalized = String(raw).trim();
+            return normalized || undefined;
+          })();
+          opt.onChatSeg?.(seg, segTurnId);
+        }
+        return;
+      }
+
       let content = extractContent(data);
       content = (content || '').replace(/\u200B/g, '');
       const done = (data.done === true) || (nestedRecord(data, 'payload')?.done === true);
@@ -328,11 +346,22 @@ export function useWebSocket(options: UseWebSocketOptions) {
     }
   }, []);
 
+  const cancel = useCallback(async (): Promise<GatewaySendResult> => {
+    try {
+      const result = await ipcRenderer.invoke<GatewaySendResult>('openclaw-cancel');
+      return result || {};
+    } catch (error) {
+      console.error('[useWebSocket] cancel error:', error);
+      return {};
+    }
+  }, []);
+
   return useMemo(() => ({
     wsConnected,
     wsReconnecting,
     wsError,
     memoryOnline,
     send,
-  }), [memoryOnline, send, wsConnected, wsError, wsReconnecting]);
+    cancel,
+  }), [cancel, memoryOnline, send, wsConnected, wsError, wsReconnecting]);
 }

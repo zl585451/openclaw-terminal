@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { parseOptionBox, type OptionItem, type RenderSegment } from '../../utils/optionBoxParser';
-import { hasAssistantCotMarkers } from '../../utils/cotExtract';
+import { hasAssistantCotMarkers, getAssistantVisibleMain } from '../../utils/cotExtract';
 // removed imports
 import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
@@ -15,10 +15,12 @@ import AmyAvatar from '../../components/AmyAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
 import { getCachedPreprocessedMarkdown, stabilizeStreamingMarkdown } from '../../utils/markdownPreprocess';
 import { formatTime, formatFullTime } from '../../utils/formatTime';
-import type { ChatMessage } from './chatTypes';
+import type { ChatMessage, ToolEventItem, TurnSegmentLite } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
+import type { TurnUiPhase, TurnUiState } from '../../core/turnUiState';
 import StreamingMarkdownContent from './StreamingMarkdownContent';
 import { useMsgParse } from '../../hooks/useMsgParse';
+import { filterActivityEntriesForInlineTools } from './activityTimelineFilters';
 
 // ── 时间格式化 ───────────────────────────────────────────────────────────
 
@@ -70,6 +72,44 @@ function buildFinalizedTimeline(
   return entries;
 }
 
+function getTurnUiBadgeLabel(phase: TurnUiPhase): string | null {
+  switch (phase) {
+    case 'submitted':
+    case 'thinking':
+      return '思考中';
+    case 'tool_running':
+      return '调用工具中';
+    case 'waiting_continuation':
+    case 'finalizing':
+      return '整理中';
+    case 'answering':
+      return '输出中';
+    case 'awaiting_user':
+      return '等你回复';
+    case 'error':
+      return '出错';
+    case 'cancelled':
+      return '已取消';
+    default:
+      return null;
+  }
+}
+
+function isTurnUiActivityStreaming(phase: TurnUiPhase): boolean {
+  return (
+    phase === 'submitted' ||
+    phase === 'thinking' ||
+    phase === 'tool_running' ||
+    phase === 'waiting_continuation' ||
+    phase === 'answering' ||
+    phase === 'finalizing'
+  );
+}
+
+function isTurnUiThinking(phase: TurnUiPhase): boolean {
+  return phase === 'submitted' || phase === 'thinking';
+}
+
 // ── 原子组件 ─────────────────────────────────────────────────────────────
 
 function MsgCopyButton({ text }: { text: string }) {
@@ -92,6 +132,137 @@ function MsgCopyButton({ text }: { text: string }) {
 const TypewriterCursor = memo(function TypewriterCursor({ show }: { show: boolean }) {
   if (!show) return null;
   return <span className="cursor-blink">▋</span>;
+});
+
+/** B3 inline：正文流中的工具卡片（默认折叠一行，可展开看入参/结果），对齐 Claude Code 结构 */
+const InlineToolCard = memo(function InlineToolCard({
+  event,
+  toolName,
+  getToolDisplayName,
+}: {
+  event?: ToolEventItem;
+  toolName: string;
+  getToolDisplayName: (tool: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const state = event?.state ?? 'executing';
+  const name = getToolDisplayName(toolName || event?.tool || 'tool');
+  const elapsed = event?.elapsedMs != null ? `${(event.elapsedMs / 1000).toFixed(1)}s` : '';
+  const argsPreview = event?.args
+    ? Object.entries(event.args)
+        .map(([k, v]) => `${k}: ${typeof v === 'string' ? v.slice(0, 80) : JSON.stringify(v).slice(0, 80)}`)
+        .join(', ')
+        .slice(0, 200)
+    : '';
+  const hasDetail = !!argsPreview || !!event?.resultPreview || !!event?.error;
+  return (
+    <div className={`inline-tool inline-tool--${state}`}>
+      <button
+        type="button"
+        className="inline-tool__head"
+        onClick={() => hasDetail && setOpen((o) => !o)}
+        disabled={!hasDetail}
+      >
+        <span className="inline-tool__status" aria-hidden>
+          {state === 'executing'
+            ? <span className="inline-tool__spinner" />
+            : state === 'error' ? '✗' : '✓'}
+        </span>
+        <span className="inline-tool__name">{name}</span>
+        {elapsed && <span className="inline-tool__time">{elapsed}</span>}
+        {hasDetail && <span className="inline-tool__chevron">{open ? '▴' : '▾'}</span>}
+      </button>
+      {open && hasDetail && (
+        <div className="inline-tool__body">
+          {argsPreview && <div className="inline-tool__args">{argsPreview}</div>}
+          {event?.error && <div className="inline-tool__error">{event.error}</div>}
+          {event?.resultPreview && !event?.error && (
+            <div className="inline-tool__result">{event.resultPreview}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+/** B3 工具组：按组内工具类型计数，生成一行中文摘要标题。 */
+function buildToolGroupSummary(
+  segs: TurnSegmentLite[],
+  getToolDisplayName: (tool: string) => string,
+): string {
+  const order: string[] = [];
+  const counts = new Map<string, number>();
+  for (const s of segs) {
+    const name = s.meta?.tool || 'tool';
+    if (!counts.has(name)) order.push(name);
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const phrase = (name: string, n: number): string => {
+    switch (name) {
+      case 'time_inject': return '确认时间';
+      case 'exec_command': return `执行 ${n} 条命令`;
+      case 'read_file': return `读取 ${n} 个文件`;
+      case 'web_search': return `搜索 ${n} 次`;
+      case 'parallel_web_research': return '并行调研';
+      case 'web_fetch': return `抓取 ${n} 个页面`;
+      default: return `${getToolDisplayName(name)} ${n} 次`;
+    }
+  };
+  return order.map((name) => phrase(name, counts.get(name) || 1)).join(' · ');
+}
+
+/** B3 工具组：连续工具调用收进一个可折叠组，对齐 Claude Code 的「摘要 + 子项」结构。 */
+const ToolGroup = memo(function ToolGroup({
+  segs,
+  toolEvents,
+  getToolDisplayName,
+}: {
+  segs: TurnSegmentLite[];
+  toolEvents?: ToolEventItem[];
+  getToolDisplayName: (tool: string) => string;
+}) {
+  const events = segs.map((s) => toolEvents?.find((t) => t.callId === s.meta?.callId));
+  const running = events.some((e) => !e || e.state === 'executing');
+  const hasError = events.some((e) => e?.state === 'error');
+
+  const [open, setOpen] = useState(running);
+  const userTouched = useRef(false);
+  useEffect(() => {
+    if (!userTouched.current) setOpen(running);
+  }, [running]);
+
+  const summary = buildToolGroupSummary(segs, getToolDisplayName);
+
+  return (
+    <div className={`tool-group ${running ? 'tool-group--running' : 'tool-group--done'} ${hasError ? 'tool-group--error' : ''}`}>
+      <button
+        type="button"
+        className="tool-group__head"
+        onClick={() => { userTouched.current = true; setOpen((o) => !o); }}
+      >
+        <span className="tool-group__status" aria-hidden>
+          {running ? <span className="tool-group__spinner" /> : hasError ? '✗' : '✓'}
+        </span>
+        <span className="tool-group__summary">{summary}</span>
+        <span className="tool-group__chevron">{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div className="tool-group__body">
+          {segs.map((seg) => {
+            const ev = toolEvents?.find((t) => t.callId === seg.meta?.callId);
+            return (
+              <InlineToolCard
+                key={seg.segId}
+                event={ev}
+                toolName={seg.meta?.tool || ev?.tool || ''}
+                getToolDisplayName={getToolDisplayName}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 });
 
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
@@ -278,7 +449,7 @@ export interface ChatMessageItemProps {
   currentPage: number;
   onPageChange: (msgId: number, page: number) => void;
   isStreamingMsg: boolean;
-  agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+  turnUiState: TurnUiState;
   speakingMessageId: number | null;
   wsConnected: boolean;
   quickSend: (text: string) => void;
@@ -343,21 +514,22 @@ const MessageHeader = memo(
   function MessageHeader({
     msg,
     isStreamingMsg,
-    agentPhase,
+    turnUiState,
     suppressPhaseBadge,
     assistantName,
   }: {
     msg: ChatMessage;
     isStreamingMsg: boolean;
-    agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+    turnUiState: TurnUiState;
     /** 与头部带内 CoT 并存且 phase 为 thinking 时隐藏，避免与 CoT 标题双「思考中」 */
     suppressPhaseBadge?: boolean;
     assistantName: string;
   }) {
+    const badgeLabel = getTurnUiBadgeLabel(turnUiState.phase);
     const showBadge =
       isStreamingMsg &&
-      agentPhase !== 'idle' &&
-      !(suppressPhaseBadge && agentPhase === 'thinking');
+      badgeLabel != null &&
+      !(suppressPhaseBadge && isTurnUiThinking(turnUiState.phase));
     return (
       <div className="msg-header">
         {msg.role === 'user' ? (
@@ -377,7 +549,7 @@ const MessageHeader = memo(
             </span>
             <span className={`agent-status-slot ${showBadge ? 'is-visible' : ''}`} aria-hidden={!showBadge}>
               <span className="agent-status-badge">
-                {agentPhase === 'thinking' ? '思考中' : agentPhase === 'tool_executing' ? '调用工具中' : '打字中'}
+                {badgeLabel}
               </span>
             </span>
           </div>
@@ -390,7 +562,7 @@ const MessageHeader = memo(
     a.msg.role === b.msg.role &&
     !!a.msg.isStreaming === !!b.msg.isStreaming &&
     a.isStreamingMsg === b.isStreamingMsg &&
-    a.agentPhase === b.agentPhase &&
+    a.turnUiState === b.turnUiState &&
     !!a.suppressPhaseBadge === !!b.suppressPhaseBadge &&
     a.assistantName === b.assistantName
 );
@@ -429,6 +601,8 @@ type AssistantMessageBodyProps = Pick<
   streamingDomRef?: React.RefObject<HTMLPreElement | null>;
   usePlainStreamingText?: boolean;
   useStructuredStreamingMarkdown?: boolean;
+  /** 工具调用结束后、最终文字还未到达时显示「正在生成回答…」 */
+  awaitingFinalAnswer?: boolean;
 };
 
 const AssistantMessageBody = memo(function AssistantMessageBody({
@@ -451,8 +625,13 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   streamingDomRef,
   usePlainStreamingText = false,
   useStructuredStreamingMarkdown = false,
+  awaitingFinalAnswer = false,
+  getToolDisplayName = (t: string) => t,
   markdownComponents,
-}: AssistantMessageBodyProps & { markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] }) {
+}: AssistantMessageBodyProps & {
+  markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'];
+  getToolDisplayName?: (tool: string) => string;
+}) {
   // Layout Lock：流式开始时记录高度并锁定 minHeight，防止结束时收缩跳动
   const bubbleRef = useRef<HTMLDivElement>(null);
   const lockedHeightRef = useRef<number>(0);
@@ -490,6 +669,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         className="msg-assistant-body"
         style={{ display: 'flex', flexDirection: 'column' }}
       >
+        {awaitingFinalAnswer && (
+          <div className="msg-generating-hint">正在整理结论…</div>
+        )}
         {/* 正文由 useMessages 的 RAF 写 textContent，避免每帧 React 协调整棵 ChatTab */}
         <pre
           ref={streamingDomRef as React.LegacyRef<HTMLPreElement> | undefined}
@@ -507,18 +689,77 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         className="msg-assistant-body"
         style={{ display: 'flex', flexDirection: 'column' }}
       >
+        {awaitingFinalAnswer && (
+          <div className="msg-generating-hint">正在整理结论…</div>
+        )}
         <StreamingMarkdownContent content={textToShow || raw || ''} />
         <TypewriterCursor show />
       </div>
     );
   }
 
+  // ── B3 inline：工具卡片按段序穿插进正文流（对齐 Claude Code 结构）──────────
+  // 前缀(最后文本段之前的 preamble + 工具) → 主体(最后文本段=最终答案) → 后缀(执行中的工具)
+  const turnSegs = msg.turnSegments;
+  const inlineActive = Array.isArray(turnSegs) && turnSegs.some((s) => s.type === 'tool_use');
+  let lastTextIdx = -1;
+  if (inlineActive && turnSegs) {
+    for (let i = turnSegs.length - 1; i >= 0; i -= 1) {
+      if (turnSegs[i].type === 'text' || turnSegs[i].type === 'final') { lastTextIdx = i; break; }
+    }
+  }
+  const renderInlineRange = (from: number, to: number) => {
+    if (!inlineActive || !turnSegs) return null;
+    const slice = turnSegs.slice(from, to);
+    const out: React.ReactNode[] = [];
+    let toolBuffer: TurnSegmentLite[] = [];
+
+    const flushTools = () => {
+      if (toolBuffer.length === 0) return;
+      const groupSegs = toolBuffer;
+      toolBuffer = [];
+      out.push(
+        <ToolGroup
+          key={`tg-${groupSegs[0].segId}`}
+          segs={groupSegs}
+          toolEvents={msg.toolEvents}
+          getToolDisplayName={getToolDisplayName}
+        />,
+      );
+    };
+
+    for (const seg of slice) {
+      if (seg.type === 'tool_use') {
+        toolBuffer.push(seg);
+        continue;
+      }
+      flushTools();
+      const c = getAssistantVisibleMain(seg.content || '').trim();
+      if (!c) continue;
+      out.push(
+        <div key={seg.segId} className="inline-preamble">
+          <FinalizedMarkdownContent
+            messageId={msg.id}
+            segmentKey={`pre-${seg.segId}`}
+            content={c}
+            markdownComponents={markdownComponents}
+            streaming
+          />
+        </div>,
+      );
+    }
+    flushTools();
+    return out;
+  };
+  const prefixEnd = lastTextIdx < 0 ? (turnSegs?.length ?? 0) : lastTextIdx;
+
   return (
     <div
       ref={bubbleRef}
       className="msg-assistant-body"
-      style={isStreamingMsg ? { display: 'flex', flexDirection: 'column' } : undefined}
+      style={isStreamingMsg || inlineActive ? { display: 'flex', flexDirection: 'column' } : undefined}
     >
+      {inlineActive && renderInlineRange(0, prefixEnd)}
       {segments && segments.length > 0 ? (
         <>
           {(() => {
@@ -696,6 +937,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
           )}
         </>
       )}
+      {inlineActive && lastTextIdx >= 0 && turnSegs && renderInlineRange(lastTextIdx + 1, turnSegs.length)}
       {isStreamingMsg && <TypewriterCursor show />}
     </div>
   );
@@ -707,7 +949,12 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
     prev.isLastAssistant === next.isLastAssistant &&
     prev.markdownComponents === next.markdownComponents &&
     prev.segments === next.segments &&
-    prev.optionsToShow === next.optionsToShow
+    prev.optionsToShow === next.optionsToShow &&
+    // B3 inline：段快照/工具事件变化时需重渲染，驱动 inline 卡片更新
+    prev.msg.turnSegments === next.msg.turnSegments &&
+    prev.msg.toolEvents === next.msg.toolEvents &&
+    prev.awaitingFinalAnswer === next.awaitingFinalAnswer &&
+    prev.getToolDisplayName === next.getToolDisplayName
 );
 
 /** 单行消息外壳（不设 memo：子树由 ChatMessageItem 控制） */
@@ -759,7 +1006,7 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     currentPage,
     onPageChange,
     isStreamingMsg,
-    agentPhase,
+    turnUiState,
     speakingMessageId,
     wsConnected,
     quickSend,
@@ -779,6 +1026,10 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     inlineThinkingPlaceholder = false,
   } = props;
 
+  const awaitingFinalAnswer =
+    isStreamingMsg &&
+    turnUiState.phase === 'waiting_continuation';
+
   const showCotInline = msg.role === 'assistant' && !isStreamingMsg && (cotContent != null || cotStarted);
   const showCotStreaming = msg.role === 'assistant' && isStreamingMsg && (!!cotStreaming || cotStarted);
   const showLightweightThinkingBadge =
@@ -786,17 +1037,22 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
     isStreamingMsg &&
     !inlineThinkingPlaceholder &&
     !showCotStreaming &&
-    agentPhase === 'thinking';
+    isTurnUiThinking(turnUiState.phase);
 
   const shouldShowActivityPanel = msg.role === 'assistant' && !!isLastAssistant;
+  // B3 inline：工具卡片已穿插进正文流时，把工具从顶部活动面板剔除（只留思考/CoT），避免重复展示。
+  const inlineToolsActive = Array.isArray(msg.turnSegments) && msg.turnSegments.some((s) => s.type === 'tool_use');
   const finalizedTimeline = shouldShowActivityPanel && !isStreamingMsg
-    ? buildFinalizedTimeline(msg, showCotInline ? (cotContent ?? '') : null)
+    ? filterActivityEntriesForInlineTools(
+        buildFinalizedTimeline(msg, showCotInline ? (cotContent ?? '') : null),
+        inlineToolsActive,
+      )
     : [];
   const streamingTimeline = shouldShowActivityPanel && isStreamingMsg
-    ? activityTimeline
+    ? filterActivityEntriesForInlineTools(activityTimeline, inlineToolsActive)
     : [];
   const panelStreamingFlag = shouldShowActivityPanel
-    ? (isStreamingMsg && (showCotStreaming || showLightweightThinkingBadge || inlineThinkingPlaceholder || agentPhase !== 'idle'))
+    ? (isStreamingMsg && (showCotStreaming || showLightweightThinkingBadge || inlineThinkingPlaceholder || isTurnUiActivityStreaming(turnUiState.phase)))
     : false;
 
   return (
@@ -807,7 +1063,12 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
       isStreamingMsg={isStreamingMsg}
       onContextMenu={onContextMenu}
     >
-      <MessageHeader msg={msg} isStreamingMsg={isStreamingMsg} agentPhase={agentPhase} assistantName={assistantName} />
+      <MessageHeader
+        msg={msg}
+        isStreamingMsg={isStreamingMsg}
+        turnUiState={turnUiState}
+        assistantName={assistantName}
+      />
       {shouldShowActivityPanel && (
         <ActivityPanel
           timeline={isStreamingMsg ? streamingTimeline : finalizedTimeline}
@@ -837,6 +1098,8 @@ const ChatMessageItem = memo(function ChatMessageItem(props: ChatMessageItemProp
             streamingDomRef={streamingDomRef}
             usePlainStreamingText={usePlainStreamingText}
             useStructuredStreamingMarkdown={useStructuredStreamingMarkdown}
+            awaitingFinalAnswer={awaitingFinalAnswer}
+            getToolDisplayName={getToolDisplayName}
             markdownComponents={markdownComponents}
           />
         ) : (
@@ -858,7 +1121,7 @@ export interface ChatMessageListProps {
   streamingContent: string;
   displayedText: string;
   speakingMessageId: number | null;
-  agentPhase: 'idle' | 'thinking' | 'typing' | 'tool_executing';
+  turnUiState: TurnUiState;
   thinkingElapsed: number;
   wsConnected: boolean;
   quickSend: (text: string) => void;
@@ -903,7 +1166,7 @@ function areChatMessageListPropsEqual(prev: ChatMessageListProps, next: ChatMess
     prev.streamingContent === next.streamingContent &&
     prev.displayedText === next.displayedText &&
     prev.speakingMessageId === next.speakingMessageId &&
-    prev.agentPhase === next.agentPhase &&
+    prev.turnUiState === next.turnUiState &&
     prev.thinkingElapsed === next.thinkingElapsed &&
     prev.wsConnected === next.wsConnected &&
     prev.quickSend === next.quickSend &&
@@ -933,7 +1196,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   streamingContent,
   displayedText,
   speakingMessageId,
-  agentPhase,
+  turnUiState,
   thinkingElapsed: _thinkingElapsed, // 不再使用，因为 CoTBlock 有自己的计时器
   wsConnected,
   quickSend,
@@ -1075,7 +1338,7 @@ export const ChatMessageList = memo(function ChatMessageList({
             )
           )}
           {showTypingIndicator && !emptyStreamingAssistantTail && (
-            agentPhase === 'thinking' ? (
+            isTurnUiThinking(turnUiState.phase) ? (
               // 思考阶段：用 CoTBlock 占位面板替代 chat-thinking 条（无末条空 assistant 时）
               <div className="cot-stream-wrapper">
                 <CoTBlock
@@ -1088,8 +1351,9 @@ export const ChatMessageList = memo(function ChatMessageList({
               // 其他等待阶段（typing / tool_executing）：保持原有样式
               <div className="chat-thinking">
                 <span className="msg-label">◆ {assistantName}</span>
-                {agentPhase === 'typing' && <span className="agent-status-badge">打字中</span>}
-                {agentPhase === 'tool_executing' && <span className="agent-status-badge">正在调用工具...</span>}
+                {getTurnUiBadgeLabel(turnUiState.phase) && (
+                  <span className="agent-status-badge">{getTurnUiBadgeLabel(turnUiState.phase)}</span>
+                )}
                 <span className="processing-blocks typing-dots">
                   <span className="block" />
                   <span className="block" />
@@ -1128,7 +1392,7 @@ export const ChatMessageList = memo(function ChatMessageList({
           msg.id === lastAssistantId &&
           isStreamingMsg &&
           !raw.trim() &&
-          agentPhase === 'thinking';
+          isTurnUiThinking(turnUiState.phase);
         return (
           <React.Fragment key={msg.id}>
             <ChatMessageItem
@@ -1146,7 +1410,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               currentPage={pageByMsgId[msg.id] ?? 1}
               onPageChange={handlePageChange}
               isStreamingMsg={!!msg.isStreaming}
-              agentPhase={agentPhase}
+              turnUiState={turnUiState}
               speakingMessageId={speakingMessageId}
               wsConnected={wsConnected}
               quickSend={quickSend}

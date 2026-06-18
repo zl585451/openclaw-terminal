@@ -5,8 +5,8 @@ import { StreamState, type StreamRouterEvent } from './streamTypes';
 export const STREAM_ROUTER_DEBUG = false;
 
 const INVALID = 'Invalid StreamState transition';
-const FLUSH_MS = 16;
-const BATCH_MAX_TOKENS = 3;
+const FLUSH_MS = 32;
+const BATCH_MAX_TOKENS = 8;
 
 const allowedTransitions: Record<StreamState, StreamState[]> = {
   [StreamState.IDLE]: [StreamState.OPENING],

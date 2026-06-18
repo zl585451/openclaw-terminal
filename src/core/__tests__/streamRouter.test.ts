@@ -12,6 +12,9 @@ function fsmReadyForStream(): TurnFSM {
   return fsm;
 }
 
+const FLUSH_MS = 32;
+const BATCH_MAX_TOKENS = 8;
+
 describe('StreamRouter', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -36,11 +39,11 @@ describe('StreamRouter', () => {
     router.pushToken('x');
     expect(router.getState()).toBe(StreamState.STREAMING);
 
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
     router.end();
     expect(router.getState()).toBe(StreamState.FLUSHING);
 
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
     expect(router.getState()).toBe(StreamState.COMPLETED);
 
     router.close();
@@ -75,13 +78,13 @@ describe('StreamRouter', () => {
     router.open();
     'abcdefghij'.split('').forEach((t) => router.pushToken(t));
 
-    vi.advanceTimersByTime(16);
-    expect(batches[0]?.length).toBeLessThanOrEqual(3);
+    vi.advanceTimersByTime(FLUSH_MS);
+    expect(batches[0]?.length).toBeLessThanOrEqual(BATCH_MAX_TOKENS);
 
-    vi.advanceTimersByTime(16);
-    vi.advanceTimersByTime(16);
-    vi.advanceTimersByTime(16);
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
+    vi.advanceTimersByTime(FLUSH_MS);
+    vi.advanceTimersByTime(FLUSH_MS);
+    vi.advanceTimersByTime(FLUSH_MS);
 
     const joined = batches.join('');
     expect(joined).toBe('abcdefghij');
@@ -97,7 +100,7 @@ describe('StreamRouter', () => {
     router.open();
     router.pushToken('a');
     router.pushToken('b');
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
     expect(batches.length).toBeGreaterThanOrEqual(1);
 
     router.pause();
@@ -107,7 +110,7 @@ describe('StreamRouter', () => {
     const nAfterPause = batches.length;
 
     router.resume();
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
     expect(batches.length).toBeGreaterThan(nAfterPause);
     expect(batches.join('')).toContain('c');
     expect(batches.join('')).toContain('d');
@@ -128,8 +131,8 @@ describe('StreamRouter', () => {
     router.pushToken('b');
     router.end();
 
-    vi.advanceTimersByTime(16);
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
+    vi.advanceTimersByTime(FLUSH_MS);
     expect(router.getState()).toBe(StreamState.COMPLETED);
     expect(batches.join('')).toBe('ab');
 
@@ -145,7 +148,7 @@ describe('StreamRouter', () => {
     unsub();
     router.open();
     router.pushToken('z');
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
     expect(fn).not.toHaveBeenCalled();
   });
 
@@ -159,7 +162,7 @@ describe('StreamRouter', () => {
     router.end();
     expect(router.getState()).toBe(StreamState.FLUSHING);
 
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
     expect(router.getState()).toBe(StreamState.COMPLETED);
 
     router.close();
@@ -174,7 +177,7 @@ describe('StreamRouter', () => {
 
     router.open();
     router.pushToken('a');
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersByTime(FLUSH_MS);
 
     expect(good).toHaveBeenCalled();
     expect(router.getState()).toBe(StreamState.STREAMING);
