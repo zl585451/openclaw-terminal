@@ -78,6 +78,52 @@ export function clearStreamingBubbleContent<T extends { role: string; isStreamin
   return messages;
 }
 
+export function markExecutingToolEventsStopped(events: ToolEventItem[] | undefined, now = Date.now()): ToolEventItem[] | undefined {
+  if (!events?.length) return events;
+  let changed = false;
+  const stopped = events.map((event) => {
+    if (event.state !== 'executing') return event;
+    changed = true;
+    const elapsedMs = event.elapsedMs ?? Math.max(0, now - event.startedAt);
+    return {
+      ...event,
+      state: 'error' as const,
+      error: event.error || '任务已停止',
+      resultPreview: event.resultPreview || '已停止当前任务。',
+      elapsedMs,
+    };
+  });
+  return changed ? stopped : events;
+}
+
+export function finalizeStoppedAssistantMessage<T extends {
+  role: string;
+  content?: string;
+  isStreaming?: boolean;
+  isStreamingRaw?: boolean;
+  toolEvents?: ToolEventItem[];
+  turnSegments?: ChatMessage['turnSegments'];
+}>(messages: T[], now = Date.now()): T[] {
+  const last = messages[messages.length - 1];
+  const hasExecutingTool = !!last?.toolEvents?.some((event) => event.state === 'executing');
+  const hasOpenSegment = !!last?.turnSegments?.some((segment) => segment.open);
+  if (!(last?.role === 'assistant' && (last.isStreaming || hasExecutingTool || hasOpenSegment))) return messages;
+
+  const content = typeof last.content === 'string' && last.content.trim()
+    ? last.content
+    : '已停止当前任务。';
+  const toolEvents = markExecutingToolEventsStopped(last.toolEvents, now);
+  const turnSegments = last.turnSegments?.some((segment) => segment.open)
+    ? last.turnSegments.map((segment) => (segment.open ? { ...segment, open: false } : segment))
+    : last.turnSegments;
+
+  return messages.map((msg, idx) =>
+    idx === messages.length - 1
+      ? { ...msg, content, isStreaming: false, isStreamingRaw: false, toolEvents, turnSegments }
+      : msg,
+  );
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface ActiveTool {
   callId: string;
@@ -217,6 +263,8 @@ export function useMessages({
   const pendingFullTextSyncRafRef = useRef<number | null>(null);
   const pendingStreamFinalizeRef = useRef(false);
   const finalizeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // painter 逐字揭示心跳；收尾兜底据此判断 painter 是否仍在推进，避免打断揭示动画
+  const streamPaintLastRevealTsRef = useRef(0);
   const pendingSystemReplyMap = useRef<Map<string, boolean>>(new Map());
   const pendingClarifyOpenRef = useRef(false);
   // B2/B3: 段协议状态——按 turnId 累积段。B3 起接管显示。
@@ -288,6 +336,12 @@ export function useMessages({
     }
     finalizeFallbackTimerRef.current = setTimeout(() => {
       finalizeFallbackTimerRef.current = null;
+      // painter 仍在逐字揭示（最近 160ms 内有揭示）→ 顺延兜底，别打断打字机动画。
+      // 仅当 painter 真正停止推进时才强制定稿。
+      if (performance.now() - streamPaintLastRevealTsRef.current < 160) {
+        scheduleFinalizeFallback(rawText);
+        return;
+      }
       const fallbackRaw = normalizeAssistantTranscriptContent(rawText ?? fullTextRef.current ?? '');
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -325,6 +379,7 @@ export function useMessages({
         finalizeStreamingAssistantMessage,
         pendingStreamFinalizeRef,
         lastStreamReconcileMsRef,
+        lastRevealTsRef: streamPaintLastRevealTsRef,
       },
     },
     setMessages,
@@ -803,18 +858,7 @@ export function useMessages({
       console.warn('[useMessages] stopCurrentResponse local cleanup', e);
       try { oct.fsm.resetToIdle(); } catch {}
     }
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (!(last?.role === 'assistant' && last.isStreaming)) return prev;
-      const content = typeof last.content === 'string' && last.content.trim()
-        ? last.content
-        : '已停止当前任务。';
-      return prev.map((msg, idx) =>
-        idx === prev.length - 1
-          ? { ...msg, content, isStreaming: false, isStreamingRaw: false }
-          : msg,
-      );
-    });
+    setMessages((prev) => finalizeStoppedAssistantMessage(prev));
     const result = await ws.cancel();
     if (!result?.success) {
       console.warn('[useMessages] cancel failed:', result);

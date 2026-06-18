@@ -50,6 +50,25 @@ function extractToolPreamble(content) {
   return firstLine;
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * 把最终报告分块、按节奏逐段发出（agent 本身非流式，一次性发整段会让前端"一次刷出"）。
+ * 复用前端"段 delta 逐步到达 → fullTextRef 增长 → 打字机揭示"这条已验证的流式路径。
+ * 长文控制在约 1s 内流完，短文按 ~16ms/块。
+ */
+async function emitFinalSegmentStreaming(emitSeg, segId, text) {
+  const total = text.length;
+  if (total === 0) return;
+  const PACE_MS = 16;
+  const targetSteps = Math.min(64, Math.max(8, Math.ceil(total / 12)));
+  const chunkLen = Math.ceil(total / targetSteps);
+  for (let i = 0; i < total; i += chunkLen) {
+    emitSeg({ op: 'delta', segId, text: text.slice(i, i + chunkLen) });
+    if (i + chunkLen < total) await sleep(PACE_MS);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────
 // 内部工具：解析 provider 配置
 // ─────────────────────────────────────────────────────────────────
@@ -490,13 +509,13 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
     finalResult = '抱歉，这个主题我查证了多轮，但没找到足够可靠的信息来形成完整结论。可以换个说法或补充线索，我再帮你查。';
   }
 
-  // B3 段事件：最终答案作为 final 段一次性发出（agent 非流式，没有逐字 delta）。
+  // B3 段事件：最终答案作为 final 段流式发出（分块按节奏，避免前端一次刷出）。
   // 这给前端 inline 渲染提供"最终文字段"锚点，让 lastTextIdx 切分正确。
   if (emitSeg && finalResult && finalResult.trim()) {
     closeOpenSeg();
     const finalSegId = openSeg('final');
     if (finalSegId) {
-      emitSeg({ op: 'delta', segId: finalSegId, text: finalResult });
+      await emitFinalSegmentStreaming(emitSeg, finalSegId, finalResult);
     }
   }
   finishSeg('end_turn');

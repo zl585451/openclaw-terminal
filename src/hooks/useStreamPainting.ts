@@ -17,6 +17,9 @@ type StreamPaintingContext = {
   finalizeStreamingAssistantMessage: (rawText?: string) => void;
   pendingStreamFinalizeRef: React.MutableRefObject<boolean>;
   lastStreamReconcileMsRef: React.MutableRefObject<number>;
+  /** 逐字揭示进度心跳：painter 每帧揭示新内容时写入 performance.now()，
+   *  供收尾兜底判断"painter 是否仍在推进"，避免兜底打断揭示动画。 */
+  lastRevealTsRef?: React.MutableRefObject<number>;
   /**
    * When a streaming DOM node is available, the paint loop already writes
    * directly to textContent. Publishing the same text back to React on every
@@ -45,6 +48,7 @@ export function useStreamPainting(
     onVisibleText,
     finalizeStreamingAssistantMessage,
     pendingStreamFinalizeRef,
+    lastRevealTsRef,
     publishDomTextToReact = false,
   } = ctx;
 
@@ -78,48 +82,45 @@ export function useStreamPainting(
     const targetLen = main.length;
     let shown = streamPaintShownLenRef.current;
     if (shown > targetLen) {
+      // 正文变短（新段开始/续轮清空）→ 揭示进度回退到新长度，从头打字
       shown = targetLen;
-      streamPaintShownLenRef.current = shown;
-    }
-    const behind = targetLen - shown;
-
-    if (!el) {
-      if (behind > 0) {
-        shown = targetLen;
-        streamPaintShownLenRef.current = shown;
-        publishVisibleText(main);
-        streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
-        return;
-      }
-      if (targetLen > 0) {
-        publishVisibleText(main);
-      }
-      if (pendingStreamFinalizeRef.current) {
-        finalizeStreamingAssistantMessage(raw);
-      }
-      return;
     }
 
-    if (behind > 0) {
-      shown = targetLen;
-      streamPaintShownLenRef.current = shown;
-      el.textContent = main;
-      if (publishDomTextToReact) publishVisibleText(main);
-      if (typingSound !== 'off') playClickSound(typingSound, typingSoundVolume);
-    } else if (targetLen > 0) {
-      el.textContent = main;
-      if (publishDomTextToReact) publishVisibleText(main);
+    const gap = targetLen - shown;
+    if (gap > 0) {
+      // 逐字揭示：每帧只揭示间隙的一部分（下限 2 字）。
+      // 这样无论后端是逐字发，还是 Agent / 强制收尾一次性发一整段，
+      // 前端都按打字机节奏揭示——视觉流式与后端分块彻底解耦。
+      const step = Math.max(2, Math.ceil(gap / 6));
+      shown = Math.min(targetLen, shown + step);
+      if (lastRevealTsRef) lastRevealTsRef.current = now;
+    }
+    streamPaintShownLenRef.current = shown;
+
+    const visible = shown >= targetLen ? main : main.slice(0, shown);
+
+    if (el) {
+      el.textContent = visible;
+      if (publishDomTextToReact) publishVisibleText(visible);
+    } else if (targetLen > 0 || pendingStreamFinalizeRef.current) {
+      // inline 路径无 <pre> sink，正文经 React state 驱动 markdown 渲染
+      publishVisibleText(visible);
+    }
+    if (gap > 0 && typingSound !== 'off') {
+      playClickSound(typingSound, typingSoundVolume);
     }
 
-    const rawEnd = fullTextRef.current;
-    const mainEnd = getAssistantVisibleMain(rawEnd).length;
+    // 还没揭示到当前末尾 → 继续下一帧（间隙较大时分帧打完）
+    const mainEnd = getAssistantVisibleMain(fullTextRef.current).length;
     if (streamPaintShownLenRef.current < mainEnd) {
       streamPaintRafRef.current = requestAnimationFrame(() => runStreamPaintTickRef.current());
       return;
     }
 
+    // 已追平当前内容。若流未结束，停帧等待下一个 delta 触发 startPainting() 唤醒；
+    // 若已收到 done（pendingFinalize）则定稿。
     if (pendingStreamFinalizeRef.current) {
-      finalizeStreamingAssistantMessage(rawEnd);
+      finalizeStreamingAssistantMessage(fullTextRef.current);
       if (stopAfterFinalizeRef.current) {
         stopAfterFinalizeRef.current = false;
         if (streamPaintRafRef.current != null) {

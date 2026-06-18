@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { clearStreamingBubbleContent, preferDoneTextWhenMoreComplete, shouldSuppressAssistantTextForClarify } from '../useMessages';
+import {
+  clearStreamingBubbleContent,
+  finalizeStoppedAssistantMessage,
+  markExecutingToolEventsStopped,
+  preferDoneTextWhenMoreComplete,
+  shouldSuppressAssistantTextForClarify,
+} from '../useMessages';
 import { normalizeAssistantTranscriptContent } from '../../utils/cotExtract';
 
 describe('preferDoneTextWhenMoreComplete', () => {
@@ -47,6 +53,71 @@ describe('clearStreamingBubbleContent', () => {
     ];
     const out = clearStreamingBubbleContent(input as any);
     expect(out).toBe(input);
+  });
+});
+
+describe('markExecutingToolEventsStopped', () => {
+  it('turns orphaned executing tool events into a stopped terminal state', () => {
+    const out = markExecutingToolEventsStopped([
+      {
+        callId: 'call_1',
+        tool: 'web_search',
+        state: 'executing',
+        args: { query: 'brave search api' },
+        startedAt: 1_000,
+      },
+      {
+        callId: 'call_2',
+        tool: 'web_search',
+        state: 'done',
+        startedAt: 1_500,
+        resultPreview: 'ok',
+      },
+    ], 2_250);
+
+    expect(out?.[0]).toMatchObject({
+      callId: 'call_1',
+      state: 'error',
+      error: '任务已停止',
+      resultPreview: '已停止当前任务。',
+      elapsedMs: 1_250,
+    });
+    expect(out?.[1]).toMatchObject({ callId: 'call_2', state: 'done', resultPreview: 'ok' });
+  });
+});
+
+describe('finalizeStoppedAssistantMessage', () => {
+  it('stops streaming and closes inline tool segments on cancel', () => {
+    const input = [
+      { role: 'user', content: '查一下 brave' },
+      {
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+        isStreamingRaw: true,
+        toolEvents: [{
+          callId: 'call_1',
+          tool: 'web_search',
+          state: 'executing' as const,
+          startedAt: 1_000,
+        }],
+        turnSegments: [{
+          segId: 'seg_tool_1',
+          index: 0,
+          type: 'tool_use' as const,
+          content: '',
+          open: true,
+          meta: { tool: 'web_search', callId: 'call_1' },
+        }],
+      },
+    ];
+
+    const out = finalizeStoppedAssistantMessage(input, 1_500) as any[];
+    expect(out[1].content).toBe('已停止当前任务。');
+    expect(out[1].isStreaming).toBe(false);
+    expect(out[1].isStreamingRaw).toBe(false);
+    expect(out[1].toolEvents[0].state).toBe('error');
+    expect(out[1].turnSegments[0].open).toBe(false);
   });
 });
 
