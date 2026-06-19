@@ -214,8 +214,117 @@ export function ensureBlankLineBeforeTables(text: string): string {
   return result.join('\n');
 }
 
+/**
+ * 找到从 start 处 `{` 开始的匹配 `}` 的下标（考虑字符串与转义），找不到返回 -1。
+ */
+function matchClosingBrace(text: string, start: number): number {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 兜底：模型有时把 diagram 规范 JSON（含 "diagramType"）当成普通正文直接输出，
+ * 没有包在代码围栏里，导致聊天区原样暴露一坨 JSON。这里把代码块之外、能成功
+ * JSON.parse 且含 "diagramType" 的平衡 {...} 自动包成 ```json 围栏，
+ * 交给下游 markdown 组件渲染成图卡片（带 Open 按钮）。
+ */
+export function fenceBareDiagramJson(text: string): string {
+  if (!text || !text.includes('diagramType')) return text;
+
+  // 收集已有围栏的字符区间，避免重复处理围栏内内容
+  const fenceRanges: Array<[number, number]> = [];
+  const fenceRe = /```[\s\S]*?```|~~~[\s\S]*?~~~/g;
+  let fm: RegExpExecArray | null;
+  while ((fm = fenceRe.exec(text))) fenceRanges.push([fm.index, fm.index + fm[0].length]);
+  const inFence = (pos: number) => fenceRanges.some(([s, e]) => pos >= s && pos < e);
+
+  let out = '';
+  let cursor = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '{' && !inFence(i)) {
+      const end = matchClosingBrace(text, i);
+      if (end > i) {
+        const slice = text.slice(i, end + 1);
+        if (/"diagramType"\s*:/.test(slice)) {
+          let valid = false;
+          try { JSON.parse(slice); valid = true; } catch { /* 非合法 JSON，跳过 */ }
+          if (valid) {
+            const before = text.slice(cursor, i);
+            out += before;
+            if (out && !out.endsWith('\n')) out += '\n';
+            out += `\n\`\`\`json\n${slice}\n\`\`\`\n`;
+            i = end + 1;
+            cursor = i;
+            continue;
+          }
+        }
+        // 跳到该 {...} 之后，避免在内部反复扫描
+        i = end + 1;
+        continue;
+      }
+    }
+    i++;
+  }
+  out += text.slice(cursor);
+  return out;
+}
+
+/**
+ * 兜底：模型把 `<svg>…</svg>` 直接写进正文时，chat 的 markdown 渲染会把它当文本转义、
+ * 原样暴露源码。这里把代码块之外的完整 <svg> 自动包成 ```svg 围栏，
+ * 交给下游 markdown 组件渲染成内联 SVG 预览卡片。
+ */
+export function fenceBareSvg(text: string): string {
+  if (!text || !/<svg[\s>]/i.test(text)) return text;
+
+  const fenceRanges: Array<[number, number]> = [];
+  const fenceRe = /```[\s\S]*?```|~~~[\s\S]*?~~~/g;
+  let fm: RegExpExecArray | null;
+  while ((fm = fenceRe.exec(text))) fenceRanges.push([fm.index, fm.index + fm[0].length]);
+  const inFence = (pos: number) => fenceRanges.some(([s, e]) => pos >= s && pos < e);
+
+  const svgRe = /<svg[\s\S]*?<\/svg>/gi;
+  const hits: Array<[number, number, string]> = [];
+  let m: RegExpExecArray | null;
+  while ((m = svgRe.exec(text))) {
+    if (!inFence(m.index)) hits.push([m.index, m.index + m[0].length, m[0]]);
+  }
+  if (!hits.length) return text;
+
+  let out = '';
+  let cursor = 0;
+  for (const [s, e, svg] of hits) {
+    out += text.slice(cursor, s);
+    if (out && !out.endsWith('\n')) out += '\n';
+    out += `\n\`\`\`svg\n${svg}\n\`\`\`\n`;
+    cursor = e;
+  }
+  out += text.slice(cursor);
+  return out;
+}
+
 export function preprocessMarkdown(text: string): string {
   let processed = normalizeCustomEchartBlocks(text);
+  processed = fenceBareDiagramJson(processed);
+  processed = fenceBareSvg(processed);
   if (!shouldPreprocessMarkdownTables(processed)) return processed;
   // 确保表格前有空行，便于 GFM 解析
   processed = ensureBlankLineBeforeTables(processed);

@@ -1,7 +1,8 @@
-import React, { useState, startTransition } from 'react';
+import React, { useState, useRef, useEffect, useCallback, startTransition } from 'react';
 import type { UseGatewayReturn } from '../../hooks/useGateway';
 import LogPanel from '../../components/LogPanel';
 import ConversationList from './ConversationList';
+import TabBar from '../../components/TabBar';
 import type { ConversationMeta } from '../../types/electronAPI';
 
 const ipcRenderer =
@@ -28,7 +29,14 @@ export interface ChatTabRightPanelProps {
   onSwitchConversation?: (id: string) => void;
   onDeleteConversation?: (id: string) => void;
   onOpenSettings?: () => void;
+  activeTab?: 'chat' | 'workspace' | 'library';
+  onTabChange?: (tab: 'chat' | 'workspace' | 'library') => void;
 }
+
+const PANEL_MIN_WIDTH = 220;
+const PANEL_MAX_WIDTH = 560;
+const PANEL_DEFAULT_WIDTH = 300;
+const PANEL_WIDTH_KEY = 'oct.sidebar.width';
 
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   'qwen3.5-plus': 131072,
@@ -90,7 +98,48 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   onSwitchConversation,
   onDeleteConversation,
   onOpenSettings,
+  activeTab,
+  onTabChange,
 }) => {
+  // 侧边栏宽度（可左右拖拽伸缩，持久化）
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+      if (saved >= PANEL_MIN_WIDTH && saved <= PANEL_MAX_WIDTH) return saved;
+    } catch { /* ignore */ }
+    return PANEL_DEFAULT_WIDTH;
+  });
+  const draggingRef = useRef(false);
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      // 侧栏在最左，宽度 = 鼠标到窗口左缘的距离（夹在 min/max 内）
+      const w = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, e.clientX));
+      setPanelWidth(w);
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try { localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidth)); } catch { /* ignore */ }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [panelWidth]);
+
   /** P0-4：默认折叠；仅当用户曾展开过并写入 oct.devpanel.expanded=1 时首次展开 */
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -137,7 +186,10 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
   };
 
   return (
-    <div className={`right-panel ${sidebarCollapsed ? 'right-panel--collapsed' : ''}`}>
+    <div
+      className={`right-panel ${sidebarCollapsed ? 'right-panel--collapsed' : ''}`}
+      style={sidebarCollapsed ? undefined : { width: panelWidth }}
+    >
       <button
         type="button"
         onClick={toggleSidebar}
@@ -146,7 +198,15 @@ const ChatTabRightPanelComponent: React.FC<ChatTabRightPanelProps> = ({
       >
         {sidebarCollapsed ? '\u203A' : '\u2039'}
       </button>
+      {!sidebarCollapsed && (
+        <div className="right-panel-resizer" onMouseDown={onResizeStart} title="拖拽调整宽度" />
+      )}
       <div className={`right-panel-inner ${sidebarCollapsed ? 'is-hidden' : ''}`}>
+        {onTabChange && (
+          <div className="sidebar-tabbar">
+            <TabBar activeTab={activeTab || 'chat'} onTabChange={onTabChange} />
+          </div>
+        )}
         <ConversationList
           conversations={conversations}
           activeConversationId={activeConversationId}
@@ -352,6 +412,8 @@ const ChatTabRightPanel = React.memo(ChatTabRightPanelComponent, (prev, next) =>
     prev.onSwitchConversation === next.onSwitchConversation &&
     prev.onDeleteConversation === next.onDeleteConversation &&
     prev.onOpenSettings === next.onOpenSettings &&
+    prev.activeTab === next.activeTab &&
+    prev.onTabChange === next.onTabChange &&
     prev.gateway.gatewayRunning === next.gateway.gatewayRunning &&
     prev.gateway.gatewayManaged === next.gateway.gatewayManaged &&
     prev.gateway.gatewayPortInUse === next.gateway.gatewayPortInUse &&

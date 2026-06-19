@@ -190,9 +190,9 @@ const App: React.FC = () => {
         {/* 标题栏 */}
         <TitleBar />
         
-        {/* 标签栏 + 右侧 portal 插槽 */}
+        {/* 标签栏 + 右侧 portal 插槽。聊天页内 tab 由左侧栏顶部接管，故此处仅在非聊天页显示 */}
         <div className="app-shell-bar">
-          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          {activeTab !== 'chat' && <TabBar activeTab={activeTab} onTabChange={setActiveTab} />}
           <div id="chat-header-portal" />
         </div>
 
@@ -206,6 +206,8 @@ const App: React.FC = () => {
                 getNextMessageId={getNextMessageId}
                 onStatusChange={() => {}}
                 onSwitchTab={(tab) => setActiveTab(tab)}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
                 conversations={conversations}
                 activeConversationId={activeConversationId}
                 onNewConversation={handleNewConversation}

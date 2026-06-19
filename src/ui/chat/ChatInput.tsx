@@ -28,6 +28,8 @@ export interface ChatInputAreaProps {
   onRestartGateway?: () => void;
   hasPendingPills?: boolean;
   extraControls?: React.ReactNode;
+  /** 输入框下方的控件条（模型 / 思考强度等） */
+  bottomBar?: React.ReactNode;
   /** When true, show first-time friendly placeholder copy */
   isEmptyConversation?: boolean;
 }
@@ -48,6 +50,7 @@ const ChatInputArea = memo(function ChatInputArea({
   onRestartGateway,
   hasPendingPills,
   extraControls,
+  bottomBar,
   isEmptyConversation = false,
 }: ChatInputAreaProps) {
   const conversationPlaceholder = useMemo(() => {
@@ -203,15 +206,7 @@ const ChatInputArea = memo(function ChatInputArea({
           ))}
         </div>
       )}
-      <div className="chat-input-area">
-        <button
-          ref={quickMenuAnchorRef}
-          type="button"
-          className="quick-menu-btn"
-          onClick={() => setQuickMenuOpen((v) => !v)}
-          title="快捷指令"
-        >
-          ◀        </button>
+      <div className={`chat-input-area ${inputFocused ? 'focused' : ''} ${inputFlash ? 'flash' : ''}`}>
         <QuickCommandMenu
           anchorRef={quickMenuAnchorRef}
           visible={quickMenuOpen}
@@ -278,16 +273,28 @@ const ChatInputArea = memo(function ChatInputArea({
           placeholder={hasPendingPills ? '或者自己输入...' : conversationPlaceholder}
           rows={1}
         />
-        <button type="button" className="attach-btn" title="添加附件（或拖拽文件到此处）" onClick={handlePickFiles}>📎</button>
-        {extraControls}
-        <button
-          className={`send-btn ${isStreaming ? 'send-btn--stop' : ''}`}
-          onClick={handleSend}
-          disabled={!isStreaming && (!inputValue.trim() && !imagePreview && uploadedFiles.length === 0)}
-          title={isStreaming ? '停止当前任务' : !wsConnected ? '连接..' : undefined}
-        >
-          {isStreaming ? '[ STOP ] ■' : '[ SEND ] →'}
+        <div className="composer-toolbar">
+          <div className="composer-toolbar-left">
+            <button
+              ref={quickMenuAnchorRef}
+              type="button"
+              className="composer-icon-btn"
+              onClick={() => setQuickMenuOpen((v) => !v)}
+              title="快捷指令"
+            >＋</button>
+            <button type="button" className="composer-icon-btn" title="添加附件（或拖拽文件到此处）" onClick={handlePickFiles}>📎</button>
+            {extraControls}
+            {bottomBar}
+          </div>
+          <button
+            className={`composer-send ${isStreaming ? 'composer-send--stop' : ''}`}
+            onClick={handleSend}
+            disabled={!isStreaming && (!inputValue.trim() && !imagePreview && uploadedFiles.length === 0)}
+            title={isStreaming ? '停止当前任务' : !wsConnected ? '连接..' : '发送'}
+          >
+            {isStreaming ? '■' : '↑'}
           </button>
+        </div>
       </div>
     </>
   );

@@ -29,6 +29,11 @@ function createChatRequestHandler({
     const attachments = params?.attachments || [];
     const workbenchContext = params?.workbenchContext || params?.canvasContext || null;
     const projectContext = params?.projectContext || null;
+    // 思考强度随请求参数静默生效（前端拉条 → 不再走 /think 斜杠命令）
+    const requestedThinkMode = typeof params?.thinkMode === 'string' ? params.thinkMode.trim().toLowerCase() : '';
+    if (requestedThinkMode && typeof session.setThinkMode === 'function') {
+      try { session.setThinkMode(sessionKey, requestedThinkMode); } catch { /* ignore */ }
+    }
     let keepalivePhase = 'waiting_first_token';
     let keepaliveToolName = null;
     const keepaliveStartTime = Date.now();

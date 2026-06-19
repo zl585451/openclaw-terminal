@@ -143,6 +143,13 @@ export function registerChatHandlers(deps: IpcDeps) {
     return { success: true, sessionKey: key };
   });
 
+  // 静默设置思考强度（off/low/medium/high）；后续消息以参数携带，不发斜杠命令
+  ipcMain.handle('openclaw-set-think', async (_event: unknown, level: string) => {
+    const lvl = String(level || '').trim().toLowerCase();
+    deps.setThinkMode?.(lvl);
+    return { success: true, thinkMode: lvl };
+  });
+
   ipcMain.handle('openclaw-connect', () => {
     deps.connectOpenClaw();
     return { success: true };

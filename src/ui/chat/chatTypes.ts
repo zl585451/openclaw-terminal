@@ -70,4 +70,7 @@ export interface ChatTabProps {
   onNewConversation?: () => void;
   onSwitchConversation?: (id: string) => void;
   onDeleteConversation?: (id: string) => void;
+  // 顶部 tab（移入侧边栏顶部）
+  activeTab?: 'chat' | 'workspace' | 'library';
+  onTabChange?: (tab: 'chat' | 'workspace' | 'library') => void;
 }

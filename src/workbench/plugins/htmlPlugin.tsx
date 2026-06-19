@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { WorkbenchDocument } from '../types';
 import type { WorkbenchRendererPlugin } from './types';
+import { wrapArtifactHtml } from '../../utils/artifactShell';
 
 type ViewportKey = 'desktop' | 'tablet' | 'mobile';
 
@@ -18,6 +19,11 @@ function HtmlPreviewViewport({ document }: { document: WorkbenchDocument }) {
     width: `${viewportDef.width}px`,
     height: `${viewportDef.height}px`,
   }), [viewportDef.height, viewportDef.width]);
+
+  // Inject the Claude-style design-system shell (reset + font stack + tokens)
+  // so raw AI HTML/SVG renders polished instead of falling back to browser
+  // defaults (serif font, no reset, undefined design vars).
+  const srcDoc = useMemo(() => wrapArtifactHtml(document.content), [document.content]);
 
   return (
     <div className="canvas-preview canvas-ui-preview">
@@ -38,7 +44,7 @@ function HtmlPreviewViewport({ document }: { document: WorkbenchDocument }) {
         <div className="canvas-ui-frame-wrap" style={frameStyle}>
           <iframe
             className="canvas-html-preview"
-            srcDoc={document.content}
+            srcDoc={srcDoc}
             sandbox="allow-scripts"
             title="HTML Preview"
           />

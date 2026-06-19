@@ -269,8 +269,6 @@
   min-width: 100%;
   min-height: 100%;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
 }
 
 .canvas-mermaid-pane__svg {
@@ -278,6 +276,9 @@
   flex: 0 0 auto;
   display: block;
   transform-origin: top left;
+  /* margin:auto 在 flex 容器里：有剩余空间时双向居中，内容溢出时自动让位给滚动，
+     不会像 justify/align center 那样裁掉顶部，解决“图缩在上方、下半区空白”。 */
+  margin: auto;
 }
 
 .canvas-mermaid-pane__error {

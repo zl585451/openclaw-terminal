@@ -46,6 +46,7 @@ export interface IpcDeps {
   ) => { success: boolean; error?: string };
   cancelChatMessage: () => { success: boolean; error?: string };
   setSessionKey?: (sessionKey: string) => void;
+  setThinkMode?: (level: string) => void;
   getOpenClawStatus: () => OpenClawStatus;
   getAiLibraryPlugin: () => Promise<unknown>;
   saveAiLibraryPlugin: (payload: AiLibraryPluginPayload) => Promise<unknown>;
