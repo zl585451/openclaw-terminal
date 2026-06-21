@@ -2248,6 +2248,119 @@
   background: var(--bg-panel);
 }
 
+.conv-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg-overlay, rgba(0, 0, 0, 0.62)) 78%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.conv-confirm-dialog {
+  width: min(420px, calc(100vw - 48px));
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 42%, var(--border-subtle));
+  border-radius: 8px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-elevated, var(--bg-surface)) 94%, var(--accent-primary) 6%),
+    var(--bg-surface)
+  );
+  box-shadow:
+    0 20px 70px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 color-mix(in srgb, var(--accent-primary) 18%, transparent);
+  padding: 18px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.conv-confirm-kicker {
+  margin-bottom: 8px;
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+}
+
+.conv-confirm-title {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  font-family: var(--font-display, var(--font-sans));
+  font-size: var(--text-xl);
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.conv-confirm-copy {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
+
+.conv-confirm-preview {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.conv-confirm-btn {
+  min-width: 72px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background-color 0.14s linear,
+    border-color 0.14s linear,
+    color 0.14s linear;
+}
+
+.conv-confirm-btn--ghost {
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.conv-confirm-btn--ghost:hover {
+  border-color: var(--border-primary, var(--accent-primary));
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.conv-confirm-btn--danger {
+  border: 1px solid color-mix(in srgb, var(--status-error, #ef4444) 55%, var(--accent-primary));
+  background: color-mix(in srgb, var(--status-error, #ef4444) 14%, transparent);
+  color: var(--status-error, #ef4444);
+}
+
+.conv-confirm-btn--danger:hover {
+  background: var(--status-error, #ef4444);
+  border-color: var(--status-error, #ef4444);
+  color: var(--text-inverse, #fff);
+}
+
 /* 任务看板区域 - flex:1 自适应 */
 .task-board-section {
   flex: 1;
