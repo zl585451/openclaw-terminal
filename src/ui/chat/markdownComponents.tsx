@@ -130,7 +130,7 @@ export function createMarkdownComponents(
     mode: 'markdown' | 'code' | 'html',
     title?: string,
     language?: string,
-    artifactType?: 'document' | 'diagram' | 'code' | 'ui-draft' | 'echart'
+    artifactType?: 'reading' | 'artifact' | 'document' | 'diagram' | 'code' | 'ui-draft' | 'echart' | 'script'
   ) => void
 ): React.ComponentProps<typeof ReactMarkdown>['components'] {
   return {

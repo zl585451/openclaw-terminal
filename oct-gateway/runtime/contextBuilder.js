@@ -385,7 +385,7 @@ class ContextBuilder {
         + '【克制】：主链路≤6 节点、节点标签≤12 字、副标题≤5 字，细节放正文不要堆进图里。';
     }
 
-    const suggestedType = artifactType || 'document';
+    const suggestedType = artifactType === 'document' ? 'reading' : (artifactType || 'reading');
     return `\n\n[系统] 这条请求适合使用 Canvas 表达。使用 canvas 工具创建 ${suggestedType} 类型成果物。${reason || '这条请求适合结构化表达'}`;
   }
 

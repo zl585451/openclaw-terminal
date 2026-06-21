@@ -7,7 +7,7 @@ export const diagramPlugin: WorkbenchRendererPlugin = {
   canRender: (document) =>
     document.artifactType === 'diagram' ||
     String(document.language || '').toLowerCase() === 'mermaid' ||
-    ((['code', 'document', 'text'].includes(document.artifactType) || document.artifactType == null) &&
+    ((['code', 'reading', 'artifact', 'document', 'text'].includes(document.artifactType) || document.artifactType == null) &&
       /^\s*\{[\s\S]*"diagramType"\s*:/.test(String(document.content || ''))),
   render: (document) => (
     <div className="canvas-preview">

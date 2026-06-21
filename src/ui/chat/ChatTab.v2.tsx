@@ -224,7 +224,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [msgs.sendMessage, msgs.wsConnected]);
 
   // ── Workbench → Chat 桥接：监听面板内的发送请求 ─────────────────
-  // 当 DocumentAppendBar / 其他面板内 UI 通过 workbenchBus.requestSendMessage 发起请求时，
+  // 当 ArtifactActionBar / 其他面板内 UI 通过 workbenchBus.requestSendMessage 发起请求时，
   // 这里转成实际的 sendMessage 调用，并按 intent 注入 roundtrip 上下文。
   useEffect(() => {
     const unsubscribe = workbenchBus.subscribeSendRequest((request) => {

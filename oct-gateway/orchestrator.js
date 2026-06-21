@@ -208,7 +208,7 @@ const CANVAS_TRIGGER_RULES = [
     reason: '用户要求时序/状态/甘特等图，使用 Mermaid 自动布局',
   },
   {
-    artifactType: 'document',
+    artifactType: 'reading',
     keywords: ['梳理方案', '整理成文档', '输出成文档', '做个方案', '写个提纲', '整理结构', '生成prd', 'PRD'],
     reason: '用户明确要求结构化文档',
   },

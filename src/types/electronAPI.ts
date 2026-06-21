@@ -232,6 +232,11 @@ export interface ElectronAPI {
       bookId: string,
       chapterIndex: number,
     ) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    updateChapter: (
+      bookId: string,
+      chapterIndex: number,
+      content: string,
+    ) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
     pickFile: () => Promise<{ success: true; filePath: string } | { success: false; error: string }>;
     upload: (params: {
       filePath: string;

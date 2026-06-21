@@ -65,6 +65,8 @@ const electronAPI = {
     chapters: (bookId: string) => ipcRenderer.invoke('library:chapters', { bookId }),
     chapter: (bookId: string, chapterIndex: number) =>
       ipcRenderer.invoke('library:chapter', { bookId, chapterIndex }),
+    updateChapter: (bookId: string, chapterIndex: number, content: string) =>
+      ipcRenderer.invoke('library:updateChapter', { bookId, chapterIndex, content }),
     pickFile: () => ipcRenderer.invoke('library:pickFile'),
     upload: (params: { filePath: string; title: string; author?: string }) =>
       ipcRenderer.invoke('library:upload', params),

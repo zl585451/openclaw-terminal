@@ -46,7 +46,7 @@ class WorkbenchBus {
 
   // ── 发送请求通道（本次新增）────────────────────────────────────
   /**
-   * 由 WorkbenchPanel 内 UI（如 DocumentAppendBar）调用。
+   * 由 WorkbenchPanel 内 UI（如 ArtifactActionBar）调用。
    * Chat 侧通过 subscribeSendRequest 监听后转 sendMessage。
    */
   requestSendMessage(request: WorkbenchSendRequest) {

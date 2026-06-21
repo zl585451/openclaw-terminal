@@ -8,14 +8,16 @@ function normalizeMode(mode, artifactType) {
 }
 
 function normalizeArtifactType(artifactType, mode) {
-  if (artifactType === 'document' || artifactType === 'diagram' ||
-      artifactType === 'ui-draft' || artifactType === 'code' ||
-      artifactType === 'react-flow' || artifactType === 'echart') {
+  if (artifactType === 'document') return 'reading';
+  if (artifactType === 'reading' || artifactType === 'artifact' ||
+      artifactType === 'diagram' || artifactType === 'ui-draft' ||
+      artifactType === 'code' || artifactType === 'react-flow' ||
+      artifactType === 'echart' || artifactType === 'script') {
     return artifactType;
   }
   if (mode === 'code') return 'code';
   if (mode === 'html') return 'ui-draft';
-  return 'document';
+  return 'reading';
 }
 
 function extractMermaidContent(content) {
@@ -84,8 +86,8 @@ module.exports = {
           },
           artifactType: {
             type: 'string',
-            enum: ['document', 'diagram', 'ui-draft', 'code', 'react-flow', 'echart'],
-            description: 'Artifact category: document=markdown文档, diagram=Mermaid图, react-flow=交互式节点图(JSON格式), echart=ECharts数据图表(bar/line/pie/scatter等), ui-draft=HTML, code=代码',
+            enum: ['reading', 'artifact', 'document', 'diagram', 'ui-draft', 'code', 'react-flow', 'echart', 'script'],
+            description: 'Artifact category: reading=只读阅读产物, artifact=可编辑文稿, document=legacy alias for reading, diagram=Mermaid图, script=剧本, react-flow=交互式节点图(JSON格式), echart=ECharts数据图表(bar/line/pie/scatter等), ui-draft=HTML, code=代码',
           },
           mode: {
             type: 'string',
@@ -94,7 +96,7 @@ module.exports = {
           },
           content: {
             type: 'string',
-            description: 'Artifact content. markdown for documents; pure Mermaid DSL for diagram; {"nodes":[...],"edges":[...],"direction":"LR","title":"..."} JSON for react-flow; {"title":"...","option":{...ECharts option...}} JSON for echart; HTML for ui-draft; raw code for code.',
+            description: 'Artifact content. markdown for reading/artifact; pure Mermaid DSL for diagram; {"nodes":[...],"edges":[...],"direction":"LR","title":"..."} JSON for react-flow; {"title":"...","option":{...ECharts option...}} JSON for echart; HTML for ui-draft; raw code for code.',
           },
           language: {
             type: 'string',

@@ -1,5 +1,8 @@
 export type WorkbenchMode = 'markdown' | 'code' | 'html';
 export type WorkbenchArtifactType =
+  | 'reading'
+  | 'artifact'
+  /** @deprecated Legacy persisted/gateway alias. Normalize to reading at boundaries. */
   | 'document'
   | 'diagram'
   | 'code'
@@ -110,6 +113,35 @@ export type CanvasEvent =
   | { type: 'canvas'; action: 'delete'; payload: { documentId: string } }
   | { type: 'canvas'; action: 'explain'; payload: { documentId: string; explanation: string } };
 export type CanvasRoundtripContext = WorkbenchRoundtripContext;
+
+export function normalizeWorkbenchArtifactType(value: unknown, mode: WorkbenchMode = 'markdown'): WorkbenchArtifactType {
+  if (value === 'document') return 'reading';
+  if (
+    value === 'reading'
+    || value === 'artifact'
+    || value === 'diagram'
+    || value === 'code'
+    || value === 'ui-draft'
+    || value === 'react-flow'
+    || value === 'echart'
+    || value === 'script'
+  ) {
+    return value;
+  }
+  if (mode === 'code') return 'code';
+  if (mode === 'html') return 'ui-draft';
+  return 'reading';
+}
+
+export function isReadingWorkbenchArtifact(documentOrType: WorkbenchDocument | WorkbenchArtifactType | null | undefined): boolean {
+  const type = typeof documentOrType === 'string' ? documentOrType : documentOrType?.artifactType;
+  return type === 'reading' || type === 'document';
+}
+
+export function isEditableWorkbenchArtifact(documentOrType: WorkbenchDocument | WorkbenchArtifactType | null | undefined): boolean {
+  const type = typeof documentOrType === 'string' ? documentOrType : documentOrType?.artifactType;
+  return !!type && !isReadingWorkbenchArtifact(type);
+}
 
 export function toWorkbenchCommand(event: CanvasEvent | WorkbenchEvent): WorkbenchCommand {
   return { type: event.action, payload: event.payload } as WorkbenchCommand;
