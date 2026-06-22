@@ -225,8 +225,8 @@ const App: React.FC = () => {
               />
             </Suspense>
           )}
+          <WorkbenchHost />
         </div>
-        <WorkbenchHost />
         {showSettings && (
           <Suspense fallback={null}>
             <SettingsPanel

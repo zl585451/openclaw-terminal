@@ -49,6 +49,9 @@
 }
 
 .chat-tab {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
   display: flex;
   height: 100%;
   gap: 10px;
@@ -69,9 +72,13 @@
   transition: max-width 0.18s ease;
 }
 
-/* Canvas 打开时只收缩聊天区，右边栏原位不动被 Canvas 自然压住 */
+/* Canvas 打开时由外层主布局真实挤压聊天区；聊天内部不再猜 Canvas 宽度 */
 .chat-tab--canvas-open .chat-section {
-  max-width: calc(100% - min(62vw, 960px));
+  max-width: none;
+}
+
+.chat-tab--canvas-open .right-panel {
+  display: none;
 }
 
 /* 日志区域 */
