@@ -9,7 +9,7 @@
 - `gpt-5.4-mini`：负责收集 frontend / Electron / IPC / gateway / scripts / resources 的证据。
 - 主审模型：负责交叉核对入口点、动态加载风险和候选项分类。
 
-当前已执行 Batch 1 和 Batch 2。后续批次仍然必须先做证据收集，并且只有满足该批次的验证边界后，才允许删除代码。
+当前已执行 Batch 1、Batch 2 和 Batch 3。后续批次仍然必须先做证据收集，并且只有满足该批次的验证边界后，才允许删除代码。
 
 当前工作区注意事项：`start.bat` 在本次审计前已经被修改。它属于用户已有工作区状态，清理时不要重写或删除它。
 
@@ -104,7 +104,7 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 | 路径 | 链路 | 证据 | 动态风险 | 建议 |
 |---|---|---|---|---|
 | `oct-gateway/transport/httpRoutes.js` 的部分路由 | Gateway HTTP 路由 | 暴露 `/tool`、`/api/polish`、`/api/script-format`、`/api/script-role-detect`、`/mcp/status`、`/mcp/server`、`/mobile` | 中高：外部客户端可能直接调用 | 单独做 route 级使用审计。不要删除整个文件。 |
-| `oct-gateway/tools/ai_library.js` | Gateway tool / AI.library bridge | 仍可通过工具注册表加载；错误和文档里还引用旧 `api_server.py` 语义 | 中：工具表面可能被模型调用 | 审计 `search_knowledge` 和 Electron 原生 library 是否已经完全替代此路径。 |
+| `oct-gateway/tools/ai_library.js` | Gateway tool / AI.library bridge | 仍可通过工具注册表加载；错误和文档里还引用旧 `api_server.py` 语义 | 中：工具表面可能被模型调用 | Batch 3 已确认保留；`search_knowledge` 仍通过 lazy proxy 依赖它。 |
 | `resources/system_prompts/` | prompt 镜像 | 当前 package 复制 `docs/01_system_prompts`；`oct-gateway/config.js` 也有 prompt-dir 逻辑 | 中：可能是手工同步镜像 | 删除前确认当前 `PROMPTS_DIR` 解析和 release 打包逻辑。 |
 | `scripts/build-nocturne-exe.ps1` | 旧 Nocturne 打包脚本 | 脚本指向已不存在的 `resources/nocturne_server`；当前根 scripts 没有调用它 | Nocturne 拆包证据下较低 | 已在 Batch 2 删除。 |
 | `electron/ipc/ai-config.ts` 的 `test-log-write` handler | 诊断 IPC | 没有 preload export，也没有前端 caller；只有 IPC spec 记录它 | 文档 grep 后较低 | 已在 Batch 2 删除。 |
@@ -122,7 +122,7 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 | `electron/preload.ts` wrappers `openFileDialog` / `openTerminalWindow` | 仅 bridge wrapper | 前端当前通过 raw IPC 调用 `open-file-dialog` / `open-terminal-window` | 删除 wrapper 风险低；删除 handler 不在此范围 | `rg -n "openFileDialog|openTerminalWindow|open-file-dialog|open-terminal-window" src electron`；做文件上传和 terminal smoke。 |
 | `scripts/chat-pipeline-trace-phase0.js` | 手工 trace 脚本 | 被 `docs/refactors/chat-pipeline-phase0-trace.md` 引用；不在 package scripts 中 | 低 | 确认 chat 审计文档不再需要重跑；如果保留 trace 能力重要，则运行 `node scripts/chat-pipeline-trace-phase0.js`。 |
 | `scripts/start-nocturne-dashboard.ps1` | 旧 Nocturne dashboard helper | 被旧 Nocturne guide 引用；不在 package scripts 中 | Nocturne 拆包证据下较低 | 已在 Batch 2 删除；旧指南改为历史说明。 |
-| `resources/ai_library/` | 旧 AI.library 资源 | Electron 原生 library 路径现在使用 userData；根 package 没有单独包含 `resources/ai_library` | 中：历史文档多，且可能存在本地数据预期 | 确认 release / package config 不复制它；做 library upload/list smoke；先验证 `oct-gateway/tools/ai_library.js` 替代策略。 |
+| `resources/ai_library/` | 旧 AI.library 资源 | Electron 原生 library 路径现在使用 userData；根 package 没有单独包含 `resources/ai_library` | 中：历史文档多，且可能存在本地数据预期 | Batch 3 已确认当前 `package.json` 不把它作为 `extraResources` 复制；暂不删除目录。 |
 
 ## 已注册但没有暴露到 preload 的 IPC
 
@@ -249,6 +249,16 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 
 ### Batch 3：AI.library Resource Strategy
 
+状态：已在 `codex/orphan-chain-audit-goal-20260622` 上完成为决策批次；未删除 gateway tool 或资源目录。
+
+结论：
+
+- 当前 `package.json` `build.extraResources` 没有单独复制 `resources/ai_library`。
+- Electron 原生项目书库使用 `userData/ai_library_data/library`。
+- `oct-gateway/tools/search_knowledge.js` 仍通过 `createLazyAiLibrary` 懒加载 `oct-gateway/tools/ai_library.js`。
+- `oct-gateway/runtime/lazyAiLibrary.js` 和 `oct-gateway/test/lazyAiLibrary.test.js` 证明 AI.library client 是按需加载，不是启动期硬依赖。
+- 因此本批次不删除 `oct-gateway/tools/ai_library.js`、`oct-gateway/tools/search_knowledge.js` 或 `resources/ai_library/`；`resources/ai_library/` 需要单独的资源目录清理批次和 UI/library smoke 后再处理。
+
 允许范围：
 
 - 第一阶段只做文档和 resource packaging 决策。
@@ -264,6 +274,14 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 - AI.library list / upload smoke。
 - `node oct-gateway/test/lazyAiLibrary.test.js`
 - `node oct-gateway/test/toolLoaderLazyInit.test.js`
+
+已运行验证：
+
+- `rg -n "resources/ai_library|tools/ai_library|search_knowledge|ai_library_data|OCT_AI_LIBRARY" . -g "!node_modules/**" -g "!release/**" -g "!dist/**" -g "!dist-electron/**"`
+- `rg -n "extraResources|resources/ai_library|resources\\ai_library|ai_library" package.json electron oct-gateway -g "!node_modules/**"`
+- `node oct-gateway/test/lazyAiLibrary.test.js`
+- `node oct-gateway/test/toolLoaderLazyInit.test.js`
+- `node oct-gateway/test/optionalCapabilities.test.js`
 
 ### Batch 4：HTTP Route Usage Audit
 
