@@ -9,7 +9,7 @@
 - `gpt-5.4-mini`：负责收集 frontend / Electron / IPC / gateway / scripts / resources 的证据。
 - 主审模型：负责交叉核对入口点、动态加载风险和候选项分类。
 
-当前已执行 Batch 1、Batch 2 和 Batch 3。后续批次仍然必须先做证据收集，并且只有满足该批次的验证边界后，才允许删除代码。
+当前已执行 Batch 1、Batch 2、Batch 3 和 Batch 4。后续新增批次仍然必须先做证据收集，并且只有满足该批次的验证边界后，才允许删除代码。
 
 当前工作区注意事项：`start.bat` 在本次审计前已经被修改。它属于用户已有工作区状态，清理时不要重写或删除它。
 
@@ -103,7 +103,7 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 
 | 路径 | 链路 | 证据 | 动态风险 | 建议 |
 |---|---|---|---|---|
-| `oct-gateway/transport/httpRoutes.js` 的部分路由 | Gateway HTTP 路由 | 暴露 `/tool`、`/api/polish`、`/api/script-format`、`/api/script-role-detect`、`/mcp/status`、`/mcp/server`、`/mobile` | 中高：外部客户端可能直接调用 | 单独做 route 级使用审计。不要删除整个文件。 |
+| `oct-gateway/transport/httpRoutes.js` 的部分路由 | Gateway HTTP 路由 | 暴露 `/tool`、`/api/polish`、`/api/script-format`、`/api/script-role-detect`、`/mcp/status`、`/mcp/server`、`/mobile` | 中高：外部客户端可能直接调用 | Batch 4 已确认保留；多个 endpoint 有前端 / Electron / 文档调用证据。不要删除整个文件。 |
 | `oct-gateway/tools/ai_library.js` | Gateway tool / AI.library bridge | 仍可通过工具注册表加载；错误和文档里还引用旧 `api_server.py` 语义 | 中：工具表面可能被模型调用 | Batch 3 已确认保留；`search_knowledge` 仍通过 lazy proxy 依赖它。 |
 | `resources/system_prompts/` | prompt 镜像 | 当前 package 复制 `docs/01_system_prompts`；`oct-gateway/config.js` 也有 prompt-dir 逻辑 | 中：可能是手工同步镜像 | 删除前确认当前 `PROMPTS_DIR` 解析和 release 打包逻辑。 |
 | `scripts/build-nocturne-exe.ps1` | 旧 Nocturne 打包脚本 | 脚本指向已不存在的 `resources/nocturne_server`；当前根 scripts 没有调用它 | Nocturne 拆包证据下较低 | 已在 Batch 2 删除。 |
@@ -285,6 +285,17 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 
 ### Batch 4：HTTP Route Usage Audit
 
+状态：已在 `codex/orphan-chain-audit-goal-20260622` 上完成为只读审计批次；未删除 HTTP route。
+
+结论：
+
+- `POST /tool` 被 `electron/ipc/gateway.ts` 调用，并且属于 HTTP 工具保险箱入口。
+- `GET /mcp/status`、`POST /mcp/server`、`DELETE /mcp/server/:name` 被 `electron/ipc/mcp.ts` 使用。
+- `POST /api/polish` 被 `src/workbench/plugins/TextSelectionPolishLayer.tsx` 和 `src/workbench/plugins/script/ScriptViewer.tsx` 使用。
+- `POST /api/script-format` 和 `POST /api/script-role-detect` 被 `src/workbench/plugins/script/ScriptViewer.tsx` 使用。
+- `/mobile` 是 `oct-gateway/transport/httpRoutes.js` 暴露的移动页入口；即使当前前端 import 图不可见，也不能按孤儿路径删除。
+- `node oct-gateway/test/bootstrapTransports.test.js` 和 `node oct-gateway/test/gatewaySmoke.test.js` 均通过。
+
 允许范围：
 
 - 只读 route 级审计和测试。
@@ -295,6 +306,12 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 - 没有外部客户端决策前，不要删除 `/mobile`、`/tool`、`/mcp/status` 或 script-format endpoints。
 
 验证：
+
+- `rg -n "/api/polish|/api/script-format|/api/script-role-detect|/mobile|/tool|/mcp/status|/mcp/server" . -g "!node_modules/**" -g "!release/**" -g "!dist/**" -g "!dist-electron/**"`
+- `node oct-gateway/test/bootstrapTransports.test.js`
+- `node oct-gateway/test/gatewaySmoke.test.js`
+
+已运行验证：
 
 - `rg -n "/api/polish|/api/script-format|/api/script-role-detect|/mobile|/tool|/mcp/status|/mcp/server" . -g "!node_modules/**" -g "!release/**" -g "!dist/**" -g "!dist-electron/**"`
 - `node oct-gateway/test/bootstrapTransports.test.js`
