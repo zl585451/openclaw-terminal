@@ -1,12 +1,7 @@
 import React from 'react';
 import '../styles/TitleBar.css';
 
-interface TitleBarProps {
-  isAlwaysOnTop?: boolean;
-  onToggleTop?: () => void;
-}
-
-const TitleBar: React.FC<TitleBarProps> = () => {
+const TitleBar: React.FC = () => {
   const handleMinimize = () => {
     window.electronAPI?.minimize();
   };

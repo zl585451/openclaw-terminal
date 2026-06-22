@@ -1,15 +1,10 @@
 import { ipcRenderer } from 'electron';
 
 const electronAPI = {
-  setAlwaysOnTop: (value: boolean) =>
-    ipcRenderer.invoke('set-always-on-top', value),
-  getAlwaysOnTop: () => ipcRenderer.invoke('get-always-on-top'),
   minimize: () => ipcRenderer.invoke('minimize-window'),
   maximize: () => ipcRenderer.invoke('maximize-window'),
   close: () => ipcRenderer.invoke('close-window'),
   enterFloatingMode: () => ipcRenderer.invoke('enter-floating-mode'),
-  readLogFile: (logPath: string) => ipcRenderer.invoke('read-log-file', logPath),
-  watchLogFile: (logPath: string) => ipcRenderer.invoke('start-log-watch', logPath),
   getEnv: (key: string) => ipcRenderer.invoke('get-env', key),
   // OpenClaw WebSocket 连接
   connectOpenClaw: () => ipcRenderer.invoke('openclaw-connect'),
@@ -100,9 +95,6 @@ const electronAPI = {
   conversationDelete: (id: string) => ipcRenderer.invoke('conversation-delete', id),
   setSession: (sessionKey: string) => ipcRenderer.invoke('openclaw-set-session', sessionKey),
   setThink: (level: string) => ipcRenderer.invoke('openclaw-set-think', level),
-  openCodeWindow: (payload: { language?: string; code?: string }) =>
-    ipcRenderer.invoke('open-code-window', payload),
-  openTerminalWindow: () => ipcRenderer.invoke('open-terminal-window'),
   startGateway: () => ipcRenderer.invoke('start-gateway'),
   stopGateway: () => ipcRenderer.invoke('stop-gateway'),
   restartGateway: () => ipcRenderer.invoke('gateway-restart'),
@@ -111,9 +103,6 @@ const electronAPI = {
   getOmniRouteStatus: () => ipcRenderer.invoke('omniroute-status'),
   getScreenshotShortcut: () => ipcRenderer.invoke('get-screenshot-shortcut'),
   setScreenshotShortcut: (shortcut: string) => ipcRenderer.invoke('set-screenshot-shortcut', shortcut),
-  // 文件上传
-  openFileDialog: (options?: { allowMultiple?: boolean; filters?: { name: string; extensions: string[] }[] }) =>
-    ipcRenderer.invoke('open-file-dialog', options),
   // 剧本文件解析（.txt / .docx → 纯文本）
   parseScriptFile: (): Promise<{
     success: boolean;
