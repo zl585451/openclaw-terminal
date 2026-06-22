@@ -175,6 +175,16 @@ export function cleanLabel(label: string): string {
   return label.replace(new RegExp(`^[${SYMBOL_CHARS}]\\s*`), '').trim();
 }
 
+/** 对一组选项的 label/value 批量做 cleanLabel，可选地重新编号（num: index+1） */
+function cleanOptions(opts: OptionItem[], renumber = false): OptionItem[] {
+  return opts.map((o, i) => ({
+    ...o,
+    ...(renumber ? { num: i + 1 } : null),
+    label: cleanLabel(o.label),
+    value: cleanLabel(o.value),
+  }));
+}
+
 /** 解析含 ■ ● ◆ ○ 等符号的选项，支持 "■ xxx"、"- ■ xxx"、"* ■ xxx" 等格式 */
 export function parseSymbolOptions(text: string): OptionItem[] {
   const lines = text.split(/\n/).filter((l) => l.trim());
@@ -301,11 +311,7 @@ function filterExpectedEffect(text: string): string {
 function finalCleanup(result: ParsedContent): ParsedContent {
   if (result.options.length === 0) return result;
   const text = result.text.replace(/\n{3,}/g, '\n\n').trim();
-  const options = result.options.map(o => ({
-    ...o,
-    label: cleanLabel(o.label),
-    value: cleanLabel(o.value),
-  }));
+  const options = cleanOptions(result.options);
   return { ...result, text, options };
 }
 
@@ -384,6 +390,49 @@ function stripMarkdownTables(text: string): string {
   }
 
   return result.join('\n');
+}
+
+/**
+ * 移除代码块/表格行之外的 ■●◆○ 等符号选项行，在第一处命中位置插入占位符。
+ * 用于符号选项被检测到之后，从原文中"摘掉"选项行，只保留正文。
+ */
+function removeSymbolOptionLinesOutsideCodeBlocks(text: string, placeholder: string): string {
+  const lines = text.split('\n');
+  const symbolLineRx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*.+$`);
+  const codeRanges = getCodeBlockRanges(text);
+  let placeholderInserted = false;
+  const resultLines: string[] = [];
+  let charOffset = 0;
+
+  for (const line of lines) {
+    const lineStart = charOffset;
+    charOffset += line.length + 1; // +1 for \n
+
+    // 跳过代码块内的行
+    if (isInsideCodeBlock(lineStart, codeRanges)) {
+      resultLines.push(line);
+      continue;
+    }
+
+    // 跳过表格行（| 开头）
+    if (/^\s*\|/.test(line)) {
+      resultLines.push(line);
+      continue;
+    }
+
+    // 匹配选项行：不加入结果（被移除），仅在第一次命中处插入占位符
+    if (symbolLineRx.test(line)) {
+      if (!placeholderInserted) {
+        resultLines.push(placeholder);
+        placeholderInserted = true;
+      }
+      continue;
+    }
+
+    resultLines.push(line);
+  }
+
+  return resultLines.join('\n');
 }
 
 /** 移除代码块外部的 checkbox 行，保留代码块内部的不动 */
@@ -542,7 +591,7 @@ function enhanceTextSegmentsWithInlineCheckboxes(segments: RenderSegment[]): Ren
         enhancedSegments.push({
           type: isTask ? 'tasklist' : 'checkbox',
           content: '',
-          options: opts.map((o) => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })),
+          options: cleanOptions(opts),
         });
       } else {
         normalLines.push(...checkboxLines);
@@ -645,7 +694,7 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
             }
           }
           
-          segments.push({ type: 'pills', content: '', options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
+          segments.push({ type: 'pills', content: '', options: cleanOptions(opts) });
           
           const remainingContent = remainingLines.join('\n').trim();
           if (remainingContent.length > 0) {
@@ -662,10 +711,11 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
         }
         break;
       }
-      case 'checkbox': {
+      case 'checkbox':
+      case 'tasklist': {
         let opts = parseCheckboxOptions(inner);
         if (opts.length === 0) opts = parsePlainLines(inner);
-        segments.push({ type: 'checkbox', content: '', options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
+        segments.push({ type: tagType, content: '', options: cleanOptions(opts) });
         break;
       }
       case 'question': {
@@ -675,13 +725,7 @@ function parseTaggedContent(content: string): { segments: RenderSegment[]; found
         if (opts.length < 2) opts = parsePlainLines(inner);
         const qOpts = opts.filter(o => isQuestionLabel(o.label));
         const finalOpts = qOpts.length >= 2 ? qOpts : opts;
-        segments.push({ type: 'question', content: '', options: finalOpts.map((o, i) => ({ ...o, num: i + 1, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
-        break;
-      }
-      case 'tasklist': {
-        let opts = parseCheckboxOptions(inner);
-        if (opts.length === 0) opts = parsePlainLines(inner);
-        segments.push({ type: 'tasklist', content: '', options: opts.map(o => ({ ...o, label: cleanLabel(o.label), value: cleanLabel(o.value) })) });
+        segments.push({ type: 'question', content: '', options: cleanOptions(finalOpts, true) });
         break;
       }
     }
@@ -801,69 +845,26 @@ function _parseOptionBox(content: string): ParsedContent {
     if (symbolOpts.length >= 1) {
       const totalPages = parseTotalPages(contentWithoutHint);
       // 只移除选项行（■ 开头），保留所有其他内容（表格、代码块等）
-      // 在第一个选项行位置插入占位符，其余选项行删除
-      const lines = contentWithoutHint.split('\n');
-      const symbolLineRx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*.+$`);
-      const codeRanges = getCodeBlockRanges(contentWithoutHint);
-      let placeholderInserted = false;
-      const resultLines: string[] = [];
-      let charOffset = 0;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const lineStart = charOffset;
-        charOffset += line.length + 1; // +1 for \\n
-
-        // 跳过代码块内的行
-        if (isInsideCodeBlock(lineStart, codeRanges)) {
-          resultLines.push(line);
-          continue;
-        }
-
-        // 跳过表格行（| 开头）
-        if (/^\s*\|/.test(line)) {
-          resultLines.push(line);
-          continue;
-        }
-
-        // 匹配选项行
-        if (symbolLineRx.test(line)) {
-          if (!placeholderInserted) {
-            resultLines.push(OPTIONS_PLACEHOLDER);
-            placeholderInserted = true;
-          }
-          // 选项行不加入 resultLines（被移除）
-          continue;
-        }
-
-        resultLines.push(line);
-      }
-
-      const withPlaceholder = resultLines.join('\n');
+      const withPlaceholder = removeSymbolOptionLinesOutsideCodeBlocks(contentWithoutHint, OPTIONS_PLACEHOLDER);
       const text = filterExpectedEffect(withPlaceholder.replace(/\n{3,}/g, '\n\n').trim());
       return finalCleanup({ text, options: symbolOpts, totalPages, forcePills: true });
     }
     return { text: filterExpectedEffect(contentWithoutHint), options: [] };
   }
 
-  if (hint === 'checkbox') {
+  if (hint === 'checkbox' || hint === 'tasklist') {
     const checkboxOpts = parseCheckboxOptions(textForDetection);
     if (checkboxOpts.length >= 1) {
       const totalPages = parseTotalPages(contentWithoutHint);
       const cleaned = removeCheckboxLinesOutsideCodeBlocks(contentWithoutHint, OPTIONS_PLACEHOLDER);
       const text = filterExpectedEffect(cleaned.replace(/\n{3,}/g, '\n\n').trim());
-      return finalCleanup({ text, options: checkboxOpts, totalPages, forcePills: false });
-    }
-    return { text: filterExpectedEffect(contentWithoutHint), options: [] };
-  }
-
-  if (hint === 'tasklist') {
-    const checkboxOpts = parseCheckboxOptions(textForDetection);
-    if (checkboxOpts.length >= 1) {
-      const totalPages = parseTotalPages(contentWithoutHint);
-      const cleaned = removeCheckboxLinesOutsideCodeBlocks(contentWithoutHint, OPTIONS_PLACEHOLDER);
-      const text = filterExpectedEffect(cleaned.replace(/\n{3,}/g, '\n\n').trim());
-      return finalCleanup({ text, options: checkboxOpts, totalPages, isTaskList: true, forcePills: false });
+      return finalCleanup({
+        text,
+        options: checkboxOpts,
+        totalPages,
+        isTaskList: hint === 'tasklist',
+        forcePills: false,
+      });
     }
     return { text: filterExpectedEffect(contentWithoutHint), options: [] };
   }
@@ -912,45 +913,7 @@ function _parseOptionBox(content: string): ParsedContent {
   if (shouldAutoDetectSymbolOptions(textForDetection, symbolOpts)) {
     const totalPages = parseTotalPages(contentWithoutHint);
     // 只移除选项行（■ 开头），保留所有其他内容（表格、代码块等）
-    // 在第一个选项行位置插入占位符，其余选项行删除
-    const lines = contentWithoutHint.split('\n');
-    const symbolLineRx = new RegExp(`^[\\s]*(?:[-*+]\\s*)?[${SYMBOL_CHARS}]\\s*.+$`);
-    const codeRanges = getCodeBlockRanges(contentWithoutHint);
-    let placeholderInserted = false;
-    const resultLines: string[] = [];
-    let charOffset = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const lineStart = charOffset;
-      charOffset += line.length + 1; // +1 for \\n
-
-      // 跳过代码块内的行
-      if (isInsideCodeBlock(lineStart, codeRanges)) {
-        resultLines.push(line);
-        continue;
-      }
-
-      // 跳过表格行（| 开头）
-      if (/^\s*\|/.test(line)) {
-        resultLines.push(line);
-        continue;
-      }
-
-      // 匹配选项行
-      if (symbolLineRx.test(line)) {
-        if (!placeholderInserted) {
-          resultLines.push(OPTIONS_PLACEHOLDER);
-          placeholderInserted = true;
-        }
-        // 选项行不加入 resultLines（被移除）
-        continue;
-      }
-
-      resultLines.push(line);
-    }
-
-    const withPlaceholder = resultLines.join('\n');
+    const withPlaceholder = removeSymbolOptionLinesOutsideCodeBlocks(contentWithoutHint, OPTIONS_PLACEHOLDER);
     const text = filterExpectedEffect(withPlaceholder.replace(/\n{3,}/g, '\n\n').trim());
     return finalCleanup({ text, options: symbolOpts, totalPages, forcePills: true });
   }
