@@ -3,11 +3,11 @@
  * 本文件仅保留旧函数定义，供历史代码安全调用。
  */
 
-const config = require('./config');
+const config = require('../config');
 const memory = require('./memory');
-const { sanitizeAssistantReply } = require('./cot_sanitize');
+const { sanitizeAssistantReply } = require('../cot_sanitize');
 const memoryGovernor = require('./memory_governor');
-const { createLogger } = require('./logger');
+const { createLogger } = require('../logger');
 const log = createLogger('memory_history');
 
 const DOMAIN = 'core';

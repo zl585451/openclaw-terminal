@@ -1,7 +1,7 @@
 const config = require('./config');
 const toolLoader = require('./tool_loader');
 const skillAdapter = require('./skill_adapter');
-const memory = require('./memory');
+const memory = require('./memory/memory');
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('./logger');
@@ -228,7 +228,7 @@ async function loadSystemPrompt(promptsDir) {
     });
     // 加载追问偏好
     try {
-      const clarificationMemory = require('./clarification_memory');
+      const clarificationMemory = require('./memory/clarification_memory');
       const prefsBlock = await clarificationMemory.loadPreferencesForBoot();
       if (prefsBlock) bootMemory = bootMemory + prefsBlock;
     } catch (e) {

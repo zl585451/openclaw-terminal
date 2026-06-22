@@ -15,9 +15,9 @@ const ORIGINAL_ROOT = config.memory ? config.memory.root : undefined;
 if (!config.memory) config.memory = {};
 config.memory.root = TMP_ROOT;
 
-const store = require('../memory_v2_store');
+const store = require('../memory/memory_v2_store');
 assert.strictEqual(store.getMemoryRoot(), TMP_ROOT, '隔离失败：未指向临时目录，已中止');
-const memory = require('../memory');
+const memory = require('../memory/memory');
 
 function cleanup() {
   if (config.memory) config.memory.root = ORIGINAL_ROOT;

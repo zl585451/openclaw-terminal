@@ -1,4 +1,4 @@
-const memory = require('./memory');
+const memory = require('./memory/memory');
 const reviewQueueMaintenance = require('./review_queue_maintenance');
 const { createLogger } = require('./logger');
 

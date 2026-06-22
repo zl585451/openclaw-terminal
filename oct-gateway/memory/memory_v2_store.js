@@ -11,7 +11,7 @@ const os = require('os');
 const DEFAULT_ROOT = path.join(os.homedir(), '.openclaw', 'memory');
 
 function getMemoryRoot() {
-  const config = require('./config');
+  const config = require('../config');
   return config.memory?.root || process.env.OCT_MEMORY_ROOT || DEFAULT_ROOT;
 }
 

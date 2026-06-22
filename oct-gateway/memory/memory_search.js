@@ -2,10 +2,10 @@
  * 记忆搜索：默认走 Memory v2 本地 notes/raw-turn 搜索。
  */
 
-const config = require('./config');
+const config = require('../config');
 const memory = require('./memory');
-const { stripCotText } = require('./cot_sanitize');
-const { createLogger } = require('./logger');
+const { stripCotText } = require('../cot_sanitize');
+const { createLogger } = require('../logger');
 const log = createLogger('memory_search');
 
 // ═══════════════════════════════════════════════════════════════

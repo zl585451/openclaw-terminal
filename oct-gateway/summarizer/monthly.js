@@ -1,4 +1,4 @@
-const memory = require('../memory');
+const memory = require('../memory/memory');
 const { createLogger } = require('../logger');
 const { callSummarizerWithRetry } = require('./client');
 const config = require('../config');

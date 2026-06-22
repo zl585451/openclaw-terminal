@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const ProviderRouter = require('../runtime/providerRouter');
-const { saveRawTurn, makeRawTurnDedupeKey } = require('../memory_raw_log');
+const { saveRawTurn, makeRawTurnDedupeKey } = require('../memory/memory_raw_log');
 const {
   buildChatHeaders,
   classifyProbeFailure,

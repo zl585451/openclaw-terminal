@@ -3,7 +3,7 @@
  */
 
 const memory = require('./memory');
-const { createLogger } = require('./logger');
+const { createLogger } = require('../logger');
 const log = createLogger('memory_queue');
 
 const QUEUE_MAX = 15;

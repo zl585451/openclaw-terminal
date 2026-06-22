@@ -21,7 +21,7 @@ const ORIGINAL_ROOT = config.memory ? config.memory.root : undefined;
 if (!config.memory) config.memory = {};
 config.memory.root = TMP_ROOT;
 
-const store = require('../memory_v2_store');
+const store = require('../memory/memory_v2_store');
 
 // 双保险：确认 store 真的写到临时目录而非真实库
 assert.strictEqual(store.getMemoryRoot(), TMP_ROOT, '隔离失败：store 未指向临时目录，已中止以保护真实记忆库');
