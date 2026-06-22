@@ -14,6 +14,7 @@ import { documentWorkbenchStyles } from './document/styles';
 import type { WorkbenchDocument } from '../types';
 import type { WorkbenchRendererPlugin } from './types';
 import { useProjectChapterLink } from '../useProjectChapterLink';
+import { TextSelectionPolishLayer } from './TextSelectionPolishLayer';
 
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath];
 const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
@@ -141,7 +142,7 @@ function buildDocumentSections(document: WorkbenchDocument): {
   return { sections, characters };
 }
 
-function DocumentViewer({ document }: { document: WorkbenchDocument }) {
+function ReadingViewer({ document }: { document: WorkbenchDocument }) {
   const {
     linkedProject,
     currentProjectChapterIndex,
@@ -233,7 +234,11 @@ function DocumentViewer({ document }: { document: WorkbenchDocument }) {
             {activeSection && (
               <section style={documentWorkbenchStyles.section}>
                 <h2 style={documentWorkbenchStyles.sectionTitle}>{activeSection.title}</h2>
-                <div className="msg-content markdown-body">
+                <TextSelectionPolishLayer
+                  document={document}
+                  className="msg-content markdown-body"
+                  discussLabel="当前项目章节"
+                >
                   <ReactMarkdown
                     remarkPlugins={MARKDOWN_REMARK_PLUGINS}
                     rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
@@ -241,7 +246,7 @@ function DocumentViewer({ document }: { document: WorkbenchDocument }) {
                   >
                     {activeSection.content}
                   </ReactMarkdown>
-                </div>
+                </TextSelectionPolishLayer>
                 {!activeSection.content.trim() && (
                   <div style={documentWorkbenchStyles.sectionEmpty}>
                     当前章节暂无正文内容。
@@ -278,8 +283,9 @@ function DocumentViewer({ document }: { document: WorkbenchDocument }) {
 }
 
 export const markdownPlugin: WorkbenchRendererPlugin = {
-  id: 'markdown',
-  canRender: (document) => document.mode === 'markdown',
-  render: (document) => <DocumentViewer document={document} />,
-  getExportFilename: () => 'canvas.md',
+  id: 'reading',
+  canRender: (document) => document.artifactType === 'reading',
+  render: (document) => <ReadingViewer document={document} />,
+  getExportFilename: (document) =>
+    `${document.title.replace(/\s+/g, '-').toLowerCase() || 'reading'}.md`,
 };

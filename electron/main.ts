@@ -74,6 +74,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 (globalThis as any).expectOctGatewayProcessExit = false;
 let lastSessionState: { messages?: any[]; sessionKey?: string } | null = null;
 let currentSessionKey: string = 'main';
+let currentThinkMode: string = ''; // 思考强度（off/low/medium/high）；空=不带参数，沿用网关默认
 let currentGatewayModel: string | undefined;
 let currentGatewayCapabilities: {
   model?: string;
@@ -1656,6 +1657,7 @@ function sendChatMessage(
     workbenchContext?: any;
     canvasContext?: any;
     projectContext?: any;
+    thinkMode?: string;
   } = {
     sessionKey: currentSessionKey,
     idempotencyKey,
@@ -1668,6 +1670,10 @@ function sendChatMessage(
   }
   if (projectContext) {
     params.projectContext = projectContext;
+  }
+  // 思考强度作为请求参数随消息携带（静默生效，不走斜杠命令）
+  if (currentThinkMode) {
+    params.thinkMode = currentThinkMode;
   }
 
   // OpenClaw chat.send attachments: Gateway 期望 { type, mimeType, content }
@@ -2521,6 +2527,9 @@ app.whenReady().then(async () => {
     setSessionKey: (key: string) => {
       currentSessionKey = key || 'main';
       saveSessionState({ ...(lastSessionState || {}), sessionKey: currentSessionKey });
+    },
+    setThinkMode: (level: string) => {
+      currentThinkMode = (level || '').trim().toLowerCase();
     },
     getOpenClawStatus,
     getAiLibraryPlugin,

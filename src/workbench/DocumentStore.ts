@@ -8,6 +8,7 @@ import type {
   WorkbenchDocument,
   WorkbenchMode,
 } from './types';
+import { normalizeWorkbenchArtifactType } from './types';
 import { normalizeSpeakerCueName } from '../utils/speakerCueNormalizer';
 
 export interface WorkbenchDocumentState {
@@ -17,16 +18,6 @@ export interface WorkbenchDocumentState {
 
 function isWorkbenchMode(value: unknown): value is WorkbenchMode {
   return value === 'markdown' || value === 'code' || value === 'html';
-}
-
-function isWorkbenchArtifactType(value: unknown): value is WorkbenchArtifactType {
-  return value === 'document'
-    || value === 'diagram'
-    || value === 'code'
-    || value === 'ui-draft'
-    || value === 'react-flow'
-    || value === 'echart'
-    || value === 'script';
 }
 
 function sanitizeWorkbenchDocument(value: unknown): WorkbenchDocument | null {
@@ -58,9 +49,7 @@ function sanitizeWorkbenchDocument(value: unknown): WorkbenchDocument | null {
     language,
     projectBookId: typeof raw.projectBookId === 'string' ? raw.projectBookId : undefined,
     projectChapterIndex: Number.isInteger(raw.projectChapterIndex) ? raw.projectChapterIndex : undefined,
-    artifactType: isWorkbenchArtifactType(raw.artifactType)
-      ? raw.artifactType
-      : inferArtifactType(mode),
+    artifactType: normalizeWorkbenchArtifactType(raw.artifactType, mode),
     origin: raw.origin === 'ai' ? 'ai' : 'user',
     sourcePath: typeof raw.sourcePath === 'string' ? raw.sourcePath : undefined,
     draftCachePath: typeof raw.draftCachePath === 'string' ? raw.draftCachePath : undefined,
@@ -247,7 +236,7 @@ export function createWorkbenchDocument(
   return {
     id: overrides.id || `canvas_${timestamp}_${Math.random().toString(36).slice(2, 8)}`,
     title: overrides.title || title || 'Untitled',
-    artifactType: overrides.artifactType || inferArtifactType(mode),
+    artifactType: normalizeWorkbenchArtifactType(overrides.artifactType, mode),
     mode: overrides.mode || mode,
     content: overrides.content ?? content,
     language: overrides.language || language,
@@ -270,7 +259,7 @@ export function createWorkbenchDocument(
 export function inferArtifactType(mode: WorkbenchMode): WorkbenchArtifactType {
   if (mode === 'code') return 'code';
   if (mode === 'html') return 'ui-draft';
-  return 'document';
+  return 'reading';
 }
 
 export function workbenchDocumentReducer(
@@ -296,13 +285,20 @@ export function workbenchDocumentReducer(
         ...state,
         documents: state.documents.map((document) =>
           document.id === command.payload.documentId
-            ? {
+            ? (() => {
+              const patch = command.payload.patch;
+              const nextArtifactType = patch.artifactType !== undefined
+                ? normalizeWorkbenchArtifactType(patch.artifactType, patch.mode || document.mode)
+                : document.artifactType;
+              return {
                 ...document,
-                ...command.payload.patch,
-                updatedAt: command.payload.patch.updatedAt ?? Date.now(),
-                version: command.payload.patch.version
-                  ?? (command.payload.patch.content !== undefined ? document.version + 1 : document.version),
-              }
+                ...patch,
+                artifactType: nextArtifactType,
+                updatedAt: patch.updatedAt ?? Date.now(),
+                version: patch.version
+                  ?? (patch.content !== undefined ? document.version + 1 : document.version),
+              };
+            })()
             : document,
         ),
       };

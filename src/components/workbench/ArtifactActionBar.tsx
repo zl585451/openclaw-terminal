@@ -12,38 +12,36 @@ interface QuickChip {
 
 const QUICK_CHIPS: QuickChip[] = [
   { label: '续写', prefill: '继续往下写一段，保持原有风格和节奏。', intent: 'continue' },
-  { label: '补一个结尾', prefill: '为这份文档补一个有力的结尾段落。', intent: 'continue' },
+  { label: '补一个结尾', prefill: '为这个 artifact 补一个有力的结尾段落。', intent: 'continue' },
   { label: '重写这一段', prefill: '把刚刚那一段重写一遍，', intent: 'rewrite' },
-  { label: '换个风格', prefill: '把整份文档改成更', intent: 'rewrite' },
-  { label: '解释你的思路', prefill: '解释一下你这样组织内容的思路，但不要修改文档。', intent: 'explain' },
+  { label: '换个风格', prefill: '把当前 artifact 改成更', intent: 'rewrite' },
+  { label: '解释思路', prefill: '解释一下你这样组织内容的思路，但不要修改 artifact。', intent: 'explain' },
 ];
 
-interface DocumentAppendBarProps {
+interface ArtifactActionBarProps {
   disabled?: boolean;
 }
 
-export default function DocumentAppendBar({ disabled = false }: DocumentAppendBarProps) {
+export default function ArtifactActionBar({ disabled = false }: ArtifactActionBarProps) {
   const [value, setValue] = useState('');
   const [intent, setIntent] = useState<Intent>('continue');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 输入框高度自适应
   useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   }, [value]);
 
   const handleChipClick = useCallback((chip: QuickChip) => {
     setValue(chip.prefill);
     setIntent(chip.intent);
-    // 聚焦并把光标放到末尾，方便用户继续补写
     requestAnimationFrame(() => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-      ta.focus();
-      ta.setSelectionRange(ta.value.length, ta.value.length);
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     });
   }, []);
 
@@ -56,9 +54,9 @@ export default function DocumentAppendBar({ disabled = false }: DocumentAppendBa
   }, [value, intent, disabled]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
         handleSend();
       }
     },
@@ -66,13 +64,13 @@ export default function DocumentAppendBar({ disabled = false }: DocumentAppendBa
   );
 
   return (
-    <div className="document-append-bar">
-      <div className="document-append-chips">
+    <div className="artifact-action-bar">
+      <div className="artifact-action-chips">
         {QUICK_CHIPS.map((chip) => (
           <button
             key={chip.label}
             type="button"
-            className={`document-append-chip${intent === chip.intent && value === chip.prefill ? ' is-active' : ''}`}
+            className={`artifact-action-chip${intent === chip.intent && value === chip.prefill ? ' is-active' : ''}`}
             onClick={() => handleChipClick(chip)}
             disabled={disabled}
             title={`intent: ${chip.intent}`}
@@ -81,29 +79,29 @@ export default function DocumentAppendBar({ disabled = false }: DocumentAppendBa
           </button>
         ))}
       </div>
-      <div className="document-append-input-row">
+      <div className="artifact-action-input-row">
         <textarea
           ref={textareaRef}
-          className="document-append-textarea"
+          className="artifact-action-textarea"
           value={value}
-          placeholder="让 AMY 继续完善这份文档…（Enter 发送，Shift+Enter 换行）"
+          placeholder="让 AMY 继续完善当前 artifact…（Enter 发送，Shift+Enter 换行）"
           rows={1}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(event) => setValue(event.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
         />
         <button
           type="button"
-          className="document-append-send-btn"
+          className="artifact-action-send-btn"
           onClick={handleSend}
           disabled={disabled || !value.trim()}
         >
           发送 →
         </button>
       </div>
-      <div className="document-append-meta">
-        当前模式：<span className="document-append-intent">{intent}</span>
-        <span className="document-append-hint"> · AMY 会自动看到当前文档内容</span>
+      <div className="artifact-action-meta">
+        当前意图：<span className="artifact-action-intent">{intent}</span>
+        <span className="artifact-action-hint"> · AMY 会自动看到当前 artifact 内容</span>
       </div>
     </div>
   );

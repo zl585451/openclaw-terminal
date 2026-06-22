@@ -219,6 +219,65 @@ function getNativeLibraryChapterText(bookId: string, chapterIndex: number): { ch
   };
 }
 
+async function updateNativeLibraryChapterText(
+  bookId: string,
+  chapterIndex: number,
+  content: string,
+): Promise<{ chapter: NativeLibraryChapter; text: string; book: NativeLibraryBook }> {
+  const index = readNativeLibraryIndex();
+  const book = index.books.find((item) => item.id === bookId);
+  if (!book) throw new Error(`Book ${bookId} not found`);
+
+  const chapters = index.chapters
+    .filter((chapter) => chapter.book_id === bookId)
+    .sort((a, b) => a.chapter_index - b.chapter_index);
+  const chapter = chapters.find((item) => item.chapter_index === chapterIndex);
+  if (!chapter) throw new Error(`Chapter ${chapterIndex} not found in book ${bookId}`);
+
+  const sourcePath = path.join(getNativeLibraryRoot(), book.source_path);
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Source file missing: ${book.source_path}`);
+  }
+
+  const text = decodeLibraryText(await fs.promises.readFile(sourcePath));
+  const start = Number(chapter.start_char);
+  const end = Number(chapter.end_char);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > text.length) {
+    throw new Error(`Invalid chapter range for ${bookId}:${chapterIndex}`);
+  }
+
+  const nextText = `${text.slice(0, start)}${String(content || '')}${text.slice(end)}`;
+  await fs.promises.writeFile(sourcePath, nextText, 'utf-8');
+
+  const nextChapters = splitNativeLibraryChapters(nextText, bookId);
+  const nextBook: NativeLibraryBook = {
+    ...book,
+    total_chars: nextText.length,
+    chapter_count: nextChapters.length,
+    metadata: {
+      ...(book.metadata || {}),
+      updated_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    },
+  };
+
+  index.books = index.books.map((item) => (item.id === bookId ? nextBook : item));
+  index.chapters = [
+    ...index.chapters.filter((item) => item.book_id !== bookId),
+    ...nextChapters,
+  ];
+  writeNativeLibraryIndex(index);
+
+  const updatedChapter =
+    nextChapters.find((item) => item.chapter_index === chapterIndex)
+    || nextChapters[Math.min(chapterIndex, Math.max(0, nextChapters.length - 1))];
+
+  return {
+    chapter: updatedChapter,
+    text: content,
+    book: nextBook,
+  };
+}
+
 async function uploadNativeLibraryBook(params: { filePath: string; title: string; author?: string }): Promise<{
   book_id: string;
   chapter_count: number;
@@ -335,6 +394,21 @@ export function registerLibraryHandlers(_deps: IpcDeps) {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       return { success: false, error: `LIBRARY_CHAPTER_FAILED: ${msg}` };
+    }
+  });
+
+  ipcMain.handle('library:updateChapter', async (_event, payload: { bookId: string; chapterIndex: number; content: string }) => {
+    if (!payload?.bookId) return { success: false, error: 'bookId required' };
+    if (typeof payload?.chapterIndex !== 'number' || Number.isNaN(payload.chapterIndex)) {
+      return { success: false, error: 'chapterIndex required' };
+    }
+    if (typeof payload?.content !== 'string') return { success: false, error: 'content required' };
+    try {
+      const data = await updateNativeLibraryChapterText(payload.bookId, payload.chapterIndex, payload.content);
+      return { success: true, data: { success: true, book_id: payload.bookId, ...data } };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return { success: false, error: `LIBRARY_UPDATE_CHAPTER_FAILED: ${msg}` };
     }
   });
 

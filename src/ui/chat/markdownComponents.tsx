@@ -5,6 +5,20 @@ import MermaidRenderer from '../../components/canvas/MermaidRendererLazy';
 import { highlightCode } from '../../utils/codeHighlight';
 import { diagramSpecToMermaid, parseDiagramSpec } from '../../utils/diagramSchema';
 import { getEChartsPayloadTitle, looksLikeEChartsPayload } from '../../utils/echartsPayload';
+import { wrapArtifactHtml } from '../../utils/artifactShell';
+
+/** 从 SVG 源码估算宽高比（viewBox 优先，其次 width/height），用于内联预览定高。 */
+function getSvgAspectRatio(code: string): number {
+  const vb = code.match(/viewBox\s*=\s*["']([\d.\s-]+)["']/i);
+  if (vb) {
+    const p = vb[1].trim().split(/[\s,]+/).map(Number);
+    if (p.length === 4 && p[2] > 0 && p[3] > 0) return p[2] / p[3];
+  }
+  const w = code.match(/\bwidth\s*=\s*["'](\d+(?:\.\d+)?)/i);
+  const h = code.match(/\bheight\s*=\s*["'](\d+(?:\.\d+)?)/i);
+  if (w && h && Number(h[1]) > 0) return Number(w[1]) / Number(h[1]);
+  return 16 / 10;
+}
 
 // ── Chat inline preview: ONLY these types are shown directly in the chat window.
 // Everything else is redirected to Canvas (with an Open button).
@@ -116,7 +130,7 @@ export function createMarkdownComponents(
     mode: 'markdown' | 'code' | 'html',
     title?: string,
     language?: string,
-    artifactType?: 'document' | 'diagram' | 'code' | 'ui-draft' | 'echart'
+    artifactType?: 'reading' | 'artifact' | 'document' | 'diagram' | 'code' | 'ui-draft' | 'echart' | 'script'
   ) => void
 ): React.ComponentProps<typeof ReactMarkdown>['components'] {
   return {
@@ -172,6 +186,61 @@ export function createMarkdownComponents(
     const diagramSpec = (normalizedLanguage === 'json' || /^\s*\{[\s\S]*"diagramType"\s*:/.test(code))
       ? parseDiagramSpec(code)
       : null;
+    if (isBlock && normalizedLanguage === 'svg') {
+      const SvgBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
+        const [copied, setCopied] = React.useState(false);
+        const srcDoc = React.useMemo(() => wrapArtifactHtml(code), []);
+        const aspect = React.useMemo(() => getSvgAspectRatio(code), []);
+
+        const handleCopy = () => {
+          navigator.clipboard.writeText(code);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        };
+
+        return (
+          <div className="chat-mermaid-card" data-oct-block-code={__octBlockCode ? '1' : undefined}>
+            <div className="chat-mermaid-card__header">
+              <span className="chat-mermaid-card__label">svg</span>
+              <div className="chat-mermaid-card__actions">
+                {openCanvas && (
+                  <button
+                    onClick={() => openCanvas(code, 'html', 'SVG 图', 'svg', 'ui-draft')}
+                    className="chat-mermaid-card__action"
+                  >
+                    Open
+                  </button>
+                )}
+                <button
+                  onClick={handleCopy}
+                  className={`chat-mermaid-card__action${copied ? ' is-copied' : ''}`}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div className="chat-mermaid-card__body">
+              <iframe
+                className="chat-svg-preview"
+                srcDoc={srcDoc}
+                sandbox="allow-scripts"
+                title="SVG Preview"
+                style={{
+                  width: '100%',
+                  maxWidth: 480,
+                  aspectRatio: String(aspect),
+                  border: 'none',
+                  display: 'block',
+                  margin: '0 auto',
+                }}
+              />
+            </div>
+          </div>
+        );
+      };
+      return <SvgBlock __octBlockCode />;
+    }
+
     if (isBlock && normalizedLanguage === 'echart') {
       const EchartBlock = ({ __octBlockCode }: { __octBlockCode?: boolean }) => {
         const [copied, setCopied] = React.useState(false);

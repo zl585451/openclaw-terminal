@@ -84,9 +84,4 @@ A: 请确认 Python 已正确安装，且在命令行可执行 `python` 或 `pyt
 A: 请确保已重启 Gateway。若仍无效，检查 `~/.openclaw/openclaw.json` 中是否包含 `nocturne_memory` MCP 配置。
 
 **Q: 如何打开 Nocturne 的可视化管理界面？**  
-A: 在 **项目根目录**（OpenClaw-Terminal 文件夹）打开 PowerShell，运行：
-```powershell
-.\scripts\start-nocturne-dashboard.ps1
-```
-会启动后端 + 前端并自动打开 http://localhost:3000。  
-手动方式：`cd resources\nocturne_memory\backend` 后运行 `py -3.10 -m uvicorn main:app --port 8000`；另开终端 `cd resources\nocturne_memory\frontend` 后运行 `npm run dev`，访问 http://localhost:3000。
+A: 这是历史 Nocturne 资源的旧说明。2026-05-18 后默认运行时不再携带 `resources/nocturne_memory` 与 `resources/nocturne_server`，仓库也不再保留 dashboard 启动脚本。需要追溯旧管理界面时，请参考 Nocturne 官方仓库或历史发布归档。

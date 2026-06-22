@@ -232,6 +232,11 @@ export interface ElectronAPI {
       bookId: string,
       chapterIndex: number,
     ) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
+    updateChapter: (
+      bookId: string,
+      chapterIndex: number,
+      content: string,
+    ) => Promise<{ success: true; data: unknown } | { success: false; error: string }>;
     pickFile: () => Promise<{ success: true; filePath: string } | { success: false; error: string }>;
     upload: (params: {
       filePath: string;
@@ -253,6 +258,9 @@ export interface ElectronAPI {
   };
   chatHistoryLoad?: () => Promise<ChatHistoryItem[]>;
   chatHistorySave?: (items: ChatHistoryItem[]) => Promise<void>;
+  // 供应商 / 模型列表 + API Key 配置（ComposerBar 用）
+  getProviderList?: () => Promise<ApiResult<unknown>>;
+  getApiKeys?: () => Promise<ApiResult<Record<string, unknown>>>;
   // 多对话
   conversationsLoad?: () => Promise<ConversationMeta[]>;
   conversationsSave?: (index: ConversationMeta[]) => Promise<ApiResult>;
@@ -260,6 +268,7 @@ export interface ElectronAPI {
   conversationMessagesSave?: (id: string, items: ChatHistoryItem[]) => Promise<ApiResult>;
   conversationDelete?: (id: string) => Promise<ApiResult>;
   setSession?: (sessionKey: string) => Promise<ApiResult & { sessionKey?: string }>;
+  setThink?: (level: string) => Promise<ApiResult & { thinkMode?: string }>;
   imageGenerate?: (payload: ImageGeneratePayload) => Promise<ApiResult>;
   openExternalUrl?: (url: string) => Promise<ApiResult>;
   downloadImage?: (payload: { url: string; suggestedName?: string }) => Promise<ApiResult & { path?: string }>;

@@ -161,7 +161,6 @@ AI.library 当前是 OCT 内置项目书库核心，默认使用 Electron/Node �
 | `tts-speak` | TTS 朗读 | `{ text }` | - |
 | `get-screenshot-shortcut` | 获取截屏快捷键 | - | 快捷键 |
 | `set-screenshot-shortcut` | 设置截屏快捷键 | `shortcut: string` | - |
-| `test-log-write` | 测试日志写入 | - | - |
 
 ---
 

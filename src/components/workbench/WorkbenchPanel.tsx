@@ -1,11 +1,22 @@
 import { useCallback, useState } from 'react';
 import { useWorkbench } from '../../workbench/WorkbenchContext';
 import { resolveWorkbenchPlugin } from '../../workbench/plugins';
-import DocumentAppendBar from './DocumentAppendBar';
-import type { WorkbenchArtifactType } from '../../workbench/types';
+import ArtifactActionBar from './ArtifactActionBar';
+import { isEditableWorkbenchArtifact, isReadingWorkbenchArtifact } from '../../workbench/types';
 import { useProject } from '../../contexts/ProjectContext';
-import { getChapterText } from '../../modules/script-adapter/services/aiLibraryClient';
+import { getChapterText, saveChapterText } from '../../modules/script-adapter/services/aiLibraryClient';
 import '../CanvasPanel.css';
+
+const ARTIFACT_LABELS: Record<string, string> = {
+  reading: '阅读',
+  artifact: 'Artifact · 文稿',
+  script: 'Artifact · 剧本',
+  code: 'Artifact · 代码',
+  'ui-draft': 'Artifact · UI 草稿',
+  diagram: 'Artifact · 图表',
+  'react-flow': 'Artifact · 节点图',
+  echart: 'Artifact · 数据图表',
+};
 
 export default function WorkbenchPanel() {
   const workbench = useWorkbench();
@@ -13,9 +24,11 @@ export default function WorkbenchPanel() {
   const hasMultipleDocuments = workbench.documents.length > 1;
 
   // ─── 从项目加载章节 ────────────────────────────────────────────────────────
-  const { activeProject } = useProject();
+  const { activeProject, setActiveProjectById } = useProject();
   const [chapterLoading, setChapterLoading] = useState(false);
   const [chapterError, setChapterError] = useState<string | null>(null);
+  const [isSavingProjectChapter, setIsSavingProjectChapter] = useState(false);
+  const [projectChapterSaveStatus, setProjectChapterSaveStatus] = useState<string | null>(null);
 
   const handleLoadChapter = useCallback(async (chapterIndex: number) => {
     if (!activeProject) return;
@@ -27,7 +40,7 @@ export default function WorkbenchPanel() {
       workbench.createDocument({
         title: `${activeProject.title} · ${title}`,
         content: text,
-        artifactType: 'script',
+        artifactType: 'reading',
         mode: 'markdown',
         origin: 'user',
         projectBookId: activeProject.id,
@@ -48,16 +61,16 @@ export default function WorkbenchPanel() {
   // 阅读时长：按中文 400 字/分钟估算，最少 1 分钟
   const readMinutes = cnCharCount > 0 ? Math.max(1, Math.ceil(cnCharCount / 400)) : 0;
 
-  // 是否为文档类，控制是否在 toolbar 显示字数与阅读时长
-  const isDocumentArtifact = activeDocument?.artifactType === 'document';
-  const canToggleScriptView = !!activeDocument
-    && activeDocument.mode === 'markdown'
-    && (activeDocument.artifactType === 'document' || activeDocument.artifactType === 'script');
-  const toggleArtifactTarget: WorkbenchArtifactType | null = !canToggleScriptView
-    ? null
-    : activeDocument?.artifactType === 'script'
-      ? 'document'
-      : 'script';
+  const isReadingArtifact = isReadingWorkbenchArtifact(activeDocument);
+  const isEditableArtifact = isEditableWorkbenchArtifact(activeDocument);
+  const artifactLabel = activeDocument?.projectBookId
+    ? '项目章节'
+    : activeDocument
+      ? (ARTIFACT_LABELS[activeDocument.artifactType] || activeDocument.artifactType)
+      : '';
+  const canSaveProjectChapter = !!activeDocument?.projectBookId
+    && Number.isInteger(activeDocument.projectChapterIndex)
+    && !!activeDocument.content;
 
   const handleCopy = useCallback(async () => {
     if (!activeDocument) return;
@@ -92,12 +105,29 @@ export default function WorkbenchPanel() {
     workbench.deleteDocument(activeDocument.id);
   }, [activeDocument, workbench]);
 
-  const handleToggleScriptView = useCallback(() => {
-    if (!activeDocument || !toggleArtifactTarget) return;
-    workbench.updateDocument(activeDocument.id, {
-      artifactType: toggleArtifactTarget,
-    });
-  }, [activeDocument, toggleArtifactTarget, workbench]);
+  const handleSaveProjectChapter = useCallback(async () => {
+    if (!activeDocument?.projectBookId || !Number.isInteger(activeDocument.projectChapterIndex)) return;
+    setIsSavingProjectChapter(true);
+    setProjectChapterSaveStatus(null);
+    try {
+      const result = await saveChapterText(
+        activeDocument.projectBookId,
+        Number(activeDocument.projectChapterIndex),
+        activeDocument.content,
+      );
+      workbench.updateDocument(activeDocument.id, {
+        content: result.text,
+        title: `${activeProject?.title || activeDocument.title} · ${result.chapter.title || `第 ${result.chapter.chapter_index + 1} 章`}`,
+        projectChapterIndex: result.chapter.chapter_index,
+      });
+      await setActiveProjectById(activeDocument.projectBookId);
+      setProjectChapterSaveStatus('已保存到原文件');
+    } catch (error) {
+      setProjectChapterSaveStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSavingProjectChapter(false);
+    }
+  }, [activeDocument, activeProject?.title, setActiveProjectById, workbench]);
 
   const renderPreview = () => {
     if (!activeDocument) return null;
@@ -115,7 +145,7 @@ export default function WorkbenchPanel() {
       {activeProject && activeProject.chapters.length > 0 && (
         <div className="canvas-chapter-loader">
           <div className="canvas-chapter-loader-label">
-            📖 {activeProject.title} — 加载章节到 Canvas
+            📖 {activeProject.title} — 打开章节到 Canvas
           </div>
           <select
             className="canvas-chapter-select"
@@ -157,9 +187,12 @@ export default function WorkbenchPanel() {
           </div>
           {activeDocument && (
             <div className="canvas-toolbar-meta">
-              {activeDocument.artifactType} · {activeDocument.origin} · v{activeDocument.version}
-              {isDocumentArtifact && cnCharCount > 0 && (
+              {artifactLabel} · {activeDocument.origin} · v{activeDocument.version}
+              {isReadingArtifact && cnCharCount > 0 && (
                 <> · {cnCharCount.toLocaleString('zh-CN')} 字 · 约 {readMinutes} 分钟</>
+              )}
+              {projectChapterSaveStatus && (
+                <> · {projectChapterSaveStatus}</>
               )}
             </div>
           )}
@@ -180,13 +213,14 @@ export default function WorkbenchPanel() {
           </div>
         )}
         <div className="canvas-toolbar-actions">
-          {canToggleScriptView && (
+          {canSaveProjectChapter && (
             <button
               className="canvas-action-btn"
-              onClick={handleToggleScriptView}
-              title={toggleArtifactTarget === 'script' ? '切换到剧本编辑器视图' : '切换回普通文档视图'}
+              onClick={handleSaveProjectChapter}
+              disabled={isSavingProjectChapter}
+              title="把当前 Canvas 内容写回项目书库中的原章节文件"
             >
-              {toggleArtifactTarget === 'script' ? '切到 Script' : '切到 Document'}
+              {isSavingProjectChapter ? 'Saving...' : '保存原文件'}
             </button>
           )}
           <button className="canvas-action-btn" onClick={handleCopy} disabled={!activeDocument}>
@@ -216,8 +250,8 @@ export default function WorkbenchPanel() {
         )}
       </div>
 
-      {activeDocument?.artifactType === 'document' && (
-        <DocumentAppendBar />
+      {isEditableArtifact && (
+        <ArtifactActionBar />
       )}
     </div>
   );

@@ -23,6 +23,7 @@ import { stripThinkModeMarker } from '../../utils/socraticTemplates';
 import { clearProcessedMarkdownCache } from '../../utils/markdownPreprocess';
 import { createMarkdownComponents } from './markdownComponents';
 import ChatInputArea from './ChatInput';
+import ComposerBar from './ComposerBar';
 import { ChatMessageList } from './MessageList';
 import ChatTabRightPanel from './ChatTabRightPanel';
 import { WelcomeHero } from '../onboarding/WelcomeHero';
@@ -82,7 +83,7 @@ import type { ChatMessage, ChatTabProps } from './chatTypes';
 // MessageRow / ChatMessageItem / ChatMessageItemProps
 // 已全部迁移到 src/ui/chat/MessageList.tsx
 
-const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange, onSwitchTab, conversations, activeConversationId, onNewConversation, onSwitchConversation, onDeleteConversation }) => {
+const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessageId, onStatusChange, onSwitchTab, activeTab, onTabChange, conversations, activeConversationId, onNewConversation, onSwitchConversation, onDeleteConversation }) => {
   const { settings, streamSpeedMs } = useSettings();
   const { speakingMessageId, playTTSForMessage, stopTts } = useTtsPlayback({
     ttsPlayback: settings.ttsPlayback,
@@ -223,7 +224,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
   }, [msgs.sendMessage, msgs.wsConnected]);
 
   // ── Workbench → Chat 桥接：监听面板内的发送请求 ─────────────────
-  // 当 DocumentAppendBar / 其他面板内 UI 通过 workbenchBus.requestSendMessage 发起请求时，
+  // 当 ArtifactActionBar / 其他面板内 UI 通过 workbenchBus.requestSendMessage 发起请求时，
   // 这里转成实际的 sendMessage 调用，并按 intent 注入 roundtrip 上下文。
   useEffect(() => {
     const unsubscribe = workbenchBus.subscribeSendRequest((request) => {
@@ -480,11 +481,19 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
             onClearHistory={handleClearHistory}
             onRestartGateway={gateway.restartGateway}
             isEmptyConversation={messages.length === 0}
+            bottomBar={(
+              <ComposerBar
+                modelName={msgs.modelName}
+                thinkMode={msgs.thinkMode}
+                disabled={msgs.isStreaming || msgs.awaitingResponse}
+                onCommand={(cmd) => { void msgs.sendMessage(cmd, null); }}
+              />
+            )}
             extraControls={(
               <>
                 <button
                   type="button"
-                  className="attach-btn"
+                  className="composer-icon-btn"
                   title="打开生图工作台"
                   onClick={toggleImageStudio}
                   style={{
@@ -508,6 +517,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ messages, setMessages, getNextMessage
         tokenIn={msgs.tokenIn}
         ctxUsed={msgs.ctxUsed}
         ctxMax={msgs.ctxMax}
+        activeTab={activeTab}
+        onTabChange={onTabChange}
         conversations={conversations}
         activeConversationId={activeConversationId}
         onNewConversation={onNewConversation}

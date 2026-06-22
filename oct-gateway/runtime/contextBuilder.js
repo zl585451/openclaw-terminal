@@ -364,13 +364,28 @@ class ContextBuilder {
     }
 
     if (artifactType === 'diagram') {
-      return '\n\n[系统] 流程图/示意图输出规则：'
-        + '简单图（≤6节点，TD方向）直接用 ```json 代码块输出图谱 JSON，格式：{"diagramType":"flowchart","title":"...","direction":"TD","nodes":[{"id":"a","label":"..."},...],"edges":[{"from":"a","to":"b"},...]}。'
-        + '复杂图（>6节点或有分组）使用 canvas 工具创建 diagram 类型成果物，content 填入 mermaid DSL。'
-        + '禁止直接输出 Mermaid DSL 到正文，禁止使用 ```mermaid 代码块，禁止在正文暴露 JSON。';
+      return '\n\n[系统] 流程图/示意图输出规则（必须严格遵守）：\n'
+        + '简单图（≤6节点，TD方向）：把图谱 JSON 放进 ```json 代码围栏里输出，绝不能把 JSON 直接写在句子或正文里。正确示例：\n'
+        + '```json\n{"diagramType":"flowchart","title":"...","direction":"TD","nodes":[{"id":"a","label":"..."}],"edges":[{"from":"a","to":"b"}]}\n```\n'
+        + '复杂图（>6节点或有分组）：用 canvas 工具创建 diagram 类型成果物，content 填入 mermaid DSL。\n'
+        + '硬性禁止：① 禁止在正文/句子中暴露任何 JSON 或 Mermaid 文本；② 禁止用 ```mermaid 代码块；③ JSON 只能出现在 ```json 围栏内。\n'
+        + '出图要克制：标签≤12个汉字、层级清晰、不堆砌节点。';
     }
 
-    const suggestedType = artifactType || 'document';
+    if (artifactType === 'ui-draft') {
+      return '\n\n[系统] 出图协议：手绘语义化 SVG（目标 = 像 Claude artifact 那样精致，且自动适配明暗主题）。\n'
+        + '先用一句话说明，再用 canvas 工具创建成果物：artifactType:"ui-draft"，mode:"html"，content 填一个完整的 `<svg viewBox="0 0 宽 高">…</svg>`（节点用 <rect>+<text> 逐个手绘，连线用 <line>/<path>+箭头 marker）。\n'
+        + '【颜色必须全部用 CSS 变量，渲染容器已注入，严禁写死十六进制/rgb——这是主题自适应的关键】：\n'
+        + '· 文字：标题 var(--color-text-primary)、副标题/边标签 var(--color-text-secondary)；\n'
+        + '· 节点底色 fill:var(--color-surface-raised)；描边 stroke:var(--color-border-tertiary) 宽 0.5~1；\n'
+        + '· 分组用语义色（同组同色，最多 4~5 组）：var(--cat-purple) var(--cat-green) var(--cat-amber) var(--cat-blue) var(--cat-pink)，用于节点描边或左侧小色条；\n'
+        + '· 主连线/箭头 stroke:var(--color-text-tertiary)。\n'
+        + '【排版】：在 <svg> 根节点设一次 font-family:var(--font-sans)；节点 rect rx=8、宽≈150~180、高≈56、同层水平等距、层与层垂直等距；text 用 text-anchor="middle" dominant-baseline="central"，标题 14px/字重500，副标题 12px；用 viewBox 自适应、不要写死 width/height 像素。\n'
+        + '【对齐 Claude 的精致感】：扁平（无渐变/无重阴影）、留白充足、细描边、用颜色编码分组并在底部放一个小图例（色块+文字）说明每组含义。\n'
+        + '【克制】：主链路≤6 节点、节点标签≤12 字、副标题≤5 字，细节放正文不要堆进图里。';
+    }
+
+    const suggestedType = artifactType === 'document' ? 'reading' : (artifactType || 'reading');
     return `\n\n[系统] 这条请求适合使用 Canvas 表达。使用 canvas 工具创建 ${suggestedType} 类型成果物。${reason || '这条请求适合结构化表达'}`;
   }
 

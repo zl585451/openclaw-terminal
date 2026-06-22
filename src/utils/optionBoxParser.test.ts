@@ -7,7 +7,7 @@
  * 监听: npx vitest
  */
 import { describe, it, expect } from 'vitest';
-import { parseOptionBox } from './optionBoxParser';
+import { parseOptionBox, clearParseCache } from './optionBoxParser';
 import { blockRouter } from '../core/blockRouter';
 import { blocksToSegments } from '../core/blockAdapter';
 
@@ -635,6 +635,122 @@ describe('长内容 + 表格 + 交互标签', () => {
     const pillsSeg = r2.segments!.find(s => s.type === 'pills');
     expect(pillsSeg).toBeDefined();
     expect(pillsSeg!.options).toHaveLength(2);
+  });
+});
+
+// ============================================================
+// 9b. 额外边界用例（重构补充：非法输入、嵌套/未知标签、显式 RENDER hint、遗留协议）
+// ============================================================
+describe('额外边界用例', () => {
+  it('null/undefined 输入不崩溃，返回空文本空选项', () => {
+    expect(parseOptionBox(null as unknown as string)).toEqual({ text: '', options: [] });
+    expect(parseOptionBox(undefined as unknown as string)).toEqual({ text: '', options: [] });
+  });
+
+  it('仅空白字符的输入不崩溃，不产生选项', () => {
+    const result = parseOptionBox('   \n\n\t  ');
+    expect(result.options).toHaveLength(0);
+  });
+
+  it('嵌套同名标签：内层标签原样保留在 inner 内容中（不递归解析）', () => {
+    const input = `[pills]
+■ 外层选项A
+[pills]
+■ 内层不应被当成独立标签
+[/pills]
+[/pills]`;
+
+    const result = parseOptionBox(input);
+    expect(result.segments).toBeDefined();
+    const pillsSegs = result.segments!.filter((s) => s.type === 'pills');
+    // 非贪婪匹配下，第一对 [pills]...[/pills] 在最近的 [/pills] 处闭合
+    expect(pillsSegs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('未知标签 [foo]...[/foo] 不被当作成对标签解析，原样保留为文本', () => {
+    const input = `正文前
+
+[foo]
+■ 不应被解析
+[/foo]
+
+正文后`;
+    const result = parseOptionBox(input);
+    // 没有合法成对标签，应走自动检测路径；[foo] 不在已知标签列表中，原样保留
+    expect(result.text).toContain('[foo]');
+    expect(result.text).toContain('正文前');
+    expect(result.text).toContain('正文后');
+  });
+
+  it('[RENDER:checkbox] 显式 hint 命中复选框解析', () => {
+    const input = `今天做哪些：
+- [ ] 任务A
+- [ ] 任务B
+[RENDER:checkbox]`;
+    const result = parseOptionBox(input);
+    expect(result.options.length).toBeGreaterThanOrEqual(2);
+    expect(result.forcePills).toBe(false);
+    expect(result.isTaskList).toBeFalsy();
+  });
+
+  it('[RENDER:tasklist] 显式 hint 命中任务清单解析', () => {
+    const input = `- [ ] 任务A
+- [ ] 任务B
+[RENDER:tasklist]`;
+    const result = parseOptionBox(input);
+    expect(result.options.length).toBeGreaterThanOrEqual(2);
+    expect(result.isTaskList).toBe(true);
+  });
+
+  it('[RENDER:question] 显式 hint 但没有合格问题选项时，原样返回正文', () => {
+    const input = `随便说点什么。
+[RENDER:question]`;
+    const result = parseOptionBox(input);
+    expect(result.options).toHaveLength(0);
+  });
+
+  it('[RENDER:pill] 显式 hint 但没有符号选项时，原样返回正文', () => {
+    const input = `这里没有符号选项。
+[RENDER:pill]`;
+    const result = parseOptionBox(input);
+    expect(result.options).toHaveLength(0);
+  });
+
+  it('遗留协议 [选项框开始]...[选项框结束] 仍兼容解析', () => {
+    const input = `前面的话
+[选项框开始]
+[选项1: 方案A | valueA]
+[选项2: 方案B | valueB]
+[选项框结束]
+后面的话`;
+    const result = parseOptionBox(input);
+    expect(result.options).toHaveLength(2);
+    expect(result.options[0]).toEqual({ num: 1, label: '方案A', value: 'valueA' });
+    expect(result.text).toContain('前面的话');
+    expect(result.text).toContain('后面的话');
+  });
+
+  it('畸形遗留协议（缺少结束标记）不触发选项解析，原样走自动检测', () => {
+    const input = `[选项框开始]
+[选项1: 方案A | valueA]`;
+    const result = parseOptionBox(input);
+    // 没有 [选项框结束]，不会进入遗留协议分支
+    expect(result.text).toContain('[选项框开始]');
+  });
+
+  it('连续调用 parseOptionBox 对同一输入结果一致（缓存命中不影响正确性）', () => {
+    const input = `选一个：\n\n■ A\n■ B`;
+    const r1 = parseOptionBox(input);
+    const r2 = parseOptionBox(input);
+    expect(r2).toEqual(r1);
+  });
+
+  it('clearParseCache 清空后重新解析仍得到一致结果', () => {
+    const input = `选一个：\n\n■ X\n■ Y`;
+    const before = parseOptionBox(input);
+    clearParseCache();
+    const after = parseOptionBox(input);
+    expect(after).toEqual(before);
   });
 });
 

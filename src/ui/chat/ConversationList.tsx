@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ConversationMeta } from '../../types/electronAPI';
 
 export interface ConversationListProps {
@@ -21,6 +22,54 @@ const ConversationList: React.FC<ConversationListProps> = ({
   onDeleteConversation,
 }) => {
   const list = [...(conversations || [])].sort((a, b) => b.updatedAt - a.updatedAt);
+  const [pendingDelete, setPendingDelete] = useState<ConversationMeta | null>(null);
+
+  const confirmDialog = pendingDelete && typeof document !== 'undefined'
+    ? createPortal(
+      <div
+        className="conv-confirm-overlay"
+        role="presentation"
+        onMouseDown={() => setPendingDelete(null)}
+      >
+        <div
+          className="conv-confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="conv-confirm-title"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="conv-confirm-kicker">对话管理</div>
+          <h2 id="conv-confirm-title" className="conv-confirm-title">删除这条对话？</h2>
+          <p className="conv-confirm-copy">
+            聊天记录会清除，长期记忆不受影响。
+          </p>
+          <div className="conv-confirm-preview">
+            {pendingDelete.title || '新对话'}
+          </div>
+          <div className="conv-confirm-actions">
+            <button
+              type="button"
+              className="conv-confirm-btn conv-confirm-btn--ghost"
+              onClick={() => setPendingDelete(null)}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="conv-confirm-btn conv-confirm-btn--danger"
+              onClick={() => {
+                onDeleteConversation?.(pendingDelete.id);
+                setPendingDelete(null);
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )
+    : null;
 
   return (
     <div className="conv-list">
@@ -57,9 +106,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
               title="删除对话"
               onClick={(e) => {
                 e.stopPropagation();
-                if (window.confirm('删除这条对话？聊天记录会清除，长期记忆不受影响。')) {
-                  onDeleteConversation?.(c.id);
-                }
+                setPendingDelete(c);
               }}
             >
               ×
@@ -67,6 +114,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
           </div>
         ))}
       </div>
+      {confirmDialog}
     </div>
   );
 };

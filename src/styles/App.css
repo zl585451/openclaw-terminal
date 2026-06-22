@@ -35,6 +35,9 @@ body {
   overflow: hidden;
   padding: 10px;
   padding-top: 5px;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
 }
 
 .app-shell-bar {

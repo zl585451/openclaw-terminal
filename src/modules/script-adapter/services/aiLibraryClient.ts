@@ -38,6 +38,10 @@ type LibraryChapterPayload = {
   chapter: LibraryChapter;
   text: string;
 };
+type LibraryChapterUpdatePayload = LibraryChapterPayload & {
+  book_id?: string;
+  book?: LibraryBook;
+};
 
 type LibraryIpcOk<T> = { success: true; data: T };
 type LibraryIpcErr = { success: false; error: string };
@@ -72,6 +76,17 @@ export async function getChapterText(
   if (!res.success) throw new Error(res.error);
   const inner = res.data as LibraryChapterPayload;
   return { chapter: inner.chapter, text: inner.text };
+}
+
+export async function saveChapterText(
+  bookId: string,
+  chapterIndex: number,
+  content: string,
+): Promise<{ chapter: LibraryChapter; text: string; book?: LibraryBook }> {
+  const res = (await api().updateChapter(bookId, chapterIndex, content)) as LibraryIpcResult<LibraryChapterUpdatePayload>;
+  if (!res.success) throw new Error(res.error);
+  const inner = res.data as LibraryChapterUpdatePayload;
+  return { chapter: inner.chapter, text: inner.text, book: inner.book };
 }
 
 export async function pickLocalFile(): Promise<string | null> {
