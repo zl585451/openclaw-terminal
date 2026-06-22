@@ -9,7 +9,7 @@
 - `gpt-5.4-mini`：负责收集 frontend / Electron / IPC / gateway / scripts / resources 的证据。
 - 主审模型：负责交叉核对入口点、动态加载风险和候选项分类。
 
-当前只执行了 Batch 1。后续批次仍然必须先做证据收集，并且只有满足该批次的验证边界后，才允许删除代码。
+当前已执行 Batch 1 和 Batch 2。后续批次仍然必须先做证据收集，并且只有满足该批次的验证边界后，才允许删除代码。
 
 当前工作区注意事项：`start.bat` 在本次审计前已经被修改。它属于用户已有工作区状态，清理时不要重写或删除它。
 
@@ -106,8 +106,8 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 | `oct-gateway/transport/httpRoutes.js` 的部分路由 | Gateway HTTP 路由 | 暴露 `/tool`、`/api/polish`、`/api/script-format`、`/api/script-role-detect`、`/mcp/status`、`/mcp/server`、`/mobile` | 中高：外部客户端可能直接调用 | 单独做 route 级使用审计。不要删除整个文件。 |
 | `oct-gateway/tools/ai_library.js` | Gateway tool / AI.library bridge | 仍可通过工具注册表加载；错误和文档里还引用旧 `api_server.py` 语义 | 中：工具表面可能被模型调用 | 审计 `search_knowledge` 和 Electron 原生 library 是否已经完全替代此路径。 |
 | `resources/system_prompts/` | prompt 镜像 | 当前 package 复制 `docs/01_system_prompts`；`oct-gateway/config.js` 也有 prompt-dir 逻辑 | 中：可能是手工同步镜像 | 删除前确认当前 `PROMPTS_DIR` 解析和 release 打包逻辑。 |
-| `scripts/build-nocturne-exe.ps1` | 旧 Nocturne 打包脚本 | 脚本指向已不存在的 `resources/nocturne_server`；当前根 scripts 没有调用它 | Nocturne 拆包证据下较低 | 仅限未来批次；当前 Batch 1 目标下没有删除。 |
-| `electron/ipc/ai-config.ts` 的 `test-log-write` handler | 诊断 IPC | 没有 preload export，也没有前端 caller；只有 IPC spec 记录它 | 文档 grep 后较低 | 仅限未来批次；IPC handlers 不在当前 Batch 1 目标范围内。 |
+| `scripts/build-nocturne-exe.ps1` | 旧 Nocturne 打包脚本 | 脚本指向已不存在的 `resources/nocturne_server`；当前根 scripts 没有调用它 | Nocturne 拆包证据下较低 | 已在 Batch 2 删除。 |
+| `electron/ipc/ai-config.ts` 的 `test-log-write` handler | 诊断 IPC | 没有 preload export，也没有前端 caller；只有 IPC spec 记录它 | 文档 grep 后较低 | 已在 Batch 2 删除。 |
 | `electron/preload.ts` 的 `parseScriptFile` | script adapter 导入辅助 | 当前上传流似乎使用 `library.pickFile` 和 `uploadBook` | 中：script-adapter UI 可能有替代路径 | 删除 bridge / handler 前，必须先通过 UI workflow 和测试确认。 |
 
 ## 删除候选
@@ -121,7 +121,7 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 | `electron/preload.ts` wrapper `openCodeWindow` | code window bridge wrapper | handler 存在，但没有找到 `src` caller | 中低，因为辅助 window 存在 | `rg -n "openCodeWindow|open-code-window|code-window-ready" src electron`；如果功能仍存在，做手工 code-window smoke。 |
 | `electron/preload.ts` wrappers `openFileDialog` / `openTerminalWindow` | 仅 bridge wrapper | 前端当前通过 raw IPC 调用 `open-file-dialog` / `open-terminal-window` | 删除 wrapper 风险低；删除 handler 不在此范围 | `rg -n "openFileDialog|openTerminalWindow|open-file-dialog|open-terminal-window" src electron`；做文件上传和 terminal smoke。 |
 | `scripts/chat-pipeline-trace-phase0.js` | 手工 trace 脚本 | 被 `docs/refactors/chat-pipeline-phase0-trace.md` 引用；不在 package scripts 中 | 低 | 确认 chat 审计文档不再需要重跑；如果保留 trace 能力重要，则运行 `node scripts/chat-pipeline-trace-phase0.js`。 |
-| `scripts/start-nocturne-dashboard.ps1` | 旧 Nocturne dashboard helper | 被旧 Nocturne guide 引用；不在 package scripts 中 | Nocturne 拆包证据下较低 | 仅限未来批次；当前 Batch 1 目标下没有删除。 |
+| `scripts/start-nocturne-dashboard.ps1` | 旧 Nocturne dashboard helper | 被旧 Nocturne guide 引用；不在 package scripts 中 | Nocturne 拆包证据下较低 | 已在 Batch 2 删除；旧指南改为历史说明。 |
 | `resources/ai_library/` | 旧 AI.library 资源 | Electron 原生 library 路径现在使用 userData；根 package 没有单独包含 `resources/ai_library` | 中：历史文档多，且可能存在本地数据预期 | 确认 release / package config 不复制它；做 library upload/list smoke；先验证 `oct-gateway/tools/ai_library.js` 替代策略。 |
 
 ## 已注册但没有暴露到 preload 的 IPC
@@ -138,7 +138,7 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 | `code-window-ready` / `code-window-close` | `electron/ipc/code-window.ts` | 被 `electron/code-window.html` 使用。保留。 |
 | `terminal-ready` / `terminal-input` / `terminal-close` / `terminal-resize` | `electron/ipc/terminal.ts` | 被 `electron/terminal-window.html` 使用。保留。 |
 | `float-restore` | `electron/ipc/window.ts` | 被 `electron/float.html` 使用。保留。 |
-| `test-log-write` | `electron/ipc/ai-config.ts` | 放入未来诊断 IPC 审查的隔离候选；当前 Batch 1 目标下没有删除。 |
+| `test-log-write` | `electron/ipc/ai-config.ts` | 已在 Batch 2 删除。 |
 
 ## 后续清理批次
 
@@ -204,15 +204,15 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 
 ### Batch 2：Diagnostic Script and Handler Review
 
-状态：当前 Batch 1 目标下未执行。
+状态：已在 `codex/orphan-chain-audit-goal-20260622` 上完成。
 
-当前边界：
+已完成变更：
 
-- 保留 `scripts/start-nocturne-dashboard.ps1`。
-- 保留 `scripts/build-nocturne-exe.ps1`。
-- 保留 `electron/ipc/ai-config.ts` 中的诊断 IPC handler `test-log-write`。
-- 保留 `docs/03_specs/ELECTRON_IPC_CHANNELS.md` 中对 `test-log-write` 的记录。
-- 在专门的 Nocturne 清理批次获批前，保持历史 Nocturne guide 不变。
+- 删除 `scripts/start-nocturne-dashboard.ps1`。
+- 删除 `scripts/build-nocturne-exe.ps1`。
+- 删除 `electron/ipc/ai-config.ts` 中的诊断 IPC handler `test-log-write`。
+- 删除 `docs/03_specs/ELECTRON_IPC_CHANNELS.md` 中对 `test-log-write` 的记录。
+- 将历史 Nocturne guide 中的 dashboard 启动说明改为历史归档说明。
 
 证据：
 
@@ -230,9 +230,10 @@ IPC 注册集中在 `electron/ipc/index.ts`，它会注册：
 
 结果：
 
-- 当前目标不包含任何 Batch 2 删除。
+- Batch 2 删除只覆盖旧 Nocturne helper 脚本和孤儿诊断 IPC。
 - `scripts/chat-pipeline-trace-phase0.js` 继续保留，因为 `docs/refactors/chat-pipeline-phase0-trace.md` 仍记录手工 trace 命令。
-- Nocturne 脚本和诊断 IPC handler 仍然只是单独未来批次的候选项，不属于 Batch 1。
+- 未删除 Nocturne 文档、runtime memory code 或 gateway handlers。
+- `scripts/test_memory_*.py`、`scripts/test_memory_write_node.js`、`scripts/write_work_mode_memory.py` 仍包含 Nocturne 语义；它们不是本批次目标，需要单独确认是否仍作为 legacy 手工测试保留。
 
 禁止：
 

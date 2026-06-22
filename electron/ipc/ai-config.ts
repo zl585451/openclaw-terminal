@@ -398,22 +398,6 @@ export function registerAiConfigHandlers(_deps: IpcDeps) {
     }
   });
 
-  ipcMain.handle('test-log-write', () => {
-    const testPath = path.join(os.homedir(), '.openclaw', 'logs', 'commands.log');
-    const dir = path.dirname(testPath);
-    try {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const testLine = `{"timestamp":"${new Date().toISOString()}","level":"INFO","message":"Test log entry from CLAW Terminal","source":"test"}\n`;
-      fs.appendFileSync(testPath, testLine, 'utf8');
-      console.log('[LOG] Test line written to:', testPath);
-      return { success: true };
-    } catch (e: any) {
-      console.log('[LOG] Failed to write test line:', e.message);
-      return { success: false, error: e.message };
-    }
-  });
 }
 
 function syncExternalOmniRouteVault(cfg: Record<string, any>): void {
