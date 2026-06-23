@@ -4,7 +4,7 @@
  * URI 结构：core://logs/raw/YYYY-MM-DD/<timestamp>-<seq>
  */
 const memory = require('./memory');
-const { createLogger } = require('./logger');
+const { createLogger } = require('../logger');
 const crypto = require('crypto');
 const memoryV2 = require('./memory_v2_store');
 
@@ -110,9 +110,9 @@ async function saveRawTurn({
         logger.debug('[RawLog] 去重索引写入失败（不阻塞）', { error: err?.message || String(err) });
       }
     }
-    if (require('./config').memory.vectorRecall.enabled) {
+    if (require('../config').memory.vectorRecall.enabled) {
       try {
-        const { enqueueForEmbedding, shouldIndexTurn } = require('./memory_vector/writer');
+        const { enqueueForEmbedding, shouldIndexTurn } = require('../memory_vector/writer');
         if (!shouldIndexTurn({
           userText: userMessage || '',
           assistantText: assistantReply || '',

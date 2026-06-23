@@ -1,5 +1,5 @@
-const { createLogger } = require('./logger');
-const { stripCotText, sanitizeAssistantReply, sanitizeMemoryNodeContent } = require('./cot_sanitize');
+const { createLogger } = require('../logger');
+const { stripCotText, sanitizeAssistantReply, sanitizeMemoryNodeContent } = require('../cot_sanitize');
 
 const log = createLogger('memory_governor');
 

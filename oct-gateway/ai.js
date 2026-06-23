@@ -1,7 +1,7 @@
 const config = require('./config');
 const toolLoader = require('./tool_loader');
 const skillAdapter = require('./skill_adapter');
-const memory = require('./memory');
+const memory = require('./memory/memory');
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('./logger');
@@ -23,6 +23,7 @@ const {
   classifyProbeFailure,
 } = require('./runtime/llmTransport');
 const { createPseudoToolCompat } = require('./runtime/pseudoToolCompat');
+const { createThinkTagStreamParser } = require('./runtime/thinkTagStreamParser');
 const {
   probeModelToolsSupport,
   enforceExecutionContract,
@@ -227,7 +228,7 @@ async function loadSystemPrompt(promptsDir) {
     });
     // 加载追问偏好
     try {
-      const clarificationMemory = require('./clarification_memory');
+      const clarificationMemory = require('./memory/clarification_memory');
       const prefsBlock = await clarificationMemory.loadPreferencesForBoot();
       if (prefsBlock) bootMemory = bootMemory + prefsBlock;
     } catch (e) {
@@ -963,15 +964,9 @@ async function streamChatRaw({
   let assistantResponseContent = '';
   /** Thinking-mode providers may require this field to be echoed on tool continuation. */
   let assistantReasoningContent = '';
-  const _thinkState = {
-    inThink: false,
-    cotOpen: false,
-    contentBuffer: '',
-    pendingTag: '',
-    thinkCount: 0,
-  };
-  let _thinkTagMode = false;
   let hasToolEvidence = false;
+  // 思考标签流式解析器（在 fetch 前创建），见 runtime/thinkTagStreamParser.js
+  let thinkParser = null;
   /** 在 fetch 前赋值，确保 catch 块也可用 */
   let flushThinkAtEnd = () => {};
 
@@ -1045,195 +1040,17 @@ async function streamChatRaw({
       supportsStreamOptions: caps?.supportsStreamOptions ?? provider.supportsStreamOptions,
     });
 
-    _thinkTagMode = caps.thinkingFormat === 'think_tags';
-    _thinkState.inThink = false;
-    _thinkState.cotOpen = false;
-    _thinkState.contentBuffer = '';
-    _thinkState.pendingTag = '';
-    _thinkState.thinkCount = 0;
-
     // ── MiniMax <redacted_thinking> 标签流式解析器 ──────────────────────────────
-    // 适配 MiniMax M2.7 的"交织式思考"：模型在一次回复里多次交替输出
-    // <redacted_thinking>思考</redacted_thinking>正文<redacted_thinking>继续思考</redacted_thinking>继续正文
-    //
-    // 策略：
-    //   1. 第一个 <redacted_thinking> 出现时开启 [cot]，保持 CoT 块持续开放
-    //   2. 多个 <redacted_thinking> 块的内容都流入同一个 CoT，用分隔线隔开
-    //   3. 思考块之间的正文内容暂存到 contentBuffer，不立即输出
-    //   4. 流结束时：发出 [/cot] → 释放 contentBuffer 给前端渲染
-    //
-    // 结果：用户看到思考流式展开 → 思考折叠 → 干净的答案出现
-    // 其他模型（thinkingFormat 不是 'think_tags'）完全不受影响
-    // ─────────────────────────────────────────────────────────────────
-    // 支持两种标签格式：MiniMax 可能输出 <redacted_thinking> 或标准格式 <think>
-    const OPEN_REDACTED = '<redacted_thinking>';
-    const CLOSE_REDACTED = '</redacted_thinking>';
-    const OPEN_COT = '<think>';
-    const CLOSE_COT = '</think>';
-
-    /**
-     * 规范化标签：将标准 <think> 转换为内部标签格式
-     * @param {string} s - 输入字符串
-     * @returns {{ normalized: string, hadCotOpen: boolean, hadCotClose: boolean }}
-     */
-    function _normalizeThinkTags(s) {
-      let hadCotOpen = false;
-      let hadCotClose = false;
-      let normalized = s;
-
-      // 先检查标准 <think> 标签
-      if (normalized.includes(OPEN_COT)) hadCotOpen = true;
-      if (normalized.includes(CLOSE_COT)) hadCotClose = true;
-
-      // 将标准 <think> 标签转换为 <redacted_thinking> 格式
-      // 避免重复替换（如果已经有 <redacted_thinking> 就不替换）
-      if (hadCotOpen && !normalized.includes(OPEN_REDACTED)) {
-        normalized = normalized.split(OPEN_COT).join(OPEN_REDACTED);
-      }
-      if (hadCotClose && !normalized.includes(CLOSE_REDACTED)) {
-        normalized = normalized.split(CLOSE_COT).join(CLOSE_REDACTED);
-      }
-
-      return { normalized, hadCotOpen, hadCotClose };
-    }
-
-    const OPEN_THINK = OPEN_REDACTED;
-    const CLOSE_THINK = CLOSE_REDACTED;
-
-    /** 返回 s 末尾与 tag 前缀重叠的最长子串（处理跨 chunk 的残缺标签） */
-    function _findPartialTag(s, tag) {
-      for (let len = Math.min(s.length, tag.length - 1); len > 0; len--) {
-        if (tag.startsWith(s.slice(-len))) return s.slice(-len);
-      }
-      return '';
-    }
-
-    /** 过滤掉 AI 误输出到 content 中的工具调用标记 */
-    function _stripToolCallMarkers(s) {
-      return s.replace(/\[TOOL_CALLS?\]/gi, '');
-    }
-
-    /** 处理一个 content chunk，区分思考内容和正文内容 */
-    function _processContentChunk(raw) {
-      // 先过滤掉 [TOOL_CALL] / [TOOL_CALLS] 等误输出的标记
-      const cleaned = _stripToolCallMarkers(raw);
-      if (!cleaned) return;
-      assistantResponseContent += cleaned;
-
-      // 标准化思考标签：将标准 <think> 转换为 <redacted_thinking> 格式
-      const { normalized, hadCotOpen, hadCotClose } = _normalizeThinkTags(cleaned);
-
-      // 如果检测到标准 <think> 标签但 _thinkTagMode 未启用，
-      // 说明模型配置缺少 thinkingFormat，强制启用标签处理
-      if (!_thinkTagMode && (hadCotOpen || hadCotClose)) {
-        log.warn('检测到 <think> 标签但 thinkingFormat 未配置，强制启用标签处理');
-        _thinkTagMode = true;
-      }
-
-      if (!_thinkTagMode) {
-        fullText += cleaned;
-        onDelta(cleaned);
-        return;
-      }
-
-      let s = _thinkState.pendingTag + normalized;
-      _thinkState.pendingTag = '';
-
-      while (s.length > 0) {
-        if (!_thinkState.inThink) {
-          const idx = s.indexOf(OPEN_THINK);
-          if (idx === -1) {
-            const tail = _findPartialTag(s, OPEN_THINK);
-            const emit = s.slice(0, s.length - tail.length);
-            if (emit) {
-              if (_thinkState.cotOpen) {
-                _thinkState.contentBuffer += emit;
-              } else {
-                fullText += emit;
-                onDelta(emit);
-              }
-            }
-            _thinkState.pendingTag = tail;
-            s = '';
-          } else {
-            const before = s.slice(0, idx);
-            if (before) {
-              if (_thinkState.cotOpen) {
-                _thinkState.contentBuffer += before;
-              } else {
-                fullText += before;
-                onDelta(before);
-              }
-            }
-
-            if (!_thinkState.cotOpen) {
-              fullText += '[cot]';
-              onDelta('[cot]');
-              _thinkState.cotOpen = true;
-            } else {
-              // 已经在 CoT 块中：先发送分隔符，再继续新的 thinking 内容
-              const sep = '\n\n---\n\n';
-              fullText += sep;
-              onDelta(sep);
-            }
-
-            _thinkState.thinkCount++;
-            _thinkState.inThink = true;
-            s = s.slice(idx + OPEN_THINK.length);
-          }
-        } else {
-          const idx = s.indexOf(CLOSE_THINK);
-          if (idx === -1) {
-            const tail = _findPartialTag(s, CLOSE_THINK);
-            const emit = s.slice(0, s.length - tail.length);
-            if (emit) { fullText += emit; onDelta(emit); }
-            _thinkState.pendingTag = tail;
-            s = '';
-          } else {
-            const thinkContent = s.slice(0, idx);
-            if (thinkContent) { fullText += thinkContent; onDelta(thinkContent); }
-            _thinkState.inThink = false;
-            s = s.slice(idx + CLOSE_THINK.length);
-          }
-        }
-      }
-    }
-
-    /**
-     * 流结束时调用：关闭 CoT 块，释放暂存的正文内容
-     * 必须在 onDone() 之前调用
-     */
-    /**
-     * 流结束时调用：关闭 CoT 块，释放暂存的正文内容
-     * 必须在 onDone() 之前调用
-     */
-    function _flushThinkState() {
-      if (_thinkState.pendingTag) {
-        if (_thinkState.cotOpen) {
-          _thinkState.contentBuffer += _thinkState.pendingTag;
-        } else {
-          fullText += _thinkState.pendingTag;
-          onDelta(_thinkState.pendingTag);
-        }
-        _thinkState.pendingTag = '';
-      }
-
-      if (_thinkState.cotOpen) {
-        fullText += '[/cot]';
-        onDelta('[/cot]');
-        // 重置所有状态，避免重复发送 [/cot]
-        _thinkState.cotOpen = false;
-        _thinkState.inThink = false;
-
-        if (_thinkState.contentBuffer) {
-          fullText += _thinkState.contentBuffer;
-          onDelta(_thinkState.contentBuffer);
-          _thinkState.contentBuffer = '';
-        }
-      }
-    }
-    // 提前赋值，确保 catch 块中也可正常调用（原来在 fetch 之后才赋值，fetch 抛异常时 catch 里是 no-op）
-    flushThinkAtEnd = _flushThinkState;
+    // 状态机已抽离到 runtime/thinkTagStreamParser.js，行为完全一致。
+    // emit 等价于原 `fullText += t; onDelta(t)`；onRawContent 等价于原 `assistantResponseContent += t`。
+    thinkParser = createThinkTagStreamParser({
+      thinkTagMode: caps.thinkingFormat === 'think_tags',
+      emit: (t) => { fullText += t; onDelta(t); },
+      onRawContent: (t) => { assistantResponseContent += t; },
+      logger: log,
+    });
+    // 提前赋值，确保 catch 块中也可正常调用（fetch 抛异常时仍可 flush）
+    flushThinkAtEnd = () => thinkParser.flush();
     // ────────────────────────────────────────────────────────────────
 
     const requestBody = {
@@ -1337,7 +1154,7 @@ async function streamChatRaw({
         }
         if (delta.content) {
           lastChunkTime = Date.now(); // 每次收到真实 chunk 时更新时间
-          _processContentChunk(delta.content);
+          thinkParser.processChunk(delta.content);
         }
 
         if (delta.tool_calls) {
@@ -1530,7 +1347,7 @@ async function streamChatRaw({
       });
     }
     // 关闭 MiniMax CoT 块并释放暂存正文（非 MiniMax 模型此函数直接跳过）
-    if (_thinkTagMode) _flushThinkState();
+    if (thinkParser.isThinkTagMode()) thinkParser.flush();
     const safeReply = enforceExecutionContract({
       text: replyText,
       supportsTools: !!effectiveSupportsTools,

@@ -1,5 +1,5 @@
-const config = require('./config');
-const { createLogger } = require('./logger');
+const config = require('../config');
+const { createLogger } = require('../logger');
 const fs = require('fs');
 const path = require('path');
 const log = createLogger('memory');

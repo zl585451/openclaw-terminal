@@ -1,7 +1,7 @@
 const memory = require('./memory');
-const reviewQueueMaintenance = require('./review_queue_maintenance');
-const reviewQueueActions = require('./review_queue_actions');
-const { createLogger } = require('./logger');
+const reviewQueueMaintenance = require('../review_queue_maintenance');
+const reviewQueueActions = require('../review_queue_actions');
+const { createLogger } = require('../logger');
 
 const log = createLogger('memory_management_agent');
 

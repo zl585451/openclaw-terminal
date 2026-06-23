@@ -290,7 +290,7 @@ class ContextBuilder {
       // ── 近期原始对话追加 ───────────────────────────────────────────────────
       if (recallIntent || searchWords.length > 0) {
         try {
-          const memoryStore = require('../memory_v2_store');
+          const memoryStore = require('../memory/memory_v2_store');
           const recentTurns = memoryStore.listRecentTurns(recallIntent ? 5 : 3);
           for (const turn of recentTurns) {
             const raw = `${turn.user || ''}\n${turn.assistant || ''}`;

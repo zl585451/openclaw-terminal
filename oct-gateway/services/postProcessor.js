@@ -1,5 +1,5 @@
 const { sanitizeAssistantReply } = require('../cot_sanitize');
-const memoryRawLog = require('../memory_raw_log');
+const memoryRawLog = require('../memory/memory_raw_log');
 
 class PostProcessor {
   constructor({

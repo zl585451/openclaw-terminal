@@ -3,7 +3,7 @@
  * 输入：某一天的所有 core://logs/raw/YYYY-MM-DD/* 原始日志
  * 输出：core://logs/summary/daily/YYYY-MM-DD
  */
-const memory = require('../memory');
+const memory = require('../memory/memory');
 const { createLogger } = require('../logger');
 const { callSummarizerWithRetry } = require('./client');
 const config = require('../config');

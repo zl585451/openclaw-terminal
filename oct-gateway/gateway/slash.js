@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const ProviderRouter = require('../runtime/providerRouter');
-const { saveRawTurn, makeRawTurnDedupeKey } = require('../memory_raw_log');
+const { saveRawTurn, makeRawTurnDedupeKey } = require('../memory/memory_raw_log');
 const {
   buildChatHeaders,
   classifyProbeFailure,
@@ -30,6 +30,22 @@ class SlashHandler {
     this.systemPromptReady = systemPromptReady;
     this.log = logger;
     this.providerRouter = providerRouter || new ProviderRouter({ config: this.config });
+
+    this._commandHandlers = {
+      '/new': this._handleNewOrReset.bind(this),
+      '/reset': this._handleNewOrReset.bind(this),
+      '/status': this._handleStatus.bind(this),
+      '/model': this._handleModel.bind(this),
+      '/provider': this._handleProvider.bind(this),
+      '/memory': this._handleMemoryCommand.bind(this),
+      '/summary': this._handleSummaryCommand.bind(this),
+      '/recall': this._handleRecallCommand.bind(this),
+      '/export': this._handleExportCommand.bind(this),
+      '/think': this._handleThinkCommand.bind(this),
+      '/cot': this._handleThinkCommand.bind(this),
+      '/help': this._handleHelp.bind(this),
+      '/task': this._handleTaskCommand.bind(this),
+    };
   }
 
   collectSessionTurnsForFlush(sessionKey) {
@@ -60,7 +76,17 @@ class SlashHandler {
     const base = (parts[0] || '').toLowerCase();
     const sessionKey = request?.params?.sessionKey || 'main';
 
-    if (base === '/new' || base === '/reset') {
+    const handler = this._commandHandlers[base];
+    if (handler) {
+      await handler(parts, sessionKey, connection, command, request);
+      return;
+    }
+
+    this.reply(connection, `未知命令：${command}\n输入 /help 查看可用命令`);
+  }
+
+  async _handleNewOrReset(parts, sessionKey, connection) {
+    {
       let savedCount = 0;
       let skippedCount = 0;
       let failedCount = 0;
@@ -103,8 +129,10 @@ class SlashHandler {
         : `✅ 已开启新对话。${rawSaveNote ? `（${rawSaveNote}）` : ''}`);
       return;
     }
+  }
 
-    if (base === '/status') {
+  async _handleStatus(parts, sessionKey, connection) {
+    {
       const sp = await this.systemPromptReady;
       const sessions = this.session.listSessions();
       const memoryAlive = await this.memory.isAlive();
@@ -207,8 +235,10 @@ class SlashHandler {
       ].join('\n'));
       return;
     }
+  }
 
-    if (base === '/model') {
+  async _handleModel(parts, sessionKey, connection) {
+    {
       const modelName = parts.slice(1).join(' ').trim();
       const provider = this.config.getProviderConfig();
 
@@ -256,8 +286,10 @@ class SlashHandler {
       );
       return;
     }
+  }
 
-    if (base === '/provider') {
+  async _handleProvider(parts, sessionKey, connection) {
+    {
       const providerId = parts.slice(1).join(' ').trim().toLowerCase();
       const providers = this.config.PROVIDERS;
       if (!providerId) {
@@ -288,58 +320,49 @@ class SlashHandler {
       this.reply(connection, `未知服务商 \`${providerId}\`，请输入 \`/provider\` 查看可用列表`);
       return;
     }
+  }
 
-    if (base === '/memory') {
-      await this._handleMemory(parts, connection);
-      return;
-    }
+  async _handleMemoryCommand(parts, sessionKey, connection) {
+    await this._handleMemory(parts, connection);
+  }
 
-    if (base === '/summary') {
-      await this._handleSummary(parts, connection);
-      return;
-    }
+  async _handleSummaryCommand(parts, sessionKey, connection) {
+    await this._handleSummary(parts, connection);
+  }
 
-    if (base === '/recall') {
-      await this._handleRecall(parts, connection);
-      return;
-    }
+  async _handleRecallCommand(parts, sessionKey, connection) {
+    await this._handleRecall(parts, connection);
+  }
 
-    if (base === '/export') {
-      await this._handleExport(parts, connection);
-      return;
-    }
+  async _handleExportCommand(parts, sessionKey, connection) {
+    await this._handleExport(parts, connection);
+  }
 
-    if (base === '/think' || base === '/cot') {
-      this._handleThink(parts, sessionKey, connection);
-      return;
-    }
+  async _handleThinkCommand(parts, sessionKey, connection) {
+    this._handleThink(parts, sessionKey, connection);
+  }
 
-    if (base === '/help') {
-      this.reply(connection, [
-        '📋 OCT Gateway 命令：',
-        '  /status   — 查看 Gateway 状态',
-        '  /model [名称] — 查看/切换模型',
-        '  /provider [id] — 查看/切换 AI 服务商',
-        '  /memory   — 记忆系统管理',
-        '  /summary daily|weekly|monthly [日期] — 生成分层记忆摘要',
-        '  /recall test|status|query|backfill — 向量召回管理',
-        '  /think [off/low/medium/high] — 思考模式',
-        '  /task add [内容] [p0/p1/p2] — 添加任务',
-        '  /task done [序号] — 标记任务完成',
-        '  /task list — 列出今日任务',
-        '  /task clear — 清空已完成任务',
-        '  /new      — 保存并清空当前会话',
-        '  /help     — 显示此帮助',
-      ].join('\n'));
-      return;
-    }
+  async _handleHelp(parts, sessionKey, connection) {
+    this.reply(connection, [
+      '📋 OCT Gateway 命令：',
+      '  /status   — 查看 Gateway 状态',
+      '  /model [名称] — 查看/切换模型',
+      '  /provider [id] — 查看/切换 AI 服务商',
+      '  /memory   — 记忆系统管理',
+      '  /summary daily|weekly|monthly [日期] — 生成分层记忆摘要',
+      '  /recall test|status|query|backfill — 向量召回管理',
+      '  /think [off/low/medium/high] — 思考模式',
+      '  /task add [内容] [p0/p1/p2] — 添加任务',
+      '  /task done [序号] — 标记任务完成',
+      '  /task list — 列出今日任务',
+      '  /task clear — 清空已完成任务',
+      '  /new      — 保存并清空当前会话',
+      '  /help     — 显示此帮助',
+    ].join('\n'));
+  }
 
-    if (base === '/task') {
-      await this._handleTask(parts, connection);
-      return;
-    }
-
-    this.reply(connection, `未知命令：${command}\n输入 /help 查看可用命令`);
+  async _handleTaskCommand(parts, sessionKey, connection) {
+    await this._handleTask(parts, connection);
   }
 
   async _handleSummary(parts, connection) {

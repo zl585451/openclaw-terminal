@@ -72,7 +72,7 @@ async function tick(now = new Date()) {
 async function runStartupCatchup(now = new Date()) {
   if (!config.memory.summarizer.enabled) return;
   try {
-    const store = require('../memory_v2_store');
+    const store = require('../memory/memory_v2_store');
     const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
     const hasTurns = store.readDayTurns(yesterday).length > 0;
     const hasSummary = Boolean(store.readSummary('daily', yesterday));

@@ -5,10 +5,10 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const memory = require('../memory');
-const memoryHistory = require('../memory_history');
-const memorySearch = require('../memory_search');
-const memoryGovernor = require('../memory_governor');
+const memory = require('../memory/memory');
+const memoryHistory = require('../memory/memory_history');
+const memorySearch = require('../memory/memory_search');
+const memoryGovernor = require('../memory/memory_governor');
 const config = require('../config');
 const { createLogger } = require('../logger');
 const log = createLogger('tools');

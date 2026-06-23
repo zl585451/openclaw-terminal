@@ -1,7 +1,7 @@
 /**
  * Backfill vector embeddings from L3 raw logs in Memory v2.
  */
-const memory = require('../memory');
+const memory = require('../memory/memory');
 const config = require('../config');
 const { createLogger } = require('../logger');
 const db = require('../memory_vector/db');

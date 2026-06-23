@@ -14,7 +14,7 @@
 
 const memory = require('./memory');
 const memoryGovernor = require('./memory_governor');
-const { createLogger } = require('./logger');
+const { createLogger } = require('../logger');
 const log = createLogger('clarification');
 
 // ── 追问检测 ────────────────────────────────────────────────
