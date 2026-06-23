@@ -7,6 +7,8 @@
  *   1. 正常文本回复 —— 不丢字、不重复、onDone 收口
  *   2. 工具调用流   —— finish_reason=tool_calls 正确路由到工具分发（事件收口）
  *   3. 流中断/abort —— 已输出内容时优雅截断，不报错刷屏、不吞回复
+ *   4. 伪工具降级   —— 正文里的伪工具调用（无原生 tool_calls）被识别并转结构化执行
+ *   5. 强制续轮     —— 工具续轮后回复过短，自动以 tool_choice=none 再请求一次收束
  *
  * 注入手法（不引入新依赖、不改产线代码）：
  *   - 在 require('../ai') 之前先 require('../runtime/llmTransport') 并把
@@ -32,7 +34,8 @@ ToolLoop.prototype.handleToolCalls = async (arg) => {
 };
 
 const toolLoader = require('../tool_loader');
-toolLoader.getDefinitions = () => [];
+let currentToolDefs = [];
+toolLoader.getDefinitions = () => currentToolDefs;
 
 const ai = require('../ai');
 // ────────────────────────────────────────────────────────────────────
@@ -51,6 +54,18 @@ function sseResponse(chunks) {
       },
     },
   };
+}
+
+/** 多次调用 fetch 时按顺序返回不同响应（用于强制续轮的二次请求）。 */
+function sequencedFetch(responseFactories) {
+  let call = 0;
+  const fn = async () => {
+    const factory = responseFactories[Math.min(call, responseFactories.length - 1)];
+    call += 1;
+    return factory();
+  };
+  fn.getCallCount = () => call;
+  return fn;
 }
 
 /** 先吐若干块、再抛错的假响应（模拟网络中断）。 */
@@ -119,6 +134,7 @@ function makeSink() {
 describe('streamChatRaw 端到端冒烟（假 SSE 流）', () => {
   beforeEach(() => {
     handleToolCallsSpy = null;
+    currentToolDefs = [];
     currentFetchImpl = async () => { throw new Error('currentFetchImpl 未设置'); };
   });
 
@@ -186,5 +202,67 @@ describe('streamChatRaw 端到端冒烟（假 SSE 流）', () => {
     expect(sink.doneCalled).toBe(1);
     expect(sink.doneText).toContain('这是一段已经开始输出的较长正文内容');
     expect(sink.doneText).toContain('继续'); // 截断提示
+  });
+
+  it('4. 伪工具降级：正文里的伪工具调用（无原生 tool_calls）被识别并转结构化执行', async () => {
+    // loose 模型把工具调用写进了正文，而非走 tool_calls 通道
+    currentToolDefs = [{ type: 'function', function: { name: 'web_search' } }];
+    let dispatched = null;
+    handleToolCallsSpy = async (arg) => { dispatched = arg; };
+
+    currentFetchImpl = async () => sseResponse([
+      'data: {"choices":[{"delta":{"content":"好的，我来查 web_search({\\"query\\":\\"OCT\\"})"}}]}\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+      'data: [DONE]\n',
+    ]);
+
+    const sink = makeSink();
+    await ai.streamChat({
+      messages: [{ role: 'user', content: '搜一下 OCT' }],
+      _omniRouteResolved: makeResolved({ toolsSupport: 'supported', supportsTools: true, toolReliability: 'loose' }),
+      _disableExternalOmniRoute: true,
+      ...sink.handlers,
+    });
+
+    // 应降级为结构化工具执行，而不是把伪调用当普通回复 onDone
+    expect(sink.errorCalled).toBe(0);
+    expect(dispatched).not.toBe(null);
+    const names = (dispatched.toolCalls || []).filter(Boolean).map((c) => c.function?.name);
+    expect(names).toContain('web_search');
+  });
+
+  it('5. 强制续轮：工具续轮后回复过短，自动以 tool_choice=none 再请求一次收束', async () => {
+    // 第一次（toolRound>0，有工具证据）回复过短 → 触发强制续轮；第二次返回完整答案
+    const fetchSeq = sequencedFetch([
+      () => sseResponse([
+        'data: {"choices":[{"delta":{"content":"好。"}}]}\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+        'data: [DONE]\n',
+      ]),
+      () => sseResponse([
+        'data: {"choices":[{"delta":{"content":"这是经过强制收束后产出的足够长的最终答案，覆盖了用户关心的全部要点与结论说明。"}}]}\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+        'data: [DONE]\n',
+      ]),
+    ]);
+    currentFetchImpl = fetchSeq;
+
+    let roundResetCount = 0;
+    const sink = makeSink();
+    await ai.streamChat({
+      messages: [{ role: 'user', content: '给结论' }],
+      _omniRouteResolved: makeResolved(),
+      _disableExternalOmniRoute: true,
+      toolRound: 1, // 制造"工具证据"，使弱答触发强制续轮
+      onRoundReset: () => { roundResetCount += 1; },
+      ...sink.handlers,
+    });
+
+    expect(sink.errorCalled).toBe(0);
+    expect(fetchSeq.getCallCount()).toBe(2); // 触发了第二次请求
+    expect(roundResetCount).toBe(1);         // 续轮前重置了一次后端回复
+    expect(sink.doneCalled).toBe(1);
+    expect(sink.doneText).toContain('强制收束后产出的足够长的最终答案');
+    expect(sink.doneText).not.toContain('好。'); // 弱答未被当成最终回复
   });
 });
