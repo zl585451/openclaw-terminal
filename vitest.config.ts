@@ -12,6 +12,7 @@ export default defineConfig({
       'oct-gateway/test/cotSanitize.test.js',
       'oct-gateway/test/pseudoToolAnalysis.test.js',
       'oct-gateway/test/sseChatParser.test.js',
+      'oct-gateway/test/streamChatRawSmoke.test.js',
       'oct-gateway/test/basicQCChecker.test.js',
       'oct-gateway/test/lineProtocolParser.test.js',
       'oct-gateway/test/classificationParser.test.js',
