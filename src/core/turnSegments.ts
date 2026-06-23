@@ -6,7 +6,9 @@
  * 跨段永不拼接：工具前正文段与最终答案段是不同 segId，结构上消除跨轮重复。
  */
 
-export type TurnSegmentType = 'text' | 'tool_use' | 'tool_result' | 'reasoning' | 'final';
+// 'preamble'：工具调用前的过渡正文（"动手前的叙述"），由 gateway 在 close 时重标。
+// 不计入可见正文/落库，前端默认折叠，避免与工具后重新生成的最终答案重复。
+export type TurnSegmentType = 'text' | 'tool_use' | 'tool_result' | 'reasoning' | 'final' | 'preamble';
 
 export interface TurnSegment {
   segId: string;
@@ -27,7 +29,7 @@ export interface TurnSegmentState {
 export type SegmentEvent =
   | { op: 'open'; segId: string; index: number; type: TurnSegmentType; meta?: TurnSegment['meta'] }
   | { op: 'delta'; segId: string; text: string }
-  | { op: 'close'; segId: string }
+  | { op: 'close'; segId: string; type?: TurnSegmentType }
   | { op: 'finish'; stopReason?: string };
 
 export function emptyTurnSegmentState(): TurnSegmentState {
@@ -66,9 +68,13 @@ export function reduceSegmentEvent(state: TurnSegmentState, seg: SegmentEvent): 
     case 'close': {
       const cur = state.segments[seg.segId];
       if (!cur || !cur.open) return state;
+      // close 可携带 type 对段重标（如工具前 text → preamble）。
       return {
         ...state,
-        segments: { ...state.segments, [seg.segId]: { ...cur, open: false } },
+        segments: {
+          ...state.segments,
+          [seg.segId]: { ...cur, open: false, ...(seg.type ? { type: seg.type } : {}) },
+        },
       };
     }
     case 'finish': {

@@ -6,6 +6,7 @@ import OptionBox from '../../components/OptionBox';
 import TaskList from '../../components/TaskList';
 import QuestionCards from '../../components/QuestionCards';
 import ActivityPanel from '../../components/ActivityPanel';
+import CoTBlock from '../../components/CoTBlock';
 import type { ChatMessage, TurnSegmentLite } from './chatTypes';
 import type { ActivityEntry } from '../../hooks/useMessages';
 import type { TurnUiState } from '../../core/turnUiState';
@@ -248,6 +249,16 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
       flushTools();
       const c = getAssistantVisibleMain(seg.content || '').trim();
       if (!c) continue;
+      // preamble = 工具调用前的过渡正文，默认折叠成"过程"块，
+      // 避免与工具后重新生成的最终答案重复显示（根治调研类重复回复）。
+      if (seg.type === 'preamble') {
+        out.push(
+          <div key={seg.segId} className="inline-preamble inline-preamble-collapsed">
+            <CoTBlock content={c} labelOverride="过程" />
+          </div>,
+        );
+        continue;
+      }
       out.push(
         <div key={seg.segId} className="inline-preamble">
           <FinalizedMarkdownContent

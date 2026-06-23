@@ -21,7 +21,7 @@ export interface ToolEventItem {
 export interface TurnSegmentLite {
   segId: string;
   index: number;
-  type: 'text' | 'tool_use' | 'tool_result' | 'reasoning' | 'final';
+  type: 'text' | 'tool_use' | 'tool_result' | 'reasoning' | 'final' | 'preamble';
   content: string;
   open: boolean;
   meta?: { tool?: string | null; callId?: string | null };
