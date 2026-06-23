@@ -1,6 +1,35 @@
 const config = require('./config');
 const taskQueue = require('./task_queue');
 const worker = require('./worker');
+const session = require('./session');
+
+/**
+ * 取最近若干轮对话历史，作为专职 Agent 的上下文消息注入。
+ *
+ * 专职 Agent 跑在隔离会话里（不共享主 session），导致多轮调研/创作时
+ * 丢失上下文——用户说"看看最新的""你给的不对"时 Agent 不知道指代什么。
+ * 这里把派发前的最近历史（不含当前消息，当前消息此刻尚未入库）格式化成
+ * 真实对话消息，供 agent_runner 插在当前指令之前。
+ *
+ * @returns {{role:'user'|'assistant', content:string}[]}
+ */
+function buildRecentHistoryMessages(sessionKey, { maxTurns = 6, maxCharsPerMsg = 800 } = {}) {
+  let history = [];
+  try {
+    history = session.getHistory(sessionKey) || [];
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(history) || history.length === 0) return [];
+  return history
+    .slice(-maxTurns)
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && m.content)
+    .map((m) => {
+      let text = String(m.content).trim();
+      if (text.length > maxCharsPerMsg) text = `${text.slice(0, maxCharsPerMsg)}…`;
+      return { role: m.role, content: text };
+    });
+}
 
 // ── Agent 注册表（懒加载，避免循环 require） ──────────────────────────
 let _agentRegistry = null;
@@ -473,6 +502,8 @@ async function dispatch(userMessage, sessionKey, onToolEvent, onSegment, turnId)
         instruction: userMessage,
         userContext: userMessage,
         sessionKey,
+        // 注入最近对话历史，给隔离会话的 Agent 补上多轮上下文（理解指代、延续任务）
+        history:     buildRecentHistoryMessages(sessionKey),
       },
       onToolEvent || (() => {}),
       onSegment,
@@ -505,4 +536,4 @@ async function dispatch(userMessage, sessionKey, onToolEvent, onSegment, turnId)
   };
 }
 
-module.exports = { dispatch, analyzeIntent, analyzeCanvasIntent, getCompletedTasksContext };
+module.exports = { dispatch, analyzeIntent, analyzeCanvasIntent, getCompletedTasksContext, buildRecentHistoryMessages };

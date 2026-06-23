@@ -1,0 +1,23 @@
+{
+  "// 用途": "对 oct-gateway 中已逐步加固的热点 JS 文件做 checkJs 类型门禁。",
+  "// 范围": "只检查带有文件级 `// @ts-check` 的 opt-in 文件；被它们 require 的依赖只作类型上下文、不报错（checkJs:false）。",
+  "// 运行": "node 端：npx tsc -p oct-gateway/tsconfig.typecheck.json （npm run typecheck:gateway）",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "strict": false,
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": []
+  },
+  "include": [
+    "runtime/pseudoToolCompat.js",
+    "runtime/sseChatParser.js",
+    "agents/agent_runner.js"
+  ]
+}

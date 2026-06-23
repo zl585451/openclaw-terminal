@@ -38,7 +38,8 @@
     "audit:gateway": "npm --prefix oct-gateway audit --omit=dev --registry=https://registry.npmjs.org",
     "audit:optional-tools": "npm --prefix oct-gateway/optional-tools audit --omit=dev --registry=https://registry.npmjs.org",
     "test": "npm run check:node && vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck:gateway": "tsc -p oct-gateway/tsconfig.typecheck.json"
   },
   "build": {
     "appId": "com.openclaw.terminal",

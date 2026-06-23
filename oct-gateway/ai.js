@@ -24,6 +24,7 @@ const {
 } = require('./runtime/llmTransport');
 const { createPseudoToolCompat } = require('./runtime/pseudoToolCompat');
 const { createThinkTagStreamParser } = require('./runtime/thinkTagStreamParser');
+const { parseSseLine, extractStreamUpdate } = require('./runtime/sseChatParser');
 const {
   probeModelToolsSupport,
   enforceExecutionContract,
@@ -51,6 +52,7 @@ const {
   extractAllPseudoToolCalls,
   hasPseudoToolResidue,
   stripPseudoToolResidue,
+  analyzePseudoToolUsage,
 } = pseudoToolCompat;
 const toolLoop = new ToolLoop({
   toolLoader,
@@ -1125,46 +1127,42 @@ async function streamChatRaw({
       buf = lines.pop() || '';
 
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (trimmed === 'data: [DONE]') {
+        // SSE 行解析与增量提取抽离为纯函数，见 runtime/sseChatParser.js（行为保持）
+        const event = parseSseLine(line);
+        if (event.kind === 'done') {
           sawDone = true;
           continue;
         }
-        if (!trimmed.startsWith('data: ')) continue;
+        if (event.kind !== 'data') continue; // empty / non-data / json-error 均跳过
 
-        let parsed;
-        try {
-          parsed = JSON.parse(trimmed.slice(6));
-        } catch { continue; }
+        const update = extractStreamUpdate(event.parsed);
 
-        if (parsed?.usage) {
-          totalUsage = parsed.usage;
-          streamUsage = parsed.usage;
+        if (update.usage) {
+          totalUsage = update.usage;
+          streamUsage = update.usage;
         }
-        if (parsed?.model && !responseModel) {
-          responseModel = parsed.model;
+        if (update.model && !responseModel) {
+          responseModel = update.model;
         }
 
-        const delta = parsed?.choices?.[0]?.delta;
-        if (!delta) continue;
+        if (!update.hasDelta) continue;
 
-        if (delta.reasoning_content) {
-          assistantReasoningContent += delta.reasoning_content;
+        if (update.reasoningContent) {
+          assistantReasoningContent += update.reasoningContent;
         }
-        if (delta.content) {
+        if (update.content) {
           lastChunkTime = Date.now(); // 每次收到真实 chunk 时更新时间
-          thinkParser.processChunk(delta.content);
+          thinkParser.processChunk(update.content);
         }
 
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls) {
+        if (update.toolCalls) {
+          for (const tc of update.toolCalls) {
             const idx = tc.index || 0;
             toolCalls[idx] = applyToolCallDelta(toolCalls[idx], tc);
           }
         }
 
-        const finishReason = parsed?.choices?.[0]?.finish_reason;
+        const finishReason = update.finishReason;
         if (finishReason) log.info('finishReason', { finishReason, toolCallsLen: toolCalls.filter(Boolean).length });
         if (finishReason === 'stop') sawDone = true;
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
@@ -1281,24 +1279,19 @@ async function streamChatRaw({
     }
 
     const textToCheck = fullText || assistantResponseContent || '';
-    const pseudoResidueDetected = effectiveSupportsTools && hasPseudoToolResidue(textToCheck);
-    const shouldDetectPseudo = effectiveSupportsTools && caps.toolReliability === 'loose';
-    let pseudoToolCalls = shouldDetectPseudo ? extractAllPseudoToolCalls(textToCheck) : [];
-
-    // strict 模型安全网：若正文出现明显伪工具调用残留，降级走伪调用解析
-    // 正常情况下 strict 模型应走标准 tool_calls 通道
-    if (pseudoToolCalls.length === 0 && effectiveSupportsTools && caps.toolReliability === 'strict') {
-      const hasToolCallResidue =
-        pseudoResidueDetected
-        || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
-        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|memory_recall|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
-      if (hasToolCallResidue) {
-        log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
-          model: responseModel || model,
-          toolReliability: caps.toolReliability,
-        });
-        pseudoToolCalls = extractAllPseudoToolCalls(textToCheck);
-      }
+    // 伪工具判定（行为保持地抽离为纯函数，见 runtime/pseudoToolCompat.js analyzePseudoToolUsage）
+    const pseudoAnalysis = analyzePseudoToolUsage({
+      text: textToCheck,
+      supportsTools: effectiveSupportsTools,
+      toolReliability: caps.toolReliability,
+    });
+    const pseudoResidueDetected = pseudoAnalysis.residueDetected;
+    const pseudoToolCalls = pseudoAnalysis.pseudoToolCalls;
+    if (pseudoAnalysis.strictFallbackTriggered) {
+      log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
+        model: responseModel || model,
+        toolReliability: caps.toolReliability,
+      });
     }
     if (pseudoToolCalls.length > 0) {
       hasToolEvidence = true;
