@@ -8,7 +8,7 @@
 import os
 import sys
 
-os.environ['DEEPSEEK_API_KEY'] = 'sk-7baee7adde804bba8a5e08807d3247a7'
+os.environ['DEEPSEEK_API_KEY'] = os.getenv('DEEPSEEK_API_KEY', 'test-deepseek-api-key')
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 
