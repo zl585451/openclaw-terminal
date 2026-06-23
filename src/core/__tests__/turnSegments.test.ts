@@ -36,6 +36,26 @@ describe('turnSegments reducer', () => {
     expect(segmentsToVisibleText(state)).toBe('我来查一下\n\n完整报告');
   });
 
+  it('relabels a pre-tool text segment to preamble on close, excluding it from visible text', () => {
+    const state = run([
+      { op: 'open', segId: 't:s0', index: 0, type: 'text' },
+      { op: 'delta', segId: 't:s0', text: '抢跑的完整答案' },
+      { op: 'close', segId: 't:s0', type: 'preamble' }, // 工具开始时被重标
+      { op: 'open', segId: 't:s1', index: 1, type: 'tool_use', meta: { tool: 'web_search', callId: 'c1' } },
+      { op: 'close', segId: 't:s1' },
+      { op: 'open', segId: 't:s2', index: 2, type: 'text' },
+      { op: 'delta', segId: 't:s2', text: '最终答案' },
+      { op: 'close', segId: 't:s2' },
+      { op: 'finish', stopReason: 'end_turn' },
+    ]);
+
+    const segs = orderedSegments(state);
+    expect(segs.map((s) => s.type)).toEqual(['preamble', 'tool_use', 'text']);
+    // 内容保留（折叠展示用），但不计入可见正文/落库 → 不与最终答案重复
+    expect(segs[0].content).toBe('抢跑的完整答案');
+    expect(segmentsToVisibleText(state)).toBe('最终答案');
+  });
+
   it('accumulates consecutive deltas into the same segment', () => {
     const state = run([
       { op: 'open', segId: 't:s0', index: 0, type: 'text' },

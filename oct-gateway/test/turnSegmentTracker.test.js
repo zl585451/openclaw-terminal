@@ -54,6 +54,21 @@ function testToolBoundarySeparatesSegments() {
   // 每个 open 都有对应的 close
   const closes = events.filter((e) => e.op === 'close');
   assert.equal(closes.length, 3);
+
+  // 工具前正文段（s0）在 close 时被重标为 preamble；最终答案段（s2）不重标
+  const closeS0 = closes.find((e) => e.segId === 't1:s0');
+  const closeS2 = closes.find((e) => e.segId === 't1:s2');
+  assert.equal(closeS0.type, 'preamble');
+  assert.equal(closeS2.type, undefined);
+}
+
+// 无工具调用的纯答案：close 不带 preamble 重标（不影响普通回复）
+function testPlainAnswerNotRelabeled() {
+  const { events, tracker } = collect();
+  tracker.text('普通回复');
+  tracker.finish('end_turn');
+  const close = events.find((e) => e.op === 'close');
+  assert.equal(close.type, undefined);
 }
 
 // 连续文本 chunk 累积进同一段
@@ -74,6 +89,7 @@ function testConsecutiveTextStaysInOneSegment() {
 function main() {
   testToolBoundarySeparatesSegments();
   testConsecutiveTextStaysInOneSegment();
+  testPlainAnswerNotRelabeled();
   console.log('PASS turn segment tracker separates tool-boundary segments');
 }
 

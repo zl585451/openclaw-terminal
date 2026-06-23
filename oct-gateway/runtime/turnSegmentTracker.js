@@ -44,10 +44,21 @@ class TurnSegmentTracker {
     return this.openSegId;
   }
 
-  /** 闭合当前开着的段（若有）。 */
-  closeCurrent() {
+  /**
+   * 闭合当前开着的段（若有）。
+   * @param {{ asPreamble?: boolean }} [opts]
+   *   asPreamble=true 且当前是 text 段时，随 close 事件把该段重标为 'preamble'：
+   *   工具调用前的正文是"动手前的过渡叙述"，不是最终答案，前端据此默认折叠，
+   *   避免它与工具后重新生成的最终答案重复显示。
+   */
+  closeCurrent(opts) {
     if (this.openSegId) {
-      this.emit({ op: 'close', segId: this.openSegId });
+      const relabelAsPreamble = !!(opts && opts.asPreamble) && this.openType === 'text';
+      this.emit({
+        op: 'close',
+        segId: this.openSegId,
+        ...(relabelAsPreamble ? { type: 'preamble' } : {}),
+      });
       this.openSegId = null;
       this.openType = null;
     }
@@ -63,9 +74,9 @@ class TurnSegmentTracker {
     this.emit({ op: 'delta', segId: this.openSegId, text: chunk });
   }
 
-  /** 工具开始：闭当前段，开一个 tool_use 段（工具卡片在前端按段定位）。 */
+  /** 工具开始：闭当前段（工具前正文重标为 preamble），开一个 tool_use 段。 */
   toolOpen(tool, callId) {
-    this.closeCurrent();
+    this.closeCurrent({ asPreamble: true });
     this._open('tool_use', { tool: tool || null, callId: callId || null });
   }
 

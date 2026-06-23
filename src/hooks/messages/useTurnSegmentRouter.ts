@@ -78,7 +78,8 @@ export function useTurnSegmentRouter({
         .filter((id) => id !== newSegId)
         .some((id) => {
           const prior = slot.state.segments[id] as TurnSegment | undefined;
-          return prior?.type === 'text' || prior?.type === 'final';
+          // preamble 也算"已有可见正文段"：最终答案段开启时需清掉它在流式气泡里的残留。
+          return prior?.type === 'text' || prior?.type === 'final' || prior?.type === 'preamble';
         });
       if (hasOlderTextSeg) {
         // 工具调用后新一轮文字段开始——清空流式气泡正文，等最终答案填充
