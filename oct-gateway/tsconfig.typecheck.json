@@ -16,6 +16,7 @@
     "types": []
   },
   "include": [
-    "runtime/pseudoToolCompat.js"
+    "runtime/pseudoToolCompat.js",
+    "runtime/sseChatParser.js"
   ]
 }

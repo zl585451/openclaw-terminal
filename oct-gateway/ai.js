@@ -24,6 +24,7 @@ const {
 } = require('./runtime/llmTransport');
 const { createPseudoToolCompat } = require('./runtime/pseudoToolCompat');
 const { createThinkTagStreamParser } = require('./runtime/thinkTagStreamParser');
+const { parseSseLine, extractStreamUpdate } = require('./runtime/sseChatParser');
 const {
   probeModelToolsSupport,
   enforceExecutionContract,
@@ -1126,46 +1127,42 @@ async function streamChatRaw({
       buf = lines.pop() || '';
 
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (trimmed === 'data: [DONE]') {
+        // SSE 行解析与增量提取抽离为纯函数，见 runtime/sseChatParser.js（行为保持）
+        const event = parseSseLine(line);
+        if (event.kind === 'done') {
           sawDone = true;
           continue;
         }
-        if (!trimmed.startsWith('data: ')) continue;
+        if (event.kind !== 'data') continue; // empty / non-data / json-error 均跳过
 
-        let parsed;
-        try {
-          parsed = JSON.parse(trimmed.slice(6));
-        } catch { continue; }
+        const update = extractStreamUpdate(event.parsed);
 
-        if (parsed?.usage) {
-          totalUsage = parsed.usage;
-          streamUsage = parsed.usage;
+        if (update.usage) {
+          totalUsage = update.usage;
+          streamUsage = update.usage;
         }
-        if (parsed?.model && !responseModel) {
-          responseModel = parsed.model;
+        if (update.model && !responseModel) {
+          responseModel = update.model;
         }
 
-        const delta = parsed?.choices?.[0]?.delta;
-        if (!delta) continue;
+        if (!update.hasDelta) continue;
 
-        if (delta.reasoning_content) {
-          assistantReasoningContent += delta.reasoning_content;
+        if (update.reasoningContent) {
+          assistantReasoningContent += update.reasoningContent;
         }
-        if (delta.content) {
+        if (update.content) {
           lastChunkTime = Date.now(); // 每次收到真实 chunk 时更新时间
-          thinkParser.processChunk(delta.content);
+          thinkParser.processChunk(update.content);
         }
 
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls) {
+        if (update.toolCalls) {
+          for (const tc of update.toolCalls) {
             const idx = tc.index || 0;
             toolCalls[idx] = applyToolCallDelta(toolCalls[idx], tc);
           }
         }
 
-        const finishReason = parsed?.choices?.[0]?.finish_reason;
+        const finishReason = update.finishReason;
         if (finishReason) log.info('finishReason', { finishReason, toolCallsLen: toolCalls.filter(Boolean).length });
         if (finishReason === 'stop') sawDone = true;
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
