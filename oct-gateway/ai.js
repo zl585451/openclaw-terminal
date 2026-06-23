@@ -25,6 +25,7 @@ const {
 const { createPseudoToolCompat } = require('./runtime/pseudoToolCompat');
 const { createThinkTagStreamParser } = require('./runtime/thinkTagStreamParser');
 const { parseSseLine, extractStreamUpdate } = require('./runtime/sseChatParser');
+const { buildChatRequestBody } = require('./runtime/chatRequestBody');
 const {
   probeModelToolsSupport,
   enforceExecutionContract,
@@ -1055,39 +1056,26 @@ async function streamChatRaw({
     flushThinkAtEnd = () => thinkParser.flush();
     // ────────────────────────────────────────────────────────────────
 
-    const requestBody = {
-      model,
-      messages: validatedMessages,
-      stream: true,
-      max_tokens: caps.maxTokens || 4096,
-    };
     const requestTemperature = resolveTemperatureForRequest({ provider, model });
-    if (requestTemperature !== null) {
-      requestBody.temperature = requestTemperature;
-    }
-    if (provider.supportsStreamOptions) {
-      requestBody.stream_options = { include_usage: true };
-    }
     const effectiveSupportsTools = canAttemptTools(caps);
     const forceFinalFromToolResults = shouldForceFinalFromToolResults(provider.id, preserveToolChain, toolRound);
     const shouldInjectTools = effectiveSupportsTools && !hasImage;
-    if (shouldInjectTools) {
-      requestBody.tools = toolLoader.getDefinitions();
-      // 部分 OpenAI 兼容服务商（如硅基流动）不支持 tool_choice 指定具体函数名，
-      // 只允许 'auto' / 'none'。仅在 provider 明确声明支持时才发对象形式。
-      const isObjectToolChoice = toolChoice && typeof toolChoice === 'object';
-      requestBody.tool_choice = forceFinalFromToolResults
-        ? 'none'
-        : ((isObjectToolChoice && !provider.supportsToolChoiceFunction) ? 'auto' : toolChoice);
-      if (forceFinalFromToolResults) {
-        log.info('Google 工具续轮强制收束为最终回答', {
-          turnId: turnId || null,
-          toolRound,
-        });
-      }
-      if (!forceFinalFromToolResults && isObjectToolChoice && !provider.supportsToolChoiceFunction) {
-        log.warn('tool_choice 对象形式降级为 auto（provider 不支持指定函数）', { provider: provider.id, requested: JSON.stringify(toolChoice) });
-      }
+    // 请求体组装抽离为纯函数，见 runtime/chatRequestBody.js（行为保持，日志由此处发出）
+    const { requestBody, logs: requestBodyLogs } = buildChatRequestBody({
+      model,
+      messages: validatedMessages,
+      caps,
+      provider,
+      requestTemperature,
+      shouldInjectTools,
+      toolDefinitions: shouldInjectTools ? toolLoader.getDefinitions() : null,
+      forceFinalFromToolResults,
+      toolChoice,
+      turnId,
+      toolRound,
+    });
+    for (const entry of requestBodyLogs) {
+      log[entry.level](entry.msg, entry.meta);
     }
 
     const chatHeaders = buildChatHeaders(baseUrl, apiKey);

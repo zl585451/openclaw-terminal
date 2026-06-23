@@ -18,6 +18,7 @@
   "include": [
     "runtime/pseudoToolCompat.js",
     "runtime/sseChatParser.js",
+    "runtime/chatRequestBody.js",
     "agents/agent_runner.js"
   ]
 }
