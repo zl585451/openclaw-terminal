@@ -51,6 +51,7 @@ const {
   extractAllPseudoToolCalls,
   hasPseudoToolResidue,
   stripPseudoToolResidue,
+  analyzePseudoToolUsage,
 } = pseudoToolCompat;
 const toolLoop = new ToolLoop({
   toolLoader,
@@ -1281,24 +1282,19 @@ async function streamChatRaw({
     }
 
     const textToCheck = fullText || assistantResponseContent || '';
-    const pseudoResidueDetected = effectiveSupportsTools && hasPseudoToolResidue(textToCheck);
-    const shouldDetectPseudo = effectiveSupportsTools && caps.toolReliability === 'loose';
-    let pseudoToolCalls = shouldDetectPseudo ? extractAllPseudoToolCalls(textToCheck) : [];
-
-    // strict 模型安全网：若正文出现明显伪工具调用残留，降级走伪调用解析
-    // 正常情况下 strict 模型应走标准 tool_calls 通道
-    if (pseudoToolCalls.length === 0 && effectiveSupportsTools && caps.toolReliability === 'strict') {
-      const hasToolCallResidue =
-        pseudoResidueDetected
-        || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(textToCheck)
-        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|memory_recall|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(textToCheck);
-      if (hasToolCallResidue) {
-        log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
-          model: responseModel || model,
-          toolReliability: caps.toolReliability,
-        });
-        pseudoToolCalls = extractAllPseudoToolCalls(textToCheck);
-      }
+    // 伪工具判定（行为保持地抽离为纯函数，见 runtime/pseudoToolCompat.js analyzePseudoToolUsage）
+    const pseudoAnalysis = analyzePseudoToolUsage({
+      text: textToCheck,
+      supportsTools: effectiveSupportsTools,
+      toolReliability: caps.toolReliability,
+    });
+    const pseudoResidueDetected = pseudoAnalysis.residueDetected;
+    const pseudoToolCalls = pseudoAnalysis.pseudoToolCalls;
+    if (pseudoAnalysis.strictFallbackTriggered) {
+      log.warn('strict model emitted pseudo tool call in plaintext, falling back to pseudo detection', {
+        model: responseModel || model,
+        toolReliability: caps.toolReliability,
+      });
     }
     if (pseudoToolCalls.length > 0) {
       hasToolEvidence = true;

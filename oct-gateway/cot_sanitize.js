@@ -21,6 +21,13 @@ function stripCotText(input) {
     .trim();
 }
 
+/**
+ * 剥离正文里泄漏的 `[To="..."] {...}`（及后端独有的 `{tool=>...}` 等）工具调用块。
+ *
+ * 契约对齐：前端 src/utils/cotExtract.ts 有同名实现处理同一 `[To=]{}` 格式；
+ * 两侧不能物理合并（跨 CJS/vite 构建边界）。公共子集行为由
+ * src/utils/protocolParserParity.test.ts 锁定，改动本函数务必保持该测试通过。
+ */
 function stripTextToolAnnotations(input) {
   const text = String(input || '');
   if (!text) return '';

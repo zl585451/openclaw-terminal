@@ -1,3 +1,4 @@
+// @ts-check
 function createPseudoToolCompat({ toolLoader, logger }) {
   const legacyMemoryToolNames = new Set(['memory_vector_search', 'memory_recall']);
 
@@ -5,6 +6,7 @@ function createPseudoToolCompat({ toolLoader, logger }) {
     const toolName = String(call?.function?.name || '').trim();
     if (!legacyMemoryToolNames.has(toolName)) return call;
 
+    /** @type {Record<string, any>} */
     let args = {};
     try {
       args = JSON.parse(call?.function?.arguments || '{}');
@@ -624,11 +626,45 @@ function createPseudoToolCompat({ toolLoader, logger }) {
       .trim();
   }
 
+  /**
+   * 纯决策：根据正文与模型能力，判定本轮是否存在需要降级执行的「伪工具调用」。
+   *
+   * 行为保持地抽离自 ai.js streamChatRaw 内联逻辑（伪工具判定边界），不做 I/O。
+   * 调用方负责据返回结果分发 handleToolCalls / 输出日志。
+   *
+   * @param {{ text?: string, supportsTools?: boolean, toolReliability?: string }} input
+   * @returns {{ pseudoToolCalls: any[], residueDetected: boolean, strictFallbackTriggered: boolean }}
+   */
+  function analyzePseudoToolUsage({ text, supportsTools, toolReliability }) {
+    const source = String(text || '');
+    const effectiveSupportsTools = !!supportsTools;
+    const residueDetected = effectiveSupportsTools && hasPseudoToolResidue(source);
+    const shouldDetectPseudo = effectiveSupportsTools && toolReliability === 'loose';
+    let pseudoToolCalls = shouldDetectPseudo ? extractAllPseudoToolCalls(source) : [];
+
+    // strict 模型安全网：若正文出现明显伪工具调用残留，降级走伪调用解析。
+    // 正常情况下 strict 模型应走标准 tool_calls 通道。
+    let strictFallbackTriggered = false;
+    if (pseudoToolCalls.length === 0 && effectiveSupportsTools && toolReliability === 'strict') {
+      const hasToolCallResidue =
+        residueDetected
+        || /\bcanvas\s*\(\s*["'](?:create|update|focus)["']/i.test(source)
+        || /\{"name"\s*:\s*"(?:web_search|web_fetch|canvas|read_file|read_document|write_file|exec_command|memory_write|memory_search|memory_read|memory_vector_search|memory_recall|task_add|task_done|task_delete|tasks_add|tasks_update|tasks_delete|parking_add)"/i.test(source);
+      if (hasToolCallResidue) {
+        strictFallbackTriggered = true;
+        pseudoToolCalls = extractAllPseudoToolCalls(source);
+      }
+    }
+
+    return { pseudoToolCalls, residueDetected, strictFallbackTriggered };
+  }
+
   return {
     buildToolSignature,
     extractAllPseudoToolCalls,
     hasPseudoToolResidue,
     stripPseudoToolResidue,
+    analyzePseudoToolUsage,
   };
 }
 

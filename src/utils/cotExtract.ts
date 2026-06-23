@@ -226,6 +226,13 @@ function isProtocolJsonObject(text: string): boolean {
   }
 }
 
+/**
+ * 剥离正文里泄漏的 `[To="..."] {...}` 工具调用注释块（平衡大括号匹配）。
+ *
+ * 契约对齐：后端 oct-gateway/cot_sanitize.js 有同名实现处理同一注释格式；
+ * 两侧不能物理合并（跨 vite/CJS 构建边界）。公共子集行为由
+ * src/utils/protocolParserParity.test.ts 锁定，改动本函数务必保持该测试通过。
+ */
 export function stripTextToolAnnotations(input: string): string {
   const text = String(input || '');
   if (!text) return '';
