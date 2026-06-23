@@ -9,6 +9,7 @@
  *   3. 流中断/abort —— 已输出内容时优雅截断，不报错刷屏、不吞回复
  *   4. 伪工具降级   —— 正文里的伪工具调用（无原生 tool_calls）被识别并转结构化执行
  *   5. 强制续轮     —— 工具续轮后回复过短，自动以 tool_choice=none 再请求一次收束
+ *   6. provider fallback —— 主 provider 普通失败后切 DeepSeek 重进，且恢复原 provider/model
  *
  * 注入手法（不引入新依赖、不改产线代码）：
  *   - 在 require('../ai') 之前先 require('../runtime/llmTransport') 并把
@@ -38,6 +39,7 @@ let currentToolDefs = [];
 toolLoader.getDefinitions = () => currentToolDefs;
 
 const ai = require('../ai');
+const config = require('../config');
 // ────────────────────────────────────────────────────────────────────
 
 const enc = new TextEncoder();
@@ -53,6 +55,15 @@ function sseResponse(chunks) {
         for (const c of chunks) yield enc.encode(c);
       },
     },
+  };
+}
+
+/** 构造一个非 ok 的假响应，用于触发 provider fallback。 */
+function errorResponse(status, text) {
+  return {
+    ok: false,
+    status,
+    text: async () => text,
   };
 }
 
@@ -264,5 +275,69 @@ describe('streamChatRaw 端到端冒烟（假 SSE 流）', () => {
     expect(sink.doneCalled).toBe(1);
     expect(sink.doneText).toContain('强制收束后产出的足够长的最终答案');
     expect(sink.doneText).not.toContain('好。'); // 弱答未被当成最终回复
+  });
+
+  it('6. provider fallback：主 provider 普通失败后切 DeepSeek 重进并恢复原 provider/model', async () => {
+    const prevProvider = config.currentProvider;
+    const prevModel = config.DASHSCOPE_MODEL;
+    const prevDeepseekKey = process.env.DEEPSEEK_API_KEY;
+    const urls = [];
+
+    try {
+      process.env.DEEPSEEK_API_KEY = 'test-deepseek-api-key';
+      config.currentProvider = 'bailian';
+      config.DASHSCOPE_MODEL = 'qwen-plus';
+
+      currentFetchImpl = sequencedFetch([
+        () => errorResponse(503, 'upstream unavailable'),
+        () => sseResponse([
+          'data: {"model":"deepseek-v4-flash","choices":[{"delta":{"content":"DeepSeek fallback 已成功接管并产出最终回复。"}}]}\n',
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+          'data: [DONE]\n',
+        ]),
+      ]);
+      const baseFetch = currentFetchImpl;
+      currentFetchImpl = async (url, ...args) => {
+        urls.push(String(url));
+        return baseFetch(url, ...args);
+      };
+
+      const sink = makeSink();
+      await ai.streamChat({
+        messages: [{ role: 'user', content: '触发 fallback' }],
+        _omniRouteResolved: {
+          ...makeResolved(),
+          provider: {
+            id: 'bailian',
+            name: 'Bailian',
+            supportsStreamOptions: false,
+            supportsToolChoiceFunction: false,
+          },
+          apiKey: 'test-primary-api-key',
+          baseUrl: 'https://primary.example/v1',
+          model: 'qwen-plus',
+          fallback: { canFallbackToDeepseek: true, canFallbackToBailian: false },
+        },
+        _disableExternalOmniRoute: true,
+        ...sink.handlers,
+      });
+
+      expect(urls.length).toBe(2);
+      expect(urls[0]).toBe('https://primary.example/v1/chat/completions');
+      expect(urls[1]).toBe('https://api.deepseek.com/v1/chat/completions');
+      expect(sink.errorCalled).toBe(0);
+      expect(sink.doneCalled).toBe(1);
+      expect(sink.doneText).toContain('DeepSeek fallback 已成功接管');
+      expect(config.currentProvider).toBe('bailian');
+      expect(config.DASHSCOPE_MODEL).toBe('qwen-plus');
+    } finally {
+      config.currentProvider = prevProvider;
+      config.DASHSCOPE_MODEL = prevModel;
+      if (prevDeepseekKey === undefined) {
+        delete process.env.DEEPSEEK_API_KEY;
+      } else {
+        process.env.DEEPSEEK_API_KEY = prevDeepseekKey;
+      }
+    }
   });
 });
