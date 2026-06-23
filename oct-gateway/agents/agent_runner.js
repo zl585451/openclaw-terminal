@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 
 /**
  * oct-gateway/agents/agent_runner.js
@@ -255,10 +256,11 @@ async function callApi({ baseUrl, apiKey, model, messages, tools, signal }) {
  * @param {string} [opts.task.userContext]            - 用户上下文
  * @param {string} [opts.task.sessionKey]             - 来源 session key
  * @param {string[]} [opts.task.allowedTools]         - 可在调用时追加/覆盖工具白名单
+ * @param {Array<{ role?: string, content?: any }>} [opts.task.history] - 最近对话历史（纯 user/assistant 文本，注入隔离会话）
  * @param {Function} [opts.onAgentEvent]              - 事件回调 (event) => void
  * @param {Function} [opts.onSegment]                 - B3 段事件回调 (seg) => void（用于前端 inline 渲染）
  * @param {string}   [opts.turnId]                    - 回合 ID（用于段 segId 编址，与 AMY 路径同形）
- * @returns {Promise<{ result: string, turnsUsed: number, tokensUsed: number }>}
+ * @returns {Promise<{ status?: 'completed' | 'waiting_user_reply', result: string, turnsUsed: number, tokensUsed: number }>}
  */
 async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
   const taskId = task.taskId || `agent_${Date.now()}`;
