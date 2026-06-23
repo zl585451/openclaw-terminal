@@ -323,6 +323,16 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
     messages.push({ role: 'system', content: systemContent });
   }
 
+  // 注入最近对话历史（Agent 跑在隔离会话，靠它理解用户指代、延续上一轮任务）。
+  // 历史是纯 user/assistant 文本（无工具消息），作为真实对话插在当前指令之前。
+  if (Array.isArray(task.history) && task.history.length > 0) {
+    for (const m of task.history) {
+      if (m && (m.role === 'user' || m.role === 'assistant') && m.content) {
+        messages.push({ role: m.role, content: String(m.content) });
+      }
+    }
+  }
+
   const userContent = agent.formatUserMessage(task);
   if (!userContent) {
     const errMsg = 'formatUserMessage 返回空内容，无法执行任务';
