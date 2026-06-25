@@ -108,6 +108,29 @@ describe('TurnFSM', () => {
     expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
   });
 
+  it('onTurnFinish from IDLE is a no-op and does not throw (repeated finalize)', () => {
+    // 回合收尾可能被打字机播完与后端 done 各触发一次；后到的一次此时已是 IDLE，
+    // 必须幂等返回而非抛 Invalid transition（修复控制台噪音）。
+    const fsm = new TurnFSM();
+    expect(() => fsm.onTurnFinish()).not.toThrow();
+    expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
+  });
+
+  it('onTurnFinish twice in a row stays IDLE without throwing', () => {
+    const fsm = new TurnFSM();
+    fsm.onUserTyping();
+    fsm.onUserSubmit();
+    fsm.onRequestStart();
+    fsm.onStreamOpen();
+    fsm.onToken();
+    fsm.onStreamEnd();
+    fsm.onRenderDone();
+    fsm.onTurnFinish();
+    expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
+    expect(() => fsm.onTurnFinish()).not.toThrow(); // 第二次（重复触发）幂等
+    expect(fsm.getPhase()).toBe(TurnPhase.IDLE);
+  });
+
   it('onCancel from STREAMING transitions through CANCELLED to IDLE', () => {
     const fsm = new TurnFSM();
     fsm.onUserTyping();
