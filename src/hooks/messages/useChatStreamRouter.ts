@@ -107,7 +107,19 @@ export function useChatStreamRouter({
     if (!content) return;
     // B3：段协议激活时，文字增量由 onChatSeg 驱动，跳过扁平流处理（防双写）。
     // done=false 的 delta 跳过；done=true（最终文本快照）仍走下面 onChatDone 处理。
-    if (!isSystemReply && isDelta && segProtocolActiveRef.current) return;
+    if (!isSystemReply && isDelta && segProtocolActiveRef.current) {
+      // B4.1b 探针（前置门禁）：这条守卫真正拦下扁平 delta 的时刻——即“段激活期间仍收到
+      // 扁平 delta”。真实使用长期不出现 → 说明现代路径都不发扁平 delta，可安全删除本守卫
+      // 与 segProtocolActiveRef 闩锁（完成 B4.1b）。若出现，记录场景，该路径需改发段事件。
+      // 详见 docs/refactors/chat-block-protocol-B4-dedup-consolidation-plan.md（B4.1b）。
+      try {
+        console.warn('[B4.1b] flat delta arrived during active segment protocol', {
+          len: content.length,
+          turnId: turnId || null,
+        });
+      } catch { /* 探针不得影响流处理 */ }
+      return;
+    }
     if (!isSystemReply) {
       if (isDelta) reduceTurnUiRef({ kind: 'seg_text_delta' });
       setAwaitingResponse(false);
@@ -196,8 +208,8 @@ export function useChatStreamRouter({
       // B4.1：可见正文单一事实源。段协议已对所有产生正文的路径生效——B4.0 探针实测
       // （对话/委派 Agent/AMY/图像/clarify 五类均未触发分歧）+ 端到端有序性静态证明
       // 共同确认，故无条件信任段派生的 fullTextRef，仅在其为空时回退到 done 文本快照。
-      // 不再用 done.content 经 preferDoneTextWhenMoreComplete 覆盖（旧 done.content 是
-      // 所有轮次正文的拼接，会把工具前正文带回来，是重复气泡的来源）。
+      // 不再用 done.content 覆盖段派生正文（旧 done.content 是所有轮次正文的拼接，
+      // 会把工具前正文带回来，是重复气泡的来源）。
       // 详见 docs/refactors/chat-block-protocol-B4-dedup-consolidation-plan.md（B4.1）。
       const finalText = fullTextRef.current || fallbackText;
       if (finalText !== fullTextRef.current) {

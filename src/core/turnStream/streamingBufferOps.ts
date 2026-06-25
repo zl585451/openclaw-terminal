@@ -6,15 +6,6 @@ function isSystemCommand(text: string): boolean {
   return /^\/\w/.test(t);
 }
 
-export function preferDoneTextWhenMoreComplete(currentRaw: string, doneText: string): string {
-  const current = currentRaw || '';
-  const done = doneText || '';
-  if (!done.trim()) return current;
-  if (!current.trim()) return done;
-  if (done.length > current.length) return done;
-  return current;
-}
-
 export function shouldSuppressAssistantTextForClarify(pendingClarifyOpen: boolean, doneText: string): boolean {
   return pendingClarifyOpen && !String(doneText || '').trim();
 }
