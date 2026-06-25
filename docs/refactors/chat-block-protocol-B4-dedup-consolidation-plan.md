@@ -93,6 +93,26 @@ L2–L5 都是为了补 L1 之外的漏，且 L5 仅在 `segProtocolActiveRef=fa
 - **门禁判定**：**真实使用一段时间后该 warn 从不出现 → B4.1 安全**；若出现，记录触发场景再补段发射。
   ⚠️ **本会话无法采集运行期数据，B4.1 在门禁通过前不得执行。**
 
+#### B4.0+ 端到端有序性静态证明（2026-06-25，已核实，大幅收窄门禁）
+原以为「seg-open 是否先于 onChatDone」需运行期才能证。追完整传输链后，**对发段的路径已可静态证明**：
+
+**传输链每一跳都是「单一有序通道 + 同步 1:1 中继，无批处理/重排/异步延迟」**：
+1. gateway `chatRequestHandler`：`seg` 与 `done` 同走 `connection.send({event:'chat'})`，seg 在流式中先发、done 最后发。
+2. WS → electron main `ws.on('message')` → 同步 `handleMessage`（逐条，TCP 保序）。
+3. main `handleMessage`：seg→`sendMessage` 透传（:1499-1503）/ done→`forwardChatToFrontend`→`sendMessage`，均同步 1:1。
+4. `webContents.send('openclaw-message')` —— electron 单通道保序。
+5. 前端 `useWebSocket` `ipcRenderer.on('openclaw-message')` → 同步派发：seg→`onChatSeg`（同步置 `segProtocolActiveRef=true`）/ done→`onChatDone`（同步读它）。
+
+**两条产生正文的主路径都在 done 前发出 text/final 段**：
+- **ChatEngine**（普通对话）：`chatEngine.js:26-32` 无条件挂 `TurnSegmentTracker`，`streamController` 每 chunk `segments.text()` → 发 text 段。
+- **Agent 短路**（委派 Agent）：`chatRequestHandler:88-156`，`runAgent` emitSeg 发 `final` 段（`agent_runner openSeg('final')`）后，dispatch 返回再发 done；clarify 暂停走独立空 done + `shouldSuppressAssistantTextForClarify` 抑制分支（不进 finalText 计算）。
+
+⇒ **结论：凡产生可见正文的 chat / agent 回合，onChatDone 时 `segProtocolActiveRef` 必为 true，双路径分歧（`active=false && fullTextRef 非空 && done 更长`）静态不可达。**
+
+**精化后的残留风险（门禁只剩这一条）**：是否存在**发扁平 `delta` chat 事件而非段**的路径——它会经 `onChatDelta` 把文本写进 `fullTextRef` 而不激活段协议（如 AMY 情感疗愈、图像描述等若仍走旧扁平流）。`ChatEngine.onDelta`（chatRequestHandler:212）**不向前端发 delta**，故主对话不触发；但非 ChatEngine 路径未逐一穷举。
+
+**B4.1 放行判据（更新）**：探针在覆盖 **对话 / 委派 Agent / AMY / 图像 / clarify** 五类真实使用后保持静默 → 删双路径安全。静态已清掉前两类（占绝大多数流量），探针主要用于确认后三类无扁平 delta 残留。
+
 ### B4.1 删除 `segProtocolActiveRef` 双路径
 - **动机**：双路径是补丁繁殖的根。
 - **动作**：`useChatStreamRouter.ts` 把 L200 三元统一为 `fullTextRef.current || fallbackText`；删除 `segProtocolActiveRef`（12 处）及 `done=true && segProtocolActiveRef` 的跳过分支（L110）。
