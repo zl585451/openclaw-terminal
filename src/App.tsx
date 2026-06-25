@@ -10,6 +10,7 @@ import { WorkbenchProvider } from './workbench/WorkbenchContext';
 import ChatTab from './ui/chat/ChatTab.v2';
 import SettingsPanel from './ui/settings/SettingsPanel';
 import { ScriptAdapterApp } from './modules/script-adapter';
+import { collapseAdjacentDuplicateAssistantMessages } from './core/turnStream/streamingBufferOps';
 import './styles/App.css';
 
 export type TabType = 'chat' | 'workspace' | 'library';
@@ -38,7 +39,8 @@ const App: React.FC = () => {
 
   const loadConversationMessages = useCallback(async (id: string) => {
     const items = (await window.electronAPI?.conversationMessagesLoad?.(id)) || [];
-    const msgs: ChatMessage[] = items.map((m, i) => ({
+    const sanitizedItems = collapseAdjacentDuplicateAssistantMessages(items);
+    const msgs: ChatMessage[] = sanitizedItems.map((m, i) => ({
       id: i + 1,
       role: (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'user',
       content: m.content || '',
@@ -145,7 +147,7 @@ const App: React.FC = () => {
       skipNextSaveRef.current = false;
       return;
     }
-    const toSave: ChatHistoryItem[] = messages
+    const toSave: ChatHistoryItem[] = collapseAdjacentDuplicateAssistantMessages(messages)
       .filter((m) => !m.isStreaming)
       .map((m) => ({ role: m.role, content: m.content, timestamp: String(m.timestamp ?? ''), isSystemReply: m.isSystemReply }));
     if (toSave.length === 0) return;

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   clearStreamingBubbleContent,
+  collapseAdjacentDuplicateAssistantMessages,
+  finalizeStreamingAssistantBubble,
   finalizeStoppedAssistantMessage,
   markExecutingToolEventsStopped,
   preferDoneTextWhenMoreComplete,
@@ -54,6 +56,19 @@ describe('clearStreamingBubbleContent', () => {
     const out = clearStreamingBubbleContent(input as any);
     expect(out).toBe(input);
   });
+
+  it('场景5: 工具调用前的 preamble 在最终答案段接管时被清空，气泡保留待填充', () => {
+    // useTurnSegmentRouter 在新 text/final 段开启且已有 preamble 时调用本原语，
+    // 清掉气泡里的 preamble 残留，避免它与最终答案重复展示。
+    const input = [
+      { role: 'user', content: '帮我查一下' },
+      { role: 'assistant', content: '好的，我先搜索一下相关资料……', isStreaming: true, toolEvents: [{ tool: 'web_search' }] },
+    ];
+    const out = clearStreamingBubbleContent(input as any) as any[];
+    expect(out[1].content).toBe(''); // preamble 已清空，等最终答案填充
+    expect(out[1].isStreaming).toBe(true); // 气泡仍在，不新建第二个
+    expect(out[1].toolEvents).toEqual([{ tool: 'web_search' }]); // 工具卡保留
+  });
 });
 
 describe('markExecutingToolEventsStopped', () => {
@@ -83,6 +98,118 @@ describe('markExecutingToolEventsStopped', () => {
       elapsedMs: 1_250,
     });
     expect(out?.[1]).toMatchObject({ callId: 'call_2', state: 'done', resultPreview: 'ok' });
+  });
+});
+
+describe('finalizeStreamingAssistantBubble', () => {
+  it('removes a streaming assistant tail when it duplicates the previous final assistant', () => {
+    const input = [
+      { role: 'assistant', content: '最终调研结论\n\n- A', isStreaming: false },
+      { role: 'assistant', content: '', isStreaming: true, isStreamingRaw: true },
+    ];
+
+    const out = finalizeStreamingAssistantBubble(input, '最终调研结论\n\n- A') as any[];
+
+    expect(out).toHaveLength(1);
+    expect(out[0].content).toBe('最终调研结论\n\n- A');
+  });
+
+  it('finalizes the streaming assistant tail when content is not a duplicate', () => {
+    const input = [
+      { role: 'user', content: '帮我调研' },
+      { role: 'assistant', content: '', isStreaming: true, isStreamingRaw: true },
+    ];
+
+    const out = finalizeStreamingAssistantBubble(input, '新的调研结论') as any[];
+
+    expect(out).toHaveLength(2);
+    expect(out[1]).toMatchObject({
+      role: 'assistant',
+      content: '新的调研结论',
+      isStreaming: false,
+      isStreamingRaw: false,
+    });
+  });
+
+  it('is a no-op (same reference) when the last message is not a streaming assistant', () => {
+    const input = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '已定稿', isStreaming: false },
+    ];
+    // 返回同一引用很关键：避免 setMessages 触发无谓重渲染
+    expect(finalizeStreamingAssistantBubble(input, '任意')).toBe(input);
+  });
+
+  it('falls back to the existing bubble content when finalContent is empty', () => {
+    const input = [
+      { role: 'assistant', content: '流式已收到的正文', isStreaming: true, isStreamingRaw: true },
+    ];
+    const out = finalizeStreamingAssistantBubble(input, '') as any[];
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ content: '流式已收到的正文', isStreaming: false });
+  });
+
+  it('does NOT dedup against a previous bubble that is still streaming', () => {
+    // 上一条仍在流式时不能当作"已完成的重复"，否则会误删当前定稿
+    const input = [
+      { role: 'assistant', content: '结论 A', isStreaming: true },
+      { role: 'assistant', content: '', isStreaming: true, isStreamingRaw: true },
+    ];
+    const out = finalizeStreamingAssistantBubble(input, '结论 A') as any[];
+    expect(out).toHaveLength(2);
+    expect(out[1]).toMatchObject({ content: '结论 A', isStreaming: false });
+  });
+});
+
+describe('collapseAdjacentDuplicateAssistantMessages', () => {
+  it('collapses adjacent finalized assistant messages with identical visible text', () => {
+    const input = [
+      { role: 'user', content: '帮我调研' },
+      { role: 'assistant', content: '结论 A', isStreaming: false },
+      { role: 'assistant', content: '  结论 A  ', isStreaming: false },
+      { role: 'user', content: '继续' },
+      { role: 'assistant', content: '结论 A', isStreaming: false },
+    ];
+
+    const out = collapseAdjacentDuplicateAssistantMessages(input) as any[];
+
+    expect(out.map((item) => item.content)).toEqual(['帮我调研', '结论 A', '继续', '结论 A']);
+  });
+
+  it('does not collapse streaming assistant messages', () => {
+    const input = [
+      { role: 'assistant', content: '结论 A', isStreaming: false },
+      { role: 'assistant', content: '结论 A', isStreaming: true },
+    ];
+
+    expect(collapseAdjacentDuplicateAssistantMessages(input)).toBe(input);
+  });
+
+  it('does not collapse two empty assistant messages (empty text guard)', () => {
+    // 空内容不应被当作"重复"折叠——否则会吞掉合法的空气泡占位
+    const input = [
+      { role: 'assistant', content: '', isStreaming: false },
+      { role: 'assistant', content: '   ', isStreaming: false },
+    ];
+    expect(collapseAdjacentDuplicateAssistantMessages(input)).toBe(input);
+  });
+
+  it('does not collapse identical assistants separated by a user message', () => {
+    // 仅折叠"相邻"重复；被用户消息隔开的相同回复是两轮合法回答
+    const input = [
+      { role: 'assistant', content: '结论 A', isStreaming: false },
+      { role: 'user', content: '再说一次' },
+      { role: 'assistant', content: '结论 A', isStreaming: false },
+    ];
+    expect(collapseAdjacentDuplicateAssistantMessages(input)).toBe(input);
+  });
+
+  it('returns the same reference when there is nothing to collapse', () => {
+    const input = [
+      { role: 'assistant', content: '结论 A', isStreaming: false },
+      { role: 'assistant', content: '结论 B', isStreaming: false },
+    ];
+    expect(collapseAdjacentDuplicateAssistantMessages(input)).toBe(input);
   });
 });
 

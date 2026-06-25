@@ -23,6 +23,8 @@ export {
   preferDoneTextWhenMoreComplete,
   shouldSuppressAssistantTextForClarify,
   clearStreamingBubbleContent,
+  collapseAdjacentDuplicateAssistantMessages,
+  finalizeStreamingAssistantBubble,
   markExecutingToolEventsStopped,
   finalizeStoppedAssistantMessage,
 } from '../core/turnStream/streamingBufferOps';
