@@ -30,27 +30,10 @@ const MENU_STRUCTURE: { group: string; items: QuickCommandItem[] }[] = [
     items: [
       { id: 'status', label: '状态查询', sendText: '/status' },
       { id: 'new', label: '保存并新对话', sendText: '/new' },
-      {
-        id: 'switch-model',
-        label: '切换模型',
-        sendText: '列出当前所有可用模型，以选项框形式展示，每项显示模型名称和简短说明，供我选择后切换。',
-      },
-      { id: 'stop', label: '停止执行', sendText: '/stop' },
-    ],
-  },
-  {
-    group: '━━ DEBUG ━━━━━━━━━━━━━',
-    items: [
-      {
-        id: 'think',
-        label: '思考模式',
-        children: [
-          { id: 'think-off', label: 'OFF', sendText: '/think off' },
-          { id: 'think-low', label: 'LOW', sendText: '/think low' },
-          { id: 'think-medium', label: 'MEDIUM', sendText: '/think medium' },
-          { id: 'think-high', label: 'HIGH', sendText: '/think high' },
-        ],
-      },
+      // 已移除：
+      // - 「切换模型」与输入框底部的模型下拉重复
+      // - 「思考模式」与输入框底部的「思考」开关重复（原 DEBUG 组）
+      // - 「停止执行」(/stop) 已废弃：/stop 未注册，会回「未知命令」；真正停止用输入框停止按钮
     ],
   },
   {
