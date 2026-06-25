@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 import { TurnFSM, TurnPhase } from '../../core/turnFSM';
 import { normalizeAssistantTranscriptContent } from '../../utils/cotExtract';
 import type { ChatMessage } from '../../ui/chat/chatTypes';
+import { finalizeStreamingAssistantBubble } from '../../core/turnStream/streamingBufferOps';
 
 export function recoverOctStreamFromEndFailure(oct: { fsm: TurnFSM }): void {
   try {
@@ -71,15 +72,7 @@ export function useStreamFinalize({
       oct.fsm.resetToIdle();
     }
     setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (last?.role === 'assistant' && last.isStreaming) {
-        return prev.map((msg, idx) =>
-          idx === prev.length - 1
-            ? { ...msg, content: finalRaw || msg.content, isStreaming: false, isStreamingRaw: false }
-            : msg
-        );
-      }
-      return prev;
+      return finalizeStreamingAssistantBubble(prev, finalRaw);
     });
   }, [oct, setMessages]);
 
@@ -102,11 +95,7 @@ export function useStreamFinalize({
           return prev;
         }
         if (fallbackRaw.trim()) {
-          return prev.map((msg, idx) =>
-            idx === prev.length - 1
-              ? { ...msg, content: fallbackRaw, isStreaming: false, isStreamingRaw: false }
-              : msg
-          );
+          return finalizeStreamingAssistantBubble(prev, fallbackRaw);
         }
         return prev.filter((_, idx) => idx !== prev.length - 1);
       });

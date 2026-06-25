@@ -51,6 +51,62 @@ export function markExecutingToolEventsStopped(events: ToolEventItem[] | undefin
   return changed ? stopped : events;
 }
 
+function normalizedAssistantText(text: unknown): string {
+  return String(text ?? '').trim().replace(/\s+/g, ' ');
+}
+
+export function collapseAdjacentDuplicateAssistantMessages<T extends {
+  role: string;
+  content?: string;
+  isStreaming?: boolean;
+}>(messages: T[]): T[] {
+  let changed = false;
+  const collapsed: T[] = [];
+  for (const message of messages) {
+    const previous = collapsed[collapsed.length - 1];
+    if (
+      message.role === 'assistant'
+      && previous?.role === 'assistant'
+      && !message.isStreaming
+      && !previous.isStreaming
+      && normalizedAssistantText(message.content)
+      && normalizedAssistantText(message.content) === normalizedAssistantText(previous.content)
+    ) {
+      changed = true;
+      continue;
+    }
+    collapsed.push(message);
+  }
+  return changed ? collapsed : messages;
+}
+
+export function finalizeStreamingAssistantBubble<T extends {
+  role: string;
+  content?: string;
+  isStreaming?: boolean;
+  isStreamingRaw?: boolean;
+}>(messages: T[], finalContent: string): T[] {
+  const last = messages[messages.length - 1];
+  if (!(last?.role === 'assistant' && last.isStreaming)) return messages;
+
+  const finalText = String(finalContent || last.content || '');
+  const previous = messages[messages.length - 2];
+  if (
+    finalText.trim()
+    && previous?.role === 'assistant'
+    && !previous.isStreaming
+    && normalizedAssistantText(previous.content) === normalizedAssistantText(finalText)
+  ) {
+    return messages.slice(0, -1);
+  }
+
+  return messages.map((msg, idx) =>
+    idx === messages.length - 1
+      ? { ...msg, content: finalText || msg.content, isStreaming: false, isStreamingRaw: false }
+      : msg,
+  );
+}
+
 export function finalizeStoppedAssistantMessage<T extends {
   role: string;
   content?: string;
