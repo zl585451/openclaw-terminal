@@ -113,13 +113,25 @@ L2–L5 都是为了补 L1 之外的漏，且 L5 仅在 `segProtocolActiveRef=fa
 
 **B4.1 放行判据（更新）**：探针在覆盖 **对话 / 委派 Agent / AMY / 图像 / clarify** 五类真实使用后保持静默 → 删双路径安全。静态已清掉前两类（占绝大多数流量），探针主要用于确认后三类无扁平 delta 残留。
 
-### B4.1 删除 `segProtocolActiveRef` 双路径
-- **动机**：双路径是补丁繁殖的根。
-- **动作**：`useChatStreamRouter.ts` 把 L200 三元统一为 `fullTextRef.current || fallbackText`；删除 `segProtocolActiveRef`（12 处）及 `done=true && segProtocolActiveRef` 的跳过分支（L110）。
-- **前置**：B4.0 门禁通过。
-- **验证**：`streamChatRawSmoke`（后端 6 路径）+ 前端 `useMessages.test.ts` 全绿；手动验证调研类长任务（工具前后正文）只出一个气泡。
+### B4.1a 统一 finalText 单一事实源 ✅（2026-06-25 已落地）
+- **动机**：onChatDone 的「段协议激活 ? fullTextRef : preferDoneText」双路径正是重复气泡来源。
+- **前置**：B4.0 门禁通过——用户实测 5 类场景（对话/委派 Agent/AMY/图像/clarify）探针全程静默，
+  叠加 B4.0+ 端到端有序性静态证明。
+- **动作（已落地）**：`useChatStreamRouter.onChatDone` 把 L198-200 三元 + B4.0 探针块统一为
+  `const finalText = fullTextRef.current || fallbackText;`；移除现已未用的 `preferDoneTextWhenMoreComplete` 导入。
+- **验证**：`npx tsc --noEmit` / `tsconfig.electron.json` 均 0；`npx vitest run` 570 passed/0 fail。
 - **回滚**：单 commit revert。
-- **风险**：中。**未做段发射的路径会丢正文** —— 必须靠 B4.0 数据兜底。
+- **风险**：低——分歧分支经探针实测+静态证明双重确认不可达。
+
+### B4.1b 移除 `segProtocolActiveRef` 闩锁本体 ⏸（修正：暂不做，留待清除）
+- **修正（2026-06-25）**：原计划要"删 segProtocolActiveRef + L110 跳过分支"。核实代码后**保留**：
+  `useChatStreamRouter.ts:110` 的 `if (isDelta && segProtocolActiveRef.current) return;` 是**承重守卫**——
+  防止扁平 delta 在段驱动时覆盖 `fullTextRef`（lines 126-130），正是重复气泡的另一来源。
+- **为何未清除**：B4.0 探针测的是 onChatDone **finalText 分歧**，**未**测「流式中扁平 delta 是否与段并发」。
+  且测试期间 L110 守卫一直生效，故其移除**未被清除**。静态分析显示现代 gateway 路径（ChatEngine/Agent）
+  不发扁平 delta chat 事件，但非主路径未穷举。
+- **放行判据**：另加一个"扁平 delta 在段激活期间到达"的探针，真实使用静默后再删 L110 + 闩锁。
+- **风险**：中。盲删会让并发扁平 delta 双写 → 重复气泡回归。
 
 ### B4.2 删除 `preferDoneTextWhenMoreComplete` + `shouldSuppressAssistantTextForClarify`
 - **动机**：二者仅服务 legacy 分支（B4.1 删后无调用方）。
