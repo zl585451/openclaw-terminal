@@ -5,22 +5,9 @@ import {
   finalizeStreamingAssistantBubble,
   finalizeStoppedAssistantMessage,
   markExecutingToolEventsStopped,
-  preferDoneTextWhenMoreComplete,
   shouldSuppressAssistantTextForClarify,
 } from '../useMessages';
 import { normalizeAssistantTranscriptContent } from '../../utils/cotExtract';
-
-describe('preferDoneTextWhenMoreComplete', () => {
-  it('uses done text to recover when streamed delta stopped early', () => {
-    expect(preferDoneTextWhenMoreComplete('现在换个做法，先找到', '现在换个做法，先找到标签渲染的逻辑。')).toBe(
-      '现在换个做法，先找到标签渲染的逻辑。',
-    );
-  });
-
-  it('keeps current text when done text is empty', () => {
-    expect(preferDoneTextWhenMoreComplete('已经流式收到的正文', '')).toBe('已经流式收到的正文');
-  });
-});
 
 describe('shouldSuppressAssistantTextForClarify', () => {
   it('suppresses residual streamed text when clarify card already opened and done text is empty', () => {

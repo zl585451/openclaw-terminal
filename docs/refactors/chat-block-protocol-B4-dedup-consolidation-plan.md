@@ -4,7 +4,18 @@
 > 把段协议（Turn Segment Protocol）固化为**单一事实源**，把散落在收尾/持久化层的
 > 去重补丁归并到协议层，删除已被段协议取代的旧补丁。
 >
-> 状态：草案 / 待排期。本轮（2026-06-25）只产出计划，不展开实现。
+> ## 执行进度（截至 2026-06-26）
+> - ✅ **B4.0** 探针 + 门禁（用户实测 5 类场景静默通过）
+> - ✅ **B4.0+** 端到端有序性静态证明
+> - ✅ **B4.1a** onChatDone 可见正文统一为段派生单一事实源（删主双路径）— 已合并 main
+> - ✅ **B4.2-半** 删除已成死代码的 `preferDoneTextWhenMoreComplete`（函数体+导出+测试）
+> - ✅ **B4.1b 探针** 已埋（`[B4.1b]` flat-delta 并发探针），等运行期静默后删 L110 守卫+闩锁
+> - ⏸ **B4.1b 删除本体** — 门禁：`[B4.1b]` warn 真实使用长期静默
+> - ⏸ **B4.2-半 删 `shouldSuppressAssistantTextForClarify`** — 需先把 clarify 改为段协议表达（行为改动，要灰度）
+> - ⏸ **B4.3** finish 事件替代 scheduleFinalizeFallback — **最高风险，单独灰度**
+> - ⏸ **B4.4** collapseAdjacent 降级为告警守卫 — 待上游清干净后做（否则旧持久化数据误报）
+>
+> **结论**：B4 主线（断重复气泡根源）已落地；剩余均为「需运行期灰度验证」的收尾，无法纯自动完成，已逐项埋好门禁/标清前置。
 
 ---
 
@@ -167,7 +178,8 @@ L2–L5 都是为了补 L1 之外的漏，且 L5 仅在 `segProtocolActiveRef=fa
 | L2 clearStreamingBubbleContent | 段接管清空 | 保留（preamble→final 接管） |
 | L3 finalizeStreamingAssistantBubble | 收尾去重 | 保留（不变量 B，收口幂等） |
 | L4 collapseAdjacent | 加载/保存去重 | **降级为带告警的防御守卫** |
-| L5 preferDoneText / suppressClarify | legacy 回补 | **删除** |
+| L5 preferDoneText | legacy 回补 | **已删除 ✅** |
+| L5 suppressClarify | clarify 压制 | 删除（需先 clarify 走段协议，⏸）|
 | L5 scheduleFinalizeFallback | 定时兜底 | **由 finish 事件替代（B4.3）** |
 | 开关 segProtocolActiveRef | 双路径 | **删除** |
 

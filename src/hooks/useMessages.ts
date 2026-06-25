@@ -20,7 +20,6 @@ export type { ActivityEntryType, ActivityEntry } from './useActivityTimeline';
 
 // ── Util helpers ──────────────────────────────────────────────────────────────
 export {
-  preferDoneTextWhenMoreComplete,
   shouldSuppressAssistantTextForClarify,
   clearStreamingBubbleContent,
   collapseAdjacentDuplicateAssistantMessages,
