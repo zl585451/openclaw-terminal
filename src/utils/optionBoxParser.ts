@@ -632,8 +632,46 @@ function enhanceTextSegmentsWithInlineCheckboxes(segments: RenderSegment[]): Ren
   return changed ? enhancedSegments : segments;
 }
 
+/**
+ * 自动补全悬空的选项标签：模型常只发开标签 `[pills]` 而忘了闭合 `[/pills]`，
+ * 导致配对解析失败、整块选项被当残留剥掉而消失。这里为每个无匹配闭合的开标签
+ * 在「下一个标签之前 / 文末」补一个闭合标签，使其能被正常配对解析为可点选项。
+ * 已配对的内容是 no-op（不影响既有行为）；代码块内的标签不处理。
+ */
+function autoCloseDanglingOptionTags(content: string): string {
+  const tokenRx = /\[\s*(\/?)\s*(pills|checkbox|question|tasklist|text|cot)\s*\]/gi;
+  const codeRanges = getCodeBlockRanges(content);
+  const toks: Array<{ idx: number; close: boolean; name: string }> = [];
+  let tm: RegExpExecArray | null;
+  while ((tm = tokenRx.exec(content)) !== null) {
+    if (codeRanges.length > 0 && isInsideCodeBlock(tm.index, codeRanges)) continue;
+    toks.push({ idx: tm.index, close: tm[1] === '/', name: tm[2].toLowerCase() });
+  }
+  // 每个标签名各自配对，剩下的开标签即为悬空
+  const openStack: Record<string, number[]> = {};
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (!t.close) (openStack[t.name] ||= []).push(i);
+    else if (openStack[t.name]?.length) openStack[t.name].pop();
+  }
+  const dangling: number[] = [];
+  for (const name of Object.keys(openStack)) dangling.push(...openStack[name]);
+  if (dangling.length === 0) return content;
+  // 闭合插入点：该开标签之后的下一个标签处；没有则文末。倒序插入以保持位置有效。
+  const insertions = dangling
+    .map((ti) => ({ pos: toks[ti + 1] ? toks[ti + 1].idx : content.length, text: `[/${toks[ti].name}]` }))
+    .sort((a, b) => b.pos - a.pos);
+  let result = content;
+  for (const ins of insertions) {
+    result = result.slice(0, ins.pos) + ins.text + result.slice(ins.pos);
+  }
+  return result;
+}
+
 /** 解析成对标签 [pills]...[/pills] 等，返回按顺序排列的渲染段 */
 function parseTaggedContent(content: string): { segments: RenderSegment[]; found: boolean } {
+  // 先补全悬空开标签（模型常忘闭合），避免选项块被当残留剥掉而消失
+  content = autoCloseDanglingOptionTags(content);
   // 每次调用创建新的 regex 实例，避免全局状态的 lastIndex 并发问题
   const pairedTagRx = /(?:\/\s*)?\[\s*(pills|checkbox|question|tasklist|text|cot)\s*\]([\s\S]*?)\[\s*\/\s*\1\s*\]/gi;
   const allMatches = [...content.matchAll(pairedTagRx)];

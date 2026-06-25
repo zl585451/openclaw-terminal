@@ -83,7 +83,7 @@ describe('成对标签 [pills]...[/pills]', () => {
 // 2. 未闭合标签 — Bug A（截图1：[pills] 没有 [/pills]）
 // ============================================================
 describe('未闭合标签处理', () => {
-  it('[pills] 没有 [/pills] 时，剥离标签文字，■ 选项仍渲染', () => {
+  it('[pills] 没有 [/pills] 时，自动补全并渲染为可点 pills 段', () => {
     const input = `少爷，选一个：
 
 [pills]
@@ -91,12 +91,31 @@ describe('未闭合标签处理', () => {
 ■ 方案B`;
 
     const result = parseOptionBox(input);
-    // 标签文字应被剥离
+    // 标签文字应被剥离（不原样显示）
     expect(result.text).not.toContain('[pills]');
-    // ■ 选项应被检测到
-    expect(result.options.length).toBeGreaterThanOrEqual(2);
+    // 未闭合 [pills] 现在被自动补全 → 解析为 pills 段，选项可点
+    const pills = (result.segments || []).find((s) => s.type === 'pills');
+    expect(pills).toBeDefined();
+    expect(pills!.options.length).toBeGreaterThanOrEqual(2);
     // 正文应保留
     expect(result.text).toContain('选一个');
+  });
+
+  it('[pills] 无闭合且含【粗体 - 说明】格式选项（线上真实回归）', () => {
+    // 复现：AMY 记忆管理回复，[pills] 无 [/pills]，选项为「■ **粗体** - 说明」
+    const input = `那现在这个情况，有几个方向可以处理，少爷看哪个合适：
+
+[pills]
+■ **我来帮你筛选** - 你说关键词或条件，我搜出来看哪些可以清理
+■ **你手动清向量库** - 我告诉你路径，你自己去删
+■ **先不管** - 900条对性能暂时没影响，等多了再说`;
+
+    const result = parseOptionBox(input);
+    const pills = (result.segments || []).find((s) => s.type === 'pills');
+    expect(pills).toBeDefined();
+    expect(pills!.options.length).toBe(3);
+    expect(result.text).toContain('少爷看哪个合适');
+    expect(result.text).not.toContain('[pills]');
   });
 
   it('孤立的 [pills] 在成对标签之后，不显示为文本', () => {
