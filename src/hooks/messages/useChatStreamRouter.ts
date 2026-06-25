@@ -198,6 +198,22 @@ export function useChatStreamRouter({
       const finalText = segProtocolActiveRef.current
         ? (fullTextRef.current || fallbackText)
         : preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
+      // ── B4.0 探针（前置门禁）──────────────────────────────────────────────
+      // 度量删除 segProtocolActiveRef 双路径(B4.1)是否会改变行为：仅当“旧分支结果”
+      // 与“统一表达式 fullTextRef||fallback”不同时打点。真实使用中长期不触发 →
+      // 证明段协议已对所有产生正文的路径生效，B4.1 删双路径安全。
+      // 详见 docs/refactors/chat-block-protocol-B4-dedup-consolidation-plan.md。
+      if (!segProtocolActiveRef.current && finalText !== (fullTextRef.current || fallbackText)) {
+        try {
+          console.warn('[B4.0] segProtocol legacy-path divergence', {
+            fullLen: fullTextRef.current.length,
+            fallbackLen: fallbackText.length,
+            finalLen: finalText.length,
+            turnId: turnId || null,
+          });
+        } catch { /* 探针不得影响定稿 */ }
+      }
+      // ─────────────────────────────────────────────────────────────────────
       if (finalText !== fullTextRef.current) {
         streamingMessageRef.current = finalText;
         fullTextRef.current = finalText;
