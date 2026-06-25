@@ -112,6 +112,10 @@ export class TurnFSM {
 
   /** RENDER_COMPLETE → TURN_FINISHED → IDLE */
   onTurnFinish(): void {
+    // 幂等：一次回合的收尾可能被多处触发（打字机动画播完 + 后端 done 各一次）。
+    // 先到的已把相位收回 IDLE；后到的再调本方法时直接返回，不再抛 Invalid transition
+    // 噪音（与 onError/onCancel 的幂等写法一致）。终态仍是 IDLE，行为不变。
+    if (this.phase === TurnPhase.IDLE) return;
     this.transition(TurnPhase.TURN_FINISHED);
     this.transition(TurnPhase.IDLE);
   }
