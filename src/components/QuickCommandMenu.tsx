@@ -30,45 +30,15 @@ const MENU_STRUCTURE: { group: string; items: QuickCommandItem[] }[] = [
     items: [
       { id: 'status', label: '状态查询', sendText: '/status' },
       { id: 'new', label: '保存并新对话', sendText: '/new' },
-      {
-        id: 'switch-model',
-        label: '切换模型',
-        sendText: '列出当前所有可用模型，以选项框形式展示，每项显示模型名称和简短说明，供我选择后切换。',
-      },
-      { id: 'stop', label: '停止执行', sendText: '/stop' },
+      // 已移除：
+      // - 「切换模型」与输入框底部的模型下拉重复
+      // - 「思考模式」与输入框底部的「思考」开关重复（原 DEBUG 组）
+      // - 「停止执行」(/stop) 已废弃：/stop 未注册，会回「未知命令」；真正停止用输入框停止按钮
     ],
   },
-  {
-    group: '━━ DEBUG ━━━━━━━━━━━━━',
-    items: [
-      {
-        id: 'think',
-        label: '思考模式',
-        children: [
-          { id: 'think-off', label: 'OFF', sendText: '/think off' },
-          { id: 'think-low', label: 'LOW', sendText: '/think low' },
-          { id: 'think-medium', label: 'MEDIUM', sendText: '/think medium' },
-          { id: 'think-high', label: 'HIGH', sendText: '/think high' },
-        ],
-      },
-    ],
-  },
-  {
-    group: '━━ GUIDE ━━━━━━━━━━━━━',
-    items: [
-      {
-        id: 'guide-mode',
-        label: '启用引导模式',
-        sendText:
-          '【系统指令】从现在起，请使用“自适应澄清”：当你判断用户意图模糊、信息不足、纠结选择或目标冲突时，先给一个初步方向/框架，再用 1 个聚焦追问推进对话。追问必须嵌入回复正文中，并使用成对标签渲染交互：优先用 [pills]（2-4 个短选项），需要反思用 [question]，多选用 [checkbox]。最多追问 2 轮，第 3 轮必须给出可执行建议。',
-      },
-      {
-        id: 'guide-off',
-        label: '关闭引导模式',
-        sendText: '【系统指令】停止“自适应澄清”的追问策略，恢复为：用户意图不明确时只做最小必要澄清，能直接执行就直接执行，不主动追加追问。',
-      },
-    ],
-  },
+  // 已移除 GUIDE 组（启用/关闭引导模式）：自适应澄清协议已由系统提示词
+  // （CLARIFICATION_PROTOCOL.md + adaptive-questioning-system.md）每轮常驻注入，
+  // 这两个发聊天消息的按钮无法覆盖常驻系统指令，实为误导性空操作。
   {
     group: '━━ SYSTEM ━━━━━━━━━━━━',
     items: [
