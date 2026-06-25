@@ -6,7 +6,7 @@ import { parseSystemReplyStatus } from '../../utils/systemReplyParser';
 import { workbenchBus } from '../../workbench/WorkbenchBus';
 import { toWorkbenchCommand } from '../../workbench/types';
 import type { CanvasEvent, WorkbenchEvent } from '../../workbench/types';
-import { preferDoneTextWhenMoreComplete, shouldSuppressAssistantTextForClarify } from '../../core/turnStream/streamingBufferOps';
+import { shouldSuppressAssistantTextForClarify } from '../../core/turnStream/streamingBufferOps';
 import type { ChatMessage, ToolEventItem } from '../../ui/chat/chatTypes';
 import type { RenderBlock } from '../../types/renderProtocol';
 import type { ClarifyCardSpec } from '../../core/clarifyCard/types';
@@ -193,27 +193,13 @@ export function useChatStreamRouter({
         return;
       }
       const fallbackText = normalizeAssistantTranscriptContent(String(content || '').trim());
-      // B3：段协议激活时信任 fullTextRef（段派生，仅含最终答案段）。
-      // 旧路径的 done.content 是所有轮次正文的拼接，用它覆盖会把工具前正文带回来。
-      const finalText = segProtocolActiveRef.current
-        ? (fullTextRef.current || fallbackText)
-        : preferDoneTextWhenMoreComplete(fullTextRef.current, fallbackText);
-      // ── B4.0 探针（前置门禁）──────────────────────────────────────────────
-      // 度量删除 segProtocolActiveRef 双路径(B4.1)是否会改变行为：仅当“旧分支结果”
-      // 与“统一表达式 fullTextRef||fallback”不同时打点。真实使用中长期不触发 →
-      // 证明段协议已对所有产生正文的路径生效，B4.1 删双路径安全。
-      // 详见 docs/refactors/chat-block-protocol-B4-dedup-consolidation-plan.md。
-      if (!segProtocolActiveRef.current && finalText !== (fullTextRef.current || fallbackText)) {
-        try {
-          console.warn('[B4.0] segProtocol legacy-path divergence', {
-            fullLen: fullTextRef.current.length,
-            fallbackLen: fallbackText.length,
-            finalLen: finalText.length,
-            turnId: turnId || null,
-          });
-        } catch { /* 探针不得影响定稿 */ }
-      }
-      // ─────────────────────────────────────────────────────────────────────
+      // B4.1：可见正文单一事实源。段协议已对所有产生正文的路径生效——B4.0 探针实测
+      // （对话/委派 Agent/AMY/图像/clarify 五类均未触发分歧）+ 端到端有序性静态证明
+      // 共同确认，故无条件信任段派生的 fullTextRef，仅在其为空时回退到 done 文本快照。
+      // 不再用 done.content 经 preferDoneTextWhenMoreComplete 覆盖（旧 done.content 是
+      // 所有轮次正文的拼接，会把工具前正文带回来，是重复气泡的来源）。
+      // 详见 docs/refactors/chat-block-protocol-B4-dedup-consolidation-plan.md（B4.1）。
+      const finalText = fullTextRef.current || fallbackText;
       if (finalText !== fullTextRef.current) {
         streamingMessageRef.current = finalText;
         fullTextRef.current = finalText;
