@@ -486,7 +486,6 @@ function synthesizeMiniMaxViaWebSocket({
 }
 
 // ── 内置项目书库（默认 :8001）────────────────
-let aiLibraryProcess: ReturnType<typeof spawn> | null = null;
 let aiLibraryHttpServer: http.Server | null = null;
 let octAiLibraryAutoStart = true;
 let octAiLibraryPath = '';
@@ -923,7 +922,6 @@ async function startAiLibraryBackend(): Promise<boolean> {
     return false;
   }
 
-  if (aiLibraryProcess && !aiLibraryProcess.killed) return true;
   if (aiLibraryHttpServer?.listening) return true;
 
   if (await isPortInUse(octAiLibraryPort)) {
@@ -2153,7 +2151,7 @@ async function getAiLibraryPlugin() {
   } catch {
     healthy = false;
   }
-  const managed = !!(aiLibraryHttpServer?.listening || (aiLibraryProcess && !aiLibraryProcess.killed));
+  const managed = !!aiLibraryHttpServer?.listening;
   const portInUse = await isPortInUse(octAiLibraryPort);
   return {
     success: true,
@@ -2203,15 +2201,6 @@ async function saveAiLibraryPlugin(payload: {
         aiLibraryHttpServer?.close(() => resolve());
       });
       aiLibraryHttpServer = null;
-    }
-    if (aiLibraryProcess && !aiLibraryProcess.killed) {
-      try {
-        aiLibraryProcess.kill('SIGTERM');
-      } catch {
-        /* ignore */
-      }
-      aiLibraryProcess = null;
-      await new Promise((r) => setTimeout(r, 800));
     }
     await startAiLibraryBackend();
 
@@ -2617,10 +2606,6 @@ app.on('will-quit', async () => {
     try { gatewayProcess.kill('SIGTERM'); } catch {}
     gatewayProcess = null;
   }
-  if (aiLibraryProcess && !aiLibraryProcess.killed) {
-    try { aiLibraryProcess.kill('SIGTERM'); } catch {}
-    aiLibraryProcess = null;
-  }
   if (aiLibraryHttpServer?.listening) {
     await new Promise<void>((resolve) => aiLibraryHttpServer?.close(() => resolve()));
     aiLibraryHttpServer = null;
@@ -2657,10 +2642,6 @@ app.on('before-quit', async (e) => {
   if (gatewayProcess && !gatewayProcess.killed) {
     try { gatewayProcess.kill('SIGTERM'); } catch {}
     gatewayProcess = null;
-  }
-  if (aiLibraryProcess && !aiLibraryProcess.killed) {
-    try { aiLibraryProcess.kill('SIGTERM'); } catch {}
-    aiLibraryProcess = null;
   }
   if (aiLibraryHttpServer?.listening) {
     await new Promise<void>((resolve) => aiLibraryHttpServer?.close(() => resolve()));
