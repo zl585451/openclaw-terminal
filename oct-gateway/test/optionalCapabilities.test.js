@@ -13,7 +13,6 @@ function main() {
       scriptAdapter: { enabled: false },
       image_analysis: { enabled: true },
       memory: { enabled: true },
-      ai_library: { enabled: false },
     },
     toolLoader: {
       getDefinitions: () => [{ name: 'read_file' }, { name: 'web_search' }],
@@ -36,7 +35,6 @@ function main() {
   assert.equal(snapshot.packages.script_adapter.status, 'disabled');
   assert.equal(snapshot.packages.image_analysis.status, 'enabled');
   assert.equal(snapshot.packages.memory.status, 'enabled');
-  assert.equal(snapshot.packages.ai_library.status, 'disabled');
   assert.equal(snapshot.packages.script_adapter.lazyLoadCandidate, true);
 
   const empty = createOptionalCapabilitiesSnapshot({

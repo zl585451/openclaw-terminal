@@ -179,7 +179,6 @@ describe('ContextBuilder authoritative date context', () => {
         ],
         summarize: () => ({}),
       },
-      aiLibrary: { searchKnowledge: async () => [], formatKnowledgeForPrompt: () => '' },
       hypothesis: {},
       imageService: {},
       config: {
@@ -187,7 +186,6 @@ describe('ContextBuilder authoritative date context', () => {
         getProviderConfig: () => ({ id: 'guard-provider' }),
         ENABLE_BACKGROUND_TASK_DISPATCH: false,
         memory: { vectorRecall: { enabled: false } },
-        ai_library: { knowledge_search_enabled: false },
       },
       logger: { info: () => {}, warn: () => {}, debug: () => {}, error: () => {} },
       helpers: {

@@ -49,7 +49,6 @@ class ContextBuilder {
     memorySearch,
     memoryGovernor,
     contextManager,
-    aiLibrary,
     hypothesis,
     imageService,
     config,
@@ -61,7 +60,6 @@ class ContextBuilder {
     this.memorySearch = memorySearch;
     this.memoryGovernor = memoryGovernor;
     this.contextManager = contextManager;
-    this.aiLibrary = aiLibrary;
     this.hypothesis = hypothesis;
     this.imageService = imageService;
     this.config = config;
@@ -461,19 +459,9 @@ class ContextBuilder {
       + `\n[权威当前日期] 今天是 ${dateStr}。涉及“今天”“最新”“昨天”“本周”等时效判断时，以本条系统注入日期为准；搜索结果中的发布日期只能作为事件日期，不得反推当前日期。`;
     const modelContext = `[当前运行模型] 你当前运行的底层大模型是：\`${this.config.DASHSCOPE_MODEL}\`。当用户问「你是什么大模型」「基于什么模型」时，必须如实回答当前模型名称，严禁说自己是 DeepSeek、GPT、Claude 或其他任何模型。\n\n`;
 
-    let knowledgeContext = '';
-    if (this.config.ai_library?.knowledge_search_enabled === true) {
-      try {
-        const knowledge = await this.aiLibrary.searchKnowledge(userMessage);
-        knowledgeContext = this.aiLibrary.formatKnowledgeForPrompt(knowledge);
-      } catch (error) {
-        this.log.debug('AI.library 检索失败，跳过', { error: error?.message || String(error) });
-      }
-    }
-
     const projectContextSection = this._buildProjectContextSection(projectContext);
 
-    return modelContext + finalSystemPrompt + timeContext + projectContextSection + knowledgeContext;
+    return modelContext + finalSystemPrompt + timeContext + projectContextSection;
   }
 
   _buildProjectContextSection(projectContext) {

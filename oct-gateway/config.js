@@ -915,14 +915,10 @@ const config = {
     }
     return merged;
   })(),
+  // 仅保留项目素材库的本地服务地址（contextBuilder._fetchProjectChapter / script_adapter
+  // batchOrchestrator 取章节用）。知识库（RAG /api/search）整条链路已移除。
   ai_library: (() => {
-      const def = {
-        enabled: true,
-        url: 'http://127.0.0.1:8001',
-        timeout_ms: 3000,
-        default_top_k: 3,
-        knowledge_search_enabled: false,
-      };
+    const def = { url: 'http://127.0.0.1:8001' };
     const fromFile = _fileConfig.ai_library && typeof _fileConfig.ai_library === 'object' ? _fileConfig.ai_library : {};
     return { ...def, ...fromFile };
   })(),
