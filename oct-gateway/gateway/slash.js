@@ -16,7 +16,6 @@ class SlashHandler {
     session,
     memory,
     config,
-    aiLibrary,
     tools,
     systemPromptReady,
     providerRouter,
@@ -25,7 +24,6 @@ class SlashHandler {
     this.session = session;
     this.memory = memory;
     this.config = config;
-    this.aiLibrary = aiLibrary;
     this.tools = tools;
     this.systemPromptReady = systemPromptReady;
     this.log = logger;
@@ -136,10 +134,6 @@ class SlashHandler {
       const sp = await this.systemPromptReady;
       const sessions = this.session.listSessions();
       const memoryAlive = await this.memory.isAlive();
-      const aiLibEnabled = (this.config.ai_library || {}).enabled !== false;
-      const aiLibraryAlive = aiLibEnabled
-        ? await this.aiLibrary.checkHealth().catch(() => false)
-        : false;
       const currentHistory = this.session.getHistory(sessionKey);
       const historyChars = currentHistory.reduce((acc, message) => acc + (message.content?.length || 0), 0);
       const estimatedTokens = Math.round(historyChars / 2);
@@ -224,7 +218,6 @@ class SlashHandler {
         `🔧 Tool 执行: ${toolSupportLabel}`,
         `🧩 能力来源: \`${effectiveCapabilitySource}\``,
         `🧠 Memory v2: ${memoryAlive ? '✅ 在线' : '❌ 离线'}`,
-        `📚 AI.library：${aiLibraryAlive ? '✅ 在线' : '⚫ 未启动'}`,
         ...vectorStatusLines,
         `💬 当前会话：${currentHistory.length} 条消息`,
         `📊 上下文估算：~${totalEstimated.toLocaleString()} tokens（含 system prompt ~${systemPromptTokens.toLocaleString()}）`,

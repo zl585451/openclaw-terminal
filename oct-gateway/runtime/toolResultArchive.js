@@ -29,7 +29,6 @@ const HIGH_VOLUME_TOOLS = new Set([
   'http_request',
   'read_file',
   'read_document',
-  'search_knowledge',
   'memory_search',
 ]);
 

@@ -45,7 +45,6 @@ function createHandler() {
   };
   const config = {
     memory: { vectorRecall: { enabled: false } },
-    ai_library: { enabled: false },
     DASHSCOPE_MODEL: 'mock-default',
     currentProvider: 'mock',
     PROVIDERS: providers,
@@ -68,7 +67,6 @@ function createHandler() {
     },
     memory: { isAlive: async () => false },
     config,
-    aiLibrary: { checkHealth: async () => false },
     tools: {},
     systemPromptReady: Promise.resolve('system prompt'),
     providerRouter: {

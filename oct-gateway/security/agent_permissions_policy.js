@@ -123,7 +123,7 @@ function inferCapabilitiesFromToolContext({ toolName, args, meta, definition, is
     caps = mergeCapabilities(caps, cmdCaps);
   }
 
-  if (/^(web_search|web_fetch|http_request|search_knowledge)$/i.test(name)) caps.networkRequests = true;
+  if (/^(web_search|web_fetch|http_request)$/i.test(name)) caps.networkRequests = true;
   if (/^(write_file|memory_write|tasks_add|tasks_update|tasks_delete|task_add|task_done|task_delete|parking_add|vault_ops)$/i.test(name)) caps.fileWrite = true;
 
   if (isMcpTool) {

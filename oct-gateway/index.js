@@ -56,7 +56,6 @@ const toolLoader = require('./tool_loader');
 const hypothesis = require('./hypothesis');
 const clarificationMemory = require('./memory/clarification_memory');
 const memoryTaskQueue = require('./memory/memory_task_queue');
-const { createLazyAiLibrary } = require('./runtime/lazyAiLibrary');
 const orchestrator = require('./orchestrator');
 const contextManager = require('./context_manager');
 const taskQueue = require('./task_queue');
@@ -89,9 +88,6 @@ const imageService = new ImageService({
   getImageAnalyzer: () => require('./image_analyzer'),
   logger: log,
 });
-const aiLibrary = createLazyAiLibrary({
-  loadModule: () => require('./tools/ai_library'),
-});
 const providerRouter = new ProviderRouter({ config });
 const postProcessor = new PostProcessor({
   memoryModule: memory,
@@ -107,7 +103,6 @@ const slashHandler = new SlashHandler({
   session,
   memory,
   config,
-  aiLibrary,
   tools: toolLoader,
   systemPromptReady,
   providerRouter,
@@ -132,7 +127,6 @@ const contextBuilder = new ContextBuilder({
   memorySearch,
   memoryGovernor,
   contextManager,
-  aiLibrary,
   hypothesis,
   imageService,
   config,

@@ -59,11 +59,6 @@ function createOptionalCapabilitiesSnapshot({
           lazyLoadCandidate: false,
           entrypoints: ['oct-gateway/memory.js', 'oct-gateway/bootstrap/memoryJobs.js'],
         },
-        ai_library: {
-          status: readEnabled(config.ai_library, true) ? 'enabled' : 'disabled',
-          lazyLoadCandidate: true,
-          entrypoints: ['oct-gateway/tools/ai_library.js'],
-        },
       },
     };
   };

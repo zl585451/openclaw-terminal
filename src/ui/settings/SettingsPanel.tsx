@@ -12,7 +12,6 @@ import { InterfaceTabView } from './tabs/InterfaceTabView';
 import { MemoryTabView } from './tabs/MemoryTabView';
 import { McpTabView, type McpServerInfo } from './tabs/McpTabView';
 import { OmniRouteTabView } from './tabs/OmniRouteTabView';
-import { useAiLibrary } from '../../hooks/settings/useAiLibrary';
 import { useApiKeys } from '../../hooks/settings/useApiKeys';
 import { useScreenshotShortcut } from '../../hooks/settings/useScreenshotShortcut';
 import { useAdvancedSettings } from '../../hooks/settings/useAdvancedSettings';
@@ -58,18 +57,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     hasGatewayConfigChanges,
     saveGatewayAndReconnect,
   } = useApiKeys();
-
-  const {
-    aiLibAutoStart,
-    setAiLibAutoStart,
-    aiLibPort,
-    setAiLibPort,
-    aiLibStatus,
-    setAiLibStatus,
-    aiLibSaving,
-    setAiLibSaving,
-    refreshAiLibraryStatus,
-  } = useAiLibrary();
 
   const {
     screenshotShortcut,
@@ -130,16 +117,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   useEffect(() => {
     if (activeTab === 'mcp') loadMcpStatus();
   }, [activeTab]);
-
-  // 记忆系统 Tab：每 5 秒刷新 AI.library 状态
-  useEffect(() => {
-    if (activeTab !== 'memory') return;
-    refreshAiLibraryStatus();
-    const t = setInterval(() => {
-      refreshAiLibraryStatus();
-    }, 5000);
-    return () => clearInterval(t);
-  }, [activeTab, refreshAiLibraryStatus]);
 
   useEffect(() => {
     setLocalPerm(permissions);
@@ -415,18 +392,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             />
           )}
 
-          {activeTab === 'memory' && (
-            <MemoryTabView
-              aiLibAutoStart={aiLibAutoStart}
-              setAiLibAutoStart={setAiLibAutoStart}
-              aiLibPort={aiLibPort}
-              setAiLibPort={setAiLibPort}
-              aiLibStatus={aiLibStatus}
-              setAiLibStatus={setAiLibStatus}
-              aiLibSaving={aiLibSaving}
-              setAiLibSaving={setAiLibSaving}
-            />
-          )}
+          {activeTab === 'memory' && <MemoryTabView />}
 
           {activeTab === 'advanced' && (
             <AdvancedTabView

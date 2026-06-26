@@ -6,7 +6,7 @@ const { enforceAgentPermission } = require('./security/agent_permissions_policy'
 const TOOLS_DIR = path.join(__dirname, 'tools');
 
 /** 供其他工具 require 的模块，非 ToolLoader 注册项（无 name/definition/execute） */
-const TOOL_LOADER_SKIP = new Set(['shared.js', 'ai_library.js', 'command_converter.js', 'optionalDependency.js']);
+const TOOL_LOADER_SKIP = new Set(['shared.js', 'command_converter.js', 'optionalDependency.js']);
 
 const META_DEFAULTS = { category: 'misc', riskLevel: 'safe' };
 const VALID_CATEGORIES = new Set(['project', 'web', 'memory', 'task', 'system', 'misc']);
