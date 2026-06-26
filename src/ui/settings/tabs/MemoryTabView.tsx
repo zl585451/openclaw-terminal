@@ -1,11 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-
-export type AiLibStatusState = {
-  healthy: boolean;
-  managed: boolean;
-  portInUse: boolean;
-  resolvedGatewayUrl: string;
-} | null;
+import { useEffect, useState } from 'react';
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -39,27 +32,7 @@ const VECTOR_PROVIDER_PRESETS: Record<VectorProvider, {
   },
 };
 
-export interface MemoryTabViewProps {
-  aiLibAutoStart: boolean;
-  setAiLibAutoStart: (v: boolean) => void;
-  aiLibPort: number;
-  setAiLibPort: (v: number) => void;
-  aiLibStatus: AiLibStatusState;
-  setAiLibStatus: Dispatch<SetStateAction<AiLibStatusState>>;
-  aiLibSaving: boolean;
-  setAiLibSaving: (v: boolean) => void;
-}
-
-export function MemoryTabView({
-  aiLibAutoStart,
-  setAiLibAutoStart,
-  aiLibPort,
-  setAiLibPort,
-  aiLibStatus,
-  setAiLibStatus,
-  aiLibSaving,
-  setAiLibSaving,
-}: MemoryTabViewProps) {
+export function MemoryTabView() {
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const [summarizerEnabled, setSummarizerEnabled] = useState(true);
   const [summarizerBaseUrl, setSummarizerBaseUrl] = useState('');
@@ -149,7 +122,7 @@ export function MemoryTabView({
 
           <p className="settings-guide-copy"><strong>说明：</strong></p>
           <p className="settings-guide-indent">
-            这一页保留的是 Memory v2 和 AI.library 的有效配置。
+            这一页保留的是 Memory v2 的有效配置。
           </p>
         </div>
       </div>
@@ -159,87 +132,6 @@ export function MemoryTabView({
         <p className="settings-desc">
           当前默认使用 Memory v2 文件后端，不再需要单独的记忆服务或管理面板。
         </p>
-      </section>
-
-      <section className="settings-section settings-section-spaced">
-        <h3>AI.library 项目书库</h3>
-        <p className="settings-description-code">
-          项目书库服务默认 <strong>8001</strong>，由 OCT 内置 Node 服务提供上传、切章、列表和章节读取。
-        </p>
-        {aiLibStatus && (
-          <div className="settings-status-card settings-status-card-tight">
-            <p className="settings-status-line">
-              服务：<span className={aiLibStatus.healthy ? 'settings-status-success' : 'settings-status-muted'}>
-                {aiLibStatus.healthy ? '✅ /health 正常' : '— 未就绪'}
-              </span>
-              {' · '}
-              端口占用：{aiLibStatus.portInUse ? '是' : '否'}
-              {' · '}
-              OCT 托管服务：{aiLibStatus.managed ? '是' : '否'}
-            </p>
-            {aiLibStatus.resolvedGatewayUrl ? (
-              <p className="settings-status-line-muted">Gateway 使用：{aiLibStatus.resolvedGatewayUrl}</p>
-            ) : null}
-          </div>
-        )}
-        <div className="settings-row">
-          <label>随 OCT 自动启动</label>
-          <label className="toggle-wrap">
-            <input
-              type="checkbox"
-              checked={aiLibAutoStart}
-              onChange={(e) => setAiLibAutoStart(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-row">
-          <label>端口</label>
-          <input
-            type="number"
-            className="settings-input settings-input-port"
-            min={1024}
-            max={65535}
-            value={aiLibPort}
-            onChange={(e) => setAiLibPort(Number(e.target.value) || 8001)}
-          />
-        </div>
-        <div className="settings-btn-row">
-          <button
-            type="button"
-            className="settings-btn settings-btn-primary"
-            disabled={aiLibSaving}
-            onClick={async () => {
-              const api = window.electronAPI;
-              if (!api?.saveAiLibraryPlugin || !api.getAiLibraryPlugin) return;
-              setAiLibSaving(true);
-              try {
-                const r = await api.saveAiLibraryPlugin({
-                  OCT_AI_LIBRARY_AUTO_START: aiLibAutoStart,
-                  OCT_AI_LIBRARY_PATH: '',
-                  OCT_AI_LIBRARY_PORT: aiLibPort,
-                });
-                if (!r?.success) {
-                  alert('保存失败：' + (r?.error || '未知错误'));
-                } else {
-                  const r2 = await api.getAiLibraryPlugin();
-                  if (r2?.success && r2.data) {
-                    setAiLibStatus({
-                      healthy: !!r2.data.healthy,
-                      managed: !!r2.data.managed,
-                      portInUse: !!r2.data.portInUse,
-                      resolvedGatewayUrl: String(r2.data.resolvedGatewayUrl || ''),
-                    });
-                  }
-                }
-              } finally {
-                setAiLibSaving(false);
-              }
-            }}
-          >
-            {aiLibSaving ? '保存中…' : '保存并应用'}
-          </button>
-        </div>
       </section>
 
       <section className="settings-section settings-section-spaced">
