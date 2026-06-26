@@ -457,8 +457,8 @@ export default function MermaidRenderer({
           theme: 'base',
           flowchart: {
             useMaxWidth: false,
-            nodeSpacing: compact ? 50 : 56,
-            rankSpacing: compact ? 70 : 76,
+            nodeSpacing: compact ? 56 : 64,
+            rankSpacing: compact ? 84 : 100,
             curve: 'basis',
           },
           themeVariables: getMermaidThemeVariables(compact),
