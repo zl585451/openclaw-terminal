@@ -759,8 +759,6 @@ export default function MermaidRenderer({
         <div className="canvas-mermaid-workbench" ref={fullShellRef}>
           <div className="canvas-mermaid-workbench__toolbar">
             <div className="canvas-mermaid-workbench__meta">
-              <span className="canvas-mermaid-workbench__chip">Mermaid</span>
-              <span className="canvas-mermaid-workbench__label">diagram renderer</span>
               <div className="canvas-mermaid-segmented" role="tablist" aria-label="Mermaid view mode">
                 <button
                   type="button"
