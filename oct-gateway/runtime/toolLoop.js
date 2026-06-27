@@ -168,7 +168,10 @@ class ToolLoop {
       const toolTimeoutMs = this.toolLoader.getToolMeta?.(toolName)?.timeoutMs || 30000;
 
       if (onToolEvent) {
-        try { onToolEvent({ type: 'tool_call', tool: toolName, args, callId: toolCall.id, state: 'executing' }); } catch {}
+        // AMY 主链路自己执行的工具调用也打标签——否则只有委派给子代理的调用才带
+        // agentSource，AMY 自己执行时前端没有任何标签，用户日常聊天大多数时候
+        // 根本看不到"谁执行的"这层信息，等于这功能默认不可见。
+        try { onToolEvent({ type: 'tool_call', tool: toolName, args, callId: toolCall.id, state: 'executing', agentSource: 'AMY' }); } catch {}
       }
 
       const _toolStart = Date.now();
