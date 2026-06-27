@@ -151,6 +151,14 @@
   overflow: hidden;
 }
 
+/* 满版自适应产物（HTML/SVG ui-draft）不需要这层 24px 外壳留白——
+   舞台本身已经是 .canvas-ui-stage--fit（padding:0），SVG 内容自带约40px
+   内边距（见出图协议）。外壳再加 24px 会让整张图在面板里"缩成一小块"，
+   四周出现大片闲置空间，与 Claude 几乎满屏的效果不符。 */
+.canvas-preview.canvas-ui-preview {
+  padding: 6px;
+}
+
 .canvas-code-preview {
   background: var(--bg-code);
   color: var(--text-primary);

@@ -380,8 +380,8 @@ class ContextBuilder {
         + '· 节点底色 fill:var(--color-surface-raised)；描边 stroke:var(--color-border-tertiary) 宽 0.5~1；\n'
         + '· 分组用语义色（同组同色，最多 4~5 组）：var(--cat-purple) var(--cat-green) var(--cat-amber) var(--cat-blue) var(--cat-pink)，用于节点描边或左侧小色条；\n'
         + '· 主连线/箭头 stroke:var(--color-text-tertiary)。\n'
-        + '【排版】：在 <svg> 根节点设一次 font-family:var(--font-sans)；节点 rect rx=8、宽≈150~180、高≈56、同层水平等距、层与层垂直等距；text 用 text-anchor="middle" dominant-baseline="central"，标题 14px/字重500，副标题 12px；用 viewBox 自适应、不要写死 width/height 像素。\n'
-        + '【铺满画布·重要】：画布面板是横向的，viewBox 比例取横向（宽:高 ≈ 16:10，例如 viewBox="0 0 1600 1000"）；内容必须充分占满整个 viewBox——元素均匀铺到四周、上下左右只留约 40px 等距内边距，绝不能把图挤在一角或大半个 viewBox 空着，否则画布里会出现大片留白。\n'
+        + '【排版·紧凑，这是最容易出错的地方】：节点 rect rx=8、宽≈150~180、高≈56；同层节点之间横向间距控制在 24~40px（不要超过节点宽度的1/3），层与层之间垂直/水平间距控制在 50~70px；连线走最短直线/折线，起点终点就近连接，不要为了"好看"绕远或横跨大片空白。text 用 text-anchor="middle" dominant-baseline="central"，标题 14px/字重500，副标题 12px；在 <svg> 根节点设一次 font-family:var(--font-sans)。\n'
+        + '【viewBox 必须贴合内容·重要】：viewBox 的宽高 = 实际绘制内容的外接矩形 + 上下左右各约40px边距，不要预设一个固定的大画布（如1600x1000）再把节点稀疏地摆进去——节点少时画布也应该小，否则文字和图形相对画布会显得很小、看不清，四周还会出现大片留白。绝不能把图挤在一角或留出大片空白；用 viewBox 自适应、不要写死 width/height 像素。\n'
         + '【对齐 Claude 的精致感】：扁平（无渐变/无重阴影）、留白充足、细描边、用颜色编码分组并在底部放一个小图例（色块+文字）说明每组含义。\n'
         + '【可点击解释·核心交互，务必加】：把每个节点的图形+文字包进一个分组 <g data-explain="节点全名（与可见标签一致）">…</g>。用户点击该节点时，系统会自动让你解释这个节点，所以 data-explain 要写清楚节点的完整名称。这是和 Claude 一致的交互，绝不能省。\n'
         + '【克制】：主链路≤6 节点、节点标签≤12 字、副标题≤5 字，细节放正文不要堆进图里。';
