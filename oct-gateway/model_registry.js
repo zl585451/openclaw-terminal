@@ -196,7 +196,11 @@ const MODEL_REGISTRY = {
     supportsTools: true,
     supportsStreamOptions: false,  // DeepSeek 官方不支持
     supportsThinking: false,
-    maxTokens: 8192,
+    // DeepSeek max_tokens 包含思考(COT)部分，思考与正文共享同一预算（官方上限64K/默认32K）。
+    // 8192 太小：该模型即使 supportsThinking:false 仍会内部烧思考token(无法关闭)，
+    // 烧掉一半预算后剩余不足以写完较长工具调用参数(如 canvas SVG)，导致输出被截断、
+    // 工具调用JSON不完整而静默失败。16000 留出充足余量，仍远低于官方上限。
+    maxTokens: 16000,
   },
   'deepseek-v4-pro': {
     provider: 'deepseek',
@@ -204,7 +208,8 @@ const MODEL_REGISTRY = {
     supportsTools: false,
     supportsStreamOptions: false,
     supportsThinking: true,
-    maxTokens: 8192,
+    // 深度推理模型思考更重，同样按"思考+正文共享预算"原则给更大余量。
+    maxTokens: 24000,
   },
   'deepseek-chat': {
     provider: 'deepseek',

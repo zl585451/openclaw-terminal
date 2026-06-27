@@ -1201,6 +1201,21 @@ async function streamChatRaw({
             break;
           }
         }
+        // finishReason==='length'：输出因达到 max_tokens 被截断。若此时已经开始
+        // 累积一个工具调用（如 canvas 画图），其 JSON 参数必然不完整，无法解析执行——
+        // 不能静默丢弃后把前面的寒暄文本当成功答案返回，否则用户只看到一句"我来画一下"
+        // 就没了，完全不知道发生了什么（黑盒）。这里把它转成明确的错误，可重试。
+        if (finishReason === 'length') {
+          const truncatedToolCallCount = toolCalls.filter(Boolean).length;
+          if (truncatedToolCallCount > 0) {
+            terminalStreamError = new Error(
+              '模型在生成工具调用（如画图）时被输出长度上限截断，内容未完整生成。'
+              + '这通常是模型把预算耗在了内部思考上。请重试一次，或简化请求后再试。'
+            );
+            sawDone = true;
+            break;
+          }
+        }
       }
       if (terminalStreamError) break;
     }
