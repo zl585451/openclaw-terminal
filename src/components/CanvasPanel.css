@@ -156,7 +156,7 @@
    内边距（见出图协议）。外壳再加 24px 会让整张图在面板里"缩成一小块"，
    四周出现大片闲置空间，与 Claude 几乎满屏的效果不符。 */
 .canvas-preview.canvas-ui-preview {
-  padding: 6px;
+  padding: 0;
 }
 
 .canvas-code-preview {
@@ -737,13 +737,18 @@
   justify-content: center;
 }
 
+/* 拆掉"设备预览卡片"外观（白底+描边+大阴影）。面板就是画布，内容不该被
+   画成一张悬浮在深色背景上的卡片——那样缩放后四周必然露出大片"卡片之外
+   的空当"，看起来像没填满。iframe 内部已经通过 artifactShell 注入
+   var(--color-background-primary)（取自host的--bg-surface），与面板背景
+   同色，去掉卡片边框/阴影/白底后视觉上无缝融合，不再有"卡片+空白"的割裂感。 */
 .canvas-ui-frame-wrap {
   flex: 0 0 auto;
-  border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(150, 174, 211, 0.42);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-  background: #fff;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
 }
 
 /* ── 满版自适应模式 ──────────────────────────────────────────────
