@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WorkbenchDocument } from '../types';
 import type { WorkbenchRendererPlugin } from './types';
 import { wrapArtifactHtml } from '../../utils/artifactShell';
+import { useCanvas } from '../../contexts/CanvasContext';
 
 // 内容以此固定宽度在 iframe 内排版（相当于一块"画布纸"），再整体缩放到面板大小。
 // 这样无论内容是响应式还是定宽，都能"整图一屏可见、零滚动"。
@@ -14,22 +15,30 @@ function HtmlPreviewViewport({ document }: { document: WorkbenchDocument }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [contentHeight, setContentHeight] = useState<number>(Math.round(BASE_WIDTH * DEFAULT_RATIO));
   const [scale, setScale] = useState<number>(1);
+  const { onNodeInspect } = useCanvas();
 
   // Inject the Claude-style design-system shell (reset + font stack + tokens +
   // 尺寸上报脚本) so raw AI HTML/SVG renders polished and可被父层量到真实高度。
   const srcDoc = useMemo(() => wrapArtifactHtml(document.content), [document.content]);
 
-  // iframe 内脚本通过 postMessage 上报内容真实高度（在 BASE_WIDTH 下排版后的高度）
+  // iframe 内脚本通过 postMessage 上报：①内容真实高度（缩放用）②点击解释（点节点→追问）
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      const data = e.data as { __octArtifactSize?: boolean; height?: number } | null;
-      if (!data || !data.__octArtifactSize) return;
-      const h = Math.max(120, Math.round(Number(data.height) || 0));
-      if (h) setContentHeight(h);
+      const data = e.data as { __octArtifactSize?: boolean; height?: number; __octArtifactInspect?: boolean; label?: string } | null;
+      if (!data) return;
+      if (data.__octArtifactSize) {
+        const h = Math.max(120, Math.round(Number(data.height) || 0));
+        if (h) setContentHeight(h);
+        return;
+      }
+      if (data.__octArtifactInspect) {
+        const label = String(data.label || '').trim();
+        if (label) onNodeInspect?.(label);
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, []);
+  }, [onNodeInspect]);
 
   // 宽度优先铺满 + 零滚动兜底：
   // 先按面板宽把"画布纸"铺满（消灭右侧 pillarbox 留白）；只有当铺满后

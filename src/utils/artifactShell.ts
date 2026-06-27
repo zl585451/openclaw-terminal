@@ -130,13 +130,18 @@ th { background: var(--color-background-secondary); font-weight: 600; }
 hr { border: none; border-top: 1px solid var(--color-border-tertiary); margin: 1.5em 0; }
 img, svg { max-width: 100%; }
 ::selection { background: var(--heather-300); color: var(--heron-700); }
+/* 通用点击解释层：带 data-explain 的元素可点击让 AMY 解释（对齐 Claude） */
+[data-explain] { cursor: pointer; transition: filter 0.12s ease, opacity 0.12s ease; }
+[data-explain]:hover { filter: brightness(1.12); }
 `.trim();
 }
 
-// 在 iframe 内运行（sandbox=allow-scripts 允许脚本，但父层无法读取其尺寸），
-// 测量内容实际宽高并 postMessage 给父层，供画布做"整页自适应缩放、零滚动"。
+// 在 iframe 内运行（sandbox=allow-scripts 允许脚本，但父层无法读取其尺寸）。
+// 两件事：①测量内容实际宽高 postMessage 给父层做"整页自适应缩放、零滚动"；
+// ②通用点击解释层——点击任意带 data-explain 的元素，把其 label postMessage 上去，
+//   父层据此向 AMY 发"解释这个节点"的追问（对齐 Claude "click inside a visual"）。
 function resizeReporterScript(): string {
-  return `<script data-oct-artifact-resize>(function(){function post(){try{var d=document.documentElement,b=document.body;var w=Math.max(d.scrollWidth,b?b.scrollWidth:0,d.offsetWidth);var h=Math.max(d.scrollHeight,b?b.scrollHeight:0,d.offsetHeight);parent.postMessage({__octArtifactSize:true,width:w,height:h},'*');}catch(e){}}window.addEventListener('load',post);if(document.readyState!=='loading')post();try{if(window.ResizeObserver){new ResizeObserver(post).observe(document.documentElement);}}catch(e){}setTimeout(post,60);setTimeout(post,300);setTimeout(post,1000);})();<\/script>`;
+  return `<script data-oct-artifact-resize>(function(){function post(){try{var d=document.documentElement,b=document.body;var w=Math.max(d.scrollWidth,b?b.scrollWidth:0,d.offsetWidth);var h=Math.max(d.scrollHeight,b?b.scrollHeight:0,d.offsetHeight);parent.postMessage({__octArtifactSize:true,width:w,height:h},'*');}catch(e){}}window.addEventListener('load',post);if(document.readyState!=='loading')post();try{if(window.ResizeObserver){new ResizeObserver(post).observe(document.documentElement);}}catch(e){}setTimeout(post,60);setTimeout(post,300);setTimeout(post,1000);document.addEventListener('click',function(e){try{var el=e.target;while(el&&el.nodeType===1&&el!==document.body){if(el.getAttribute&&el.getAttribute('data-explain')!=null){var label=(el.getAttribute('data-explain')||el.textContent||'').trim();if(label){parent.postMessage({__octArtifactInspect:true,label:label.slice(0,120)},'*');}return;}el=el.parentNode;}}catch(e2){}},true);})();<\/script>`;
 }
 
 // Wrapper used when the artifact is a bare <svg>.
