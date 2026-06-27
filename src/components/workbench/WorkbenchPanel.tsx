@@ -1,8 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useWorkbench } from '../../workbench/WorkbenchContext';
 import { resolveWorkbenchPlugin } from '../../workbench/plugins';
-import ArtifactActionBar from './ArtifactActionBar';
-import { isEditableWorkbenchArtifact, isReadingWorkbenchArtifact } from '../../workbench/types';
+import { isReadingWorkbenchArtifact } from '../../workbench/types';
 import { useProject } from '../../contexts/ProjectContext';
 import { getChapterText, saveChapterText } from '../../modules/script-adapter/services/aiLibraryClient';
 import '../CanvasPanel.css';
@@ -62,7 +61,6 @@ export default function WorkbenchPanel() {
   const readMinutes = cnCharCount > 0 ? Math.max(1, Math.ceil(cnCharCount / 400)) : 0;
 
   const isReadingArtifact = isReadingWorkbenchArtifact(activeDocument);
-  const isEditableArtifact = isEditableWorkbenchArtifact(activeDocument);
   const artifactLabel = activeDocument?.projectBookId
     ? '项目章节'
     : activeDocument
@@ -249,10 +247,6 @@ export default function WorkbenchPanel() {
           </div>
         )}
       </div>
-
-      {isEditableArtifact && (
-        <ArtifactActionBar />
-      )}
     </div>
   );
 }

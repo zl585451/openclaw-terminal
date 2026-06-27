@@ -133,6 +133,12 @@ img, svg { max-width: 100%; }
 `.trim();
 }
 
+// 在 iframe 内运行（sandbox=allow-scripts 允许脚本，但父层无法读取其尺寸），
+// 测量内容实际宽高并 postMessage 给父层，供画布做"整页自适应缩放、零滚动"。
+function resizeReporterScript(): string {
+  return `<script data-oct-artifact-resize>(function(){function post(){try{var d=document.documentElement,b=document.body;var w=Math.max(d.scrollWidth,b?b.scrollWidth:0,d.offsetWidth);var h=Math.max(d.scrollHeight,b?b.scrollHeight:0,d.offsetHeight);parent.postMessage({__octArtifactSize:true,width:w,height:h},'*');}catch(e){}}window.addEventListener('load',post);if(document.readyState!=='loading')post();try{if(window.ResizeObserver){new ResizeObserver(post).observe(document.documentElement);}}catch(e){}setTimeout(post,60);setTimeout(post,300);setTimeout(post,1000);})();<\/script>`;
+}
+
 /** Wrapper used when the artifact is a bare <svg> — centers it with breathing room. */
 function svgWrapperStyles(): string {
   return `
@@ -166,7 +172,7 @@ export function wrapArtifactHtml(content: string, options: ArtifactShellOptions 
   // Full HTML document: inject our shell <style> first so authored styles win
   // on conflict but inherit our reset/tokens/font as the base layer.
   if (looksLikeFullDocument(raw)) {
-    const injected = `<style data-oct-artifact-shell>${style}</style>`;
+    const injected = `<style data-oct-artifact-shell>${style}</style>${resizeReporterScript()}`;
     if (/<head[^>]*>/i.test(raw)) {
       return raw.replace(/<head[^>]*>/i, (m) => `${m}\n${injected}`);
     }
@@ -186,6 +192,7 @@ export function wrapArtifactHtml(content: string, options: ArtifactShellOptions 
 </head>
 <body>
 ${raw}
+${resizeReporterScript()}
 </body>
 </html>`;
 }
