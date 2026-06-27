@@ -4,6 +4,21 @@ const {
 } = require('./toolResultArchive');
 const { summarizeToolResult } = require('./toolResultSummarizer');
 
+// 流式预览阶段（ai.js 的 canvas_stream 事件）给草稿文档打了 streamId（=工具调用的
+// callId），前端靠这个 streamId 把草稿原地"转正"，而不是另外多建一个文档。
+// 这里把同一个 callId 写进最终事件，两边才能对上号；isStreaming 显式置 false，
+// 防止草稿阶段设的"正在生成中"状态在收尾后还卡在界面上。
+function augmentFinalCanvasPayload(action, payload, callId) {
+  if (!payload || typeof payload !== 'object') return payload;
+  if (action === 'create' && payload.document) {
+    return { ...payload, document: { ...payload.document, streamId: callId, isStreaming: false } };
+  }
+  if (action === 'update') {
+    return { ...payload, patch: { ...(payload.patch || {}), isStreaming: false } };
+  }
+  return payload;
+}
+
 function isStructuredToolResult(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -210,7 +225,7 @@ class ToolLoop {
           onToolEvent({
             type: 'workbench',
             action: result.workbenchEvent.action,
-            payload: result.workbenchEvent.payload,
+            payload: augmentFinalCanvasPayload(result.workbenchEvent.action, result.workbenchEvent.payload, toolCall.id),
           });
         } catch (err) {
           this.log.warn('workbenchEvent 转发失败', { error: err?.message });
@@ -220,7 +235,7 @@ class ToolLoop {
           onToolEvent({
             type: 'canvas',
             action: result.canvasEvent.action,
-            payload: result.canvasEvent.payload,
+            payload: augmentFinalCanvasPayload(result.canvasEvent.action, result.canvasEvent.payload, toolCall.id),
           });
         } catch (err) {
           this.log.warn('canvasEvent 转发失败', { error: err?.message });

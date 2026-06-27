@@ -32,6 +32,9 @@ export const InlineToolCard = memo(function InlineToolCard({
   const state = event?.state ?? 'executing';
   const name = getToolDisplayName(toolName || event?.tool || 'tool');
   const elapsed = event?.elapsedMs != null ? `${(event.elapsedMs / 1000).toFixed(1)}s` : '';
+  // canvas 工具实时预览阶段：还在生成中，且已经抠出过字符数——用"正在写入...已生成
+  // X字"替代干等的纯 spinner，这是用户能看到的"AI 正在做什么"实时信号。
+  const isStreamingCanvas = state === 'executing' && event?.streamChars != null;
   // 入参从未被截断——payload.args 本来就整份在内存里，展开就是全量，不用发请求。
   const fullArgsText = event?.args && Object.keys(event.args).length > 0
     ? JSON.stringify(event.args, null, 2)
@@ -72,7 +75,14 @@ export const InlineToolCard = memo(function InlineToolCard({
             ? <span className="inline-tool__spinner" />
             : state === 'error' ? '✗' : '✓'}
         </span>
-        <span className="inline-tool__name">{name}</span>
+        {isStreamingCanvas ? (
+          <span className="inline-tool__name">
+            正在写入「{event?.streamTitle || name}」
+            <span className="inline-tool__stream-count">已生成 {event!.streamChars} 字</span>
+          </span>
+        ) : (
+          <span className="inline-tool__name">{name}</span>
+        )}
         {event?.agentSource && (
           <span
             className={`inline-tool__agent ${event.agentSource === 'AMY' ? 'inline-tool__agent--self' : ''}`}

@@ -56,6 +56,12 @@ export interface WorkbenchDocument {
   version: number;
   createdAt: number;
   updatedAt: number;
+  /** AI 还在边生成边写入这份文档（实时预览阶段）。仅运行期状态，不持久化。 */
+  isStreaming?: boolean;
+  /** isStreaming 期间，对应 SSE 工具调用的 callId——用于把同一次生成的连续分片
+   *  原地合并到同一份草稿文档，以及在生成结束后把草稿"转正"为最终文档，
+   *  而不是另外多建一条。生成结束后清空。 */
+  streamId?: string;
 }
 
 export interface WorkbenchCreateEventPayload {

@@ -1222,6 +1222,12 @@
 .inline-tool--done .inline-tool__status { color: var(--status-success, #3ba55d); }
 .inline-tool--error .inline-tool__status { color: var(--status-error, #e24b4a); }
 .inline-tool__name { color: var(--text-primary); font-weight: 500; }
+.inline-tool__stream-count {
+  margin-left: 6px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
 .inline-tool__agent {
   color: var(--accent-primary);
   background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
