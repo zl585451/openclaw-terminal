@@ -139,11 +139,14 @@ function resizeReporterScript(): string {
   return `<script data-oct-artifact-resize>(function(){function post(){try{var d=document.documentElement,b=document.body;var w=Math.max(d.scrollWidth,b?b.scrollWidth:0,d.offsetWidth);var h=Math.max(d.scrollHeight,b?b.scrollHeight:0,d.offsetHeight);parent.postMessage({__octArtifactSize:true,width:w,height:h},'*');}catch(e){}}window.addEventListener('load',post);if(document.readyState!=='loading')post();try{if(window.ResizeObserver){new ResizeObserver(post).observe(document.documentElement);}}catch(e){}setTimeout(post,60);setTimeout(post,300);setTimeout(post,1000);})();<\/script>`;
 }
 
-/** Wrapper used when the artifact is a bare <svg> — centers it with breathing room. */
+// Wrapper used when the artifact is a bare <svg>.
+// 让 SVG 按"画布纸"宽度铺满、高度由 viewBox 比例自然撑开，body 不加 padding、
+// 不强制 100vh —— 这样父层量到的 scrollHeight 就等于图的真实高度，缩放比例才准，
+// 也不会出现"图缩在中间、上下留两条空白带"的问题。
 function svgWrapperStyles(): string {
   return `
-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 32px; }
-svg { max-width: 100%; max-height: 100%; height: auto; }
+body { padding: 0; }
+svg { display: block; width: 100%; height: auto; max-width: 100%; }
 `.trim();
 }
 

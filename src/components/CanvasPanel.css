@@ -738,6 +738,23 @@
   background: #fff;
 }
 
+/* ── 满版自适应模式 ──────────────────────────────────────────────
+   htmlPlugin 的"整页自适应缩放"舞台。复用 .canvas-ui-stage 的布局，但去掉
+   那套"设备视口预览"残留的边框/内边距/最小高度，让舞台 = 面板可用区，
+   避免在已缩放的画布外再套一层"框中框"留白。 */
+.canvas-ui-preview.canvas-ui-preview {
+  /* 满版预览的外层不需要额外间距，统一交给 .canvas-preview 的 padding 控制 */
+  gap: 0;
+}
+
+.canvas-ui-stage--fit {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
 .canvas-editor {
   width: 100%;
   min-height: 100%;

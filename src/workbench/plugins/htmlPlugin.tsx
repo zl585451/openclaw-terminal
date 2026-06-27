@@ -7,6 +7,8 @@ import { wrapArtifactHtml } from '../../utils/artifactShell';
 // 这样无论内容是响应式还是定宽，都能"整图一屏可见、零滚动"。
 const BASE_WIDTH = 1100;
 const DEFAULT_RATIO = 0.62;
+// 放大上限：内容比面板小时允许放大铺满，但不无限放大以免糊。
+const MAX_SCALE = 2;
 
 function HtmlPreviewViewport({ document }: { document: WorkbenchDocument }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -29,14 +31,19 @@ function HtmlPreviewViewport({ document }: { document: WorkbenchDocument }) {
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
-  // 按面板尺寸把"画布纸"缩放到完整可见（宽高同时 fit，最大 1，不放大超过原尺寸）
+  // 宽度优先铺满 + 零滚动兜底：
+  // 先按面板宽把"画布纸"铺满（消灭右侧 pillarbox 留白）；只有当铺满后
+  // 高度会溢出面板时，才退回等比缩放保证不出现滚动条。允许放大（上限 MAX_SCALE）。
   const recompute = useCallback(() => {
     const stage = stageRef.current;
     if (!stage) return;
     const sw = stage.clientWidth;
     const sh = stage.clientHeight;
     if (!sw || !sh) return;
-    const next = Math.min(sw / BASE_WIDTH, sh / contentHeight, 1);
+    const widthFit = sw / BASE_WIDTH;
+    const wouldOverflow = contentHeight * widthFit > sh;
+    const raw = wouldOverflow ? Math.min(widthFit, sh / contentHeight) : widthFit;
+    const next = Math.min(raw, MAX_SCALE);
     setScale(next > 0 ? next : 1);
   }, [contentHeight]);
 
