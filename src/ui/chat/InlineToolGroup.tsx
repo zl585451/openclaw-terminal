@@ -37,6 +37,7 @@ export const InlineToolCard = memo(function InlineToolCard({
             : state === 'error' ? '✗' : '✓'}
         </span>
         <span className="inline-tool__name">{name}</span>
+        {event?.agentSource && <span className="inline-tool__agent" title={`由 ${event.agentSource} 子代理执行`}>{event.agentSource}</span>}
         {elapsed && <span className="inline-tool__time">{elapsed}</span>}
         {hasDetail && <span className="inline-tool__chevron">{open ? '▴' : '▾'}</span>}
       </button>

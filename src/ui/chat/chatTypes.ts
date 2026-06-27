@@ -15,6 +15,8 @@ export interface ToolEventItem {
   error?: string;
   elapsedMs?: number;
   startedAt: number;
+  /** 委派子代理(Writer/Coder/Researcher)执行时打的标签；AMY 主链路直接执行时不带此字段 */
+  agentSource?: string;
 }
 
 /** 流式回合的有序内容段快照（B3 inline 渲染用）。与 core/turnSegments 的 TurnSegment 同形。 */

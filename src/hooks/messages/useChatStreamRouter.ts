@@ -346,6 +346,7 @@ export function useChatStreamRouter({
           args: payload.args as Record<string, unknown> | undefined,
           state: 'executing',
           startedAt: Date.now(),
+          agentSource: payload.agentSource,
         };
         return [...prev.slice(0, lastIdx), { ...last, toolEvents: [...(last.toolEvents || []), newEvent] }];
       });

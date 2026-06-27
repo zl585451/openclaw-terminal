@@ -47,6 +47,8 @@ export interface GatewayToolPayload {
   resultPreview?: string;
   error?: string;
   elapsedMs?: number;
+  /** 委派子代理(Writer/Coder/Researcher)执行时打的标签；AMY 主链路直接执行时不带此字段 */
+  agentSource?: string;
   [key: string]: unknown;
 }
 

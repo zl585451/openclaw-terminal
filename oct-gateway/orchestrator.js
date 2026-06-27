@@ -455,11 +455,14 @@ async function runDelegatedAgent(agentName, task, onEvent, onSegment, turnId) {
   }
 
   console.log(`[Orchestrator] → 路由到 ${agentName} Agent 执行`);
+  // 子代理(Writer/Coder/Researcher)的事件统一打上 agentSource 标签，前端才能
+  // 区分"这个工具调用是 AMY 自己执行的，还是委派给子代理执行的"——黑盒排查的关键一环。
+  const taggedOnEvent = (event) => onEvent({ ...event, agentSource: agentName });
   try {
     const agentResult = await runner.runAgent({
       agent,
       task,
-      onAgentEvent: onEvent,
+      onAgentEvent: taggedOnEvent,
       onSegment,
       turnId,
     });
