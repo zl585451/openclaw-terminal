@@ -961,6 +961,7 @@ async function streamChatRaw({
         onDelta: (chunk) => {
           if (chunk) onDelta(chunk);
         },
+        onToolEvent,
       });
 
       if (result.usage) {
