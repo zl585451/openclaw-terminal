@@ -163,6 +163,29 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
 
   try {
     const rawResult = await toolLoader.executeTool(toolName, args, { onToolEvent: onEvent });
+
+    // canvas 工具的结果带 canvasEvent/workbenchEvent（document create/update 指令），
+    // 必须转发给前端才能真正落到 Canvas 面板——这一步在主 AMY 链路(toolLoop.js)里有，
+    // 但委派给 Writer/Coder/Researcher 子代理时一直缺失：子代理确实执行了 canvas 工具
+    // (toolLoader.executeTool 成功返回)，但事件从未转发，画布因此纹丝不动。
+    if (rawResult && typeof rawResult === 'object' && rawResult.workbenchEvent) {
+      try {
+        onEvent({
+          type: 'workbench',
+          action: rawResult.workbenchEvent.action,
+          payload: rawResult.workbenchEvent.payload,
+        });
+      } catch {}
+    } else if (rawResult && typeof rawResult === 'object' && rawResult.canvasEvent) {
+      try {
+        onEvent({
+          type: 'canvas',
+          action: rawResult.canvasEvent.action,
+          payload: rawResult.canvasEvent.payload,
+        });
+      } catch {}
+    }
+
     // 统一序列化为字符串
     const resultStr = typeof rawResult === 'string'
       ? rawResult
