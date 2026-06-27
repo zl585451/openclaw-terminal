@@ -209,7 +209,9 @@ class ToolLoop {
             action: result.workbenchEvent.action,
             payload: result.workbenchEvent.payload,
           });
-        } catch {}
+        } catch (err) {
+          this.log.warn('workbenchEvent 转发失败', { error: err?.message });
+        }
       } else if (result && typeof result === 'object' && result.canvasEvent && onToolEvent) {
         try {
           onToolEvent({
@@ -217,7 +219,9 @@ class ToolLoop {
             action: result.canvasEvent.action,
             payload: result.canvasEvent.payload,
           });
-        } catch {}
+        } catch (err) {
+          this.log.warn('canvasEvent 转发失败', { error: err?.message });
+        }
       }
 
       if (onToolEvent) {

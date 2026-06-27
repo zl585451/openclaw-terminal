@@ -175,7 +175,9 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
           action: rawResult.workbenchEvent.action,
           payload: rawResult.workbenchEvent.payload,
         });
-      } catch {}
+      } catch (err) {
+        log.warn('workbenchEvent 转发失败', { error: err?.message });
+      }
     } else if (rawResult && typeof rawResult === 'object' && rawResult.canvasEvent) {
       try {
         onEvent({
@@ -183,7 +185,9 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
           action: rawResult.canvasEvent.action,
           payload: rawResult.canvasEvent.payload,
         });
-      } catch {}
+      } catch (err) {
+        log.warn('canvasEvent 转发失败', { error: err?.message });
+      }
     }
 
     // 统一序列化为字符串
