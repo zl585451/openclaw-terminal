@@ -26,6 +26,7 @@ const {
   buildFinalAnswerInstruction,
   isSuspiciouslyShortFinal,
 } = require('../runtime/finalAnswerGuard');
+const { archiveToolResult } = require('../runtime/toolResultArchive');
 
 const log = createLogger('agent_runner');
 
@@ -142,9 +143,10 @@ function buildToolDefinitions(allowedTools) {
  * @param {string} toolCall.function.arguments - JSON 字符串
  * @param {string[]} allowedTools - 兼容旧签名，当前不再用于二次拒绝
  * @param {Function} onEvent - 事件推送回调
+ * @param {string} [turnId] - 归档结果时附带的回合 ID
  * @returns {Promise<{ content: string, pauseForUserReply: boolean }>} 工具返回内容（字符串化）与是否等待用户回复
  */
-async function executeToolCall(toolCall, allowedTools, onEvent) {
+async function executeToolCall(toolCall, allowedTools, onEvent, turnId) {
   const toolName = toolCall.function?.name;
   const callId = toolCall.id || `tc_${Date.now()}`;
 
@@ -188,6 +190,20 @@ async function executeToolCall(toolCall, allowedTools, onEvent) {
       } catch (err) {
         log.warn('canvasEvent 转发失败', { error: err?.message });
       }
+    }
+
+    // 先把完整结果归档（与 toolLoop.js 对称）——此前子代理执行的工具结果从不归档，
+    // recall_tool_result 工具和人类查询通道都查不到这些记录，排查时是个盲区。
+    try {
+      archiveToolResult({
+        callId,
+        toolName,
+        args,
+        result: rawResult,
+        turnId: turnId || null,
+      });
+    } catch (e) {
+      log.warn('archiveToolResult 失败', { error: e?.message });
     }
 
     // 统一序列化为字符串
@@ -462,7 +478,7 @@ async function runAgent({ agent, task, onAgentEvent, onSegment, turnId }) {
         // B3 段事件：闭合上段，开 tool_use 段（与 AMY 路径同形）
         closeOpenSeg();
         openSeg('tool_use', { tool: toolCall.function?.name || null, callId: toolCall.id || null });
-        const toolResult = await executeToolCall(toolCall, mergedAllowedTools, onEvent);
+        const toolResult = await executeToolCall(toolCall, mergedAllowedTools, onEvent, turnId);
         // 工具完成（或失败）→ 闭 tool_use 段；下一个工具会再开新段
         closeOpenSeg();
         if (toolResult.pauseForUserReply) {

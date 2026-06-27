@@ -205,6 +205,33 @@ function createHttpRequestHandler({
       }
     }
 
+    // 人类查询通道：前端"查看工具调用完整结果"按钮走这里，按 callId 回读归档。
+    // 与 recall_tool_result（模型自助回读用的 function-call 工具）分开命名/分开路径，
+    // 避免两条本意不同的链路（人看 vs 模型自己取）共用一个名字造成混淆。
+    if (req.method === 'GET' && req.url?.startsWith('/internal/tool-result/')) {
+      if (!isLocalInternalRequest(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'internal_endpoint_local_only' }));
+        return true;
+      }
+      const callId = decodeURIComponent(req.url.replace('/internal/tool-result/', ''));
+      if (!callId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'callId required' }));
+        return true;
+      }
+      const { recallToolResult } = require('../runtime/toolResultArchive');
+      const record = recallToolResult(callId);
+      if (!record) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'not_found' }));
+        return true;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, record }));
+      return true;
+    }
+
     if (req.method === 'POST' && req.url === '/tool') {
       let body = '';
       req.on('data', chunk => { body += chunk; });
