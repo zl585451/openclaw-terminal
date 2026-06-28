@@ -57,7 +57,7 @@ OCT（OpenClaw Terminal）是一个 Windows 桌面 AI 客户端。跟普通聊�
 
 ## 下载安装
 
-最新版本：**v0.2.7**
+最新版本：**v0.2.8**
 
 | 平台 | 说明 |
 |------|------|
@@ -108,7 +108,7 @@ npm run electron:dev
 
 ```
 ┌─ Electron 桌面壳 ─────────────────────────────┐
-│  React 18 + TypeScript + Vite 5               │
+│  React 18 + TypeScript + Vite 8               │
 │  聊天 · Canvas · Image Studio · 设置 · TTS    │
 │                                                │
 │  ┌─ oct-gateway (Node 子进程) ──────────────┐ │
@@ -121,8 +121,8 @@ npm run electron:dev
 └────────────────────────────────────────────────┘
 ```
 
-- **前端**：React 18 + TypeScript，Vite 5 构建，xterm 5 终端组件
-- **桌面框架**：Electron 28
+- **前端**：React 18 + TypeScript，Vite 8 构建，xterm 5 终端组件
+- **桌面框架**：Electron 39
 - **网关**：独立 Node 子进程，WebSocket 通信，30+ 内置工具，MCP 客户端
 - **模型路由**：OmniRoute 统一管理多 provider 切换与 fallback
 - **记忆系统**：Memory v2 本地文件存储（`~/.openclaw/memory`）
@@ -159,8 +159,8 @@ npm run electron:dev
 | 模块 | 技术 |
 |------|------|
 | 前端框架 | React 18 + TypeScript |
-| 桌面框架 | Electron 28 |
-| 构建工具 | Vite 5 |
+| 桌面框架 | Electron 39 |
+| 构建工具 | Vite 8 |
 | 终端组件 | xterm 5 |
 | 图表 | ECharts 6 / React Flow |
 | Markdown | react-markdown + KaTeX + Mermaid |
