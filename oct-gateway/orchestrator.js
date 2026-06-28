@@ -227,6 +227,8 @@ const CANVAS_TRIGGER_RULES = [
       '结构分析', '内部结构', '组成结构', '详细结构', '画出结构', '生成图',
       '流程图', '示意图', '关系图', '画一下', '画个图', '画出来', '画图', '画一个',
       '页面草图', '界面草图', 'ui草图', '页面结构', '信息架构', '布局草图', '线框图',
+      '工作流程', '工作流', '数据流', '数据流向', '调用链', '调用流程', '处理流程',
+      'pipeline', '流水线', '执行流程', '业务流程',
     ],
     reason: '用户要求结构/架构/流程图，使用语义化 SVG 手绘渲染（对齐 Claude artifact）',
   },
@@ -453,11 +455,14 @@ async function runDelegatedAgent(agentName, task, onEvent, onSegment, turnId) {
   }
 
   console.log(`[Orchestrator] → 路由到 ${agentName} Agent 执行`);
+  // 子代理(Writer/Coder/Researcher)的事件统一打上 agentSource 标签，前端才能
+  // 区分"这个工具调用是 AMY 自己执行的，还是委派给子代理执行的"——黑盒排查的关键一环。
+  const taggedOnEvent = (event) => onEvent({ ...event, agentSource: agentName });
   try {
     const agentResult = await runner.runAgent({
       agent,
       task,
-      onAgentEvent: onEvent,
+      onAgentEvent: taggedOnEvent,
       onSegment,
       turnId,
     });

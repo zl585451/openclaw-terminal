@@ -87,7 +87,7 @@ module.exports = {
           artifactType: {
             type: 'string',
             enum: ['reading', 'artifact', 'document', 'diagram', 'ui-draft', 'code', 'react-flow', 'echart', 'script'],
-            description: 'Artifact category: reading=只读阅读产物, artifact=可编辑文稿, document=legacy alias for reading, diagram=Mermaid图, script=剧本, react-flow=交互式节点图(JSON格式), echart=ECharts数据图表(bar/line/pie/scatter等), ui-draft=HTML, code=代码',
+            description: 'Artifact category: reading=只读阅读产物, artifact=可编辑文稿, document=legacy alias for reading, diagram=Mermaid图(时序/状态/甘特/ER/思维导图等需自动布局的专图), script=剧本, react-flow=大型可拖拽缩放探索的交互节点图(JSON格式,仅此场景), echart=ECharts数据图表(bar/line/pie/scatter等), ui-draft=结构/架构/流程/界面草图等视觉图的首选(手绘语义化HTML/SVG,精致且可点击解释), code=代码。普通结构/流程/架构图一律用 ui-draft，不要用 react-flow。',
           },
           mode: {
             type: 'string',

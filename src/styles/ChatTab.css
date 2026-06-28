@@ -1222,6 +1222,27 @@
 .inline-tool--done .inline-tool__status { color: var(--status-success, #3ba55d); }
 .inline-tool--error .inline-tool__status { color: var(--status-error, #e24b4a); }
 .inline-tool__name { color: var(--text-primary); font-weight: 500; }
+.inline-tool__stream-count {
+  margin-left: 6px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.inline-tool__agent {
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+/* AMY 自己执行（最常见情况）用更克制的中性灰，留色彩给"委派子代理执行"
+   这种真正值得一瞥的例外情况——否则每条工具调用都顶一个高亮色徽章，太吵。 */
+.inline-tool__agent--self {
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+}
 .inline-tool__time { color: var(--text-secondary); opacity: 0.7; margin-left: 2px; }
 .inline-tool__chevron { margin-left: auto; color: var(--text-secondary); opacity: 0.6; }
 .inline-tool__spinner {
@@ -1242,9 +1263,28 @@
   color: var(--text-secondary);
   word-break: break-all;
 }
-.inline-tool__args { opacity: 0.85; }
+.inline-tool__args {
+  opacity: 0.85;
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+}
 .inline-tool__result { margin-top: 4px; opacity: 0.7; white-space: pre-wrap; }
+.inline-tool__result--full { margin: 4px 0 0; font-family: var(--font-mono); }
 .inline-tool__error { margin-top: 4px; color: var(--status-error, #e24b4a); }
+.inline-tool__more-btn {
+  margin-top: 6px;
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.inline-tool__more-btn:hover { color: var(--text-primary); border-color: var(--accent-primary); }
+.inline-tool__more-btn:disabled { cursor: default; opacity: 0.6; }
 .inline-preamble { opacity: 0.88; }
 
 /* B3 工具组：连续工具收进可折叠组（对齐 Claude Code） */

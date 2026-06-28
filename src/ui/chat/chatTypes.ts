@@ -15,6 +15,12 @@ export interface ToolEventItem {
   error?: string;
   elapsedMs?: number;
   startedAt: number;
+  /** 委派子代理(Writer/Coder/Researcher)执行时打的标签；AMY 主链路直接执行时不带此字段 */
+  agentSource?: string;
+  /** canvas 工具实时预览阶段：目前已经流式生成的字符数，驱动"正在写入...已生成 X 字"展示 */
+  streamChars?: number;
+  /** canvas 工具实时预览阶段：流式抠出来的标题（可能比最终标题早到） */
+  streamTitle?: string;
 }
 
 /** 流式回合的有序内容段快照（B3 inline 渲染用）。与 core/turnSegments 的 TurnSegment 同形。 */

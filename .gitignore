@@ -91,3 +91,6 @@ skills/minimax-skills/
 oct-gateway/MiniMax-Skills/
 test-minimax.js
 .omx/
+
+# 临时调试 dump（排查用，不进仓库）
+.temp/

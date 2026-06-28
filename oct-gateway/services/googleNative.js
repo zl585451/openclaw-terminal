@@ -399,6 +399,47 @@ function mergeFunctionCalls(acc, nextCalls) {
   return merged;
 }
 
+// Gemini 的 functionCall 跟 OpenAI 不一样：args 在每个 chunk 里都是已经解析好的
+// 对象，不是要逐字拼接的原始 JSON 字符串——不需要 partialJsonField.js 那套容错
+// 抠取，content 多长就是多长，直接拿来预览。但 Gemini 协议不一定像 OpenAI 那样
+// 把长字符串字段拆成很多小分片逐字吐出来，可能整段 content 在某个chunk里才
+// 基本成型——这里只是"现在攒到多少就预览多少"，不保证逐字符级别的丝滑，
+// 但比"生成完才看到"已经是质的提升。callId 用 normalizeGoogleFunctionCalls
+// 同款的 index 兜底逻辑，确保流式草稿和最终产物能用同一个 id 对上号。
+const CANVAS_STREAM_MIN_INTERVAL_MS = 150;
+
+function maybeEmitCanvasStreamPreview({ functionCalls, state, onToolEvent }) {
+  if (typeof onToolEvent !== 'function' || !Array.isArray(functionCalls)) return;
+  functionCalls.forEach((call, index) => {
+    if (String(call?.name || '') !== 'canvas') return;
+    const args = call?.args && typeof call.args === 'object' ? call.args : {};
+    const content = typeof args.content === 'string' ? args.content : '';
+    if (!content && !args.title) return;
+
+    const callId = String(call?.id || `google-fn-${index}`);
+    const prev = state.get(callId);
+    const now = Date.now();
+    const isFirst = !prev;
+    const grew = isFirst || content.length > prev.lastLen;
+    const timeOk = isFirst || now - prev.lastEmitAt >= CANVAS_STREAM_MIN_INTERVAL_MS;
+    if (!isFirst && !(grew && timeOk)) return;
+
+    state.set(callId, { lastEmitAt: now, lastLen: content.length });
+    try {
+      onToolEvent({
+        type: 'canvas_stream',
+        callId,
+        action: typeof args.action === 'string' ? args.action : undefined,
+        documentId: typeof args.documentId === 'string' ? args.documentId : undefined,
+        title: typeof args.title === 'string' ? args.title : undefined,
+        artifactType: typeof args.artifactType === 'string' ? args.artifactType : undefined,
+        mode: typeof args.mode === 'string' ? args.mode : undefined,
+        content,
+      });
+    } catch { /* 预览性事件，失败不影响主流程 */ }
+  });
+}
+
 function normalizeGoogleFunctionCalls(functionCalls) {
   return (Array.isArray(functionCalls) ? functionCalls : []).map((call, index) => {
     const id = String(call?.id || `google-fn-${index}`);
@@ -461,6 +502,7 @@ async function generateNativeChat({
   toolDefinitions = [],
   toolChoice = 'auto',
   onDelta,
+  onToolEvent,
 }) {
   const clientConfig = resolveGoogleClientConfig(rawConfig);
   const normalizedModel = sanitizeGoogleModelId(model);
@@ -487,6 +529,7 @@ async function generateNativeChat({
   let fullText = '';
   let functionCalls = [];
   let usage = null;
+  const canvasStreamState = new Map(); // callId -> { lastEmitAt, lastLen }，画布实时预览的节流状态
 
   for await (const chunk of stream) {
     if (typeof chunk?.text === 'string' && chunk.text) {
@@ -496,6 +539,7 @@ async function generateNativeChat({
     const chunkFunctionCalls = extractFunctionCallsFromChunk(chunk);
     if (chunkFunctionCalls.length > 0) {
       functionCalls = mergeFunctionCalls(functionCalls, chunkFunctionCalls);
+      maybeEmitCanvasStreamPreview({ functionCalls, state: canvasStreamState, onToolEvent });
     }
     if (chunk?.usageMetadata) {
       usage = usageToOpenAiShape(chunk.usageMetadata);
@@ -636,5 +680,6 @@ module.exports = {
     sanitizeGoogleNativeContent,
     usageToOpenAiShape,
     toGoogleInlineDataFromDataUrl,
+    maybeEmitCanvasStreamPreview,
   },
 };

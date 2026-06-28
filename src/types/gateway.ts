@@ -47,6 +47,15 @@ export interface GatewayToolPayload {
   resultPreview?: string;
   error?: string;
   elapsedMs?: number;
+  /** 委派子代理(Writer/Coder/Researcher)执行时打的标签；AMY 主链路直接执行时不带此字段 */
+  agentSource?: string;
+  /** canvas_stream 专用字段：流式预览阶段从未完成的 JSON 里抠出来的部分参数 */
+  action?: string;
+  documentId?: string;
+  title?: string;
+  artifactType?: string;
+  mode?: string;
+  content?: string;
   [key: string]: unknown;
 }
 

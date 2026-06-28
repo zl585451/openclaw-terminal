@@ -32,6 +32,7 @@ export default defineConfig({
       'oct-gateway/test/externalOmniRoute.test.js',
       'oct-gateway/test/toolAdapter.test.js',
       'oct-gateway/test/omniRoute.metrics.test.js',
+      'oct-gateway/test/partialJsonField.test.js',
     ],
   },
   resolve: {

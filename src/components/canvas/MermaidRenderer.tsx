@@ -457,8 +457,8 @@ export default function MermaidRenderer({
           theme: 'base',
           flowchart: {
             useMaxWidth: false,
-            nodeSpacing: compact ? 50 : 56,
-            rankSpacing: compact ? 70 : 76,
+            nodeSpacing: compact ? 56 : 64,
+            rankSpacing: compact ? 84 : 100,
             curve: 'basis',
           },
           themeVariables: getMermaidThemeVariables(compact),
@@ -759,8 +759,6 @@ export default function MermaidRenderer({
         <div className="canvas-mermaid-workbench" ref={fullShellRef}>
           <div className="canvas-mermaid-workbench__toolbar">
             <div className="canvas-mermaid-workbench__meta">
-              <span className="canvas-mermaid-workbench__chip">Mermaid</span>
-              <span className="canvas-mermaid-workbench__label">diagram renderer</span>
               <div className="canvas-mermaid-segmented" role="tablist" aria-label="Mermaid view mode">
                 <button
                   type="button"

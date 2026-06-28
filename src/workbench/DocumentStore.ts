@@ -69,6 +69,10 @@ function sanitizeWorkbenchDocument(value: unknown): WorkbenchDocument | null {
     updatedAt: typeof raw.updatedAt === 'number' && Number.isFinite(raw.updatedAt)
       ? raw.updatedAt
       : undefined,
+    // isStreaming/streamId 只是运行期的"正在生成中"标记，恢复持久化状态时一律清空——
+    // 不然应用重启后，上次没生成完的草稿会永久卡在"正在生成"的样子。
+    isStreaming: undefined,
+    streamId: undefined,
   });
 }
 
@@ -253,6 +257,8 @@ export function createWorkbenchDocument(
     version: overrides.version ?? 1,
     createdAt: overrides.createdAt ?? timestamp,
     updatedAt: overrides.updatedAt ?? timestamp,
+    isStreaming: overrides.isStreaming,
+    streamId: overrides.streamId,
   };
 }
 
@@ -268,12 +274,35 @@ export function workbenchDocumentReducer(
 ): WorkbenchDocumentState {
   switch (command.type) {
     case 'create': {
+      const incoming = command.payload.document;
+      // 流式预览期间，同一次生成(同一个 streamId)的连续分片要原地合并进同一份
+      // 草稿，不能每个分片都新建一条——那样画布列表会瞬间冒出几十份重复文档。
+      const streamId = incoming.streamId;
+      if (streamId) {
+        const existingIdx = state.documents.findIndex((document) => document.streamId === streamId);
+        if (existingIdx >= 0) {
+          const existing = state.documents[existingIdx];
+          const merged: WorkbenchDocument = {
+            ...existing,
+            ...incoming,
+            id: existing.id, // 草稿"转正"时也保留同一个 id，不产生新条目
+            artifactType: incoming.artifactType !== undefined
+              ? normalizeWorkbenchArtifactType(incoming.artifactType, incoming.mode || existing.mode)
+              : existing.artifactType,
+            streamId: incoming.isStreaming ? streamId : undefined,
+            updatedAt: Date.now(),
+          };
+          const nextDocuments = [...state.documents];
+          nextDocuments[existingIdx] = merged;
+          return { documents: nextDocuments, activeDocumentId: merged.id };
+        }
+      }
       const nextDocument = createWorkbenchDocument(
-        command.payload.document.content,
-        command.payload.document.mode || 'markdown',
-        command.payload.document.title || '',
-        command.payload.document.language || 'text',
-        command.payload.document,
+        incoming.content,
+        incoming.mode || 'markdown',
+        incoming.title || '',
+        incoming.language || 'text',
+        incoming,
       );
       return {
         documents: [...state.documents, nextDocument],
@@ -295,8 +324,10 @@ export function workbenchDocumentReducer(
                 ...patch,
                 artifactType: nextArtifactType,
                 updatedAt: patch.updatedAt ?? Date.now(),
+                // 流式预览分片不算一次真正的修订——content 几乎每帧都在变长，
+                // 按它涨版本号的话生成一份文档版本号能跳到几十，没有意义。
                 version: patch.version
-                  ?? (patch.content !== undefined ? document.version + 1 : document.version),
+                  ?? (patch.content !== undefined && !patch.isStreaming ? document.version + 1 : document.version),
               };
             })()
             : document,

@@ -5,7 +5,7 @@ import { normalizeAssistantTranscriptContent } from '../../utils/cotExtract';
 import { parseSystemReplyStatus } from '../../utils/systemReplyParser';
 import { workbenchBus } from '../../workbench/WorkbenchBus';
 import { toWorkbenchCommand } from '../../workbench/types';
-import type { CanvasEvent, WorkbenchEvent } from '../../workbench/types';
+import type { CanvasEvent, WorkbenchArtifactType, WorkbenchEvent, WorkbenchMode } from '../../workbench/types';
 import { shouldSuppressAssistantTextForClarify } from '../../core/turnStream/streamingBufferOps';
 import type { ChatMessage, ToolEventItem } from '../../ui/chat/chatTypes';
 import type { RenderBlock } from '../../types/renderProtocol';
@@ -335,21 +335,107 @@ export function useChatStreamRouter({
         }
         return next;
       });
-      // 同步写入当前 streaming 消息的 toolEvents
+      // 同步写入当前 streaming 消息的 toolEvents——按 callId upsert：canvas 工具的
+      // 实时预览（canvas_stream）会比这条 tool_call 事件更早建好卡片，这里要合并
+      // 进同一张卡片，不能无条件 push 出第二张重复的。
       setMessages((prev) => {
         const lastIdx = prev.length - 1;
         const last = prev[lastIdx];
         if (!last || last.role !== 'assistant' || !last.isStreaming) return prev;
+        const callId = payload.callId || payload.tool + '_' + Date.now();
+        const existingIdx = (last.toolEvents || []).findIndex((evt) => evt.callId === callId);
+        if (existingIdx >= 0) {
+          const updatedEvents = last.toolEvents!.map((evt, idx) =>
+            idx === existingIdx
+              ? {
+                  ...evt,
+                  tool: payload.tool,
+                  args: payload.args as Record<string, unknown> | undefined,
+                  state: 'executing' as const,
+                  agentSource: payload.agentSource,
+                }
+              : evt
+          );
+          return [...prev.slice(0, lastIdx), { ...last, toolEvents: updatedEvents }];
+        }
         const newEvent: ToolEventItem = {
-          callId: payload.callId || payload.tool + '_' + Date.now(),
+          callId,
           tool: payload.tool,
           args: payload.args as Record<string, unknown> | undefined,
           state: 'executing',
           startedAt: Date.now(),
+          agentSource: payload.agentSource,
         };
         return [...prev.slice(0, lastIdx), { ...last, toolEvents: [...(last.toolEvents || []), newEvent] }];
       });
       onToolEventTimeline(payload);
+    } else if (payload.type === 'canvas_stream') {
+      const callId = String(payload.callId || '');
+      if (!callId) return;
+      const content = typeof payload.content === 'string' ? payload.content : '';
+      const title = typeof payload.title === 'string' && payload.title ? payload.title : undefined;
+      const action = typeof payload.action === 'string' ? payload.action : undefined;
+      const documentId = typeof payload.documentId === 'string' ? payload.documentId : undefined;
+
+      // 聊天气泡里的工具卡片：流式预览比正式 tool_call 事件更早到达，这里先把
+      // 卡片"upsert"出来；正式 tool_call 事件到达时按同一个 callId 合并，不会
+      // 出现两张卡片。
+      setMessages((prev) => {
+        const lastIdx = prev.length - 1;
+        const last = prev[lastIdx];
+        if (!last || last.role !== 'assistant' || !last.isStreaming) return prev;
+        const streamChars = content.length;
+        const existingIdx = (last.toolEvents || []).findIndex((evt) => evt.callId === callId);
+        if (existingIdx >= 0) {
+          const updatedEvents = last.toolEvents!.map((evt, idx) =>
+            idx === existingIdx ? { ...evt, streamChars, streamTitle: title ?? evt.streamTitle } : evt
+          );
+          return [...prev.slice(0, lastIdx), { ...last, toolEvents: updatedEvents }];
+        }
+        const newEvent: ToolEventItem = {
+          callId,
+          tool: 'canvas',
+          state: 'executing',
+          startedAt: Date.now(),
+          agentSource: 'AMY',
+          streamChars,
+          streamTitle: title,
+        };
+        return [...prev.slice(0, lastIdx), { ...last, toolEvents: [...(last.toolEvents || []), newEvent] }];
+      });
+
+      // 画布面板：action 字段在 JSON 里排在最前面，几乎总是比 content 更早流到——
+      // 但如果偏偏还没流到，宁可先不动画布面板也不要瞎猜成 create，猜错了会在
+      // 文档列表里留下一个没人认领的孤儿草稿（content 是 update 目标，结果建了
+      // 一份新文档）。聊天气泡的字数进度不受影响，照样实时涨。
+      if (!action) return;
+      if (action === 'update' && documentId) {
+        workbenchBus.dispatch({
+          type: 'update',
+          payload: {
+            documentId,
+            patch: {
+              content,
+              ...(title ? { title } : {}),
+              isStreaming: true,
+            },
+          },
+        });
+      } else {
+        workbenchBus.dispatch({
+          type: 'create',
+          payload: {
+            document: {
+              content,
+              mode: (typeof payload.mode === 'string' ? payload.mode : 'html') as WorkbenchMode,
+              title: title || '正在生成…',
+              artifactType: payload.artifactType as WorkbenchArtifactType | undefined,
+              streamId: callId,
+              isStreaming: true,
+            },
+          },
+        });
+      }
     } else if (payload.type === 'tool_result') {
       const finalState = (payload.state === 'error' ? 'error' : 'done') as 'done' | 'error';
       reduceTurnUiRef(

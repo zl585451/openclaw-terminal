@@ -106,10 +106,13 @@ function computeAdaptiveSpacing(nodeCount: number, edgeCount: number, maxLevelWi
   const largeGraphBoost = nodeCount > LAYOUT_SOFT_LIMIT ? Math.min(120, (nodeCount - LAYOUT_SOFT_LIMIT) * 16) : 0;
   const denseBoost = density > 1.2 ? 56 : density > 0.85 ? 28 : 0;
 
+  // 间距基础值收紧：原 250/120/80 在节点较少时会把整体布局撑得很大，
+  // fitView 缩小贴合面板后节点/文字相对显得很小、看不清。收紧后同样的
+  // 节点数占满面板的比例更高，可读性更好；超大图仍靠下面的 boost 项撐开避免重叠。
   return {
-    gapMain: 250 + largeGraphBoost + denseBoost + crowdedLevelBoost * 14,
-    gapCross: 120 + Math.min(100, crowdedLevelBoost * 22) + (nodeCount > LAYOUT_SOFT_LIMIT ? 24 : 0),
-    gapGroup: 80 + Math.min(50, crowdedLevelBoost * 10),
+    gapMain: 140 + largeGraphBoost + denseBoost + crowdedLevelBoost * 14,
+    gapCross: 70 + Math.min(100, crowdedLevelBoost * 22) + (nodeCount > LAYOUT_SOFT_LIMIT ? 24 : 0),
+    gapGroup: 48 + Math.min(50, crowdedLevelBoost * 10),
     density,
   };
 }
@@ -712,7 +715,7 @@ function FlowCanvas({ rfNodes, rfEdges, title, diagnostics }: FlowCanvasProps) {
 
   // Re-centre whenever the node/edge set changes (e.g. after initial mount)
   useEffect(() => {
-    const t = setTimeout(() => fitView({ padding: 0.18, duration: 300 }), 150);
+    const t = setTimeout(() => fitView({ padding: 0.08, duration: 300 }), 150);
     return () => clearTimeout(t);
   }, [rfNodes, rfEdges, fitView]);
 
@@ -787,7 +790,7 @@ function FlowCanvas({ rfNodes, rfEdges, title, diagnostics }: FlowCanvasProps) {
           nodeTypes={NODE_TYPES}
           onNodeClick={handleNodeClick}
           fitView
-          fitViewOptions={{ padding: 0.18 }}
+          fitViewOptions={{ padding: 0.08 }}
           minZoom={0.2}
           maxZoom={2.5}
           attributionPosition="bottom-right"

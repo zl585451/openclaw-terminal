@@ -23,6 +23,7 @@ async function executeTask(taskId, onToolEvent) {
         args: task.toolArgs,
         callId: taskId,
         state: 'executing',
+        agentSource: '后台任务',
       });
     } catch {}
   }

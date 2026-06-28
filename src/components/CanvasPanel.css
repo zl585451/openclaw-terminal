@@ -151,6 +151,14 @@
   overflow: hidden;
 }
 
+/* 满版自适应产物（HTML/SVG ui-draft）不需要这层 24px 外壳留白——
+   舞台本身已经是 .canvas-ui-stage--fit（padding:0），SVG 内容自带约40px
+   内边距（见出图协议）。外壳再加 24px 会让整张图在面板里"缩成一小块"，
+   四周出现大片闲置空间，与 Claude 几乎满屏的效果不符。 */
+.canvas-preview.canvas-ui-preview {
+  padding: 0;
+}
+
 .canvas-code-preview {
   background: var(--bg-code);
   color: var(--text-primary);
@@ -729,13 +737,35 @@
   justify-content: center;
 }
 
+/* 拆掉"设备预览卡片"外观（白底+描边+大阴影）。面板就是画布，内容不该被
+   画成一张悬浮在深色背景上的卡片——那样缩放后四周必然露出大片"卡片之外
+   的空当"，看起来像没填满。iframe 内部已经通过 artifactShell 注入
+   var(--color-background-primary)（取自host的--bg-surface），与面板背景
+   同色，去掉卡片边框/阴影/白底后视觉上无缝融合，不再有"卡片+空白"的割裂感。 */
 .canvas-ui-frame-wrap {
   flex: 0 0 auto;
-  border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(150, 174, 211, 0.42);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-  background: #fff;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* ── 满版自适应模式 ──────────────────────────────────────────────
+   htmlPlugin 的"整页自适应缩放"舞台。复用 .canvas-ui-stage 的布局，但去掉
+   那套"设备视口预览"残留的边框/内边距/最小高度，让舞台 = 面板可用区，
+   避免在已缩放的画布外再套一层"框中框"留白。 */
+.canvas-ui-preview.canvas-ui-preview {
+  /* 满版预览的外层不需要额外间距，统一交给 .canvas-preview 的 padding 控制 */
+  gap: 0;
+}
+
+.canvas-ui-stage--fit {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .canvas-editor {

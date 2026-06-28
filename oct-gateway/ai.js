@@ -25,6 +25,7 @@ const {
 const { createPseudoToolCompat } = require('./runtime/pseudoToolCompat');
 const { createThinkTagStreamParser } = require('./runtime/thinkTagStreamParser');
 const { parseSseLine, extractStreamUpdate } = require('./runtime/sseChatParser');
+const { extractPartialCanvasArgs } = require('./runtime/partialJsonField');
 const { buildChatRequestBody } = require('./runtime/chatRequestBody');
 const {
   probeModelToolsSupport,
@@ -605,6 +606,45 @@ function applyToolCallDelta(existing, delta) {
   return next;
 }
 
+// canvas 工具的 content 参数是模型一边生成一边吐出来的（SSE 流里 tool_calls 的
+// arguments 字段是分片拼接的），但此前这段过程完全黑盒：参数攒满、JSON.parse
+// 成功之后才一次性发 tool_call 事件，用户在生成期间什么都看不到。这里在累积
+// 过程中就把已经收到的 content/title 节流着提前广播出去，画布面板和聊天气泡
+// 才能跟着"边生成边展示"。节流：首次出现内容立即发一次，之后至少间隔
+// CANVAS_STREAM_MIN_INTERVAL_MS 且内容确实变长了才再发，避免刷屏。
+const CANVAS_STREAM_MIN_INTERVAL_MS = 150;
+
+function maybeEmitCanvasStreamPreview({ toolCallEntry, idx, state, onToolEvent }) {
+  if (!toolCallEntry || typeof onToolEvent !== 'function') return;
+  if (toolCallEntry.function?.name !== 'canvas') return;
+  if (!toolCallEntry.id) return; // 还没拿到 callId，没法跟后续的最终事件对应起来
+
+  const partial = extractPartialCanvasArgs(toolCallEntry.function.arguments || '');
+  const content = partial.content || '';
+  if (!content && !partial.title) return; // 还没攒出任何值得展示的内容
+
+  const prev = state.get(idx);
+  const now = Date.now();
+  const isFirst = !prev;
+  const grew = isFirst || content.length > prev.lastLen;
+  const timeOk = isFirst || now - prev.lastEmitAt >= CANVAS_STREAM_MIN_INTERVAL_MS;
+  if (!isFirst && !(grew && timeOk)) return;
+
+  state.set(idx, { lastEmitAt: now, lastLen: content.length });
+  try {
+    onToolEvent({
+      type: 'canvas_stream',
+      callId: toolCallEntry.id,
+      action: partial.action,
+      documentId: partial.documentId,
+      title: partial.title,
+      artifactType: partial.artifactType,
+      mode: partial.mode,
+      content,
+    });
+  } catch { /* 预览性事件，发送失败不影响主流程 */ }
+}
+
 function isProtocolOrRateLimitError(error) {
   const status = Number(error?.status);
   const message = String(error?.message || '');
@@ -921,6 +961,7 @@ async function streamChatRaw({
         onDelta: (chunk) => {
           if (chunk) onDelta(chunk);
         },
+        onToolEvent,
       });
 
       if (result.usage) {
@@ -1101,6 +1142,7 @@ async function streamChatRaw({
     const decoder = new TextDecoder('utf-8');
     let buf = '';
     let toolCalls = [];
+    const canvasStreamState = new Map(); // idx -> { lastEmitAt, lastLen }，画布实时预览的节流状态
     let totalUsage = null;
     let responseModel = null;  // API 返回的实际模型名（用于校验和展示）
     let sawDone = false;
@@ -1147,6 +1189,7 @@ async function streamChatRaw({
           for (const tc of update.toolCalls) {
             const idx = tc.index || 0;
             toolCalls[idx] = applyToolCallDelta(toolCalls[idx], tc);
+            maybeEmitCanvasStreamPreview({ toolCallEntry: toolCalls[idx], idx, state: canvasStreamState, onToolEvent });
           }
         }
 
@@ -1197,6 +1240,21 @@ async function streamChatRaw({
           const hasParsedToolCalls = toolCalls.filter(Boolean).length > 0;
           if (!hasOutput && !hasParsedToolCalls) {
             terminalStreamError = new Error('模型返回异常状态（unexpected_state），本轮未产出可用内容。请重试，或切换模型后再试。');
+            sawDone = true;
+            break;
+          }
+        }
+        // finishReason==='length'：输出因达到 max_tokens 被截断。若此时已经开始
+        // 累积一个工具调用（如 canvas 画图），其 JSON 参数必然不完整，无法解析执行——
+        // 不能静默丢弃后把前面的寒暄文本当成功答案返回，否则用户只看到一句"我来画一下"
+        // 就没了，完全不知道发生了什么（黑盒）。这里把它转成明确的错误，可重试。
+        if (finishReason === 'length') {
+          const truncatedToolCallCount = toolCalls.filter(Boolean).length;
+          if (truncatedToolCallCount > 0) {
+            terminalStreamError = new Error(
+              '模型在生成工具调用（如画图）时被输出长度上限截断，内容未完整生成。'
+              + '这通常是模型把预算耗在了内部思考上。请重试一次，或简化请求后再试。'
+            );
             sawDone = true;
             break;
           }

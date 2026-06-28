@@ -199,6 +199,49 @@ async function main() {
   assert.equal(convertedSigned.contents[0].parts[0].thoughtSignature, 'sig-b');
 
   console.log('PASS google native helpers normalize Vertex config, message conversion, and function calls');
+
+  // canvas 实时预览：Gemini 的 args 已经是解析好的对象，直接拿 content 现成用，
+  // 不需要 partialJsonField 那套容错抠取——这里只验证节流/过滤逻辑接得对。
+  const previewEvents = [];
+  const previewState = new Map();
+  _internals.maybeEmitCanvasStreamPreview({
+    functionCalls: [{ id: 'call_1', name: 'canvas', args: { action: 'create', title: '深夜电台', content: '<html>开头' } }],
+    state: previewState,
+    onToolEvent: (evt) => previewEvents.push(evt),
+  });
+  assert.equal(previewEvents.length, 1);
+  assert.equal(previewEvents[0].type, 'canvas_stream');
+  assert.equal(previewEvents[0].callId, 'call_1');
+  assert.equal(previewEvents[0].content, '<html>开头');
+  assert.equal(previewEvents[0].title, '深夜电台');
+
+  // 内容没有变长——再调用一次不应该重复发
+  _internals.maybeEmitCanvasStreamPreview({
+    functionCalls: [{ id: 'call_1', name: 'canvas', args: { action: 'create', title: '深夜电台', content: '<html>开头' } }],
+    state: previewState,
+    onToolEvent: (evt) => previewEvents.push(evt),
+  });
+  assert.equal(previewEvents.length, 1);
+
+  // 非 canvas 工具不应该触发预览事件
+  const otherEvents = [];
+  _internals.maybeEmitCanvasStreamPreview({
+    functionCalls: [{ id: 'call_2', name: 'read_file', args: { path: 'a.txt' } }],
+    state: new Map(),
+    onToolEvent: (evt) => otherEvents.push(evt),
+  });
+  assert.equal(otherEvents.length, 0);
+
+  // 还没攒出 content/title 时不应该触发
+  const emptyEvents = [];
+  _internals.maybeEmitCanvasStreamPreview({
+    functionCalls: [{ id: 'call_3', name: 'canvas', args: { action: 'create' } }],
+    state: new Map(),
+    onToolEvent: (evt) => emptyEvents.push(evt),
+  });
+  assert.equal(emptyEvents.length, 0);
+
+  console.log('PASS google native canvas stream preview emits/suppresses correctly');
 }
 
 main().catch((error) => {
